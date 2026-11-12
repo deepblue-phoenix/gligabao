@@ -33,7 +33,8 @@ type Candidates struct {
 // AliasSearch finds, for the dataset dsID, the names of stored entities that are the same as an endpoint of the new edges but
 // are not named alike (aliases, found by similarity of embeddings). A search that fails is the caller's to report: it
 // returns what it found (maybe nothing), and the candidates are then those of the exact names.
-type AliasSearch func(ctx context.Context, dsID int64) (names []string)
+type AliasSearch func(ctx context.Context,
+	dsID int64) (names []string)
 
 // LoadCandidates returns the live (not expired) edges of the user's dataset that the new edges may repeat or
 // contradict, newest first, at most MaxCandidates. They are the union, merged by edge ID, of two lookups:
@@ -42,9 +43,19 @@ type AliasSearch func(ctx context.Context, dsID int64) (names []string)
 //     close to an endpoint's, which finds aliases the names do not.
 //
 // A dataset that does not exist yet has none (and search is not called).
-func LoadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edges []graph.Edge, search AliasSearch) (*Candidates, error) {
-	out := &Candidates{Via: map[int64]string{}}
-	dsID, err := relational.DatasetID(ctx, d, userID, dataset)
+func LoadCandidates(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset string,
+	edges []graph.Edge,
+	search AliasSearch) (*Candidates, error) {
+	out := &Candidates{
+		Via: map[int64]string{},
+	}
+	dsID, err := relational.DatasetID(ctx,
+		d,
+		userID,
+		dataset)
 	if errors.Is(err, relational.ErrNotFound) {
 		return out, nil
 	}
@@ -62,7 +73,11 @@ func LoadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 		}
 	}
 	out.Names = keys
-	byName, err := graph.LoadCandidateEdges(ctx, d, dsID, keys, MaxCandidates)
+	byName, err := graph.LoadCandidateEdges(ctx,
+		d,
+		dsID,
+		keys,
+		MaxCandidates)
 	if err != nil {
 		return nil, err
 	}
@@ -77,18 +92,28 @@ func LoadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 			}
 		}
 	}
-	bySimilar, err := graph.LoadCandidateEdges(ctx, d, dsID, aliasKeys, MaxCandidates)
+	bySimilar, err := graph.LoadCandidateEdges(ctx,
+		d,
+		dsID,
+		aliasKeys,
+		MaxCandidates)
 	if err != nil {
 		return nil, err
 	}
 	out.BySimilar = bySimilar
-	out.Edges = MergeCandidates(byName, bySimilar, MaxCandidates, out.Via)
+	out.Edges = MergeCandidates(byName,
+		bySimilar,
+		MaxCandidates,
+		out.Via)
 	return out, nil
 }
 
 // MergeCandidates merges the edges found by name and by similarity: an edge found by both appears once (edges are
 // identified by their ID), newest (highest ID) first, at most limit. via, if not nil, gets how each kept edge was found.
-func MergeCandidates(byName, bySimilar []graph.Edge, limit int, via map[int64]string) []graph.Edge {
+func MergeCandidates(byName,
+	bySimilar []graph.Edge,
+	limit int,
+	via map[int64]string) []graph.Edge {
 	how := map[int64]string{}
 	var all []graph.Edge
 	for _, e := range byName {
@@ -105,7 +130,10 @@ func MergeCandidates(byName, bySimilar []graph.Edge, limit int, via map[int64]st
 			how[e.ID] = ViaBoth
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].ID > all[j].ID })
+	sort.SliceStable(all, func(i,
+		j int) bool {
+		return all[i].ID > all[j].ID
+	})
 	if len(all) > limit {
 		all = all[:limit]
 	}

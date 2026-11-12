@@ -115,7 +115,10 @@ func (a SeriesAnchor) Describe() string {
 	case a.EntityID != 0:
 		return fmt.Sprintf("entity %d", a.EntityID)
 	case a.Edge != nil:
-		return fmt.Sprintf("fact %s -%s-> %s", a.Edge.Source, a.Edge.Relation, a.Edge.Target)
+		return fmt.Sprintf("fact %s -%s-> %s",
+			a.Edge.Source,
+			a.Edge.Relation,
+			a.Edge.Target)
 	case a.EdgeID != 0:
 		return fmt.Sprintf("edge %d", a.EdgeID)
 	}
@@ -150,22 +153,34 @@ type SeriesSpec struct {
 // given wins) and normalized to the precision of the database, windows parsed. artifact says whether the call creates
 // an artifact the series can be anchored to (remember does; the standalone endpoint does not). It returns
 // ErrInvalidSeries for anything malformed. Resolving a resolved series changes nothing.
-func ResolveSeries(in []SeriesSpec, artifact bool) ([]SeriesSpec, error) {
+func ResolveSeries(in []SeriesSpec,
+	artifact bool) ([]SeriesSpec, error) {
 	if len(in) == 0 {
 		return nil, nil
 	}
 	if len(in) > MaxSeriesPerCall {
-		return nil, fmt.Errorf("%w: at most %d series per request", ErrInvalidSeries, MaxSeriesPerCall)
+		return nil, fmt.Errorf("%w: at most %d series per request",
+			ErrInvalidSeries,
+			MaxSeriesPerCall)
 	}
-	out := make([]SeriesSpec, 0, len(in))
+	out := make([]SeriesSpec,
+		0,
+		len(in))
 	seen := map[string]bool{}
 	for i, s := range in {
 		r, err := resolveSeries(s, artifact)
 		if err != nil {
-			return nil, fmt.Errorf("%w: series[%d]: %v", ErrInvalidSeries, i, err)
+			return nil, fmt.Errorf("%w: series[%d]: %v",
+				ErrInvalidSeries,
+				i,
+				err)
 		}
 		if id := r.Provider + "\x00" + r.Key + "\x00" + r.Field; seen[id] {
-			return nil, fmt.Errorf("%w: series[%d]: key %q with field %q is given twice", ErrInvalidSeries, i, r.Key, r.Field)
+			return nil, fmt.Errorf("%w: series[%d]: key %q with field %q is given twice",
+				ErrInvalidSeries,
+				i,
+				r.Key,
+				r.Field)
 		} else {
 			seen[id] = true
 		}
@@ -174,28 +189,47 @@ func ResolveSeries(in []SeriesSpec, artifact bool) ([]SeriesSpec, error) {
 	return out, nil
 }
 
-func resolveSeries(s SeriesSpec, artifact bool) (SeriesSpec, error) {
+func resolveSeries(s SeriesSpec,
+	artifact bool) (SeriesSpec, error) {
 	var err error
-	r := SeriesSpec{Provider: s.Provider, Definition: s.Definition}
-	if r.Key, err = label(s.Key, "key", MaxSeriesKeyLen, true); err != nil {
+	r := SeriesSpec{
+		Provider:   s.Provider,
+		Definition: s.Definition,
+	}
+	if r.Key, err = label(s.Key,
+		"key",
+		MaxSeriesKeyLen,
+		true); err != nil {
 		return r, err
 	}
-	if r.Field, err = label(s.Field, "field", MaxSeriesLabelLen, false); err != nil {
+	if r.Field, err = label(s.Field,
+		"field",
+		MaxSeriesLabelLen,
+		false); err != nil {
 		return r, err
 	}
 	if r.Field == "" {
 		r.Field = DefaultSeriesField
 	}
-	if r.Name, err = label(s.Name, "name", MaxSeriesKeyLen, false); err != nil {
+	if r.Name, err = label(s.Name,
+		"name",
+		MaxSeriesKeyLen,
+		false); err != nil {
 		return r, err
 	}
 	if r.Name == "" {
 		r.Name = r.Key
 	}
-	if r.Unit, err = label(s.Unit, "unit", MaxSeriesLabelLen, false); err != nil {
+	if r.Unit, err = label(s.Unit,
+		"unit",
+		MaxSeriesLabelLen,
+		false); err != nil {
 		return r, err
 	}
-	if r.Frequency, err = label(s.Frequency, "frequency", MaxSeriesLabelLen, false); err != nil {
+	if r.Frequency, err = label(s.Frequency,
+		"frequency",
+		MaxSeriesLabelLen,
+		false); err != nil {
 		return r, err
 	}
 
@@ -208,7 +242,9 @@ func resolveSeries(s SeriesSpec, artifact bool) (SeriesSpec, error) {
 		return r, fmt.Errorf("at most %d points per series (use several requests for more)", MaxSeriesPoints)
 	}
 	byTime := make(map[int64]int, len(s.Points)) // unix nano -> index in r.Points
-	r.Points = make([]SeriesPoint, 0, len(s.Points))
+	r.Points = make([]SeriesPoint,
+		0,
+		len(s.Points))
 	for _, p := range s.Points {
 		if p.TS.IsZero() {
 			return r, errors.New("a point has no time")
@@ -224,7 +260,10 @@ func resolveSeries(s SeriesSpec, artifact bool) (SeriesSpec, error) {
 		byTime[p.TS.UnixNano()] = len(r.Points)
 		r.Points = append(r.Points, p)
 	}
-	sort.Slice(r.Points, func(i, j int) bool { return r.Points[i].TS.Before(r.Points[j].TS) })
+	sort.Slice(r.Points, func(i,
+		j int) bool {
+		return r.Points[i].TS.Before(r.Points[j].TS)
+	})
 
 	//--------------------------------------
 	// ANCHORS
@@ -234,16 +273,24 @@ func resolveSeries(s SeriesSpec, artifact bool) (SeriesSpec, error) {
 	for i, a := range s.Anchors {
 		ra, err := resolveAnchor(a, artifact)
 		if err != nil {
-			return r, fmt.Errorf("anchors[%d]: %w", i, err)
+			return r, fmt.Errorf("anchors[%d]: %w",
+				i,
+				err)
 		}
 		r.Anchors = append(r.Anchors, ra)
 	}
 	return r, nil
 }
 
-func resolveAnchor(a SeriesAnchor, artifact bool) (SeriesAnchor, error) {
+func resolveAnchor(a SeriesAnchor,
+	artifact bool) (SeriesAnchor, error) {
 	var err error
-	r := SeriesAnchor{Artifact: a.Artifact, ArtifactID: a.ArtifactID, EntityID: a.EntityID, EdgeID: a.EdgeID}
+	r := SeriesAnchor{
+		Artifact:   a.Artifact,
+		ArtifactID: a.ArtifactID,
+		EntityID:   a.EntityID,
+		EdgeID:     a.EdgeID,
+	}
 	set := 0
 	for _, b := range []bool{a.Artifact, a.ArtifactID != 0, a.Entity != nil, a.EntityID != 0, a.Edge != nil, a.EdgeID != 0} {
 		if b {
@@ -263,30 +310,50 @@ func resolveAnchor(a SeriesAnchor, artifact bool) (SeriesAnchor, error) {
 	switch {
 	case a.Entity != nil:
 		e := SeriesEntity{}
-		if e.Name, err = label(a.Entity.Name, "entity.name", MaxSeriesKeyLen, true); err != nil {
+		if e.Name, err = label(a.Entity.Name,
+			"entity.name",
+			MaxSeriesKeyLen,
+			true); err != nil {
 			return r, err
 		}
-		if e.Type, err = label(a.Entity.Type, "entity.type", MaxSeriesLabelLen, false); err != nil {
+		if e.Type, err = label(a.Entity.Type,
+			"entity.type",
+			MaxSeriesLabelLen,
+			false); err != nil {
 			return r, err
 		}
 		e.Type = strings.ToLower(e.Type)
 		r.Entity = &e
 	case a.Edge != nil:
 		e := SeriesEdge{}
-		if e.Source, err = label(a.Edge.Source, "edge.source", MaxSeriesKeyLen, true); err != nil {
+		if e.Source, err = label(a.Edge.Source,
+			"edge.source",
+			MaxSeriesKeyLen,
+			true); err != nil {
 			return r, err
 		}
-		if e.Target, err = label(a.Edge.Target, "edge.target", MaxSeriesKeyLen, true); err != nil {
+		if e.Target, err = label(a.Edge.Target,
+			"edge.target",
+			MaxSeriesKeyLen,
+			true); err != nil {
 			return r, err
 		}
-		rel, err := label(a.Edge.Relation, "edge.relation", MaxSeriesKeyLen, true)
+		rel, err := label(a.Edge.Relation,
+			"edge.relation",
+			MaxSeriesKeyLen,
+			true)
 		if err != nil {
 			return r, err
 		}
-		e.Relation = strings.ReplaceAll(strings.ToLower(strings.Join(strings.Fields(rel), " ")), " ", "_") // as the relations of the edges are
+		e.Relation = strings.ReplaceAll(strings.ToLower(strings.Join(strings.Fields(rel), " ")),
+			" ",
+			"_") // as the relations of the edges are
 		r.Edge = &e
 	}
-	if r.Role, err = label(a.Role, "role", MaxSeriesLabelLen, false); err != nil {
+	if r.Role, err = label(a.Role,
+		"role",
+		MaxSeriesLabelLen,
+		false); err != nil {
 		return r, err
 	}
 
@@ -334,13 +401,18 @@ func resolveAnchor(a SeriesAnchor, artifact bool) (SeriesAnchor, error) {
 }
 
 // label trims s and checks it: at most max bytes, no control characters, and non-empty if required.
-func label(s, field string, max int, required bool) (string, error) {
+func label(s,
+	field string,
+	max int,
+	required bool) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" && required {
 		return "", fmt.Errorf("%s is required", field)
 	}
 	if len(s) > max {
-		return "", fmt.Errorf("%s is longer than %d bytes", field, max)
+		return "", fmt.Errorf("%s is longer than %d bytes",
+			field,
+			max)
 	}
 	for _, r := range s {
 		if r < 0x20 || r == 0x7f {
@@ -352,7 +424,9 @@ func label(s, field string, max int, required bool) (string, error) {
 
 // SeriesSummary describes series for a trajectory: no points, only how many.
 func SeriesSummary(series []SeriesSpec) []map[string]any {
-	out := make([]map[string]any, 0, len(series))
+	out := make([]map[string]any,
+		0,
+		len(series))
 	for _, s := range series {
 		out = append(out, map[string]any{"key": s.Key, "field": s.Field, "points": len(s.Points), "anchors": len(s.Anchors)})
 	}

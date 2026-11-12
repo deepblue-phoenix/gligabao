@@ -10,10 +10,14 @@ import (
 
 // rememberEntityCounts returns the in-context events of the entities of the dataset for the remember pipeline, by entity name:
 // how many LLM prompts of Remember listed each (entities with no count are not in the map).
-func rememberEntityCounts(t *testing.T, d *sql.DB, dsID int64) map[string]int64 {
+func rememberEntityCounts(t *testing.T,
+	d *sql.DB,
+	dsID int64) map[string]int64 {
 	t.Helper()
 	ctx := context.Background()
-	ents, err := graph.ListEntities(ctx, d, dsID)
+	ents, err := graph.ListEntities(ctx,
+		d,
+		dsID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +25,9 @@ func rememberEntityCounts(t *testing.T, d *sql.DB, dsID int64) map[string]int64 
 	for _, e := range ents {
 		names[e.ID] = e.Name
 	}
-	list, err := graph.ListInContextEvents(ctx, d, dsID)
+	list, err := graph.ListInContextEvents(ctx,
+		d,
+		dsID)
 	if err != nil {
 		t.Fatal(err)
 	}

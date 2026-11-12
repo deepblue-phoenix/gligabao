@@ -65,22 +65,31 @@ var QueryStages = []string{StageDetectGeo, StageQuery}
 // run is rejected, so that a typo is not silently ignored.
 func ResolveQueryModels(m map[string]string) (Models, error) { return resolveModels(m, QueryStages) }
 
-func resolveModels(m map[string]string, stages []string) (Models, error) {
+func resolveModels(m map[string]string,
+	stages []string) (Models, error) {
 	var out Models
 	for stage, model := range m {
 		if !slices.Contains(stages, stage) {
-			return nil, fmt.Errorf("%w: unknown stage %q (stages: %s)", ErrInvalidModels, stage, strings.Join(stages, ", "))
+			return nil, fmt.Errorf("%w: unknown stage %q (stages: %s)",
+				ErrInvalidModels,
+				stage,
+				strings.Join(stages, ", "))
 		}
 		model = strings.TrimSpace(model)
 		if model == "" {
 			continue
 		}
 		if len(model) > MaxModelLen {
-			return nil, fmt.Errorf("%w: %s: model name is longer than %d bytes", ErrInvalidModels, stage, MaxModelLen)
+			return nil, fmt.Errorf("%w: %s: model name is longer than %d bytes",
+				ErrInvalidModels,
+				stage,
+				MaxModelLen)
 		}
 		for _, r := range model {
 			if r <= 0x20 || r == 0x7f {
-				return nil, fmt.Errorf("%w: %s: model name has whitespace or control characters", ErrInvalidModels, stage)
+				return nil, fmt.Errorf("%w: %s: model name has whitespace or control characters",
+					ErrInvalidModels,
+					stage)
 			}
 		}
 		if out == nil {
@@ -128,7 +137,9 @@ func ParseModels(s string) (Models, error) {
 		}
 		stage, model, ok := strings.Cut(part, "=")
 		if !ok {
-			return nil, fmt.Errorf("%w: %q is not stage=model", ErrInvalidModels, part)
+			return nil, fmt.Errorf("%w: %q is not stage=model",
+				ErrInvalidModels,
+				part)
 		}
 		m[strings.TrimSpace(stage)] = model
 	}
@@ -144,8 +155,14 @@ func WithModels(m Models) Option { return func(o *CallOptions) { o.Models = m } 
 // the stage on the context of each call (see StageOf), so that the inference it records says which stage made it. The
 // level is that of WithReasoning for the stage, or its default (DefaultReasoning). A stage with no model uses the client's
 // default model.
-func (o CallOptions) ModelLLM(llm LLM, stage string) LLM {
-	return &modelLLM{LLM: llm, stage: stage, model: o.Models[stage], reasoning: o.Reasoning.Level(stage)}
+func (o CallOptions) ModelLLM(llm LLM,
+	stage string) LLM {
+	return &modelLLM{
+		LLM:       llm,
+		stage:     stage,
+		model:     o.Models[stage],
+		reasoning: o.Reasoning.Level(stage),
+	}
 }
 
 type modelLLM struct {
@@ -153,7 +170,8 @@ type modelLLM struct {
 	stage, model, reasoning string
 }
 
-func (m *modelLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
+func (m *modelLLM) Complete(ctx context.Context,
+	req ai.Request) (*ai.Response, error) {
 	if req.Model == "" {
 		req.Model = m.model
 	}
@@ -167,8 +185,11 @@ type stageKey struct{}
 
 // WithStage returns ctx that carries the pipeline stage a model call is made for. WithRecording stores it in the model
 // run of the call.
-func WithStage(ctx context.Context, stage string) context.Context {
-	return context.WithValue(ctx, stageKey{}, stage)
+func WithStage(ctx context.Context,
+	stage string) context.Context {
+	return context.WithValue(ctx,
+		stageKey{},
+		stage)
 }
 
 // StageOf returns the stage of ctx (see WithStage), "" if there is none.
@@ -233,11 +254,15 @@ func ResolveQueryReasoningStages(m map[string]string) (Reasoning, error) {
 	return resolveReasoning(m, QueryReasoningStages)
 }
 
-func resolveReasoning(m map[string]string, stages []string) (Reasoning, error) {
+func resolveReasoning(m map[string]string,
+	stages []string) (Reasoning, error) {
 	var out Reasoning
 	for stage, level := range m {
 		if !slices.Contains(stages, stage) {
-			return nil, fmt.Errorf("%w: unknown stage %q (stages with a reasoning level: %s)", ErrInvalidReasoning, stage, strings.Join(stages, ", "))
+			return nil, fmt.Errorf("%w: unknown stage %q (stages with a reasoning level: %s)",
+				ErrInvalidReasoning,
+				stage,
+				strings.Join(stages, ", "))
 		}
 		l, err := resolveLevel(stage, level)
 		if err != nil {
@@ -262,17 +287,24 @@ func ResolveQueryReasoning(level string) (Reasoning, error) {
 	if err != nil || l == "" {
 		return nil, err
 	}
-	return Reasoning{StageQuery: l}, nil
+	return Reasoning{
+		StageQuery: l,
+	}, nil
 }
 
 // resolveLevel normalizes a level; "" is returned for an empty one (the default).
-func resolveLevel(stage, level string) (string, error) {
+func resolveLevel(stage,
+	level string) (string, error) {
 	if strings.TrimSpace(level) == "" {
 		return "", nil
 	}
 	l, valid := ai.NormalizeReasoning(level)
 	if !valid {
-		return "", fmt.Errorf("%w: %s: unknown level %q (levels: %s)", ErrInvalidReasoning, stage, level, strings.Join(ai.ReasoningLevels, ", "))
+		return "", fmt.Errorf("%w: %s: unknown level %q (levels: %s)",
+			ErrInvalidReasoning,
+			stage,
+			level,
+			strings.Join(ai.ReasoningLevels, ", "))
 	}
 	return l, nil
 }

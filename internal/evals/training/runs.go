@@ -25,11 +25,14 @@ type evalNames struct {
 
 func (m *Manager) evalNames() *evalNames { return &evalNames{m, map[core.EvalDefID]string{}} }
 
-func (e *evalNames) of(ctx context.Context, id core.EvalDefID) (string, error) {
+func (e *evalNames) of(ctx context.Context,
+	id core.EvalDefID) (string, error) {
 	if n, ok := e.names[id]; ok {
 		return n, nil
 	}
-	d, err := e.m.Store.GetEvalDef(ctx, e.m.DB, id)
+	d, err := e.m.Store.GetEvalDef(ctx,
+		e.m.DB,
+		id)
 	if err != nil {
 		return "", err
 	}
@@ -38,7 +41,8 @@ func (e *evalNames) of(ctx context.Context, id core.EvalDefID) (string, error) {
 }
 
 // views turns eval runs into views, with the names of their evals.
-func (m *Manager) views(ctx context.Context, runs []core.EvalRun) ([]RunView, error) {
+func (m *Manager) views(ctx context.Context,
+	runs []core.EvalRun) ([]RunView, error) {
 	names := m.evalNames()
 	out := make([]RunView, len(runs))
 	for i := range runs {
@@ -54,11 +58,16 @@ func (m *Manager) views(ctx context.Context, runs []core.EvalRun) ([]RunView, er
 
 // ListRuns returns the evals of trained model modelID (without their cases), newest first, at most limit. Errors are *Error:
 // KindNotFound for an unknown model, KindInternal.
-func (m *Manager) ListRuns(ctx context.Context, modelID int64, limit int) ([]RunView, error) {
+func (m *Manager) ListRuns(ctx context.Context,
+	modelID int64,
+	limit int) ([]RunView, error) {
 	if _, err := m.getModel(ctx, modelID); err != nil {
 		return nil, err
 	}
-	list, err := m.Store.ListTrainingEvalRuns(ctx, m.DB, modelID, limit)
+	list, err := m.Store.ListTrainingEvalRuns(ctx,
+		m.DB,
+		modelID,
+		limit)
 	if err != nil {
 		log.WithError(err).Error("training evals: list evals failed")
 		return nil, internalErr("failed to list the evals", err)
@@ -67,8 +76,11 @@ func (m *Manager) ListRuns(ctx context.Context, modelID int64, limit int) ([]Run
 }
 
 // run0 reads eval run id (without its case runs) if it is a training one.
-func (m *Manager) run0(ctx context.Context, id core.EvalRunID) (*core.EvalRun, error) {
-	run, err := m.Store.GetEvalRun(ctx, m.DB, id)
+func (m *Manager) run0(ctx context.Context,
+	id core.EvalRunID) (*core.EvalRun, error) {
+	run, err := m.Store.GetEvalRun(ctx,
+		m.DB,
+		id)
 	if errors.Is(err, db.ErrNotFound) || (err == nil && run.Type != core.TypeTraining) {
 		return nil, notFoundErr("unknown eval")
 	} else if err != nil {
@@ -79,7 +91,8 @@ func (m *Manager) run0(ctx context.Context, id core.EvalRunID) (*core.EvalRun, e
 }
 
 // GetRun reads eval id, without its cases. Errors are *Error: KindNotFound, KindInternal.
-func (m *Manager) GetRun(ctx context.Context, id int64) (*RunView, error) {
+func (m *Manager) GetRun(ctx context.Context,
+	id int64) (*RunView, error) {
 	run, err := m.run0(ctx, core.EvalRunID(id))
 	if err != nil {
 		return nil, err
@@ -92,17 +105,23 @@ func (m *Manager) GetRun(ctx context.Context, id int64) (*RunView, error) {
 }
 
 // RunCases reads the cases stored so far of eval id, in the order of the eval. Errors are *Error: KindInternal.
-func (m *Manager) RunCases(ctx context.Context, id int64) ([]CaseView, error) {
+func (m *Manager) RunCases(ctx context.Context,
+	id int64) ([]CaseView, error) {
 	return m.caseViews(ctx, core.EvalRunID(id))
 }
 
-func (m *Manager) caseViews(ctx context.Context, id core.EvalRunID) ([]CaseView, error) {
-	run, err := m.Store.GetEvalRun(ctx, m.DB, id)
+func (m *Manager) caseViews(ctx context.Context,
+	id core.EvalRunID) ([]CaseView, error) {
+	run, err := m.Store.GetEvalRun(ctx,
+		m.DB,
+		id)
 	if err != nil {
 		log.WithError(err).Error("training evals: read eval failed")
 		return nil, internalErr("failed to read the eval's cases", err)
 	}
-	defs, err := m.Store.ListCaseDefs(ctx, m.DB, run.DefID)
+	defs, err := m.Store.ListCaseDefs(ctx,
+		m.DB,
+		run.DefID)
 	if err != nil {
 		log.WithError(err).Error("training evals: list the case defs failed")
 		return nil, internalErr("failed to read the eval's cases", err)
@@ -111,7 +130,9 @@ func (m *Manager) caseViews(ctx context.Context, id core.EvalRunID) ([]CaseView,
 	for _, d := range defs {
 		names[d.ID] = d.Name
 	}
-	cases, err := m.Store.ListCaseRuns(ctx, m.DB, id)
+	cases, err := m.Store.ListCaseRuns(ctx,
+		m.DB,
+		id)
 	if err != nil {
 		log.WithError(err).Error("training evals: list eval case runs failed")
 		return nil, internalErr("failed to read the eval's cases", err)
@@ -119,14 +140,17 @@ func (m *Manager) caseViews(ctx context.Context, id core.EvalRunID) ([]CaseView,
 	out := make([]CaseView, len(cases))
 	for i := range cases {
 		// The cases of a run are stored in order, batch by batch, so those stored so far are the first ones the run asked.
-		out[i] = ViewOfCaseRun(&cases[i], names[cases[i].DefID], i)
+		out[i] = ViewOfCaseRun(&cases[i],
+			names[cases[i].DefID],
+			i)
 	}
 	return out, nil
 }
 
 // CancelRun stops a running eval (it ends as cancelled, keeping the batches done so far) and returns it as it was. Errors are *Error:
 // KindNotFound for an unknown eval, KindConflict when it is not running.
-func (m *Manager) CancelRun(ctx context.Context, id int64) (*RunView, error) {
+func (m *Manager) CancelRun(ctx context.Context,
+	id int64) (*RunView, error) {
 	run, err := m.run0(ctx, core.EvalRunID(id))
 	if err != nil {
 		return nil, err
@@ -149,7 +173,9 @@ func (m *Manager) CancelRun(ctx context.Context, id int64) (*RunView, error) {
 		// Marked running, but nothing runs it (it cannot happen unless the bookkeeping failed): end it.
 		end := time.Now().UTC().Truncate(time.Second)
 		run.Status, run.FinishedAt = core.StatusCancelled, &end
-		if err := m.Store.UpdateEvalRun(ctx, m.DB, run); err != nil {
+		if err := m.Store.UpdateEvalRun(ctx,
+			m.DB,
+			run); err != nil {
 			log.WithError(err).Error("training evals: ending the eval failed")
 		}
 	} else {
@@ -178,13 +204,16 @@ func (w *Watch) Close() {
 // Watch starts watching eval id: the snapshot (the run and all of its cases so far: the ones stored, and the ones the model
 // answered that the judge has not scored yet, as running), and the events that follow while the eval goes on. The caller must
 // Close it. Errors are *Error: KindNotFound for an unknown eval, KindInternal.
-func (m *Manager) Watch(ctx context.Context, id int64) (*Watch, error) {
+func (m *Manager) Watch(ctx context.Context,
+	id int64) (*Watch, error) {
 	// Subscribe before reading the database, so no event falls between the two; the overlap is harmless: the cases are applied by
 	// idx, and the stored version wins.
 	m.mu.Lock()
 	feed := m.feeds[core.EvalRunID(id)]
 	m.mu.Unlock()
-	w := &Watch{feed: feed}
+	w := &Watch{
+		feed: feed,
+	}
 	var pending []CaseView
 	if feed != nil {
 		pending, w.Events = feed.Subscribe()
@@ -207,7 +236,10 @@ func (m *Manager) Watch(ctx context.Context, id int64) (*Watch, error) {
 			cases = append(cases, c)
 		}
 	}
-	sort.Slice(cases, func(i, j int) bool { return cases[i].Idx < cases[j].Idx })
+	sort.Slice(cases, func(i,
+		j int) bool {
+		return cases[i].Idx < cases[j].Idx
+	})
 	w.Run, w.Cases = run, cases
 	return w, nil
 }
@@ -254,11 +286,15 @@ type ModelView struct {
 }
 
 // isTraining reports whether the experiment def has an eval of the training Type.
-func (m *Manager) isTraining(ctx context.Context, d *core.ExperimentDef, types map[core.EvalDefID]core.Type) (bool, error) {
+func (m *Manager) isTraining(ctx context.Context,
+	d *core.ExperimentDef,
+	types map[core.EvalDefID]core.Type) (bool, error) {
 	for _, id := range d.EvalDefIDs {
 		t, ok := types[id]
 		if !ok {
-			e, err := m.Store.GetEvalDef(ctx, m.DB, id)
+			e, err := m.Store.GetEvalDef(ctx,
+				m.DB,
+				id)
 			if err != nil {
 				return false, err
 			}
@@ -272,8 +308,16 @@ func (m *Manager) isTraining(ctx context.Context, d *core.ExperimentDef, types m
 	return false, nil
 }
 
-func experimentView(d *core.ExperimentDef, runs int) ExperimentView {
-	v := ExperimentView{ID: int64(d.ID), Name: d.Name, Description: d.Description, Config: map[string]any(d.Params), NumRuns: runs, CreatedAt: d.CreatedAt}
+func experimentView(d *core.ExperimentDef,
+	runs int) ExperimentView {
+	v := ExperimentView{
+		ID:          int64(d.ID),
+		Name:        d.Name,
+		Description: d.Description,
+		Config:      map[string]any(d.Params),
+		NumRuns:     runs,
+		CreatedAt:   d.CreatedAt,
+	}
 	if v.Config == nil {
 		v.Config = map[string]any{}
 	}
@@ -290,10 +334,14 @@ func (m *Manager) ListExperiments(ctx context.Context) ([]ExperimentView, error)
 	types := map[core.EvalDefID]core.Type{}
 	out := []ExperimentView{}
 	for i := range defs {
-		ok, err := m.isTraining(ctx, &defs[i], types)
+		ok, err := m.isTraining(ctx,
+			&defs[i],
+			types)
 		if err == nil && ok {
 			var runs []core.ExperimentRun
-			if runs, err = m.Store.ListExperimentRuns(ctx, m.DB, defs[i].ID); err == nil {
+			if runs, err = m.Store.ListExperimentRuns(ctx,
+				m.DB,
+				defs[i].ID); err == nil {
 				out = append(out, experimentView(&defs[i], len(runs)))
 			}
 		}
@@ -308,11 +356,16 @@ func (m *Manager) ListExperiments(ctx context.Context) ([]ExperimentView, error)
 
 // GetExperiment returns training experiment id with its runs, oldest first. Errors are *Error: KindNotFound for an unknown
 // experiment, KindInternal.
-func (m *Manager) GetExperiment(ctx context.Context, id int64) (*ExperimentView, []ExperimentRunView, error) {
-	def, err := m.Store.GetExperimentDef(ctx, m.DB, core.ExperimentDefID(id))
+func (m *Manager) GetExperiment(ctx context.Context,
+	id int64) (*ExperimentView, []ExperimentRunView, error) {
+	def, err := m.Store.GetExperimentDef(ctx,
+		m.DB,
+		core.ExperimentDefID(id))
 	if err == nil {
 		var ok bool
-		if ok, err = m.isTraining(ctx, def, map[core.EvalDefID]core.Type{}); err == nil && !ok {
+		if ok, err = m.isTraining(ctx,
+			def,
+			map[core.EvalDefID]core.Type{}); err == nil && !ok {
 			err = db.ErrNotFound
 		}
 	}
@@ -322,10 +375,14 @@ func (m *Manager) GetExperiment(ctx context.Context, id int64) (*ExperimentView,
 		log.WithError(err).Error("training evals: read experiment failed")
 		return nil, nil, internalErr("failed to read the experiment", err)
 	}
-	xruns, err := m.Store.ListExperimentRuns(ctx, m.DB, def.ID)
+	xruns, err := m.Store.ListExperimentRuns(ctx,
+		m.DB,
+		def.ID)
 	var evals []core.EvalRun
 	if err == nil {
-		evals, err = m.Store.ListEvalRunsOfExperiment(ctx, m.DB, def.ID)
+		evals, err = m.Store.ListEvalRunsOfExperiment(ctx,
+			m.DB,
+			def.ID)
 	}
 	if err != nil {
 		log.WithError(err).Error("training evals: list experiment runs failed")
@@ -341,9 +398,22 @@ func (m *Manager) GetExperiment(ctx context.Context, id int64) (*ExperimentView,
 	for i, ev := range views {
 		mv, ok := models[ev.TrainedModelID]
 		if !ok {
-			mv = ModelView{ID: ev.TrainedModelID, Params: json.RawMessage("{}")}
-			if tm, err := trainingdb.GetTrainedModel(ctx, m.DB, ev.TrainedModelID); err == nil {
-				mv = ModelView{ID: tm.ID, Name: tm.Name, BaseModel: tm.BaseModel, ModelSize: tm.ModelSize, NumTrainSteps: tm.NumTrainSteps, FinalLoss: tm.FinalLoss, Params: tm.Params}
+			mv = ModelView{
+				ID:     ev.TrainedModelID,
+				Params: json.RawMessage("{}"),
+			}
+			if tm, err := trainingdb.GetTrainedModel(ctx,
+				m.DB,
+				ev.TrainedModelID); err == nil {
+				mv = ModelView{
+					ID:            tm.ID,
+					Name:          tm.Name,
+					BaseModel:     tm.BaseModel,
+					ModelSize:     tm.ModelSize,
+					NumTrainSteps: tm.NumTrainSteps,
+					FinalLoss:     tm.FinalLoss,
+					Params:        tm.Params,
+				}
 				if len(mv.Params) == 0 {
 					mv.Params = json.RawMessage("{}")
 				}
@@ -352,8 +422,16 @@ func (m *Manager) GetExperiment(ctx context.Context, id int64) (*ExperimentView,
 			}
 			models[ev.TrainedModelID] = mv
 		}
-		runs[i] = ExperimentRunView{ID: ev.ID, ExperimentID: int64(def.ID), Status: ev.Status,
-			CreatedAt: ev.CreatedAt, Eval: ev, Model: mv, MeanScore: ev.MeanScore(), CorrectRate: ev.CorrectRate()}
+		runs[i] = ExperimentRunView{
+			ID:           ev.ID,
+			ExperimentID: int64(def.ID),
+			Status:       ev.Status,
+			CreatedAt:    ev.CreatedAt,
+			Eval:         ev,
+			Model:        mv,
+			MeanScore:    ev.MeanScore(),
+			CorrectRate:  ev.CorrectRate(),
+		}
 	}
 	v := experimentView(def, len(xruns))
 	return &v, runs, nil

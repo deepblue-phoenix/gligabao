@@ -21,7 +21,13 @@ func TestVectorRowID(t *testing.T) {
 		{"", "entity", 0, false},
 	} {
 		if got, ok := vectorRowID(c.id, c.kind); got != c.want || ok != c.ok {
-			t.Errorf("vectorRowID(%q, %q) = %d, %v; want %d, %v", c.id, c.kind, got, ok, c.want, c.ok)
+			t.Errorf("vectorRowID(%q, %q) = %d, %v; want %d, %v",
+				c.id,
+				c.kind,
+				got,
+				ok,
+				c.want,
+				c.ok)
 		}
 	}
 }

@@ -48,7 +48,8 @@ type inferencesResponse struct {
 
 // breakdown sums the groups by the dimension key picks, keeping the order in which each key first appears (the groups
 // come largest cost first).
-func breakdown(groups []relational.InferenceGroup, key func(relational.InferenceGroup) (string, string)) []InferenceBreakdown {
+func breakdown(groups []relational.InferenceGroup,
+	key func(relational.InferenceGroup) (string, string)) []InferenceBreakdown {
 	out := []InferenceBreakdown{}
 	idx := map[string]int{}
 	for _, g := range groups {
@@ -57,7 +58,10 @@ func breakdown(groups []relational.InferenceGroup, key func(relational.Inference
 		if !ok {
 			i = len(out)
 			idx[k] = i
-			out = append(out, InferenceBreakdown{Key: k, Label: label})
+			out = append(out, InferenceBreakdown{
+				Key:   k,
+				Label: label,
+			})
 		}
 		s := &out[i].InferenceSums
 		s.Inferences += g.Inferences
@@ -72,18 +76,23 @@ func breakdown(groups []relational.InferenceGroup, key func(relational.Inference
 // for one of dbs (the first without db): the totals of all the inferences (never filtered), by type, stage, model and
 // thinking level, and the inferences that match the filters.
 func InferencesOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
 		limit, offset := inferencesDefaultLimit, 0
 		if v := q.Get("limit"); v != "" {
 			l, err := strconv.Atoi(v)
 			if err != nil || l < 1 {
-				httputil.Error(w, http.StatusBadRequest, "invalid limit")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"invalid limit")
 				return
 			}
 			limit = min(l, inferencesMaxLimit)
@@ -91,26 +100,46 @@ func InferencesOf(dbs []Named) http.HandlerFunc {
 		if v := q.Get("offset"); v != "" {
 			o, err := strconv.Atoi(v)
 			if err != nil || o < 0 {
-				httputil.Error(w, http.StatusBadRequest, "invalid offset")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"invalid offset")
 				return
 			}
 			offset = o
 		}
-		f := relational.InferenceFilter{Type: q.Get("type"), Stage: q.Get("stage"), ModelID: q.Get("model_id"), Reasoning: q.Get("reasoning")}
+		f := relational.InferenceFilter{
+			Type:      q.Get("type"),
+			Stage:     q.Get("stage"),
+			ModelID:   q.Get("model_id"),
+			Reasoning: q.Get("reasoning"),
+		}
 		ctx := r.Context()
 		groups, err := relational.InferenceGroups(ctx, n.DB)
 		if err != nil {
 			log.WithError(err).Error("admin: inference stats failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read inferences")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read inferences")
 			return
 		}
-		runs, total, err := relational.ListInferences(ctx, n.DB, f, limit, offset)
+		runs, total, err := relational.ListInferences(ctx,
+			n.DB,
+			f,
+			limit,
+			offset)
 		if err != nil {
 			log.WithError(err).Error("admin: list inferences failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read inferences")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read inferences")
 			return
 		}
-		out := inferencesResponse{Inferences: runs, Total: total, Limit: limit, Offset: offset}
+		out := inferencesResponse{
+			Inferences: runs,
+			Total:      total,
+			Limit:      limit,
+			Offset:     offset,
+		}
 		for _, g := range groups {
 			out.Totals.Inferences += g.Inferences
 			out.Totals.InputTokens += g.InputTokens
@@ -121,6 +150,8 @@ func InferencesOf(dbs []Named) http.HandlerFunc {
 		out.ByStage = breakdown(groups, func(g relational.InferenceGroup) (string, string) { return g.Stage, "" })
 		out.ByModel = breakdown(groups, func(g relational.InferenceGroup) (string, string) { return g.ModelID, g.Model })
 		out.ByReasoning = breakdown(groups, func(g relational.InferenceGroup) (string, string) { return g.Reasoning, "" })
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }

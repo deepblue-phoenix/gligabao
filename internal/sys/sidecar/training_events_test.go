@@ -15,9 +15,12 @@ const sseBody = ": connected\n\n" +
 	"event: status\ndata: {\"type\":\"status\",\"status\":\"completed\",\"final_loss\":0.5}\n\n"
 
 func TestStreamTrainingJobEvents(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.URL.Path != "/training/job_events" || r.URL.Query().Get("job_id") != "j1" || r.URL.Query().Get("from") != "3" {
-			http.Error(w, "bad request "+r.URL.String(), http.StatusBadRequest)
+			http.Error(w,
+				"bad request "+r.URL.String(),
+				http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -26,12 +29,17 @@ func TestStreamTrainingJobEvents(t *testing.T) {
 	defer srv.Close()
 
 	var got []TrainingEvent
-	err := New(srv.URL).StreamTrainingJobEvents(context.Background(), "j1", 3, func(e TrainingEvent) error {
-		got = append(got, e)
-		return nil
-	})
+	err := New(srv.URL).StreamTrainingJobEvents(context.Background(),
+		"j1",
+		3,
+		func(e TrainingEvent) error {
+			got = append(got, e)
+			return nil
+		})
 	if err != nil || len(got) != 3 {
-		t.Fatalf("got %d events, err %v", len(got), err)
+		t.Fatalf("got %d events, err %v",
+			len(got),
+			err)
 	}
 	if got[0].Seq != 3 || got[0].Status != "running" || got[0].Finished() {
 		t.Fatalf("first: %+v", got[0])
@@ -46,37 +54,59 @@ func TestStreamTrainingJobEvents(t *testing.T) {
 }
 
 func TestStreamTrainingJobEventsErrors(t *testing.T) {
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":"job_id is required"}`, http.StatusBadRequest)
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
+		http.Error(w,
+			`{"error":"job_id is required"}`,
+			http.StatusBadRequest)
 	}))
 	defer bad.Close()
-	err := New(bad.URL).StreamTrainingJobEvents(context.Background(), "", 0, func(TrainingEvent) error { return nil })
+	err := New(bad.URL).StreamTrainingJobEvents(context.Background(),
+		"",
+		0,
+		func(TrainingEvent) error { return nil })
 	var se *StatusError
 	if !errors.As(err, &se) || se.Code != 400 || se.Message() != "job_id is required" {
 		t.Fatalf("status error: %v", err)
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sseBody)) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
+		w.Write([]byte(sseBody))
+	}))
 	defer srv.Close()
 	stopErr := errors.New("stop")
-	if err := New(srv.URL).StreamTrainingJobEvents(context.Background(), "j", 0, func(TrainingEvent) error { return stopErr }); !errors.Is(err, stopErr) {
+	if err := New(srv.URL).StreamTrainingJobEvents(context.Background(),
+		"j",
+		0,
+		func(TrainingEvent) error { return stopErr }); !errors.Is(err, stopErr) {
 		t.Fatalf("callback error: %v", err)
 	}
 
-	junk := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("data: not json\n\n")) }))
+	junk := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
+		w.Write([]byte("data: not json\n\n"))
+	}))
 	defer junk.Close()
-	if err := New(junk.URL).StreamTrainingJobEvents(context.Background(), "j", 0, func(TrainingEvent) error { return nil }); err == nil {
+	if err := New(junk.URL).StreamTrainingJobEvents(context.Background(),
+		"j",
+		0,
+		func(TrainingEvent) error { return nil }); err == nil {
 		t.Fatal("expected a decode error")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 	}))
 	defer hang.Close()
 	go cancel()
-	if err := New(hang.URL).StreamTrainingJobEvents(ctx, "j", 0, func(TrainingEvent) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := New(hang.URL).StreamTrainingJobEvents(ctx,
+		"j",
+		0,
+		func(TrainingEvent) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled: %v", err)
 	}
 }

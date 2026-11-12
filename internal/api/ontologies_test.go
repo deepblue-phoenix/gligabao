@@ -21,10 +21,26 @@ import (
 
 func TestOntologies(t *testing.T) { dbtest.Run(t, testOntologies) }
 
-func testOntologies(t *testing.T, d *sql.DB) {
+func testOntologies(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil) // loading an ontology needs no LLM
+	Register(mux,
+		mgrFor(t,
+			&db.DB{
+				Relational: d,
+				Graph:      d,
+			},
+			nil),
+		&db.DB{
+			Relational: d,
+			Graph:      d,
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil) // loading an ontology needs no LLM
 
 	doc, err := os.ReadFile("../../build/ontology/market.owl")
 	if err != nil {
@@ -33,13 +49,19 @@ func testOntologies(t *testing.T, d *sql.DB) {
 	post := func(v map[string]any) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq("POST", "/v1/gb/ontologies", strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq("POST",
+			"/v1/gb/ontologies",
+			strings.NewReader(string(body))))
 		return rec
 	}
-	want := func(rec *httptest.ResponseRecorder, code int) {
+	want := func(rec *httptest.ResponseRecorder,
+		code int) {
 		t.Helper()
 		if rec.Code != code {
-			t.Fatalf("status %d, want %d: %s", rec.Code, code, rec.Body)
+			t.Fatalf("status %d, want %d: %s",
+				rec.Code,
+				code,
+				rec.Body)
 		}
 	}
 
@@ -59,22 +81,39 @@ func testOntologies(t *testing.T, d *sql.DB) {
 	}
 
 	// The metadata is tracked in the relational DB.
-	list, err := relational.ListOntologies(ctx, d, "u1")
+	list, err := relational.ListOntologies(ctx,
+		d,
+		"u1")
 	if err != nil || len(list) != 1 || list[0] != got {
-		t.Fatalf("stored metadata %+v (err %v), want %+v", list, err, got)
+		t.Fatalf("stored metadata %+v (err %v), want %+v",
+			list,
+			err,
+			got)
 	}
-	if other, _ := relational.ListOntologies(ctx, d, "u2"); len(other) != 0 {
+	if other, _ := relational.ListOntologies(ctx,
+		d,
+		"u2"); len(other) != 0 {
 		t.Fatalf("u2 sees %d ontologies", len(other))
 	}
 
 	// The ontology itself is in the graph DB.
-	classes, err := graph.ListOntologyClasses(ctx, d, got.ID)
+	classes, err := graph.ListOntologyClasses(ctx,
+		d,
+		got.ID)
 	if err != nil || len(classes) != got.Classes {
-		t.Fatalf("%d classes (err %v), want %d", len(classes), err, got.Classes)
+		t.Fatalf("%d classes (err %v), want %d",
+			len(classes),
+			err,
+			got.Classes)
 	}
-	edges, err := graph.ListOntologyEdges(ctx, d, got.ID)
+	edges, err := graph.ListOntologyEdges(ctx,
+		d,
+		got.ID)
 	if err != nil || len(edges) != got.Edges {
-		t.Fatalf("%d edges (err %v), want %d", len(edges), err, got.Edges)
+		t.Fatalf("%d edges (err %v), want %d",
+			len(edges),
+			err,
+			got.Edges)
 	}
 	found := false
 	for _, e := range edges {
@@ -96,29 +135,48 @@ func testOntologies(t *testing.T, d *sql.DB) {
 	want(post(map[string]any{"user_id": "u1", "name": "x", "content": "{}"}), http.StatusBadRequest)                                                                 // not RDF/XML
 	want(post(map[string]any{"user_id": "u1", "name": "x", "format": "turtle", "content": string(doc)}), http.StatusBadRequest)                                      // unsupported
 	want(post(map[string]any{"user_id": "u1", "name": "x", "content": `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>`}), http.StatusBadRequest) // no classes
-	if list, _ := relational.ListOntologies(ctx, d, "u1"); len(list) != 1 {
+	if list, _ := relational.ListOntologies(ctx,
+		d,
+		"u1"); len(list) != 1 {
 		t.Fatalf("u1 has %d ontologies after failed loads, want 1", len(list))
 	}
-	if u2, _ := relational.ListOntologies(ctx, d, "u2"); len(u2) != 1 || u2[0].Description != "mine" {
+	if u2, _ := relational.ListOntologies(ctx,
+		d,
+		"u2"); len(u2) != 1 || u2[0].Description != "mine" {
 		t.Fatalf("u2 ontologies: %+v", u2)
 	}
 	rec = httptest.NewRecorder()
-	badReq := newReq("POST", "/v1/gb/ontologies", strings.NewReader("not json"))
+	badReq := newReq("POST",
+		"/v1/gb/ontologies",
+		strings.NewReader("not json"))
 	badReq.Header.Set("gb-user-id", "u1")
 	mux.ServeHTTP(rec, badReq)
 	want(rec, http.StatusBadRequest)
 
 	// A failed graph load leaves nothing behind, and the name stays usable.
-	if err := graph.LoadOntology(ctx, d, got.ID, nil, []graph.OntologyEdge{{SourceIRI: "a", TargetIRI: "b"}}); err == nil {
+	if err := graph.LoadOntology(ctx,
+		d,
+		got.ID,
+		nil,
+		[]graph.OntologyEdge{{
+			SourceIRI: "a",
+			TargetIRI: "b",
+		}}); err == nil {
 		t.Fatal("edge between unknown classes was stored")
 	}
-	if c, _ := graph.ListOntologyClasses(ctx, d, got.ID); len(c) != got.Classes {
+	if c, _ := graph.ListOntologyClasses(ctx,
+		d,
+		got.ID); len(c) != got.Classes {
 		t.Fatalf("failed load changed the stored classes: %d", len(c))
 	}
-	if err := relational.DeleteOntology(ctx, d, got.ID); err != nil {
+	if err := relational.DeleteOntology(ctx,
+		d,
+		got.ID); err != nil {
 		t.Fatal(err)
 	}
-	if c, _ := graph.ListOntologyClasses(ctx, d, got.ID); len(c) != 0 {
+	if c, _ := graph.ListOntologyClasses(ctx,
+		d,
+		got.ID); len(c) != 0 {
 		t.Fatalf("deleting the metadata left %d classes", len(c))
 	}
 	want(post(map[string]any{"user_id": "u1", "name": "market", "content": string(doc)}), http.StatusCreated)
@@ -134,42 +192,74 @@ const smallOntology = `<?xml version="1.0"?>
   <owl:Class rdf:about="#Animal"/>
 </rdf:RDF>`
 
-func testOntologyUpdate(t *testing.T, d *sql.DB) {
+func testOntologyUpdate(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil)
+	Register(mux,
+		mgrFor(t,
+			&db.DB{
+				Relational: d,
+				Graph:      d,
+			},
+			nil),
+		&db.DB{
+			Relational: d,
+			Graph:      d,
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil)
 
 	doc, err := os.ReadFile("../../build/ontology/market.owl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	do := func(method, path string, v map[string]any) *httptest.ResponseRecorder {
+	do := func(method,
+		path string,
+		v map[string]any) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq(method,
+			path,
+			strings.NewReader(string(body))))
 		return rec
 	}
-	want := func(rec *httptest.ResponseRecorder, code int) {
+	want := func(rec *httptest.ResponseRecorder,
+		code int) {
 		t.Helper()
 		if rec.Code != code {
-			t.Fatalf("status %d, want %d: %s", rec.Code, code, rec.Body)
+			t.Fatalf("status %d, want %d: %s",
+				rec.Code,
+				code,
+				rec.Body)
 		}
 	}
 	stored := func(userID string) []relational.Ontology {
 		t.Helper()
-		list, err := relational.ListOntologies(ctx, d, userID)
+		list, err := relational.ListOntologies(ctx,
+			d,
+			userID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return list
 	}
 
-	want(do("POST", "/v1/gb/ontologies", map[string]any{"user_id": "u1", "name": "o", "content": string(doc)}), http.StatusCreated)
-	want(do("POST", "/v1/gb/ontologies", map[string]any{"user_id": "u2", "name": "o", "content": string(doc)}), http.StatusCreated)
+	want(do("POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u1", "name": "o", "content": string(doc)}), http.StatusCreated)
+	want(do("POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u2", "name": "o", "content": string(doc)}), http.StatusCreated)
 	before := stored("u1")[0]
 
 	// Replace: same ontology (id, name, creation time), new content and metadata.
-	rec := do("PUT", "/v1/gb/ontologies/o", map[string]any{"user_id": "u1", "content": smallOntology, "replace": true})
+	rec := do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"user_id": "u1", "content": smallOntology, "replace": true})
 	want(rec, http.StatusOK)
 	var got relational.Ontology
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -179,16 +269,26 @@ func testOntologyUpdate(t *testing.T, d *sql.DB) {
 	if got.ID != before.ID || got.UserID != "u1" || got.Name != "o" || !got.CreatedAt.Equal(before.CreatedAt) || got.UpdatedAt.Before(got.CreatedAt) ||
 		got.IRI != "http://ex.org/small" || got.Title != "Small" || got.Description != "Two classes." ||
 		got.SHA256 != hex.EncodeToString(sum[:]) || got.SizeBytes != len(smallOntology) || got.Classes != 2 || got.Properties != 0 || got.Edges != 1 {
-		t.Fatalf("updated metadata: %+v (before %+v)", got, before)
+		t.Fatalf("updated metadata: %+v (before %+v)",
+			got,
+			before)
 	}
 	if list := stored("u1"); len(list) != 1 || list[0] != got {
-		t.Fatalf("stored metadata %+v, want %+v", list, got)
+		t.Fatalf("stored metadata %+v, want %+v",
+			list,
+			got)
 	}
 	// The graph holds exactly the new ontology: nothing of the old one is left, and it is not duplicated.
-	classes, _ := graph.ListOntologyClasses(ctx, d, got.ID)
-	edges, _ := graph.ListOntologyEdges(ctx, d, got.ID)
+	classes, _ := graph.ListOntologyClasses(ctx,
+		d,
+		got.ID)
+	edges, _ := graph.ListOntologyEdges(ctx,
+		d,
+		got.ID)
 	if len(classes) != 2 || len(edges) != 1 || edges[0].Relation != "subclass_of" || !strings.HasSuffix(edges[0].SourceIRI, "#Cat") {
-		t.Fatalf("graph after update: %+v %+v", classes, edges)
+		t.Fatalf("graph after update: %+v %+v",
+			classes,
+			edges)
 	}
 	// Another user's ontology of the same name is untouched.
 	if u2 := stored("u2")[0]; u2.SHA256 != before.SHA256 {
@@ -196,28 +296,52 @@ func testOntologyUpdate(t *testing.T, d *sql.DB) {
 	}
 
 	// An explicit description is kept, and the original can be put back.
-	want(do("PUT", "/v1/gb/ontologies/o", map[string]any{"user_id": "u1", "content": string(doc), "description": "back", "replace": true}), http.StatusOK)
+	want(do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"user_id": "u1", "content": string(doc), "description": "back", "replace": true}), http.StatusOK)
 	if o := stored("u1")[0]; o.Description != "back" || o.Classes != 20 || o.SHA256 != before.SHA256 {
 		t.Fatalf("after restoring the market ontology: %+v", o)
 	}
-	if c, _ := graph.ListOntologyClasses(ctx, d, before.ID); len(c) != 20 {
+	if c, _ := graph.ListOntologyClasses(ctx,
+		d,
+		before.ID); len(c) != 20 {
 		t.Fatalf("%d classes after restoring, want 20", len(c))
 	}
 
 	// Failures leave the stored ontology as it was.
 	cur := stored("u1")[0]
-	want(do("PUT", "/v1/gb/ontologies/missing", map[string]any{"user_id": "u1", "content": smallOntology}), http.StatusNotFound)
-	want(do("PUT", "/v1/gb/ontologies/o", map[string]any{"user_id": "u3", "content": smallOntology}), http.StatusNotFound) // not theirs
-	want(do("PUT", "/v1/gb/ontologies/o", map[string]any{"content": smallOntology}), http.StatusBadRequest)                // no user
-	want(do("PUT", "/v1/gb/ontologies/bad%20name!", map[string]any{"user_id": "u1", "content": smallOntology}), http.StatusBadRequest)
-	want(do("PUT", "/v1/gb/ontologies/o", map[string]any{"user_id": "u1"}), http.StatusBadRequest)
-	want(do("PUT", "/v1/gb/ontologies/o", map[string]any{"user_id": "u1", "content": "{}"}), http.StatusBadRequest)
-	want(do("PUT", "/v1/gb/ontologies/o", map[string]any{"user_id": "u1", "format": "turtle", "content": smallOntology}), http.StatusBadRequest)
-	want(do("PUT", "/v1/gb/ontologies/o", map[string]any{"user_id": "u1", "content": `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>`}), http.StatusBadRequest)
+	want(do("PUT",
+		"/v1/gb/ontologies/missing",
+		map[string]any{"user_id": "u1", "content": smallOntology}), http.StatusNotFound)
+	want(do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"user_id": "u3", "content": smallOntology}), http.StatusNotFound) // not theirs
+	want(do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"content": smallOntology}), http.StatusBadRequest) // no user
+	want(do("PUT",
+		"/v1/gb/ontologies/bad%20name!",
+		map[string]any{"user_id": "u1", "content": smallOntology}), http.StatusBadRequest)
+	want(do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"user_id": "u1"}), http.StatusBadRequest)
+	want(do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"user_id": "u1", "content": "{}"}), http.StatusBadRequest)
+	want(do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"user_id": "u1", "format": "turtle", "content": smallOntology}), http.StatusBadRequest)
+	want(do("PUT",
+		"/v1/gb/ontologies/o",
+		map[string]any{"user_id": "u1", "content": `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>`}), http.StatusBadRequest)
 	if now := stored("u1"); len(now) != 1 || now[0] != cur {
-		t.Fatalf("a failed update changed the metadata: %+v, want %+v", now, cur)
+		t.Fatalf("a failed update changed the metadata: %+v, want %+v",
+			now,
+			cur)
 	}
-	if c, _ := graph.ListOntologyClasses(ctx, d, cur.ID); len(c) != 20 {
+	if c, _ := graph.ListOntologyClasses(ctx,
+		d,
+		cur.ID); len(c) != 20 {
 		t.Fatalf("a failed update changed the graph: %d classes", len(c))
 	}
 	// Nothing was created by the unknown-name updates.
@@ -246,30 +370,55 @@ const mergeFragment = mergeHead + `
 
 func TestOntologyMerge(t *testing.T) { dbtest.Run(t, testOntologyMerge) }
 
-func testOntologyMerge(t *testing.T, d *sql.DB) {
+func testOntologyMerge(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil)
+	Register(mux,
+		mgrFor(t,
+			&db.DB{
+				Relational: d,
+				Graph:      d,
+			},
+			nil),
+		&db.DB{
+			Relational: d,
+			Graph:      d,
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil)
 
 	doc, err := os.ReadFile("../../build/ontology/market.owl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	do := func(method, path string, v map[string]any) *httptest.ResponseRecorder {
+	do := func(method,
+		path string,
+		v map[string]any) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq(method,
+			path,
+			strings.NewReader(string(body))))
 		return rec
 	}
-	put := func(content string, extra map[string]any) relational.Ontology {
+	put := func(content string,
+		extra map[string]any) relational.Ontology {
 		t.Helper()
 		req := map[string]any{"user_id": "u1", "content": content}
 		for k, v := range extra {
 			req[k] = v
 		}
-		rec := do("PUT", "/v1/gb/ontologies/m", req)
+		rec := do("PUT",
+			"/v1/gb/ontologies/m",
+			req)
 		if rec.Code != http.StatusOK {
-			t.Fatalf("status %d: %s", rec.Code, rec.Body)
+			t.Fatalf("status %d: %s",
+				rec.Code,
+				rec.Body)
 		}
 		var o relational.Ontology
 		if err := json.Unmarshal(rec.Body.Bytes(), &o); err != nil {
@@ -277,20 +426,31 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 		}
 		return o
 	}
-	if rec := do("POST", "/v1/gb/ontologies", map[string]any{"user_id": "u1", "name": "m", "content": string(doc)}); rec.Code != http.StatusCreated {
-		t.Fatalf("load: %d %s", rec.Code, rec.Body)
+	if rec := do("POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u1", "name": "m", "content": string(doc)}); rec.Code != http.StatusCreated {
+		t.Fatalf("load: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	base := func() relational.Ontology {
-		l, err := relational.ListOntologies(ctx, d, "u1")
+		l, err := relational.ListOntologies(ctx,
+			d,
+			"u1")
 		if err != nil || len(l) != 1 {
-			t.Fatalf("ontologies %v: %v", l, err)
+			t.Fatalf("ontologies %v: %v",
+				l,
+				err)
 		}
 		return l[0]
 	}
 	orig := base()
-	class := func(id int64, name string) graph.OntologyClass {
+	class := func(id int64,
+		name string) graph.OntologyClass {
 		t.Helper()
-		cs, err := graph.ListOntologyClasses(ctx, d, id)
+		cs, err := graph.ListOntologyClasses(ctx,
+			d,
+			id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -302,9 +462,14 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 		t.Fatalf("class %s not found", name)
 		return graph.OntologyClass{}
 	}
-	edge := func(id int64, src, rel, tgt string) (graph.OntologyEdge, bool) {
+	edge := func(id int64,
+		src,
+		rel,
+		tgt string) (graph.OntologyEdge, bool) {
 		t.Helper()
-		es, err := graph.ListOntologyEdges(ctx, d, id)
+		es, err := graph.ListOntologyEdges(ctx,
+			d,
+			id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -317,7 +482,9 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	}
 	marketBefore, assetBefore := class(orig.ID, "Market"), class(orig.ID, "Asset")
 	if marketBefore.Comment == "" || assetBefore.Label == "" || assetBefore.Comment == "" {
-		t.Fatalf("test needs labelled classes: %+v %+v", marketBefore, assetBefore)
+		t.Fatalf("test needs labelled classes: %+v %+v",
+			marketBefore,
+			assetBefore)
 	}
 
 	// Merge (no "replace"): adds what is new, overwrites what exists, deletes nothing.
@@ -328,20 +495,31 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	}
 	// Counts are those of the merged ontology (20 + Stock classes; 38 + 2 edges; 26 + issuedBy properties).
 	if got.Classes != 21 || got.Edges != 40 || got.Properties != 27 {
-		t.Errorf("counts %d/%d/%d, want 21/40/27", got.Classes, got.Edges, got.Properties)
+		t.Errorf("counts %d/%d/%d, want 21/40/27",
+			got.Classes,
+			got.Edges,
+			got.Properties)
 	}
 	// The document has no ontology header, so the stored description, IRI and title stay; hash and size are the document's.
 	if got.Description != orig.Description || got.IRI != orig.IRI || got.Title != orig.Title ||
 		got.SHA256 != hex.EncodeToString(sum[:]) || got.SizeBytes != len(mergeFragment) {
-		t.Errorf("metadata after merge: %+v (before %+v)", got, orig)
+		t.Errorf("metadata after merge: %+v (before %+v)",
+			got,
+			orig)
 	}
 	if base() != got {
-		t.Errorf("stored metadata %+v, want %+v", base(), got)
+		t.Errorf("stored metadata %+v, want %+v",
+			base(),
+			got)
 	}
-	if c, _ := graph.ListOntologyClasses(ctx, d, orig.ID); len(c) != 21 {
+	if c, _ := graph.ListOntologyClasses(ctx,
+		d,
+		orig.ID); len(c) != 21 {
 		t.Errorf("%d classes stored, want 21", len(c))
 	}
-	if e, _ := graph.ListOntologyEdges(ctx, d, orig.ID); len(e) != 40 {
+	if e, _ := graph.ListOntologyEdges(ctx,
+		d,
+		orig.ID); len(e) != 40 {
 		t.Errorf("%d edges stored, want 40", len(e))
 	}
 	// A declared class is overwritten as a whole: the new label, and no comment (the old one is not kept).
@@ -350,27 +528,50 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	}
 	// A class that is only mentioned by an edge is not touched.
 	if a := class(orig.ID, "Asset"); a != assetBefore {
-		t.Errorf("mentioned class Asset changed: %+v, was %+v", a, assetBefore)
+		t.Errorf("mentioned class Asset changed: %+v, was %+v",
+			a,
+			assetBefore)
 	}
 	// New class and edges are added.
 	if s := class(orig.ID, "Stock"); s.Label != "Stock" {
 		t.Errorf("new class Stock: %+v", s)
 	}
-	if _, ok := edge(orig.ID, "Stock", "subclass_of", "Security"); !ok {
+	if _, ok := edge(orig.ID,
+		"Stock",
+		"subclass_of",
+		"Security"); !ok {
 		t.Error("edge Stock -subclass_of-> Security not added")
 	}
-	if e, ok := edge(orig.ID, "Security", "issuedBy", "MarketParticipant"); !ok || e.Label != "issued by" {
-		t.Errorf("edge issuedBy: %+v %v", e, ok)
+	if e, ok := edge(orig.ID,
+		"Security",
+		"issuedBy",
+		"MarketParticipant"); !ok || e.Label != "issued by" {
+		t.Errorf("edge issuedBy: %+v %v",
+			e,
+			ok)
 	}
 	// An existing edge is overwritten, its old label, comment and inverse included.
-	if e, ok := edge(orig.ID, "Asset", "tradedOn", "Market"); !ok || e.Label != "trades on" || e.Comment != "" || e.InverseOf != "" {
-		t.Errorf("overwritten edge tradedOn: %+v %v", e, ok)
+	if e, ok := edge(orig.ID,
+		"Asset",
+		"tradedOn",
+		"Market"); !ok || e.Label != "trades on" || e.Comment != "" || e.InverseOf != "" {
+		t.Errorf("overwritten edge tradedOn: %+v %v",
+			e,
+			ok)
 	}
 	// Edges and classes the document does not mention are kept as they were.
-	if e, ok := edge(orig.ID, "Market", "listsAsset", "Asset"); !ok || e.InverseOf != "tradedOn" || e.Label == "" {
-		t.Errorf("untouched edge listsAsset: %+v %v", e, ok)
+	if e, ok := edge(orig.ID,
+		"Market",
+		"listsAsset",
+		"Asset"); !ok || e.InverseOf != "tradedOn" || e.Label == "" {
+		t.Errorf("untouched edge listsAsset: %+v %v",
+			e,
+			ok)
 	}
-	if _, ok := edge(orig.ID, "Exchange", "subclass_of", "Market"); !ok {
+	if _, ok := edge(orig.ID,
+		"Exchange",
+		"subclass_of",
+		"Market"); !ok {
 		t.Error("untouched edge Exchange -subclass_of-> Market is gone")
 	}
 	if c := class(orig.ID, "Risk"); c.Comment == "" {
@@ -378,13 +579,24 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	}
 
 	// Merging the same document again changes nothing but the timestamp.
-	classes1, _ := graph.ListOntologyClasses(ctx, d, orig.ID)
-	edges1, _ := graph.ListOntologyEdges(ctx, d, orig.ID)
+	classes1, _ := graph.ListOntologyClasses(ctx,
+		d,
+		orig.ID)
+	edges1, _ := graph.ListOntologyEdges(ctx,
+		d,
+		orig.ID)
 	again := put(mergeFragment, map[string]any{"replace": false})
-	classes2, _ := graph.ListOntologyClasses(ctx, d, orig.ID)
-	edges2, _ := graph.ListOntologyEdges(ctx, d, orig.ID)
+	classes2, _ := graph.ListOntologyClasses(ctx,
+		d,
+		orig.ID)
+	edges2, _ := graph.ListOntologyEdges(ctx,
+		d,
+		orig.ID)
 	if again.Classes != 21 || again.Edges != 40 || again.Properties != 27 || len(classes2) != len(classes1) || len(edges2) != len(edges1) {
-		t.Errorf("second merge: %+v, %d classes, %d edges", again, len(classes2), len(edges2))
+		t.Errorf("second merge: %+v, %d classes, %d edges",
+			again,
+			len(classes2),
+			len(edges2))
 	}
 
 	// A document that has an ontology header and a description in the request: those overwrite the stored ones.
@@ -401,7 +613,9 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 
 	// An invalid document merges nothing.
 	cur := base()
-	if rec := do("PUT", "/v1/gb/ontologies/m", map[string]any{"user_id": "u1", "content": "{}"}); rec.Code != http.StatusBadRequest {
+	if rec := do("PUT",
+		"/v1/gb/ontologies/m",
+		map[string]any{"user_id": "u1", "content": "{}"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid merge: %d", rec.Code)
 	}
 	if base() != cur {
@@ -413,12 +627,20 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	// Classes: Market, Stock, and the mentioned Security, Asset and MarketParticipant. Edges: Stock subclass_of
 	// Security, tradedOn and issuedBy.
 	if got.Classes != 5 || got.Edges != 3 || got.Properties != 2 {
-		t.Errorf("after replace: %d classes, %d edges, %d properties, want 5/3/2", got.Classes, got.Edges, got.Properties)
+		t.Errorf("after replace: %d classes, %d edges, %d properties, want 5/3/2",
+			got.Classes,
+			got.Edges,
+			got.Properties)
 	}
-	if c, _ := graph.ListOntologyClasses(ctx, d, orig.ID); len(c) != 5 {
+	if c, _ := graph.ListOntologyClasses(ctx,
+		d,
+		orig.ID); len(c) != 5 {
 		t.Errorf("after replace: %d classes stored, want 5", len(c))
 	}
-	if _, ok := edge(orig.ID, "Exchange", "subclass_of", "Market"); ok {
+	if _, ok := edge(orig.ID,
+		"Exchange",
+		"subclass_of",
+		"Market"); ok {
 		t.Error("replace kept an edge that is not in the document")
 	}
 }
@@ -426,35 +648,65 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 // "file" loads a document of the configured ontology directories, under the requesting user; it works only for a plain file name.
 func TestOntologyFile(t *testing.T) { dbtest.Run(t, testOntologyFile) }
 
-func testOntologyFile(t *testing.T, d *sql.DB) {
+func testOntologyFile(t *testing.T,
+	d *sql.DB) {
 	first, second := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(second, "small.owl"), []byte(smallOntology), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(second, "small.owl"),
+		[]byte(smallOntology),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(first, "other.owl"), []byte("not an ontology"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(first, "other.owl"),
+		[]byte("not an ontology"),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(filepath.Join(first, "sub.owl"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	database := &db.DB{Relational: d, Graph: d}
-	do := func(dirs []string, method, path string, v map[string]any) *httptest.ResponseRecorder {
+	database := &db.DB{
+		Relational: d,
+		Graph:      d,
+	}
+	do := func(dirs []string,
+		method,
+		path string,
+		v map[string]any) *httptest.ResponseRecorder {
 		mux := http.NewServeMux()
-		Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, WithOntologyDirs(dirs))
+		Register(mux,
+			mgrFor(t,
+				database,
+				nil),
+			database,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			WithOntologyDirs(dirs))
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq(method,
+			path,
+			strings.NewReader(string(body))))
 		return rec
 	}
 	dirs := []string{first, second}
-	want := func(rec *httptest.ResponseRecorder, code int) {
+	want := func(rec *httptest.ResponseRecorder,
+		code int) {
 		t.Helper()
 		if rec.Code != code {
-			t.Fatalf("status %d, want %d: %s", rec.Code, code, rec.Body)
+			t.Fatalf("status %d, want %d: %s",
+				rec.Code,
+				code,
+				rec.Body)
 		}
 	}
 
-	rec := do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "small", "file": "small.owl"})
+	rec := do(dirs,
+		"POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u7", "name": "small", "file": "small.owl"})
 	want(rec, http.StatusCreated)
 	var got relational.Ontology
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -463,15 +715,39 @@ func testOntologyFile(t *testing.T, d *sql.DB) {
 	if got.UserID != "u7" || got.Name != "small" || got.Classes != 2 {
 		t.Fatalf("loaded: %+v", got)
 	}
-	want(do(dirs, "PUT", "/v1/gb/ontologies/small", map[string]any{"user_id": "u7", "file": "small.owl", "replace": true}), http.StatusOK)
+	want(do(dirs,
+		"PUT",
+		"/v1/gb/ontologies/small",
+		map[string]any{"user_id": "u7", "file": "small.owl", "replace": true}), http.StatusOK)
 
-	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "nope.owl"}), http.StatusNotFound)
-	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "sub.owl"}), http.StatusNotFound)
-	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "other.owl"}), http.StatusBadRequest)
+	want(do(dirs,
+		"POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u7", "name": "x", "file": "nope.owl"}), http.StatusNotFound)
+	want(do(dirs,
+		"POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u7", "name": "x", "file": "sub.owl"}), http.StatusNotFound)
+	want(do(dirs,
+		"POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u7", "name": "x", "file": "other.owl"}), http.StatusBadRequest)
 	for _, name := range []string{"../small.owl", "sub/small.owl", `..\small.owl`, ".hidden", filepath.Join(second, "small.owl")} {
-		want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": name}), http.StatusBadRequest)
+		want(do(dirs,
+			"POST",
+			"/v1/gb/ontologies",
+			map[string]any{"user_id": "u7", "name": "x", "file": name}), http.StatusBadRequest)
 	}
-	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "small.owl", "content": smallOntology}), http.StatusBadRequest)
-	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x"}), http.StatusBadRequest)
-	want(do(nil, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "small.owl"}), http.StatusBadRequest)
+	want(do(dirs,
+		"POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u7", "name": "x", "file": "small.owl", "content": smallOntology}), http.StatusBadRequest)
+	want(do(dirs,
+		"POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u7", "name": "x"}), http.StatusBadRequest)
+	want(do(nil,
+		"POST",
+		"/v1/gb/ontologies",
+		map[string]any{"user_id": "u7", "name": "x", "file": "small.owl"}), http.StatusBadRequest)
 }

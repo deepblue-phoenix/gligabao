@@ -32,7 +32,11 @@ type Handlers struct {
 }
 
 // New makes the handlers over m.
-func New(m *training.Manager) *Handlers { return &Handlers{m: m} }
+func New(m *training.Manager) *Handlers {
+	return &Handlers{
+		m: m,
+	}
+}
 
 // Register puts the handlers on mux, under prefix ("" or e.g. "/v1/gb/training"):
 //
@@ -44,7 +48,8 @@ func New(m *training.Manager) *Handlers { return &Handlers{m: m} }
 //	POST {prefix}/evals/{id}/cancel         CancelOf
 //	GET  {prefix}/experiments               ExperimentsOf
 //	GET  {prefix}/experiments/{id}          ExperimentOf
-func (h *Handlers) Register(mux *http.ServeMux, prefix string) {
+func (h *Handlers) Register(mux *http.ServeMux,
+	prefix string) {
 	mux.HandleFunc("GET "+prefix+"/eval-definitions", h.DefinitionsOf())
 	mux.HandleFunc("POST "+prefix+"/models/{id}/evals", h.StartOf())
 	mux.HandleFunc("GET "+prefix+"/models/{id}/evals", h.ListOf())
@@ -56,10 +61,13 @@ func (h *Handlers) Register(mux *http.ServeMux, prefix string) {
 }
 
 // writeErr answers with the status of the Kind of err (500 for any other error).
-func writeErr(w http.ResponseWriter, err error) {
+func writeErr(w http.ResponseWriter,
+	err error) {
 	var e *training.Error
 	if !errors.As(err, &e) {
-		httputil.Error(w, http.StatusInternalServerError, "internal error")
+		httputil.Error(w,
+			http.StatusInternalServerError,
+			"internal error")
 		return
 	}
 	status := http.StatusInternalServerError
@@ -73,28 +81,40 @@ func writeErr(w http.ResponseWriter, err error) {
 	case training.KindUnavailable:
 		status = http.StatusServiceUnavailable
 	}
-	httputil.Error(w, status, e.Msg)
+	httputil.Error(w,
+		status,
+		e.Msg)
 }
 
 // pathID reads the {id} of the path, answering 400 itself if it is not a positive integer.
-func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+func pathID(w http.ResponseWriter,
+	r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"),
+		10,
+		64)
 	if err != nil || id < 1 {
-		httputil.Error(w, http.StatusBadRequest, "id must be a positive integer")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"id must be a positive integer")
 		return 0, false
 	}
 	return id, true
 }
 
 // limitParam reads the ?limit= parameter: def if there is none, at most max; answers 400 itself if it is not a positive integer.
-func limitParam(w http.ResponseWriter, r *http.Request, def, max int) (int, bool) {
+func limitParam(w http.ResponseWriter,
+	r *http.Request,
+	def,
+	max int) (int, bool) {
 	s := r.URL.Query().Get("limit")
 	if s == "" {
 		return def, true
 	}
 	v, err := strconv.Atoi(s)
 	if err != nil || v < 1 {
-		httputil.Error(w, http.StatusBadRequest, "limit must be a positive integer")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"limit must be a positive integer")
 		return 0, false
 	}
 	return min(v, max), true
@@ -109,18 +129,27 @@ func (h *Handlers) DefinitionsOf() http.HandlerFunc {
 		Description string              `json:"description,omitempty"`
 		Cases       []core.TrainingCase `json:"cases"`
 	}
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter,
+		_ *http.Request) {
 		evals, err := h.m.LoadEvals()
 		if err != nil {
 			log.WithError(err).Error("training evals: load the eval definitions failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to load the evals")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to load the evals")
 			return
 		}
 		out := make([]evalJSON, len(evals))
 		for i, e := range evals {
-			out[i] = evalJSON{Name: e.Name, Description: e.Description, Cases: e.Cases}
+			out[i] = evalJSON{
+				Name:        e.Name,
+				Description: e.Description,
+				Cases:       e.Cases,
+			}
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"evals": out})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"evals": out})
 	}
 }
 
@@ -139,50 +168,68 @@ func (h *Handlers) DefinitionsOf() http.HandlerFunc {
 // 404 for an unknown model, 400 for a bad body, an unknown eval or case, or no eval to default to (the model has no dataset, or no
 // eval has its name), 409 when an eval of this model is running already, 503 without a sidecar or an LLM.
 func (h *Handlers) StartOf() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		var in training.Options
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxStartBody)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
+		if err := json.NewDecoder(http.MaxBytesReader(w,
+			r.Body,
+			maxStartBody)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body")
 			return
 		}
-		run, err := h.m.Start(r.Context(), id, in)
+		run, err := h.m.Start(r.Context(),
+			id,
+			in)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusAccepted, run)
+		httputil.WriteJSON(w,
+			http.StatusAccepted,
+			run)
 	}
 }
 
 // ListOf serves GET /models/{id}/evals[?limit=<n>]: {"evals": [...]}, the evals of trained model {id} (training.RunView, without their
 // cases), newest first, at most limit (default 50, at most 500). 404 for an unknown model.
 func (h *Handlers) ListOf() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		limit, ok := limitParam(w, r, defaultLimit, maxLimit)
+		limit, ok := limitParam(w,
+			r,
+			defaultLimit,
+			maxLimit)
 		if !ok {
 			return
 		}
-		list, err := h.m.ListRuns(r.Context(), id, limit)
+		list, err := h.m.ListRuns(r.Context(),
+			id,
+			limit)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"evals": list})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"evals": list})
 	}
 }
 
 // GetOf serves GET /evals/{id}: {"run": ..., "cases": [...]}, one eval with the cases stored so far (training.CaseView: question, the
 // expected answer, the model's, score and reason), in the order of the eval. 404 for an unknown eval.
 func (h *Handlers) GetOf() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -197,14 +244,17 @@ func (h *Handlers) GetOf() http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"run": run, "cases": cases})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"run": run, "cases": cases})
 	}
 }
 
 // CancelOf serves POST /evals/{id}/cancel: stops a running eval (it ends as "cancelled", keeping the batches done so far) and
 // answers 202 with it. 404 for an unknown eval, 409 when it is not running.
 func (h *Handlers) CancelOf() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -214,20 +264,25 @@ func (h *Handlers) CancelOf() http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusAccepted, run)
+		httputil.WriteJSON(w,
+			http.StatusAccepted,
+			run)
 	}
 }
 
 // ExperimentsOf serves GET /experiments: {"experiments": [...]}, the training experiments (training.ExperimentView, with their
 // number of runs), newest first. An experiment is made by starting an eval with an "experiment" name (see StartOf).
 func (h *Handlers) ExperimentsOf() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		list, err := h.m.ListExperiments(r.Context())
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"experiments": list})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"experiments": list})
 	}
 }
 
@@ -235,7 +290,8 @@ func (h *Handlers) ExperimentsOf() http.HandlerFunc {
 // (training.ExperimentRunView) carries its eval as it is now (so a running one shows its progress), the trained model that was
 // evaluated, and the mean score and the share of correct answers. 404 for an unknown experiment.
 func (h *Handlers) ExperimentOf() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -245,7 +301,9 @@ func (h *Handlers) ExperimentOf() http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"experiment": x, "runs": runs})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"experiment": x, "runs": runs})
 	}
 }
 
@@ -256,7 +314,8 @@ func (h *Handlers) ExperimentOf() http.HandlerFunc {
 // is over, the stream is a snapshot and the "end". A client that reconnects gets a new snapshot, so it applies cases by idx. 404 for
 // an unknown eval.
 func (h *Handlers) EventsOf() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -267,11 +326,17 @@ func (h *Handlers) EventsOf() http.HandlerFunc {
 			return
 		}
 		defer watch.Close()
-		serveEvents(r.Context(), w, watch, h.m.Done())
+		serveEvents(r.Context(),
+			w,
+			watch,
+			h.m.Done())
 	}
 }
 
-func serveEvents(ctx context.Context, w http.ResponseWriter, watch *training.Watch, done <-chan struct{}) {
+func serveEvents(ctx context.Context,
+	w http.ResponseWriter,
+	watch *training.Watch,
+	done <-chan struct{}) {
 	rc := http.NewResponseController(w)
 	hd := w.Header()
 	hd.Set("Content-Type", "text/event-stream")
@@ -289,12 +354,19 @@ func serveEvents(ctx context.Context, w http.ResponseWriter, watch *training.Wat
 	if _, err := w.Write([]byte(": connected\n\n")); err != nil || rc.Flush() != nil {
 		return
 	}
-	if !send(training.Event{Type: training.EventSnapshot, Run: watch.Run, Cases: watch.Cases}) {
+	if !send(training.Event{
+		Type:  training.EventSnapshot,
+		Run:   watch.Run,
+		Cases: watch.Cases,
+	}) {
 		return
 	}
 	ch := watch.Events
 	if ch == nil { // nothing is running this eval (any more): it is as stored
-		send(training.Event{Type: training.EventEnd, Run: watch.Run})
+		send(training.Event{
+			Type: training.EventEnd,
+			Run:  watch.Run,
+		})
 		return
 	}
 	keepalive := time.NewTicker(keepaliveTime)

@@ -29,7 +29,8 @@ type Tool struct {
 	Schema map[string]any
 	// Run gets the input the model chose (JSON, as the schema says) and returns the text the model will read. An
 	// error is not fatal: the model is told about it and may try something else.
-	Run func(ctx context.Context, input json.RawMessage) (string, error)
+	Run func(ctx context.Context,
+		input json.RawMessage) (string, error)
 }
 
 // Agent is a model with tools and a system prompt. The zero values of the optional fields use defaults.
@@ -76,14 +77,22 @@ type Agent struct {
 type Observer struct {
 	// BeforeModel is called before each model call. step counts from 1; final says that this is the last step the agent may take,
 	// so the model is not allowed to call tools in it and its text is the answer.
-	BeforeModel func(step int, final bool)
+	BeforeModel func(step int,
+		final bool)
 	// AfterModel is called after each successful model call, with the totals of the run so far.
-	AfterModel func(step int, total Result)
+	AfterModel func(step int,
+		total Result)
 	// BeforeTool is called before a tool runs, with the input the model chose.
-	BeforeTool func(step int, name string, input json.RawMessage)
+	BeforeTool func(step int,
+		name string,
+		input json.RawMessage)
 	// AfterTool is called after a tool ran, with its output (the error text if isErr) and the totals of the run so far, which
 	// include what the tool itself spent (see ReportUsage).
-	AfterTool func(step int, name, output string, isErr bool, total Result)
+	AfterTool func(step int,
+		name,
+		output string,
+		isErr bool,
+		total Result)
 }
 
 // usageKey is the context key of the usage a tool reports.
@@ -107,7 +116,10 @@ func (u *usage) drain() (in, out int, cost float64) {
 
 // ReportUsage lets a tool that calls a model itself (a web search, a summary, ...) tell the agent what it spent, so that it is added
 // to the Result of the run. ctx must be the one the tool was run with; with any other it does nothing.
-func ReportUsage(ctx context.Context, inputTokens, outputTokens int, costUSD float64) {
+func ReportUsage(ctx context.Context,
+	inputTokens,
+	outputTokens int,
+	costUSD float64) {
 	u, ok := ctx.Value(usageKey{}).(*usage)
 	if !ok {
 		return
@@ -124,7 +136,9 @@ func ReportUsage(ctx context.Context, inputTokens, outputTokens int, costUSD flo
 // agent_research/investigate); the Agent's own loop does this by itself.
 func WithUsage(ctx context.Context) (context.Context, func() (inputTokens, outputTokens int, costUSD float64)) {
 	u := &usage{}
-	return context.WithValue(ctx, usageKey{}, u), u.drain
+	return context.WithValue(ctx,
+		usageKey{},
+		u), u.drain
 }
 
 // Result is the outcome of a Run.
@@ -153,7 +167,8 @@ type Result struct {
 // Every Run is isolated: all that changes while it works (the conversation, the totals, what the tools spent) lives in a loop made
 // for this call alone, and the Agent is only read (its settings are copied when the run starts). So Runs, even of the same Agent
 // value, share nothing, and can go on at the same time on their own goroutines.
-func (a *Agent) Run(ctx context.Context, prompt string) (*Result, error) {
+func (a *Agent) Run(ctx context.Context,
+	prompt string) (*Result, error) {
 	return newLoop(a, prompt).run(ctx)
 }
 
@@ -181,7 +196,8 @@ type loop struct {
 }
 
 // newLoop makes the state of a Run of a, with the defaults filled in.
-func newLoop(a *Agent, prompt string) *loop {
+func newLoop(a *Agent,
+	prompt string) *loop {
 	l := &loop{
 		client:    a.Client,
 		system:    a.System,
@@ -205,20 +221,26 @@ func newLoop(a *Agent, prompt string) *loop {
 		l.tools[t.Name] = t
 		l.specs = append(l.specs, map[string]any{"name": t.Name, "description": t.Description, "input_schema": t.Schema})
 	}
-	l.trace = newTracer(a, prompt, l)
+	l.trace = newTracer(a,
+		prompt,
+		l)
 	return l
 }
 
 // run is the loop itself, and the trajectory of it, if there is one.
 func (l *loop) run(ctx context.Context) (*Result, error) {
 	res, err := l.steps(ctx)
-	l.trace.finish(ctx, res, err)
+	l.trace.finish(ctx,
+		res,
+		err)
 	return res, err
 }
 
 // steps goes through the model calls and tool runs.
 func (l *loop) steps(ctx context.Context) (*Result, error) {
-	ctx = context.WithValue(ctx, usageKey{}, &l.spent)
+	ctx = context.WithValue(ctx,
+		usageKey{},
+		&l.spent)
 	obs := l.obs
 	res := &l.res
 	for res.Steps < l.maxSteps {
@@ -287,18 +309,36 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 			case "tool_use":
 				res.ToolCalls++
 				if obs.BeforeTool != nil {
-					obs.BeforeTool(res.Steps, b.Name, b.Input)
+					obs.BeforeTool(res.Steps,
+						b.Name,
+						b.Input)
 				}
-				rec.call(b.ID, b.Name, b.Input)
+				rec.call(b.ID,
+					b.Name,
+					b.Input)
 				toolStarted := time.Now()
-				out, isErr := runTool(ctx, l.tools, l.errSink, b.Name, b.Input)
+				out, isErr := runTool(ctx,
+					l.tools,
+					l.errSink,
+					b.Name,
+					b.Input)
 				in, outTokens, cost := l.spent.drain()
-				rec.result(b.ID, out, isErr, time.Since(toolStarted), in, outTokens, cost)
+				rec.result(b.ID,
+					out,
+					isErr,
+					time.Since(toolStarted),
+					in,
+					outTokens,
+					cost)
 				res.InputTokens += in
 				res.OutputTokens += outTokens
 				res.CostUSD += cost
 				if obs.AfterTool != nil {
-					obs.AfterTool(res.Steps, b.Name, out, isErr, *res)
+					obs.AfterTool(res.Steps,
+						b.Name,
+						out,
+						isErr,
+						*res)
 				}
 				if l.terminal != "" && b.Name == l.terminal && !isErr {
 					final = b.Input
@@ -344,11 +384,21 @@ func (l *loop) tellBudget(reason string) {
 }
 
 // runTool runs one tool call; failures (unknown tool, tool error) become the text the model reads.
-func runTool(ctx context.Context, tools map[string]Tool, sink gberrors.Sink, name string, input json.RawMessage) (out string, isErr bool) {
+func runTool(ctx context.Context,
+	tools map[string]Tool,
+	sink gberrors.Sink,
+	name string,
+	input json.RawMessage) (out string, isErr bool) {
 	defer func() {
 		if p := recover(); p != nil { // a tool that panics must not take the whole run down (and is a bug: tracked)
-			gberrors.New(context.WithoutCancel(ctx), sink, "agent.tool.panic", fmt.Errorf("%v", p), gberrors.Meta{"tool": name})
-			out, isErr = fmt.Sprintf("tool %s failed: %v", name, p), true
+			gberrors.New(context.WithoutCancel(ctx),
+				sink,
+				"agent.tool.panic",
+				fmt.Errorf("%v", p),
+				gberrors.Meta{"tool": name})
+			out, isErr = fmt.Sprintf("tool %s failed: %v",
+				name,
+				p), true
 		}
 	}()
 	t, ok := tools[name]

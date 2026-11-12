@@ -54,7 +54,16 @@ const edgeFrom = `
 func scanEdge(r scanner) (model.Edge, error) {
 	var e model.Edge
 	var valid, invalid, created, expired sql.NullString
-	if err := r.Scan(&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &created, &expired, &e.ModelID); err != nil {
+	if err := r.Scan(&e.ID,
+		&e.Source,
+		&e.Target,
+		&e.Relation,
+		&e.Description,
+		&valid,
+		&invalid,
+		&created,
+		&expired,
+		&e.ModelID); err != nil {
 		return e, err
 	}
 	e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = rsqlite.ParseTime(valid.String), rsqlite.ParseTime(invalid.String), rsqlite.ParseTime(created.String), rsqlite.ParseTime(expired.String)
@@ -75,7 +84,11 @@ func collectEdges(rows *sql.Rows) ([]model.Edge, error) {
 
 // LoadCandidateEdges returns live (not expired) edges of the dataset touching at least one entity whose name_key
 // is in keys, newest first, at most limit.
-func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, keys []string, limit int) ([]model.Edge, error) {
+func LoadCandidateEdges(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	keys []string,
+	limit int) ([]model.Edge, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
@@ -87,13 +100,15 @@ func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, keys []strin
 		}
 	}
 	args = append(args, limit)
-	rows, err := d.QueryContext(ctx, `
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT `+edgeColumns+edgeFrom+`
 		WHERE e.dataset_id = ?
 			AND e.expired_at IS NULL
 			AND (s.name_key IN (`+ph+`) OR t.name_key IN (`+ph+`))
 		ORDER BY e.id DESC
-		LIMIT ?`, args...)
+		LIMIT ?`,
+		args...)
 	if err != nil {
 		return nil, fmt.Errorf("load edge candidates: %w", err)
 	}
@@ -102,12 +117,18 @@ func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, keys []strin
 }
 
 // ListEdges returns every edge of userID's live dataset called name, by ID (expired ones included).
-func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]model.Edge, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListEdges(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) ([]model.Edge, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT `+edgeColumns+edgeFrom+`
 		JOIN gb_datasets ds ON ds.id = e.dataset_id
 		WHERE ds.user_id = ? AND ds.name = ? AND ds.deleted = 0
-		ORDER BY e.id`, userID, name)
+		ORDER BY e.id`,
+		userID,
+		name)
 	if err != nil {
 		return nil, fmt.Errorf("list edges: %w", err)
 	}
@@ -119,13 +140,19 @@ func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]model.Edg
 // Query retrieval
 
 // FallbackSeedEntities returns the IDs of the most recently updated entities of the dataset.
-func FallbackSeedEntities(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]int64, error) {
-	rows, err := d.QueryContext(ctx, `
+func FallbackSeedEntities(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	limit int) ([]int64, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT id
 		FROM gb_entities
 		WHERE dataset_id = ?
 		ORDER BY updated_at DESC, id DESC
-		LIMIT ?`, dsID, limit)
+		LIMIT ?`,
+		dsID,
+		limit)
 	if err != nil {
 		return nil, err
 	}
@@ -134,21 +161,35 @@ func FallbackSeedEntities(ctx context.Context, d *sql.DB, dsID int64, limit int)
 
 // MatchEntities returns the IDs of the best entities whose name or description mention the query terms.
 // queryKey is the normalized (lowercased) query; tokens are its distinct terms.
-func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, tokens []string, limit int) ([]int64, error) {
+func MatchEntities(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	queryKey string,
+	tokens []string,
+	limit int) ([]int64, error) {
 	// Score: 5 if the full entity name appears in the query; per token, 3 for a name hit and 1 for a description hit.
 	conds := []string{"instr(?, name_key) > 0"}
 	whereArgs := []any{queryKey}
 	score := []string{"(CASE WHEN instr(?, name_key) > 0 THEN 5 ELSE 0 END)"}
 	scoreArgs := []any{queryKey}
 	for _, t := range tokens {
-		conds = append(conds, "instr(name_key, ?) > 0", "instr(lower(description), ?) > 0")
-		whereArgs = append(whereArgs, t, t)
-		score = append(score, "(CASE WHEN instr(name_key, ?) > 0 THEN 3 ELSE 0 END)", "(CASE WHEN instr(lower(description), ?) > 0 THEN 1 ELSE 0 END)")
-		scoreArgs = append(scoreArgs, t, t)
+		conds = append(conds,
+			"instr(name_key, ?) > 0",
+			"instr(lower(description), ?) > 0")
+		whereArgs = append(whereArgs,
+			t,
+			t)
+		score = append(score,
+			"(CASE WHEN instr(name_key, ?) > 0 THEN 3 ELSE 0 END)",
+			"(CASE WHEN instr(lower(description), ?) > 0 THEN 1 ELSE 0 END)")
+		scoreArgs = append(scoreArgs,
+			t,
+			t)
 	}
 	// Placeholder order in the SQL text: WHERE, ORDER BY, LIMIT.
 	args := append(append(append([]any{dsID}, whereArgs...), scoreArgs...), limit)
-	rows, err := d.QueryContext(ctx, `
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT id
 		FROM gb_entities
 		WHERE dataset_id = ?
@@ -161,7 +202,8 @@ func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, 
 			) DESC,
 			updated_at DESC,
 			id DESC
-		LIMIT ?`, args...)
+		LIMIT ?`,
+		args...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,17 +221,23 @@ const evidenceEdgeFrom = `
 		JOIN gb_entities t ON t.id = e.target_id`
 
 // EdgesAround returns the live edges (not expired, i.e. not superseded) of the dataset that start or end at one of the entity IDs, newest first.
-func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, limit int) ([]model.EvidenceEdge, error) {
+func EdgesAround(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	entityIDs []int64,
+	limit int) ([]model.EvidenceEdge, error) {
 	ph, ids := placeholders(entityIDs)
 	args := append(append([]any{dsID}, ids...), ids...)
 	args = append(args, limit)
-	rows, err := d.QueryContext(ctx, `
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT`+evidenceEdgeColumns+evidenceEdgeFrom+`
 		WHERE e.dataset_id = ?
 			AND e.expired_at IS NULL
 			AND (e.source_id IN (`+ph+`) OR e.target_id IN (`+ph+`))
 		ORDER BY e.id DESC
-		LIMIT ?`, args...)
+		LIMIT ?`,
+		args...)
 	if err != nil {
 		return nil, err
 	}
@@ -198,12 +246,17 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 
 // EdgesByID returns the live edges (not expired, i.e. not superseded) of the dataset with the given IDs, by ID. IDs that are not
 // live edges of the dataset are left out.
-func EdgesByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]model.EvidenceEdge, error) {
+func EdgesByID(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	ids []int64) ([]model.EvidenceEdge, error) {
 	ph, args := placeholders(ids)
-	rows, err := d.QueryContext(ctx, `
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT`+evidenceEdgeColumns+evidenceEdgeFrom+`
 		WHERE e.dataset_id = ? AND e.expired_at IS NULL AND e.id IN (`+ph+`)
-		ORDER BY e.id`, append([]any{dsID}, args...)...)
+		ORDER BY e.id`,
+		append([]any{dsID}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +270,19 @@ func scanEvidenceEdges(rows *sql.Rows) ([]model.EvidenceEdge, error) {
 		var e model.EvidenceEdge
 		var mem sql.NullInt64
 		var valid, invalid, created, expired sql.NullString
-		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem,
-			&valid, &invalid, &created, &expired, &e.ModelID); err != nil {
+		if err := rows.Scan(&e.ID,
+			&e.SourceID,
+			&e.TargetID,
+			&e.Source,
+			&e.Target,
+			&e.Relation,
+			&e.Description,
+			&mem,
+			&valid,
+			&invalid,
+			&created,
+			&expired,
+			&e.ModelID); err != nil {
 			return nil, err
 		}
 		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = rsqlite.ParseTime(valid.String), rsqlite.ParseTime(invalid.String), rsqlite.ParseTime(created.String), rsqlite.ParseTime(expired.String)
@@ -231,12 +295,16 @@ func scanEvidenceEdges(rows *sql.Rows) ([]model.EvidenceEdge, error) {
 }
 
 // EntitiesByID returns the entities with the given IDs.
-func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]model.EvidenceEntity, error) {
+func EntitiesByID(ctx context.Context,
+	d *sql.DB,
+	ids []int64) ([]model.EvidenceEntity, error) {
 	ph, args := placeholders(ids)
-	rows, err := d.QueryContext(ctx, `
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT id, name, type, description, COALESCE(model_id, '')
 		FROM gb_entities
-		WHERE id IN (`+ph+`)`, args...)
+		WHERE id IN (`+ph+`)`,
+		args...)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +312,11 @@ func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]model.Evidence
 	var out []model.EvidenceEntity
 	for rows.Next() {
 		var e model.EvidenceEntity
-		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.Description, &e.ModelID); err != nil {
+		if err := rows.Scan(&e.ID,
+			&e.Name,
+			&e.Type,
+			&e.Description,
+			&e.ModelID); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -281,16 +353,27 @@ func qmarks(n int) string {
 // Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
 
 // DatasetCounts returns the number of artifacts (and of those that are chunks), entities and edges in the dataset.
-func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, error) {
+func DatasetCounts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) (model.Counts, error) {
 	var c model.Counts
-	err := d.QueryRowContext(ctx, `
+	err := d.QueryRowContext(ctx,
+		`
 		SELECT
 			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = ?),
 			(SELECT COUNT(*) FROM gb_entities WHERE dataset_id = ?),
 			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = ?),
 			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = ? AND chunk_index IS NOT NULL),
 			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = ? AND kind = 'chunk_summary')`,
-		dsID, dsID, dsID, dsID, dsID).Scan(&c.Artifacts, &c.Entities, &c.Edges, &c.Chunks, &c.Summaries)
+		dsID,
+		dsID,
+		dsID,
+		dsID,
+		dsID).Scan(&c.Artifacts,
+		&c.Entities,
+		&c.Edges,
+		&c.Chunks,
+		&c.Summaries)
 	return c, err
 }
 
@@ -300,12 +383,16 @@ const artifactColumns = `
 			COALESCE(a.inference_id, 0)`
 
 // ListArtifacts returns the artifacts of the dataset by ID.
-func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListArtifacts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.Artifact, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT`+artifactColumns+`
 		FROM gb_artifacts a
 		WHERE a.dataset_id = ?
-		ORDER BY a.id`, dsID)
+		ORDER BY a.id`,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -313,13 +400,18 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact
 }
 
 // ArtifactsByID returns the artifacts of the dataset with the given IDs, by ID. IDs that are not artifacts of the dataset are left out.
-func ArtifactsByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]model.Artifact, error) {
+func ArtifactsByID(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	ids []int64) ([]model.Artifact, error) {
 	ph, args := placeholders(ids)
-	rows, err := d.QueryContext(ctx, `
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT`+artifactColumns+`
 		FROM gb_artifacts a
 		WHERE a.dataset_id = ? AND a.id IN (`+ph+`)
-		ORDER BY a.id`, append([]any{dsID}, args...)...)
+		ORDER BY a.id`,
+		append([]any{dsID}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -332,8 +424,21 @@ func scanArtifacts(rows *sql.Rows) ([]model.Artifact, error) {
 	for rows.Next() {
 		var m model.Artifact
 		var valid, created string
-		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &m.SessionID, &valid, &created,
-			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens, &m.Query, &m.SeriesID, &m.InferenceID); err != nil {
+		if err := rows.Scan(&m.ID,
+			&m.DatasetID,
+			&m.Kind,
+			&m.Text,
+			&m.SessionID,
+			&valid,
+			&created,
+			&m.ParentID,
+			&m.ChunkIndex,
+			&m.StartOffset,
+			&m.EndOffset,
+			&m.Tokens,
+			&m.Query,
+			&m.SeriesID,
+			&m.InferenceID); err != nil {
 			return nil, err
 		}
 		if t := rsqlite.ParseTime(valid); t != nil {
@@ -348,13 +453,17 @@ func scanArtifacts(rows *sql.Rows) ([]model.Artifact, error) {
 }
 
 // ListEdgeArtifacts returns the edge-to-artifact links of the dataset, by edge ID then artifact ID.
-func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.EdgeArtifact, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListEdgeArtifacts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.EdgeArtifact, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT ea.edge_id, ea.artifact_id
 		FROM gb_edge_artifacts ea
 		JOIN gb_edges e ON e.id = ea.edge_id
 		WHERE e.dataset_id = ?
-		ORDER BY ea.edge_id, ea.artifact_id`, dsID)
+		ORDER BY ea.edge_id, ea.artifact_id`,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -372,8 +481,11 @@ func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Edge
 
 // ListEdgeEvents returns the edge events of the artifact and of its descendants (the artifacts that hang off it through
 // parent_id, at any depth), oldest first, each with its edge.
-func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]model.EdgeEvent, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListEdgeEvents(ctx context.Context,
+	d *sql.DB,
+	artifactID int64) ([]model.EdgeEvent, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		WITH RECURSIVE tree(id) AS (
 			SELECT id FROM gb_artifacts WHERE id = ?
 			UNION
@@ -386,7 +498,8 @@ func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]model.E
 		JOIN gb_entities s ON s.id = e.source_id
 		JOIN gb_entities t ON t.id = e.target_id
 		WHERE ev.artifact_id IN (SELECT id FROM tree)
-		ORDER BY ev.id`, artifactID)
+		ORDER BY ev.id`,
+		artifactID)
 	if err != nil {
 		return nil, fmt.Errorf("list edge events: %w", err)
 	}
@@ -396,8 +509,25 @@ func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]model.E
 		var ev model.EdgeEvent
 		var e model.Edge
 		var before, after, created, valid, invalid, ecreated, expired sql.NullString
-		if err := rows.Scan(&ev.ID, &ev.DatasetID, &ev.EdgeID, &ev.ArtifactID, &ev.Event, &before, &after, &ev.CausedByEdgeID, &created,
-			&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &ecreated, &expired, &e.ModelID); err != nil {
+		if err := rows.Scan(&ev.ID,
+			&ev.DatasetID,
+			&ev.EdgeID,
+			&ev.ArtifactID,
+			&ev.Event,
+			&before,
+			&after,
+			&ev.CausedByEdgeID,
+			&created,
+			&e.ID,
+			&e.Source,
+			&e.Target,
+			&e.Relation,
+			&e.Description,
+			&valid,
+			&invalid,
+			&ecreated,
+			&expired,
+			&e.ModelID); err != nil {
 			return nil, err
 		}
 		ev.InvalidAtBefore, ev.InvalidAtAfter = rsqlite.ParseTime(before.String), rsqlite.ParseTime(after.String)
@@ -412,13 +542,17 @@ func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]model.E
 }
 
 // ListEntityArtifacts returns the entity-to-artifact links of the dataset, by entity ID then artifact ID.
-func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.EntityArtifact, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListEntityArtifacts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.EntityArtifact, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT ea.entity_id, ea.artifact_id
 		FROM gb_entity_artifacts ea
 		JOIN gb_entities e ON e.id = ea.entity_id
 		WHERE e.dataset_id = ?
-		ORDER BY ea.entity_id, ea.artifact_id`, dsID)
+		ORDER BY ea.entity_id, ea.artifact_id`,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -435,13 +569,17 @@ func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.En
 }
 
 // ListEntitySessions returns the entity-to-session links of the dataset, by entity ID then session ID.
-func ListEntitySessions(ctx context.Context, d *sql.DB, dsID int64) ([]model.EntitySession, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListEntitySessions(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.EntitySession, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT es.entity_id, es.session_id
 		FROM gb_entity_sessions es
 		JOIN gb_entities e ON e.id = es.entity_id
 		WHERE e.dataset_id = ?
-		ORDER BY es.entity_id, es.session_id`, dsID)
+		ORDER BY es.entity_id, es.session_id`,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -458,13 +596,17 @@ func ListEntitySessions(ctx context.Context, d *sql.DB, dsID int64) ([]model.Ent
 }
 
 // ListEdgeSessions returns the edge-to-session links of the dataset, by edge ID then session ID.
-func ListEdgeSessions(ctx context.Context, d *sql.DB, dsID int64) ([]model.EdgeSession, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListEdgeSessions(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.EdgeSession, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT es.edge_id, es.session_id
 		FROM gb_edge_sessions es
 		JOIN gb_edges e ON e.id = es.edge_id
 		WHERE e.dataset_id = ?
-		ORDER BY es.edge_id, es.session_id`, dsID)
+		ORDER BY es.edge_id, es.session_id`,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -481,12 +623,16 @@ func ListEdgeSessions(ctx context.Context, d *sql.DB, dsID int64) ([]model.EdgeS
 }
 
 // ListEntities returns the entities of the dataset by ID.
-func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceEntity, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListEntities(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.EvidenceEntity, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT id, name, type, description, COALESCE(model_id, '')
 		FROM gb_entities
 		WHERE dataset_id = ?
-		ORDER BY id`, dsID)
+		ORDER BY id`,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +640,11 @@ func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceE
 	var out []model.EvidenceEntity
 	for rows.Next() {
 		var e model.EvidenceEntity
-		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.Description, &e.ModelID); err != nil {
+		if err := rows.Scan(&e.ID,
+			&e.Name,
+			&e.Type,
+			&e.Description,
+			&e.ModelID); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -503,8 +653,11 @@ func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceE
 }
 
 // ListGraphEdges returns every edge of the dataset (expired ones included) with its endpoint IDs and names, by ID.
-func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceEdge, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListGraphEdges(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.EvidenceEdge, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT
 			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.artifact_id,
 			e.valid_at, e.invalid_at, e.created_at, e.expired_at, COALESCE(e.model_id, '')
@@ -512,7 +665,8 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.Evidenc
 		JOIN gb_entities s ON s.id = e.source_id
 		JOIN gb_entities t ON t.id = e.target_id
 		WHERE e.dataset_id = ?
-		ORDER BY e.id`, dsID)
+		ORDER BY e.id`,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -522,8 +676,19 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.Evidenc
 		var e model.EvidenceEdge
 		var mem sql.NullInt64
 		var valid, invalid, created, expired sql.NullString
-		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem,
-			&valid, &invalid, &created, &expired, &e.ModelID); err != nil {
+		if err := rows.Scan(&e.ID,
+			&e.SourceID,
+			&e.TargetID,
+			&e.Source,
+			&e.Target,
+			&e.Relation,
+			&e.Description,
+			&mem,
+			&valid,
+			&invalid,
+			&created,
+			&expired,
+			&e.ModelID); err != nil {
 			return nil, err
 		}
 		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = rsqlite.ParseTime(valid.String), rsqlite.ParseTime(invalid.String), rsqlite.ParseTime(created.String), rsqlite.ParseTime(expired.String)
@@ -537,7 +702,8 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.Evidenc
 
 // CountCrossDatasetEdges returns the number of edges whose dataset differs from that of one of their endpoints
 // (always 0 unless datasets leak into each other).
-func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {
+func CountCrossDatasetEdges(ctx context.Context,
+	d *sql.DB) (int, error) {
 	var n int
 	err := d.QueryRowContext(ctx, `
 		SELECT COUNT(*)
@@ -558,7 +724,8 @@ type Tx struct{ tx *sql.Tx }
 var _ model.Tx = (*Tx)(nil)
 
 // Begin starts a transaction.
-func Begin(ctx context.Context, d *sql.DB) (*Tx, error) {
+func Begin(ctx context.Context,
+	d *sql.DB) (*Tx, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -569,108 +736,201 @@ func Begin(ctx context.Context, d *sql.DB) (*Tx, error) {
 func (t *Tx) Commit() error   { return t.tx.Commit() }
 func (t *Tx) Rollback() error { return t.tx.Rollback() }
 
-func (t *Tx) InsertArtifact(ctx context.Context, dsID int64, kind, text, sessionID string, validAt, createdAt time.Time) (int64, error) {
-	res, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InsertArtifact(ctx context.Context,
+	dsID int64,
+	kind,
+	text,
+	sessionID string,
+	validAt,
+	createdAt time.Time) (int64, error) {
+	res, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, valid_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		dsID, kind, text, nullIfEmpty(sessionID), rsqlite.FormatTime(validAt), rsqlite.FormatTime(createdAt))
+		dsID,
+		kind,
+		text,
+		nullIfEmpty(sessionID),
+		rsqlite.FormatTime(validAt),
+		rsqlite.FormatTime(createdAt))
 	if err != nil {
 		return 0, fmt.Errorf("insert artifact: %w", err)
 	}
 	return res.LastInsertId()
 }
 
-func (t *Tx) InsertChunkArtifact(ctx context.Context, c model.NewChunkArtifact) (int64, error) {
-	res, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InsertChunkArtifact(ctx context.Context,
+	c model.NewChunkArtifact) (int64, error) {
+	res, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, chunk_index, start_offset, end_offset, tokens, valid_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.DatasetID, c.Kind, c.Text, nullIfEmpty(c.SessionID), c.ParentID, c.ChunkIndex, c.StartOffset, c.EndOffset, c.Tokens,
-		rsqlite.FormatTime(c.ValidAt), rsqlite.FormatTime(c.CreatedAt))
+		c.DatasetID,
+		c.Kind,
+		c.Text,
+		nullIfEmpty(c.SessionID),
+		c.ParentID,
+		c.ChunkIndex,
+		c.StartOffset,
+		c.EndOffset,
+		c.Tokens,
+		rsqlite.FormatTime(c.ValidAt),
+		rsqlite.FormatTime(c.CreatedAt))
 	if err != nil {
-		return 0, fmt.Errorf("insert chunk %d of artifact %d: %w", c.ChunkIndex, c.ParentID, err)
+		return 0, fmt.Errorf("insert chunk %d of artifact %d: %w",
+			c.ChunkIndex,
+			c.ParentID,
+			err)
 	}
 	return res.LastInsertId()
 }
 
-func (t *Tx) InsertWebSearchArtifact(ctx context.Context, w model.NewWebSearchArtifact) (int64, error) {
-	res, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InsertWebSearchArtifact(ctx context.Context,
+	w model.NewWebSearchArtifact) (int64, error) {
+	res, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, query, valid_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		w.DatasetID, model.ArtifactWebSearch, w.Text, nullIfEmpty(w.SessionID), w.ParentID, w.Query,
-		rsqlite.FormatTime(w.ValidAt), rsqlite.FormatTime(w.CreatedAt))
+		w.DatasetID,
+		model.ArtifactWebSearch,
+		w.Text,
+		nullIfEmpty(w.SessionID),
+		w.ParentID,
+		w.Query,
+		rsqlite.FormatTime(w.ValidAt),
+		rsqlite.FormatTime(w.CreatedAt))
 	if err != nil {
-		return 0, fmt.Errorf("insert web search of artifact %d: %w", w.ParentID, err)
+		return 0, fmt.Errorf("insert web search of artifact %d: %w",
+			w.ParentID,
+			err)
 	}
 	return res.LastInsertId()
 }
 
-func (t *Tx) InsertChunkSummaryArtifact(ctx context.Context, s model.NewChunkSummaryArtifact) (int64, error) {
-	res, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InsertChunkSummaryArtifact(ctx context.Context,
+	s model.NewChunkSummaryArtifact) (int64, error) {
+	res, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, inference_id, valid_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.DatasetID, model.ArtifactChunkSummary, s.Text, nullIfEmpty(s.SessionID), s.ParentID,
-		nullIfZero(s.InferenceID), rsqlite.FormatTime(s.ValidAt), rsqlite.FormatTime(s.CreatedAt))
+		s.DatasetID,
+		model.ArtifactChunkSummary,
+		s.Text,
+		nullIfEmpty(s.SessionID),
+		s.ParentID,
+		nullIfZero(s.InferenceID),
+		rsqlite.FormatTime(s.ValidAt),
+		rsqlite.FormatTime(s.CreatedAt))
 	if err != nil {
-		return 0, fmt.Errorf("insert summary of chunk %d: %w", s.ParentID, err)
+		return 0, fmt.Errorf("insert summary of chunk %d: %w",
+			s.ParentID,
+			err)
 	}
 	return res.LastInsertId()
 }
 
-func (t *Tx) InsertSeriesObservationArtifact(ctx context.Context, o model.NewSeriesObservationArtifact) (int64, error) {
-	res, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InsertSeriesObservationArtifact(ctx context.Context,
+	o model.NewSeriesObservationArtifact) (int64, error) {
+	res, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, query, series_id, valid_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		o.DatasetID, model.ArtifactSeriesObservation, o.Text, nullIfEmpty(o.SessionID), o.ParentID, o.Query, o.SeriesID,
-		rsqlite.FormatTime(o.ValidAt), rsqlite.FormatTime(o.CreatedAt))
+		o.DatasetID,
+		model.ArtifactSeriesObservation,
+		o.Text,
+		nullIfEmpty(o.SessionID),
+		o.ParentID,
+		o.Query,
+		o.SeriesID,
+		rsqlite.FormatTime(o.ValidAt),
+		rsqlite.FormatTime(o.CreatedAt))
 	if err != nil {
-		return 0, fmt.Errorf("insert observation of series %d: %w", o.SeriesID, err)
+		return 0, fmt.Errorf("insert observation of series %d: %w",
+			o.SeriesID,
+			err)
 	}
 	return res.LastInsertId()
 }
 
-func (t *Tx) LinkEdge(ctx context.Context, edgeID, artifactID int64) error {
-	if _, err := t.tx.ExecContext(ctx, `
+func (t *Tx) LinkEdge(ctx context.Context,
+	edgeID,
+	artifactID int64) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_edge_artifacts (edge_id, artifact_id)
 		VALUES (?, ?)
-		ON CONFLICT (edge_id, artifact_id) DO NOTHING`, edgeID, artifactID); err != nil {
-		return fmt.Errorf("link edge %d to artifact %d: %w", edgeID, artifactID, err)
+		ON CONFLICT (edge_id, artifact_id) DO NOTHING`,
+		edgeID,
+		artifactID); err != nil {
+		return fmt.Errorf("link edge %d to artifact %d: %w",
+			edgeID,
+			artifactID,
+			err)
 	}
 	return nil
 }
 
-func (t *Tx) LinkEntity(ctx context.Context, entityID, artifactID int64) error {
-	if _, err := t.tx.ExecContext(ctx, `
+func (t *Tx) LinkEntity(ctx context.Context,
+	entityID,
+	artifactID int64) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_entity_artifacts (entity_id, artifact_id)
 		VALUES (?, ?)
-		ON CONFLICT (entity_id, artifact_id) DO NOTHING`, entityID, artifactID); err != nil {
-		return fmt.Errorf("link entity %d to artifact %d: %w", entityID, artifactID, err)
+		ON CONFLICT (entity_id, artifact_id) DO NOTHING`,
+		entityID,
+		artifactID); err != nil {
+		return fmt.Errorf("link entity %d to artifact %d: %w",
+			entityID,
+			artifactID,
+			err)
 	}
 	return nil
 }
 
-func (t *Tx) LinkEdgeSession(ctx context.Context, edgeID int64, sessionID string) error {
-	if _, err := t.tx.ExecContext(ctx, `
+func (t *Tx) LinkEdgeSession(ctx context.Context,
+	edgeID int64,
+	sessionID string) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_edge_sessions (edge_id, session_id)
 		VALUES (?, ?)
-		ON CONFLICT (edge_id, session_id) DO NOTHING`, edgeID, sessionID); err != nil {
-		return fmt.Errorf("link edge %d to session %q: %w", edgeID, sessionID, err)
+		ON CONFLICT (edge_id, session_id) DO NOTHING`,
+		edgeID,
+		sessionID); err != nil {
+		return fmt.Errorf("link edge %d to session %q: %w",
+			edgeID,
+			sessionID,
+			err)
 	}
 	return nil
 }
 
-func (t *Tx) LinkEntitySession(ctx context.Context, entityID int64, sessionID string) error {
-	if _, err := t.tx.ExecContext(ctx, `
+func (t *Tx) LinkEntitySession(ctx context.Context,
+	entityID int64,
+	sessionID string) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_entity_sessions (entity_id, session_id)
 		VALUES (?, ?)
-		ON CONFLICT (entity_id, session_id) DO NOTHING`, entityID, sessionID); err != nil {
-		return fmt.Errorf("link entity %d to session %q: %w", entityID, sessionID, err)
+		ON CONFLICT (entity_id, session_id) DO NOTHING`,
+		entityID,
+		sessionID); err != nil {
+		return fmt.Errorf("link entity %d to session %q: %w",
+			entityID,
+			sessionID,
+			err)
 	}
 	return nil
 }
 
-func (t *Tx) UpsertEntity(ctx context.Context, dsID int64, e model.Entity, nameKey string) (int64, error) {
+func (t *Tx) UpsertEntity(ctx context.Context,
+	dsID int64,
+	e model.Entity,
+	nameKey string) (int64, error) {
 	var id int64
-	err := t.tx.QueryRowContext(ctx, `
+	err := t.tx.QueryRowContext(ctx,
+		`
 		INSERT INTO gb_entities (dataset_id, name, name_key, type, description, model_id)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (dataset_id, name_key, type) DO UPDATE SET
@@ -685,95 +945,157 @@ func (t *Tx) UpsertEntity(ctx context.Context, dsID int64, e model.Entity, nameK
 			END,
 			updated_at  = `+rsqlite.SQLNow+`
 		RETURNING id`,
-		dsID, e.Name, nameKey, e.Type, e.Description, nullIfEmpty(e.ModelID)).Scan(&id)
+		dsID,
+		e.Name,
+		nameKey,
+		e.Type,
+		e.Description,
+		nullIfEmpty(e.ModelID)).Scan(&id)
 	if err != nil {
-		return 0, fmt.Errorf("upsert entity %q: %w", e.Name, err)
+		return 0, fmt.Errorf("upsert entity %q: %w",
+			e.Name,
+			err)
 	}
 	return id, nil
 }
 
-func (t *Tx) FindEntityID(ctx context.Context, dsID int64, nameKey string) (int64, error) {
+func (t *Tx) FindEntityID(ctx context.Context,
+	dsID int64,
+	nameKey string) (int64, error) {
 	var id int64
-	err := t.tx.QueryRowContext(ctx, `
+	err := t.tx.QueryRowContext(ctx,
+		`
 		SELECT id
 		FROM gb_entities
 		WHERE dataset_id = ? AND name_key = ?
 		ORDER BY id
-		LIMIT 1`, dsID, nameKey).Scan(&id)
+		LIMIT 1`,
+		dsID,
+		nameKey).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, model.ErrNotFound
 	}
 	return id, err
 }
 
-func (t *Tx) GetEntity(ctx context.Context, dsID, id int64) (*model.EvidenceEntity, error) {
+func (t *Tx) GetEntity(ctx context.Context,
+	dsID,
+	id int64) (*model.EvidenceEntity, error) {
 	e := &model.EvidenceEntity{}
-	err := t.tx.QueryRowContext(ctx, `
+	err := t.tx.QueryRowContext(ctx,
+		`
 		SELECT id, name, type, description, COALESCE(model_id, '')
 		FROM gb_entities
-		WHERE dataset_id = ? AND id = ?`, dsID, id).Scan(&e.ID, &e.Name, &e.Type, &e.Description, &e.ModelID)
+		WHERE dataset_id = ? AND id = ?`,
+		dsID,
+		id).Scan(&e.ID,
+		&e.Name,
+		&e.Type,
+		&e.Description,
+		&e.ModelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get entity %d: %w", id, err)
+		return nil, fmt.Errorf("get entity %d: %w",
+			id,
+			err)
 	}
 	return e, nil
 }
 
-func (t *Tx) InsertEdge(ctx context.Context, e model.NewEdge) (int64, error) {
-	res, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InsertEdge(ctx context.Context,
+	e model.NewEdge) (int64, error) {
+	res, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, artifact_id, model_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.DatasetID, e.SourceID, e.TargetID, e.Relation, e.Description, rsqlite.FormatTime(e.ValidAt), rsqlite.FormatTimePtr(e.InvalidAt),
-		rsqlite.FormatTime(e.CreatedAt), e.ArtifactID, nullIfEmpty(e.ModelID))
+		e.DatasetID,
+		e.SourceID,
+		e.TargetID,
+		e.Relation,
+		e.Description,
+		rsqlite.FormatTime(e.ValidAt),
+		rsqlite.FormatTimePtr(e.InvalidAt),
+		rsqlite.FormatTime(e.CreatedAt),
+		e.ArtifactID,
+		nullIfEmpty(e.ModelID))
 	if err != nil {
 		return 0, fmt.Errorf("insert edge: %w", err)
 	}
 	return res.LastInsertId()
 }
 
-func (t *Tx) MergeDuplicateEdge(ctx context.Context, dsID, id int64, invalidAt *time.Time) error {
-	if _, err := t.tx.ExecContext(ctx, `
+func (t *Tx) MergeDuplicateEdge(ctx context.Context,
+	dsID,
+	id int64,
+	invalidAt *time.Time) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`
 		UPDATE gb_edges
 		SET invalid_at = COALESCE(invalid_at, ?)
 		WHERE id = ? AND dataset_id = ?`,
-		rsqlite.FormatTimePtr(invalidAt), id, dsID); err != nil {
+		rsqlite.FormatTimePtr(invalidAt),
+		id,
+		dsID); err != nil {
 		return fmt.Errorf("merge duplicate edge: %w", err)
 	}
 	return nil
 }
 
-func (t *Tx) InsertEdgeEvent(ctx context.Context, e model.EdgeEvent) error {
-	if _, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InsertEdgeEvent(ctx context.Context,
+	e model.EdgeEvent) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`
 		INSERT INTO gb_edge_events (dataset_id, edge_id, artifact_id, event, invalid_at_before, invalid_at_after, caused_by_edge_id, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.DatasetID, e.EdgeID, nullIfZero(e.ArtifactID), e.Event, rsqlite.FormatTimePtr(e.InvalidAtBefore), rsqlite.FormatTimePtr(e.InvalidAtAfter),
-		nullIfZero(e.CausedByEdgeID), rsqlite.FormatTime(e.CreatedAt)); err != nil {
+		e.DatasetID,
+		e.EdgeID,
+		nullIfZero(e.ArtifactID),
+		e.Event,
+		rsqlite.FormatTimePtr(e.InvalidAtBefore),
+		rsqlite.FormatTimePtr(e.InvalidAtAfter),
+		nullIfZero(e.CausedByEdgeID),
+		rsqlite.FormatTime(e.CreatedAt)); err != nil {
 		return fmt.Errorf("insert edge event: %w", err)
 	}
 	return nil
 }
 
-func (t *Tx) GetEdge(ctx context.Context, dsID, id int64) (*model.Edge, error) {
-	e, err := scanEdge(t.tx.QueryRowContext(ctx, `
+func (t *Tx) GetEdge(ctx context.Context,
+	dsID,
+	id int64) (*model.Edge, error) {
+	e, err := scanEdge(t.tx.QueryRowContext(ctx,
+		`
 		SELECT `+edgeColumns+edgeFrom+`
-		WHERE e.id = ? AND e.dataset_id = ?`, id, dsID))
+		WHERE e.id = ? AND e.dataset_id = ?`,
+		id,
+		dsID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("load edge %d: %w", id, model.ErrNotFound)
+		return nil, fmt.Errorf("load edge %d: %w",
+			id,
+			model.ErrNotFound)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("load edge %d: %w", id, err)
+		return nil, fmt.Errorf("load edge %d: %w",
+			id,
+			err)
 	}
 	return &e, nil
 }
 
-func (t *Tx) InvalidateEdge(ctx context.Context, id int64, invalidAt, expiredAt time.Time) error {
-	if _, err := t.tx.ExecContext(ctx, `
+func (t *Tx) InvalidateEdge(ctx context.Context,
+	id int64,
+	invalidAt,
+	expiredAt time.Time) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`
 		UPDATE gb_edges
 		SET invalid_at = ?, expired_at = ?
 		WHERE id = ?`,
-		rsqlite.FormatTime(invalidAt), rsqlite.FormatTime(expiredAt), id); err != nil {
+		rsqlite.FormatTime(invalidAt),
+		rsqlite.FormatTime(expiredAt),
+		id); err != nil {
 		return fmt.Errorf("invalidate edge: %w", err)
 	}
 	return nil

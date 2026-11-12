@@ -14,13 +14,23 @@ import (
 // Inference requests (see sqlite/db_inference.go for what the functions do)
 
 // InsertTrainedModelInference stores a new request and returns its ID.
-func InsertTrainedModelInference(ctx context.Context, d *sql.DB, r model.TrainedModelInference) (int64, error) {
+func InsertTrainedModelInference(ctx context.Context,
+	d *sql.DB,
+	r model.TrainedModelInference) (int64, error) {
 	var id int64
-	err := d.QueryRowContext(ctx, `
+	err := d.QueryRowContext(ctx,
+		`
 		INSERT INTO gb_trained_model_inferences (trained_model_id, prompt, status, model_size, model_path, max_tokens, temperature, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`,
-		r.TrainedModelID, r.Prompt, r.Status, r.ModelSize, r.ModelPath, r.MaxTokens, r.Temperature, rpostgres.Now()).Scan(&id)
+		r.TrainedModelID,
+		r.Prompt,
+		r.Status,
+		r.ModelSize,
+		r.ModelPath,
+		r.MaxTokens,
+		r.Temperature,
+		rpostgres.Now()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert inference request: %w", err)
 	}
@@ -28,10 +38,30 @@ func InsertTrainedModelInference(ctx context.Context, d *sql.DB, r model.Trained
 }
 
 // FinishTrainedModelInference ends a request.
-func FinishTrainedModelInference(ctx context.Context, d *sql.DB, id int64, status, response, errText string, inputTokens, outputTokens int, coldStart *bool, loadSeconds float64, durationMS int64) error {
-	res, err := d.ExecContext(ctx, `
+func FinishTrainedModelInference(ctx context.Context,
+	d *sql.DB,
+	id int64,
+	status,
+	response,
+	errText string,
+	inputTokens,
+	outputTokens int,
+	coldStart *bool,
+	loadSeconds float64,
+	durationMS int64) error {
+	res, err := d.ExecContext(ctx,
+		`
 		UPDATE gb_trained_model_inferences SET status = $1, response = $2, error = $3, input_tokens = $4, output_tokens = $5, cold_start = $6, load_seconds = $7, duration_ms = $8, completed_at = $9 WHERE id = $10`,
-		status, response, errText, inputTokens, outputTokens, coldStart, loadSeconds, durationMS, rpostgres.Now(), id)
+		status,
+		response,
+		errText,
+		inputTokens,
+		outputTokens,
+		coldStart,
+		loadSeconds,
+		durationMS,
+		rpostgres.Now(),
+		id)
 	if err != nil {
 		return fmt.Errorf("finish inference request: %w", err)
 	}
@@ -49,8 +79,23 @@ func scanTrainedModelInference(s rowScanner) (*model.TrainedModelInference, erro
 	var temp sql.NullFloat64
 	var cold sql.NullBool
 	var completed sql.NullTime
-	if err := s.Scan(&r.ID, &r.TrainedModelID, &r.Prompt, &r.Response, &r.Status, &r.Error, &r.ModelSize, &r.ModelPath,
-		&r.MaxTokens, &temp, &r.InputTokens, &r.OutputTokens, &cold, &r.LoadSeconds, &r.DurationMS, &r.CreatedAt, &completed); err != nil {
+	if err := s.Scan(&r.ID,
+		&r.TrainedModelID,
+		&r.Prompt,
+		&r.Response,
+		&r.Status,
+		&r.Error,
+		&r.ModelSize,
+		&r.ModelPath,
+		&r.MaxTokens,
+		&temp,
+		&r.InputTokens,
+		&r.OutputTokens,
+		&cold,
+		&r.LoadSeconds,
+		&r.DurationMS,
+		&r.CreatedAt,
+		&completed); err != nil {
 		return nil, err
 	}
 	if temp.Valid {
@@ -68,8 +113,12 @@ func scanTrainedModelInference(s rowScanner) (*model.TrainedModelInference, erro
 }
 
 // GetTrainedModelInference returns the request with that ID, or model.ErrNotFound.
-func GetTrainedModelInference(ctx context.Context, d *sql.DB, id int64) (*model.TrainedModelInference, error) {
-	r, err := scanTrainedModelInference(d.QueryRowContext(ctx, `SELECT `+trainedModelInferenceColumns+` FROM gb_trained_model_inferences WHERE id = $1`, id))
+func GetTrainedModelInference(ctx context.Context,
+	d *sql.DB,
+	id int64) (*model.TrainedModelInference, error) {
+	r, err := scanTrainedModelInference(d.QueryRowContext(ctx,
+		`SELECT `+trainedModelInferenceColumns+` FROM gb_trained_model_inferences WHERE id = $1`,
+		id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -77,7 +126,10 @@ func GetTrainedModelInference(ctx context.Context, d *sql.DB, id int64) (*model.
 }
 
 // ListTrainedModelInferences returns the newest requests first (of one trained model, or of all for modelID 0).
-func ListTrainedModelInferences(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]model.TrainedModelInference, error) {
+func ListTrainedModelInferences(ctx context.Context,
+	d *sql.DB,
+	modelID int64,
+	limit int) ([]model.TrainedModelInference, error) {
 	q := `SELECT ` + trainedModelInferenceColumns + ` FROM gb_trained_model_inferences`
 	var args []any
 	if modelID > 0 {
@@ -89,7 +141,9 @@ func ListTrainedModelInferences(ctx context.Context, d *sql.DB, modelID int64, l
 		args = append(args, limit)
 		q += fmt.Sprintf(` LIMIT $%d`, len(args))
 	}
-	rows, err := d.QueryContext(ctx, q, args...)
+	rows, err := d.QueryContext(ctx,
+		q,
+		args...)
 	if err != nil {
 		return nil, fmt.Errorf("list inference requests: %w", err)
 	}

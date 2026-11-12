@@ -12,7 +12,9 @@ import (
 // Models (see sqlite/db_model.go for what the functions do)
 
 // SyncModels makes models the supported models.
-func SyncModels(ctx context.Context, d *sql.DB, models []model.Model) error {
+func SyncModels(ctx context.Context,
+	d *sql.DB,
+	models []model.Model) error {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("sync models: %w", err)
@@ -26,36 +28,53 @@ func SyncModels(ctx context.Context, d *sql.DB, models []model.Model) error {
 		if id == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx,
+			`
 			INSERT INTO gb_models (id, name, provider, kind, supported)
 			VALUES ($1, $2, $3, $4, TRUE)
 			ON CONFLICT (id) DO UPDATE SET
 				provider  = EXCLUDED.provider,
 				kind      = EXCLUDED.kind,
-				supported = TRUE`, id, m.Name, m.Provider, kindOrLLM(m.Kind)); err != nil {
-			return fmt.Errorf("sync model %q: %w", m.Name, err)
+				supported = TRUE`,
+			id,
+			m.Name,
+			m.Provider,
+			kindOrLLM(m.Kind)); err != nil {
+			return fmt.Errorf("sync model %q: %w",
+				m.Name,
+				err)
 		}
 	}
 	return tx.Commit()
 }
 
 // EnsureModel inserts the model (as not supported) if it is not stored yet and returns its ID.
-func EnsureModel(ctx context.Context, d *sql.DB, m model.Model) (string, error) {
+func EnsureModel(ctx context.Context,
+	d *sql.DB,
+	m model.Model) (string, error) {
 	id := model.ModelID(m.Name)
 	if id == "" {
 		return "", nil
 	}
-	if _, err := d.ExecContext(ctx, `
+	if _, err := d.ExecContext(ctx,
+		`
 		INSERT INTO gb_models (id, name, provider, kind)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (id) DO NOTHING`, id, m.Name, m.Provider, kindOrLLM(m.Kind)); err != nil {
-		return "", fmt.Errorf("ensure model %q: %w", m.Name, err)
+		ON CONFLICT (id) DO NOTHING`,
+		id,
+		m.Name,
+		m.Provider,
+		kindOrLLM(m.Kind)); err != nil {
+		return "", fmt.Errorf("ensure model %q: %w",
+			m.Name,
+			err)
 	}
 	return id, nil
 }
 
 // ListModels returns every stored model by name.
-func ListModels(ctx context.Context, d *sql.DB) ([]model.Model, error) {
+func ListModels(ctx context.Context,
+	d *sql.DB) ([]model.Model, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT id, name, provider, kind, supported, created_at
 		FROM gb_models
@@ -68,7 +87,12 @@ func ListModels(ctx context.Context, d *sql.DB) ([]model.Model, error) {
 	for rows.Next() {
 		var m model.Model
 		var created sql.NullTime
-		if err := rows.Scan(&m.ID, &m.Name, &m.Provider, &m.Kind, &m.Supported, &created); err != nil {
+		if err := rows.Scan(&m.ID,
+			&m.Name,
+			&m.Provider,
+			&m.Kind,
+			&m.Supported,
+			&created); err != nil {
 			return nil, err
 		}
 		if created.Valid {

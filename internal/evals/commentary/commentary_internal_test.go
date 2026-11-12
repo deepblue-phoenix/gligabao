@@ -10,7 +10,10 @@ import (
 // TestTrajectoriesJSONBudget checks that long strings are cut, progressively, until the trajectories fit the budget, and that
 // small trajectories are sent whole.
 func TestTrajectoriesJSONBudget(t *testing.T) {
-	b := atif.NewBuilder(atif.Agent{Name: "gligabao-remember", Version: "1"})
+	b := atif.NewBuilder(atif.Agent{
+		Name:    "gligabao-remember",
+		Version: "1",
+	})
 	b.User(strings.Repeat("é", 50_000)) // multi-byte: a cut must not split a character
 	b.User("short")
 	traj := b.Build()

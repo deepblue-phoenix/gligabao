@@ -17,7 +17,8 @@ import (
 // deleted dataset do not count).
 func TestGeoStatistics(t *testing.T) { dbtest.Run(t, testGeoStatistics) }
 
-func testGeoStatistics(t *testing.T, d *sql.DB) {
+func testGeoStatistics(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	check := func(err error) {
 		t.Helper()
@@ -25,32 +26,66 @@ func testGeoStatistics(t *testing.T, d *sql.DB) {
 			t.Fatal(err)
 		}
 	}
-	before, err := graph.GeoStatistics(ctx, d, 100)
+	before, err := graph.GeoStatistics(ctx,
+		d,
+		100)
 	check(err)
 
 	user := fmt.Sprintf("geo-%d", time.Now().UnixNano())
-	dsID, err := relational.EnsureDataset(ctx, d, user, "proj")
+	dsID, err := relational.EnsureDataset(ctx,
+		d,
+		user,
+		"proj")
 	check(err)
 	tx, err := graph.Begin(ctx, d)
 	check(err)
 	defer tx.Rollback()
 	now := relational.Now()
-	ent := func(name, typ string) int64 {
-		id, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: name, Type: typ}, name)
+	ent := func(name,
+		typ string) int64 {
+		id, err := tx.UpsertEntity(ctx,
+			dsID,
+			graph.Entity{
+				Name: name,
+				Type: typ,
+			},
+			name)
 		check(err)
 		return id
 	}
-	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactEpisode, "text", "", now, now)
+	artID, err := tx.InsertArtifact(ctx,
+		dsID,
+		graph.ArtifactEpisode,
+		"text",
+		"",
+		now,
+		now)
 	check(err)
 	paris, rome, alice := ent("Paris", "place"), ent("Rome", "place"), ent("Alice", "person")
 	for _, g := range []struct {
 		id       int64
 		lat, lon float64
 	}{{paris, 48.85, 2.35}, {rome, 41.9, 12.5}} {
-		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: g.id, Kind: "city", Latitude: g.lat, Longitude: g.lon, Provider: "stub", Now: now}))
+		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{
+			EntityID:  g.id,
+			Kind:      "city",
+			Latitude:  g.lat,
+			Longitude: g.lon,
+			Provider:  "stub",
+			Now:       now,
+		}))
 	}
-	edge := func(s, tg int64) int64 {
-		id, err := tx.InsertEdge(ctx, graph.NewEdge{DatasetID: dsID, SourceID: s, TargetID: tg, Relation: "r", ValidAt: now, CreatedAt: now, ArtifactID: artID})
+	edge := func(s,
+		tg int64) int64 {
+		id, err := tx.InsertEdge(ctx, graph.NewEdge{
+			DatasetID:  dsID,
+			SourceID:   s,
+			TargetID:   tg,
+			Relation:   "r",
+			ValidAt:    now,
+			CreatedAt:  now,
+			ArtifactID: artID,
+		})
 		check(err)
 		return id
 	}
@@ -63,10 +98,16 @@ func testGeoStatistics(t *testing.T, d *sql.DB) {
 	_, err = d.ExecContext(ctx, `UPDATE gb_edges SET expired_at = valid_at WHERE id = `+fmt.Sprint(gone))
 	check(err)
 
-	st, err := graph.GeoStatistics(ctx, d, 100)
+	st, err := graph.GeoStatistics(ctx,
+		d,
+		100)
 	check(err)
 	if st.Entities != before.Entities+2 || st.AllEntities != before.AllEntities+3 {
-		t.Errorf("counts: %d/%d, before %d/%d", st.Entities, st.AllEntities, before.Entities, before.AllEntities)
+		t.Errorf("counts: %d/%d, before %d/%d",
+			st.Entities,
+			st.AllEntities,
+			before.Entities,
+			before.AllEntities)
 	}
 	conns := map[int64]int{}
 	pos := map[int64]int{}
@@ -77,7 +118,9 @@ func testGeoStatistics(t *testing.T, d *sql.DB) {
 		}
 	}
 	if conns[paris] != 3 || conns[rome] != 1 {
-		t.Errorf("connections: paris %d (want 3), rome %d (want 1)", conns[paris], conns[rome])
+		t.Errorf("connections: paris %d (want 3), rome %d (want 1)",
+			conns[paris],
+			conns[rome])
 	}
 	if pos[paris] > pos[rome] {
 		t.Errorf("paris must rank above rome: %v", pos)
@@ -87,17 +130,27 @@ func testGeoStatistics(t *testing.T, d *sql.DB) {
 			t.Fatalf("not sorted at %d", i)
 		}
 	}
-	if lim, err := graph.GeoStatistics(ctx, d, 1); err != nil || len(lim.Top) != 1 {
-		t.Errorf("limit: %v, %v", lim, err)
+	if lim, err := graph.GeoStatistics(ctx,
+		d,
+		1); err != nil || len(lim.Top) != 1 {
+		t.Errorf("limit: %v, %v",
+			lim,
+			err)
 	}
 
 	// A deleted dataset is left out.
 	_, err = d.ExecContext(ctx, `UPDATE gb_datasets SET deleted = TRUE WHERE id = `+fmt.Sprint(dsID))
 	check(err)
-	st, err = graph.GeoStatistics(ctx, d, 100)
+	st, err = graph.GeoStatistics(ctx,
+		d,
+		100)
 	check(err)
 	if st.Entities != before.Entities || st.AllEntities != before.AllEntities {
-		t.Errorf("after delete: %d/%d, before %d/%d", st.Entities, st.AllEntities, before.Entities, before.AllEntities)
+		t.Errorf("after delete: %d/%d, before %d/%d",
+			st.Entities,
+			st.AllEntities,
+			before.Entities,
+			before.AllEntities)
 	}
 }
 
@@ -106,7 +159,8 @@ func testGeoStatistics(t *testing.T, d *sql.DB) {
 // entity removes it.
 func TestGeoIndex(t *testing.T) { dbtest.Run(t, testGeoIndex) }
 
-func testGeoIndex(t *testing.T, d *sql.DB) {
+func testGeoIndex(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	check := func(err error) {
 		t.Helper()
@@ -136,24 +190,44 @@ func testGeoIndex(t *testing.T, d *sql.DB) {
 		t.Fatal("the geo index exists although geo was not turned on")
 	}
 	user := fmt.Sprintf("geoidx-%d", time.Now().UnixNano())
-	dsID, err := relational.EnsureDataset(ctx, d, user, "proj")
+	dsID, err := relational.EnsureDataset(ctx,
+		d,
+		user,
+		"proj")
 	check(err)
 	now := relational.Now()
 	{
 		tx, err := graph.Begin(ctx, d)
 		check(err)
-		off, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Before", Type: "place"}, "before")
+		off, err := tx.UpsertEntity(ctx,
+			dsID,
+			graph.Entity{
+				Name: "Before",
+				Type: "place",
+			},
+			"before")
 		check(err)
-		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: off, Kind: "city", Latitude: 1, Longitude: 2, Provider: "stub", Now: now}))
+		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{
+			EntityID:  off,
+			Kind:      "city",
+			Latitude:  1,
+			Longitude: 2,
+			Provider:  "stub",
+			Now:       now,
+		}))
 		check(tx.Commit())
 	}
 	ok, err := graph.EnableGeoIndex(ctx, d)
 	check(err)
 	if !ok || !hasIndex() {
-		t.Fatalf("EnableGeoIndex: ok=%v, index=%v", ok, hasIndex())
+		t.Fatalf("EnableGeoIndex: ok=%v, index=%v",
+			ok,
+			hasIndex())
 	}
 	if ok, err := graph.EnableGeoIndex(ctx, d); err != nil || !ok { // idempotent
-		t.Fatalf("EnableGeoIndex again: %v, %v", ok, err)
+		t.Fatalf("EnableGeoIndex again: %v, %v",
+			ok,
+			err)
 	}
 	if !postgres { // no backfill on SQLite: the place stored while geo was off is not indexed
 		var n int
@@ -163,38 +237,78 @@ func testGeoIndex(t *testing.T, d *sql.DB) {
 		}
 	}
 	// inBox counts the indexed entities within the box (lat/lon, in degrees) around a point.
-	inBox := func(id int64, lat, lon, deg float64) int {
+	inBox := func(id int64,
+		lat,
+		lon,
+		deg float64) int {
 		t.Helper()
 		var n int
 		if postgres {
-			check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo WHERE entity_id = $1
-				AND ST_DWithin(geo, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography, $4)`, id, lat, lon, deg*111000).Scan(&n))
+			check(d.QueryRowContext(ctx,
+				`SELECT count(*) FROM gb_entity_geo WHERE entity_id = $1
+				AND ST_DWithin(geo, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography, $4)`,
+				id,
+				lat,
+				lon,
+				deg*111000).Scan(&n))
 		} else {
-			check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo_rtree WHERE entity_id = ?
-				AND min_lat >= ? AND max_lat <= ? AND min_lon >= ? AND max_lon <= ?`, id, lat-deg, lat+deg, lon-deg, lon+deg).Scan(&n))
+			check(d.QueryRowContext(ctx,
+				`SELECT count(*) FROM gb_entity_geo_rtree WHERE entity_id = ?
+				AND min_lat >= ? AND max_lat <= ? AND min_lon >= ? AND max_lon <= ?`,
+				id,
+				lat-deg,
+				lat+deg,
+				lon-deg,
+				lon+deg).Scan(&n))
 		}
 		return n
 	}
 
 	var id int64
-	put := func(lat, lon float64) {
+	put := func(lat,
+		lon float64) {
 		t.Helper()
 		tx, err := graph.Begin(ctx, d)
 		check(err)
 		defer tx.Rollback()
 		if id == 0 {
-			id, err = tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Paris", Type: "place"}, "paris")
+			id, err = tx.UpsertEntity(ctx,
+				dsID,
+				graph.Entity{
+					Name: "Paris",
+					Type: "place",
+				},
+				"paris")
 			check(err)
 		}
-		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: id, Kind: "city", Latitude: lat, Longitude: lon, Provider: "stub", Now: now}))
+		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{
+			EntityID:  id,
+			Kind:      "city",
+			Latitude:  lat,
+			Longitude: lon,
+			Provider:  "stub",
+			Now:       now,
+		}))
 		check(tx.Commit())
 	}
 	put(48.85, 2.35)
-	if inBox(id, 48.85, 2.35, 0.1) != 1 || inBox(id, 41.9, 12.5, 0.1) != 0 {
+	if inBox(id,
+		48.85,
+		2.35,
+		0.1) != 1 || inBox(id,
+		41.9,
+		12.5,
+		0.1) != 0 {
 		t.Fatal("a stored place is not in the geo index")
 	}
 	put(41.9, 12.5) // the upsert of the same entity moves it
-	if inBox(id, 48.85, 2.35, 0.1) != 0 || inBox(id, 41.9, 12.5, 0.1) != 1 {
+	if inBox(id,
+		48.85,
+		2.35,
+		0.1) != 0 || inBox(id,
+		41.9,
+		12.5,
+		0.1) != 1 {
 		t.Fatal("a moved place is not moved in the geo index")
 	}
 
@@ -204,7 +318,9 @@ func testGeoIndex(t *testing.T, d *sql.DB) {
 		if n != 1 { // only the place stored after geo was turned on
 			t.Fatalf("rtree rows = %d, want 1", n)
 		}
-		_, err = d.ExecContext(ctx, `DELETE FROM gb_entities WHERE id = ?`, id) // cascades to gb_entity_geo
+		_, err = d.ExecContext(ctx,
+			`DELETE FROM gb_entities WHERE id = ?`,
+			id) // cascades to gb_entity_geo
 		check(err)
 		check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo_rtree`).Scan(&n))
 		if n != 0 {

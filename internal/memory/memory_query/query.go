@@ -113,7 +113,13 @@ type EvidenceEdge = graph.EvidenceEdge
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // QueryResult.Trajectory, with its ID in QueryResult.TrajectoryID).
-func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, query string, opts ...memory_core.Option) (res *QueryResult, err error) {
+func Query(ctx context.Context,
+	d *sql.DB,
+	llm memory_core.LLM,
+	userID,
+	dataset,
+	query string,
+	opts ...memory_core.Option) (res *QueryResult, err error) {
 	userID, err = memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -122,7 +128,10 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := memory_core.DatasetID(ctx, d, userID, dataset)
+	dsID, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +168,13 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	if co.GeoResolver != nil && co.GeoNearby {
 		params["geo_nearby"], params["geo_radius_km"] = true, radiusKm
 	}
-	run := startRunLog(ctx, d, userID, dataset, query, sessionID, params)
+	run := startRunLog(ctx,
+		d,
+		userID,
+		dataset,
+		query,
+		sessionID,
+		params)
 	defer func() {
 		run.Finish(err)
 		if res != nil {
@@ -167,18 +182,41 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 		}
 	}()
 
-	j := &job{d: d, llm: tr.Wrap(memory_core.WithRecording(llm, d, CallQuery)), tr: tr, run: run, co: co, userID: userID, dataset: dataset,
-		dsID: dsID, sessionID: sessionID, radiusKm: radiusKm, query: query}
+	j := &job{
+		d: d,
+		llm: tr.Wrap(memory_core.WithRecording(llm,
+			d,
+			CallQuery)),
+		tr:        tr,
+		run:       run,
+		co:        co,
+		userID:    userID,
+		dataset:   dataset,
+		dsID:      dsID,
+		sessionID: sessionID,
+		radiusKm:  radiusKm,
+		query:     query,
+	}
 	//------------------
 	// MEMORY PIPELINE
-	if err := memory_pipeline.Run(ctx, queryPipeline, j, run); err != nil {
+	if err := memory_pipeline.Run(ctx,
+		queryPipeline,
+		j,
+		run); err != nil {
 		return nil, err
 	}
 	//------------------
 	if j.result == nil && co.EvidenceOnly { // the query stage was skipped: what was retrieved is the result
-		j.result = &QueryResult{SessionID: sessionID, Evidence: j.rc.Graph.allEvidence(), Geo: j.places, Nearby: j.rc.Nearby}
+		j.result = &QueryResult{
+			SessionID: sessionID,
+			Evidence:  j.rc.Graph.allEvidence(),
+			Geo:       j.places,
+			Nearby:    j.rc.Nearby,
+		}
 		// IN-CONTEXT COUNTERS: no LLM had it in a prompt, but it is returned to the caller as the context of the answer.
-		j.countInContext(ctx, memory_core.InContextEvidenceOnly, j.rc.Graph)
+		j.countInContext(ctx,
+			memory_core.InContextEvidenceOnly,
+			j.rc.Graph)
 	}
 	return j.result, nil
 }
@@ -209,9 +247,18 @@ type job struct {
 
 // countInContext is the in-context counter of the entities and edges of g, for the stage that gives them as context (see
 // memory_core.CountInContext): one event each, of this run.
-func (j *job) countInContext(ctx context.Context, stage string, g *graphContext) {
-	memory_core.CountInContext(ctx, j.d, graph.InContextEvent{Pipeline: graph.PipelineQuery, Stage: stage, RunID: j.run.ID()},
-		sortedKeys(g.entities), sortedKeys(g.edges))
+func (j *job) countInContext(ctx context.Context,
+	stage string,
+	g *graphContext) {
+	memory_core.CountInContext(ctx,
+		j.d,
+		graph.InContextEvent{
+			Pipeline: graph.PipelineQuery,
+			Stage:    stage,
+			RunID:    j.run.ID(),
+		},
+		sortedKeys(g.entities),
+		sortedKeys(g.edges))
 }
 
 //------------------
@@ -222,34 +269,62 @@ func (j *job) countInContext(ctx context.Context, stage string, g *graphContext)
 var queryPipeline = []memory_pipeline.Step[job]{
 	// The subgraph around the entities matching the question, and the passages close to it. With nothing to answer from the
 	// pipeline ends here (memory_pipeline.Stop), and the stages after it are skipped.
-	memory_pipeline.Stage[job]{Name: relational.QueryStageRetrieveGraph, Run: (*job).retrieveGraph},
+	memory_pipeline.Stage[job]{
+		Name: relational.QueryStageRetrieveGraph,
+		Run:  (*job).retrieveGraph,
+	},
 	// The places the question mentions (only with a geo resolver).
-	memory_pipeline.Stage[job]{Name: relational.QueryStageDetectGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).needsDetectGeo, Run: (*job).detectGeo},
+	memory_pipeline.Stage[job]{
+		Name:    relational.QueryStageDetectGeo,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).needsDetectGeo,
+		Run:     (*job).detectGeo,
+	},
 	// The geo entities near those places and near the entities that matched the question, which the answer gets as context.
-	memory_pipeline.Stage[job]{Name: relational.QueryStageNearbyGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).hasNearbyGeo, Run: (*job).nearbyGeo},
+	memory_pipeline.Stage[job]{
+		Name:    relational.QueryStageNearbyGeo,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).hasNearbyGeo,
+		Run:     (*job).nearbyGeo,
+	},
 	// The LLM answers from what was retrieved; the entities, edges and passages it cites are the evidence.
 	// Skipped by a retrieval-only call (memory_core.WithEvidenceOnly).
-	memory_pipeline.Stage[job]{Name: relational.QueryStageQuery, Enabled: (*job).needsAnswer, Run: (*job).answer},
+	memory_pipeline.Stage[job]{
+		Name:    relational.QueryStageQuery,
+		Enabled: (*job).needsAnswer,
+		Run:     (*job).answer,
+	},
 }
 
 //------------------
 
 // retrieveGraph is the retrieve_graph stage: it builds the queryContext (see assembleContext).
 func (j *job) retrieveGraph(ctx context.Context) error {
-	rc, err := assembleContext(ctx, j.d, j.co, j.tr, j.dsID, j.query)
+	rc, err := assembleContext(ctx,
+		j.d,
+		j.co,
+		j.tr,
+		j.dsID,
+		j.query)
 	if err != nil {
 		return fmt.Errorf("retrieve context: %w", err)
 	}
 	j.rc = rc
-	j.tr.Tool("Retrieved the subgraph around the entities matching the query, and the passages close to it.", "retrieve_graph",
-		map[string]any{"user_id": j.userID, "dataset": j.dataset, "query": j.query}, rc.Graph.render()+renderPassages(rc.Graph.passages))
+	j.tr.Tool("Retrieved the subgraph around the entities matching the query, and the passages close to it.",
+		"retrieve_graph",
+		map[string]any{"user_id": j.userID, "dataset": j.dataset, "query": j.query},
+		rc.Graph.render()+renderPassages(rc.Graph.passages))
 	if len(rc.Graph.entities) == 0 && len(rc.Graph.passages) == 0 {
 		const none = "I don't have any information in memory to answer that."
 		j.tr.Agent(none)
 		j.result = &QueryResult{
 			SessionID: j.sessionID,
 			Answer:    none,
-			Evidence:  Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}},
+			Evidence: Evidence{
+				Entities: []EvidenceEntity{},
+				Edges:    []EvidenceEdge{},
+				Passages: []EvidencePassage{},
+			},
 		}
 		//------------------
 		// MEMORY PIPELINE
@@ -265,18 +340,28 @@ func (j *job) retrieveGraph(ctx context.Context) error {
 //
 // IMPORTANT: the embedding the hook returns is DISCARDED for now. It MUST be stored in the vector store (j.co.Vectors) once the hook
 // does real work; see memory_core.EmbedGraph and docs/hooks.md.
-func (j *job) embedGraph(ctx context.Context, g *graphContext) {
+func (j *job) embedGraph(ctx context.Context,
+	g *graphContext) {
 	if j.co.GraphEmbedder == nil {
 		return
 	}
-	req := memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedQuery, Index: j.co.GraphIndex, UserID: j.userID, Dataset: j.dataset, RunID: j.run.ID(), Question: j.query}
+	req := memory_core.GraphEmbedRequest{
+		Pipeline: memory_core.GraphEmbedQuery,
+		Index:    j.co.GraphIndex,
+		UserID:   j.userID,
+		Dataset:  j.dataset,
+		RunID:    j.run.ID(),
+		Question: j.query,
+	}
 	for _, id := range sortedKeys(g.entities) {
 		req.Entities = append(req.Entities, g.entities[id])
 	}
 	for _, id := range sortedKeys(g.edges) {
 		req.Edges = append(req.Edges, g.edges[id])
 	}
-	memory_core.EmbedGraph(ctx, j.co, req)
+	memory_core.EmbedGraph(ctx,
+		j.co,
+		req)
 }
 
 func (j *job) hasGeo() bool { return j.co.GeoResolver != nil }
@@ -289,7 +374,13 @@ func (j *job) needsAnswer() bool { return !j.co.EvidenceOnly }
 
 // detectGeo is the detect_geo stage (see query_geo.go).
 func (j *job) detectGeo(ctx context.Context) (err error) {
-	j.places, err = detectGeo(ctx, j.co, j.llm, j.tr, j.userID, j.dataset, j.query)
+	j.places, err = detectGeo(ctx,
+		j.co,
+		j.llm,
+		j.tr,
+		j.userID,
+		j.dataset,
+		j.query)
 	return err
 }
 
@@ -297,7 +388,16 @@ func (j *job) hasNearbyGeo() bool { return j.co.GeoResolver != nil && j.co.GeoNe
 
 // nearbyGeo is the nearby_geo stage (see query_geo_nearby.go): it leaves what it found in j.rc.Nearby, which the LLM is given.
 func (j *job) nearbyGeo(ctx context.Context) error {
-	_, err := nearbyGeo(ctx, j.d, j.co, j.tr, j.userID, j.dataset, j.dsID, j.rc, j.places, j.radiusKm)
+	_, err := nearbyGeo(ctx,
+		j.d,
+		j.co,
+		j.tr,
+		j.userID,
+		j.dataset,
+		j.dsID,
+		j.rc,
+		j.places,
+		j.radiusKm)
 	return err
 }
 
@@ -305,31 +405,54 @@ func (j *job) nearbyGeo(ctx context.Context) error {
 // sets another (WithReasoning with memory_core.StageQuery); the inference records it.
 func (j *job) answer(ctx context.Context) error {
 	// IN-CONTEXT COUNTERS: everything in the graph (the nearby geo entities too, see addToGraph) is in the prompt.
-	j.countInContext(ctx, memory_core.StageQuery, j.rc.Graph)
-	out, err := queryLLM(ctx, j.co.ModelLLM(j.llm, memory_core.StageQuery), j.rc)
+	j.countInContext(ctx,
+		memory_core.StageQuery,
+		j.rc.Graph)
+	out, err := queryLLM(ctx,
+		j.co.ModelLLM(j.llm, memory_core.StageQuery),
+		j.rc)
 	if err != nil {
 		return err
 	}
-	j.result = &QueryResult{SessionID: j.sessionID, Answer: out.Answer, Evidence: getEvidence(j.rc.Graph, out), Geo: j.places, Nearby: j.rc.Nearby}
+	j.result = &QueryResult{
+		SessionID: j.sessionID,
+		Answer:    out.Answer,
+		Evidence:  getEvidence(j.rc.Graph, out),
+		Geo:       j.places,
+		Nearby:    j.rc.Nearby,
+	}
 	return nil
 }
 
 // detectGeo is the geo step of Query (see query_geo.go): it returns the places the question mentions, nil if the question mentions
 // none. A failure (logged, and recorded in the trajectory) is returned with no places; Query goes on without them.
-func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.LLM, tr *memory_core.Trace, userID, dataset, question string) ([]QueryPlace, error) {
-	places, err := detectPlaces(ctx, co.ModelLLM(rec, memory_core.StageDetectGeo), question)
+func detectGeo(ctx context.Context,
+	co memory_core.CallOptions,
+	rec memory_core.LLM,
+	tr *memory_core.Trace,
+	userID,
+	dataset,
+	question string) ([]QueryPlace, error) {
+	places, err := detectPlaces(ctx,
+		co.ModelLLM(rec, memory_core.StageDetectGeo),
+		question)
 	fields := log.Fields{"stage": memory_core.StageDetectGeo, "user_id": userID, "dataset": dataset}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("query: detecting the places in the question failed")
-		tr.Tool("The LLM could not find the places the question mentions.", "detect_geo", map[string]any{"question": question}, map[string]any{"error": err.Error()})
+		tr.Tool("The LLM could not find the places the question mentions.",
+			"detect_geo",
+			map[string]any{"question": question},
+			map[string]any{"error": err.Error()})
 		return nil, err
 	}
 	found := places
 	if found == nil {
 		found = []QueryPlace{}
 	}
-	tr.Tool("The LLM found the places the question mentions (cities, countries, regions, landmarks, ...).", "detect_geo",
-		map[string]any{"question": question}, map[string]any{"places": found})
+	tr.Tool("The LLM found the places the question mentions (cities, countries, regions, landmarks, ...).",
+		"detect_geo",
+		map[string]any{"question": question},
+		map[string]any{"places": found})
 	return places, nil
 }
 
@@ -337,19 +460,35 @@ func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.
 
 // assembleContext builds the queryContext for query: it retrieves the subgraph of dataset dsID around the
 // entities matching the query, and the passages close to it, and stamps it with the current time.
-func assembleContext(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, dsID int64, query string) (*queryContext, error) {
-	g, err := retrieve(ctx, d, co, tr, dsID, query)
+func assembleContext(ctx context.Context,
+	d *sql.DB,
+	co memory_core.CallOptions,
+	tr *memory_core.Trace,
+	dsID int64,
+	query string) (*queryContext, error) {
+	g, err := retrieve(ctx,
+		d,
+		co,
+		tr,
+		dsID,
+		query)
 	if err != nil {
 		return nil, err
 	}
-	return &queryContext{Now: relational.Now(), Graph: g, Question: query}, nil
+	return &queryContext{
+		Now:      relational.Now(),
+		Graph:    g,
+		Question: query,
+	}, nil
 }
 
 // render returns the user message sent to the LLM.
 func (c *queryContext) render() string {
 	nearby := ""
 	if c.Nearby != nil && len(c.Nearby.Nearby) > 0 {
-		nearby = fmt.Sprintf("<nearby radius_km=\"%g\">\n%s</nearby>\n\n", c.Nearby.RadiusKm, c.Nearby.render())
+		nearby = fmt.Sprintf("<nearby radius_km=\"%g\">\n%s</nearby>\n\n",
+			c.Nearby.RadiusKm,
+			c.Nearby.render())
 	}
 	passages := ""
 	if len(c.Graph.passages) > 0 {
@@ -361,10 +500,15 @@ func (c *queryContext) render() string {
 }
 
 // queryLLM asks the LLM to answer rc.Question from rc and parses its structured output.
-func queryLLM(ctx context.Context, llm memory_core.LLM, rc *queryContext) (*queryOutput, error) {
+func queryLLM(ctx context.Context,
+	llm memory_core.LLM,
+	rc *queryContext) (*queryOutput, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:    querySystemPrompt,
-		Messages:  []ai.Message{{Role: ai.RoleUser, Content: rc.render()}},
+		System: querySystemPrompt,
+		Messages: []ai.Message{{
+			Role:    ai.RoleUser,
+			Content: rc.render(),
+		}},
 		MaxTokens: 2048,
 	})
 	if err != nil {
@@ -400,7 +544,11 @@ func (g *graphContext) render() string {
 	var sb strings.Builder
 	for _, id := range sortedKeys(g.entities) {
 		e := g.entities[id]
-		fmt.Fprintf(&sb, "[entity %d] %s (%s)", e.ID, e.Name, e.Type)
+		fmt.Fprintf(&sb,
+			"[entity %d] %s (%s)",
+			e.ID,
+			e.Name,
+			e.Type)
 		if e.Description != "" {
 			sb.WriteString(": " + e.Description)
 		}
@@ -414,7 +562,11 @@ func (g *graphContext) render() string {
 
 // allEvidence is everything in the context as evidence, for a retrieval-only call (no LLM chose what it relied on).
 func (g *graphContext) allEvidence() Evidence {
-	ev := Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}}
+	ev := Evidence{
+		Entities: []EvidenceEntity{},
+		Edges:    []EvidenceEdge{},
+		Passages: []EvidencePassage{},
+	}
 	for _, id := range sortedKeys(g.entities) {
 		ev.Entities = append(ev.Entities, g.entities[id])
 	}
@@ -427,8 +579,13 @@ func (g *graphContext) allEvidence() Evidence {
 
 // getEvidence returns the entities and edges the LLM cited in o, keeping only cited IDs that were present in the
 // context. Endpoints of cited edges are included as cited entities.
-func getEvidence(g *graphContext, o *queryOutput) Evidence {
-	ev := Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}}
+func getEvidence(g *graphContext,
+	o *queryOutput) Evidence {
+	ev := Evidence{
+		Entities: []EvidenceEntity{},
+		Edges:    []EvidenceEdge{},
+		Passages: []EvidencePassage{},
+	}
 	ents := map[int64]bool{}
 	for _, id := range o.Entities {
 		if _, ok := g.entities[id]; ok {
@@ -445,7 +602,10 @@ func getEvidence(g *graphContext, o *queryOutput) Evidence {
 		ev.Edges = append(ev.Edges, e)
 		ents[e.SourceID], ents[e.TargetID] = true, true
 	}
-	sort.Slice(ev.Edges, func(i, j int) bool { return ev.Edges[i].ID < ev.Edges[j].ID })
+	sort.Slice(ev.Edges, func(i,
+		j int) bool {
+		return ev.Edges[i].ID < ev.Edges[j].ID
+	})
 	cited := map[int64]bool{}
 	for _, id := range o.Passages {
 		cited[id] = true
@@ -464,11 +624,16 @@ func getEvidence(g *graphContext, o *queryOutput) Evidence {
 }
 
 func sortedKeys[V any](m map[int64]V) []int64 {
-	ks := make([]int64, 0, len(m))
+	ks := make([]int64,
+		0,
+		len(m))
 	for k := range m {
 		ks = append(ks, k)
 	}
-	sort.Slice(ks, func(i, j int) bool { return ks[i] < ks[j] })
+	sort.Slice(ks, func(i,
+		j int) bool {
+		return ks[i] < ks[j]
+	})
 	return ks
 }
 
@@ -478,31 +643,58 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 // close to the question (see query_vectors.go), and adds the edges touching them and the entities at the other end. The
 // facts whose embedding is close to the question are added too, with their endpoints. If there is no seed and no such fact,
 // the most recently updated entities are used instead. The passages close to the question are loaded as well.
-func retrieve(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, dsID int64, query string) (*graphContext, error) {
-	g := &graphContext{entities: map[int64]EvidenceEntity{}, edges: map[int64]EvidenceEdge{}}
+func retrieve(ctx context.Context,
+	d *sql.DB,
+	co memory_core.CallOptions,
+	tr *memory_core.Trace,
+	dsID int64,
+	query string) (*graphContext, error) {
+	g := &graphContext{
+		entities: map[int64]EvidenceEntity{},
+		edges:    map[int64]EvidenceEdge{},
+	}
 
-	hits, err := searchVectors(ctx, d, co, tr, dsID, query)
+	hits, err := searchVectors(ctx,
+		d,
+		co,
+		tr,
+		dsID,
+		query)
 	if err != nil {
 		return nil, err
 	}
-	if g.passages, err = loadPassages(ctx, d, dsID, hits); err != nil {
+	if g.passages, err = loadPassages(ctx,
+		d,
+		dsID,
+		hits); err != nil {
 		return nil, err
 	}
 
-	keyword, err := graph.MatchEntities(ctx, d, dsID, memory_core.Key(query), tokenize(query), maxSeedEntities)
+	keyword, err := graph.MatchEntities(ctx,
+		d,
+		dsID,
+		memory_core.Key(query),
+		tokenize(query),
+		maxSeedEntities)
 	if err != nil {
 		return nil, err
 	}
 	seeds := union(keyword, hits.entities)
 	var hitEdges []EvidenceEdge
 	if len(hits.edges) > 0 {
-		if hitEdges, err = graph.EdgesByID(ctx, d, dsID, hits.edges); err != nil {
+		if hitEdges, err = graph.EdgesByID(ctx,
+			d,
+			dsID,
+			hits.edges); err != nil {
 			return nil, err
 		}
 	}
 	matched := len(seeds) > 0
 	if !matched && len(hitEdges) == 0 {
-		if seeds, err = graph.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
+		if seeds, err = graph.FallbackSeedEntities(ctx,
+			d,
+			dsID,
+			maxFallbackSeed); err != nil {
 			return nil, err
 		}
 	}
@@ -512,7 +704,11 @@ func retrieve(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *me
 
 	var edges []EvidenceEdge
 	if len(seeds) > 0 {
-		if edges, err = graph.EdgesAround(ctx, d, dsID, seeds, maxContextEdges); err != nil {
+		if edges, err = graph.EdgesAround(ctx,
+			d,
+			dsID,
+			seeds,
+			maxContextEdges); err != nil {
 			return nil, err
 		}
 	}
@@ -525,11 +721,15 @@ func retrieve(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *me
 		ids[e.SourceID], ids[e.TargetID] = true, true
 	}
 
-	all := make([]int64, 0, len(ids))
+	all := make([]int64,
+		0,
+		len(ids))
 	for id := range ids {
 		all = append(all, id)
 	}
-	ents, err := graph.EntitiesByID(ctx, d, all)
+	ents, err := graph.EntitiesByID(ctx,
+		d,
+		all)
 	if err != nil {
 		return nil, err
 	}
@@ -547,9 +747,12 @@ func retrieve(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *me
 }
 
 // union returns the IDs of a followed by those of b that are not in a, in order.
-func union(a, b []int64) []int64 {
+func union(a,
+	b []int64) []int64 {
 	seen := make(map[int64]bool, len(a)+len(b))
-	out := make([]int64, 0, len(a)+len(b))
+	out := make([]int64,
+		0,
+		len(a)+len(b))
 	for _, l := range [][]int64{a, b} {
 		for _, id := range l {
 			if !seen[id] {

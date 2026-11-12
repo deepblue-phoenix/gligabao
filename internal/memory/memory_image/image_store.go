@@ -29,7 +29,11 @@ var extensions = map[string]string{
 // to dir. created is false if the file already existed (same dataset, same content): it is left as it is, and a
 // caller undoing its work must not removeFile it. The file appears atomically (written to a temporary file, then
 // renamed), so a reader never sees a partial one.
-func saveFile(dir string, datasetID int64, mediaType, sha256 string, data []byte) (rel string, created bool, err error) {
+func saveFile(dir string,
+	datasetID int64,
+	mediaType,
+	sha256 string,
+	data []byte) (rel string, created bool, err error) {
 	ext, ok := extensions[mediaType]
 	if !ok {
 		return "", false, fmt.Errorf("image store: unsupported media type %q", mediaType)
@@ -67,7 +71,8 @@ func saveFile(dir string, datasetID int64, mediaType, sha256 string, data []byte
 }
 
 // readFile returns the file at rel (a path returned by saveFile) inside dir. It refuses paths that leave dir.
-func readFile(dir, rel string) ([]byte, error) {
+func readFile(dir,
+	rel string) ([]byte, error) {
 	full, err := resolveFile(dir, rel)
 	if err != nil {
 		return nil, err
@@ -76,7 +81,8 @@ func readFile(dir, rel string) ([]byte, error) {
 }
 
 // removeFile deletes the file at rel inside dir. A file that is already gone is not an error.
-func removeFile(dir, rel string) error {
+func removeFile(dir,
+	rel string) error {
 	full, err := resolveFile(dir, rel)
 	if err != nil {
 		return err
@@ -87,7 +93,8 @@ func removeFile(dir, rel string) error {
 	return nil
 }
 
-func resolveFile(dir, rel string) (string, error) {
+func resolveFile(dir,
+	rel string) (string, error) {
 	clean := path.Clean("/" + filepath.ToSlash(rel))[1:] // rooted first, so ".." cannot climb out
 	if clean == "" || clean != filepath.ToSlash(rel) {
 		return "", fmt.Errorf("image store: bad path %q", rel)

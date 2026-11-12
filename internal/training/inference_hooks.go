@@ -52,7 +52,8 @@ type InferTrainedModelResult struct {
 
 // InferTrainedModelFunc runs one prompt. It must honour ctx (the caller's limit, InferTimeout) and may be called concurrently. A
 // returned error (or a panic) fails the request, and its text is what the user sees.
-type InferTrainedModelFunc func(ctx context.Context, req InferTrainedModelRequest) (InferTrainedModelResult, error)
+type InferTrainedModelFunc func(ctx context.Context,
+	req InferTrainedModelRequest) (InferTrainedModelResult, error)
 
 // TrainedModelInferenceHook is a named way of running the prompts of one trained model somewhere other than the sidecar.
 type TrainedModelInferenceHook struct {
@@ -73,30 +74,56 @@ type TrainedModelInferenceHook struct {
 // returns them, with Model trimmed, sorted by name.
 func ResolveInferenceHooks(list []TrainedModelInferenceHook) ([]TrainedModelInferenceHook, error) {
 	if len(list) > MaxInferenceHooks {
-		return nil, fmt.Errorf("%w: at most %d may be registered, got %d", ErrInvalidInferenceHook, MaxInferenceHooks, len(list))
+		return nil, fmt.Errorf("%w: at most %d may be registered, got %d",
+			ErrInvalidInferenceHook,
+			MaxInferenceHooks,
+			len(list))
 	}
 	names, models := map[string]bool{}, map[string]string{}
-	out := make([]TrainedModelInferenceHook, 0, len(list))
+	out := make([]TrainedModelInferenceHook,
+		0,
+		len(list))
 	for i, h := range list {
 		h.Model = strings.TrimSpace(h.Model)
 		switch {
 		case h.Name == "" || len(h.Name) > MaxInferenceHookNameLen || !hookNameRE.MatchString(h.Name):
-			return nil, fmt.Errorf("%w: hook %d: name %q must be 1-%d letters, digits, '_', '-' or '.', starting with a letter or digit", ErrInvalidInferenceHook, i, h.Name, MaxInferenceHookNameLen)
+			return nil, fmt.Errorf("%w: hook %d: name %q must be 1-%d letters, digits, '_', '-' or '.', starting with a letter or digit",
+				ErrInvalidInferenceHook,
+				i,
+				h.Name,
+				MaxInferenceHookNameLen)
 		case names[h.Name]:
-			return nil, fmt.Errorf("%w: duplicate hook name %q", ErrInvalidInferenceHook, h.Name)
+			return nil, fmt.Errorf("%w: duplicate hook name %q",
+				ErrInvalidInferenceHook,
+				h.Name)
 		case h.Model == "":
-			return nil, fmt.Errorf("%w: hook %q has no Model: it must name the trained model it targets", ErrInvalidInferenceHook, h.Name)
+			return nil, fmt.Errorf("%w: hook %q has no Model: it must name the trained model it targets",
+				ErrInvalidInferenceHook,
+				h.Name)
 		case len(h.Model) > MaxInferenceHookModelLen || strings.ContainsFunc(h.Model, func(r rune) bool { return r < 0x20 || r == 0x7f }):
-			return nil, fmt.Errorf("%w: hook %q: model %q must be at most %d bytes, without control characters", ErrInvalidInferenceHook, h.Name, h.Model, MaxInferenceHookModelLen)
+			return nil, fmt.Errorf("%w: hook %q: model %q must be at most %d bytes, without control characters",
+				ErrInvalidInferenceHook,
+				h.Name,
+				h.Model,
+				MaxInferenceHookModelLen)
 		case models[h.Model] != "":
-			return nil, fmt.Errorf("%w: hooks %q and %q target the same model %q", ErrInvalidInferenceHook, models[h.Model], h.Name, h.Model)
+			return nil, fmt.Errorf("%w: hooks %q and %q target the same model %q",
+				ErrInvalidInferenceHook,
+				models[h.Model],
+				h.Name,
+				h.Model)
 		case h.Infer == nil:
-			return nil, fmt.Errorf("%w: hook %q has no Infer function", ErrInvalidInferenceHook, h.Name)
+			return nil, fmt.Errorf("%w: hook %q has no Infer function",
+				ErrInvalidInferenceHook,
+				h.Name)
 		}
 		names[h.Name], models[h.Model] = true, h.Name
 		out = append(out, h)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i,
+		j int) bool {
+		return out[i].Name < out[j].Name
+	})
 	return out, nil
 }
 
@@ -109,8 +136,12 @@ type InferRouter struct {
 
 // NewInferRouter makes the router of sc (nil: no sidecar, so only the models that have a hook can run) and hooks (validated with
 // ResolveInferenceHooks).
-func NewInferRouter(sc Inferer, hooks []TrainedModelInferenceHook) *InferRouter {
-	r := &InferRouter{sidecar: sc, byModel: make(map[string]TrainedModelInferenceHook, len(hooks))}
+func NewInferRouter(sc Inferer,
+	hooks []TrainedModelInferenceHook) *InferRouter {
+	r := &InferRouter{
+		sidecar: sc,
+		byModel: make(map[string]TrainedModelInferenceHook, len(hooks)),
+	}
 	for _, h := range hooks {
 		r.byModel[strings.TrimSpace(h.Model)] = h
 	}
@@ -130,7 +161,10 @@ func (r *InferRouter) HookFor(tm *trainingdb.TrainedModel) (TrainedModelInferenc
 // sidecar. It is nil when neither is available (no hook and no sidecar). hook is the name of the hook, "" for the sidecar.
 func (r *InferRouter) For(tm *trainingdb.TrainedModel) (inf Inferer, hook string) {
 	if h, ok := r.HookFor(tm); ok {
-		return hookInferer{hook: h, model: *tm}, h.Name
+		return hookInferer{
+			hook:  h,
+			model: *tm,
+		}, h.Name
 	}
 	if r == nil || r.sidecar == nil {
 		return nil, ""
@@ -145,21 +179,42 @@ type hookInferer struct {
 }
 
 // Infer calls the hook. A failure is an *sidecar.InferError, whose message is shown to the user as the reason.
-func (h hookInferer) Infer(ctx context.Context, req sidecar.InferRequest) (out sidecar.InferResponse, err error) {
+func (h hookInferer) Infer(ctx context.Context,
+	req sidecar.InferRequest) (out sidecar.InferResponse, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = &sidecar.InferError{Message: fmt.Sprintf("inference hook %q panicked: %v", h.hook.Name, r)}
+			err = &sidecar.InferError{
+				Message: fmt.Sprintf("inference hook %q panicked: %v",
+					h.hook.Name,
+					r),
+			}
 		}
 	}()
-	res, err := h.hook.Infer(ctx, InferTrainedModelRequest{Model: h.model, Prompt: req.Prompt, MaxTokens: req.MaxTokens, Temperature: req.Temperature})
+	res, err := h.hook.Infer(ctx, InferTrainedModelRequest{
+		Model:       h.model,
+		Prompt:      req.Prompt,
+		MaxTokens:   req.MaxTokens,
+		Temperature: req.Temperature,
+	})
 	if err != nil {
-		return out, &sidecar.InferError{Message: fmt.Sprintf("inference hook %q failed: %v", h.hook.Name, err)}
+		return out, &sidecar.InferError{
+			Message: fmt.Sprintf("inference hook %q failed: %v",
+				h.hook.Name,
+				err),
+		}
 	}
 	if res.InputTokens < 0 || res.OutputTokens < 0 {
-		return out, &sidecar.InferError{Message: fmt.Sprintf("inference hook %q reported negative token counts", h.hook.Name)}
+		return out, &sidecar.InferError{
+			Message: fmt.Sprintf("inference hook %q reported negative token counts", h.hook.Name),
+		}
 	}
-	return sidecar.InferResponse{Response: res.Response, ModelSize: h.model.ModelSize, ModelPath: h.model.Path,
-		InputTokens: res.InputTokens, OutputTokens: res.OutputTokens}, nil
+	return sidecar.InferResponse{
+		Response:     res.Response,
+		ModelSize:    h.model.ModelSize,
+		ModelPath:    h.model.Path,
+		InputTokens:  res.InputTokens,
+		OutputTokens: res.OutputTokens,
+	}, nil
 }
 
 // Hooks are the hooks the embedding program registered for the training API (already validated: see ResolveDeployers and

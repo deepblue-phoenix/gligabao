@@ -14,15 +14,30 @@ import (
 )
 
 // connect serves the MCP endpoint (with the given stub handlers) and returns a client session on it.
-func connect(t *testing.T, rememberH, queryH http.HandlerFunc) *sdk.ClientSession {
+func connect(t *testing.T,
+	rememberH,
+	queryH http.HandlerFunc) *sdk.ClientSession {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(http.ResponseWriter, *http.Request) {}) // a host's catch-all must not conflict with the MCP routes
-	Register(mux, rememberH, queryH, "1.2.3")
+	mux.HandleFunc("GET /", func(http.ResponseWriter,
+		*http.Request) {
+	}) // a host's catch-all must not conflict with the MCP routes
+	Register(mux,
+		rememberH,
+		queryH,
+		"1.2.3")
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	client := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, nil)
-	cs, err := client.Connect(t.Context(), &sdk.StreamableClientTransport{Endpoint: srv.URL + Path, DisableStandaloneSSE: true}, nil)
+	client := sdk.NewClient(&sdk.Implementation{
+		Name:    "test",
+		Version: "0",
+	}, nil)
+	cs, err := client.Connect(t.Context(),
+		&sdk.StreamableClientTransport{
+			Endpoint:             srv.URL + Path,
+			DisableStandaloneSSE: true,
+		},
+		nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +45,8 @@ func connect(t *testing.T, rememberH, queryH http.HandlerFunc) *sdk.ClientSessio
 	return cs
 }
 
-func text(t *testing.T, res *sdk.CallToolResult) string {
+func text(t *testing.T,
+	res *sdk.CallToolResult) string {
 	t.Helper()
 	if len(res.Content) != 1 {
 		t.Fatalf("content: %+v", res.Content)
@@ -43,7 +59,9 @@ func text(t *testing.T, res *sdk.CallToolResult) string {
 }
 
 func TestListTools(t *testing.T) {
-	cs := connect(t, nil, nil)
+	cs := connect(t,
+		nil,
+		nil)
 	if got := cs.InitializeResult().ServerInfo; got.Name != "gligabao" || got.Version != "1.2.3" {
 		t.Fatalf("server info: %+v", got)
 	}
@@ -63,15 +81,23 @@ func TestListTools(t *testing.T) {
 func TestRememberForwardsToTheHandler(t *testing.T) {
 	var gotPath, gotMethod string
 	var got map[string]any
-	cs := connect(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath, gotMethod = r.URL.Path, r.Method
-		b, _ := io.ReadAll(r.Body)
-		json.Unmarshal(b, &got)
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"artifact_id": 7, "kind": "knowledge"})
-	}, nil)
-	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolRemember, Arguments: map[string]any{
-		"user_id": "u1", "text": "Alice works at Acme.", "kind": "episode", "session_id": "s1",
-	}})
+	cs := connect(t,
+		func(w http.ResponseWriter,
+			r *http.Request) {
+			gotPath, gotMethod = r.URL.Path, r.Method
+			b, _ := io.ReadAll(r.Body)
+			json.Unmarshal(b, &got)
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				map[string]any{"artifact_id": 7, "kind": "knowledge"})
+		},
+		nil)
+	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name: ToolRemember,
+		Arguments: map[string]any{
+			"user_id": "u1", "text": "Alice works at Acme.", "kind": "episode", "session_id": "s1",
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +105,10 @@ func TestRememberForwardsToTheHandler(t *testing.T) {
 		t.Fatalf("tool error: %s", text(t, res))
 	}
 	if gotMethod != "POST" || got["user_id"] != "u1" || got["text"] != "Alice works at Acme." || got["kind"] != "episode" || got["session_id"] != "s1" {
-		t.Fatalf("handler got %s %s %v", gotMethod, gotPath, got)
+		t.Fatalf("handler got %s %s %v",
+			gotMethod,
+			gotPath,
+			got)
 	}
 	if _, ok := got["dataset"]; ok {
 		t.Fatalf("unset optional field was sent: %v", got)
@@ -95,16 +124,26 @@ func TestRememberForwardsToTheHandler(t *testing.T) {
 
 func TestQueryForwardsToTheHandler(t *testing.T) {
 	var got map[string]any
-	cs := connect(t, nil, func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		json.Unmarshal(b, &got)
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"answer": "Acme"})
+	cs := connect(t,
+		nil,
+		func(w http.ResponseWriter,
+			r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			json.Unmarshal(b, &got)
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				map[string]any{"answer": "Acme"})
+		})
+	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name: ToolQuery,
+		Arguments: map[string]any{
+			"user_id": "u1", "query": "Where does Alice work?", "dataset": "work", "reasoning": "low",
+		},
 	})
-	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolQuery, Arguments: map[string]any{
-		"user_id": "u1", "query": "Where does Alice work?", "dataset": "work", "reasoning": "low",
-	}})
 	if err != nil || res.IsError {
-		t.Fatalf("%v %+v", err, res)
+		t.Fatalf("%v %+v",
+			err,
+			res)
 	}
 	if got["query"] != "Where does Alice work?" || got["dataset"] != "work" || got["reasoning"] != "low" {
 		t.Fatalf("handler got %v", got)
@@ -115,10 +154,18 @@ func TestQueryForwardsToTheHandler(t *testing.T) {
 }
 
 func TestHandlerErrorIsAToolError(t *testing.T) {
-	cs := connect(t, nil, func(w http.ResponseWriter, r *http.Request) {
-		httputil.Error(w, http.StatusNotFound, "dataset not found")
+	cs := connect(t,
+		nil,
+		func(w http.ResponseWriter,
+			r *http.Request) {
+			httputil.Error(w,
+				http.StatusNotFound,
+				"dataset not found")
+		})
+	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name:      ToolQuery,
+		Arguments: map[string]any{"user_id": "u1", "query": "q"},
 	})
-	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolQuery, Arguments: map[string]any{"user_id": "u1", "query": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,8 +176,16 @@ func TestHandlerErrorIsAToolError(t *testing.T) {
 
 func TestMissingRequiredArgumentIsRejected(t *testing.T) {
 	called := false
-	cs := connect(t, func(http.ResponseWriter, *http.Request) { called = true }, nil)
-	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolRemember, Arguments: map[string]any{"user_id": "u1"}})
+	cs := connect(t,
+		func(http.ResponseWriter,
+			*http.Request) {
+			called = true
+		},
+		nil)
+	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name:      ToolRemember,
+		Arguments: map[string]any{"user_id": "u1"},
+	})
 	if err == nil && (res == nil || !res.IsError) {
 		t.Fatalf("expected a rejection, got %+v", res)
 	}
@@ -143,26 +198,46 @@ func TestResearchToolsForwardToTheHandlers(t *testing.T) {
 	var startBody map[string]any
 	var startUser, listQuery, getQuery, getID string
 	mux := http.NewServeMux()
-	Register(mux, nil, nil, "1", WithResearch(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			b, _ := io.ReadAll(r.Body)
-			json.Unmarshal(b, &startBody)
-			startUser = r.Header.Get("gb-user-id")
-			httputil.WriteJSON(w, http.StatusAccepted, map[string]any{"id": 5, "status": "running"})
-		}),
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			listQuery = r.Method + " " + r.URL.Query().Encode() + " " + r.Header.Get("gb-user-id")
-			httputil.WriteJSON(w, http.StatusOK, map[string]any{"runs": []any{}})
-		}),
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			getQuery, getID = r.Method+" "+r.URL.Query().Encode()+" "+r.Header.Get("gb-user-id"), r.PathValue("id")
-			httputil.Error(w, http.StatusNotFound, "research not found")
-		}),
-	))
+	Register(mux,
+		nil,
+		nil,
+		"1",
+		WithResearch(
+			http.HandlerFunc(func(w http.ResponseWriter,
+				r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				json.Unmarshal(b, &startBody)
+				startUser = r.Header.Get("gb-user-id")
+				httputil.WriteJSON(w,
+					http.StatusAccepted,
+					map[string]any{"id": 5, "status": "running"})
+			}),
+			http.HandlerFunc(func(w http.ResponseWriter,
+				r *http.Request) {
+				listQuery = r.Method + " " + r.URL.Query().Encode() + " " + r.Header.Get("gb-user-id")
+				httputil.WriteJSON(w,
+					http.StatusOK,
+					map[string]any{"runs": []any{}})
+			}),
+			http.HandlerFunc(func(w http.ResponseWriter,
+				r *http.Request) {
+				getQuery, getID = r.Method+" "+r.URL.Query().Encode()+" "+r.Header.Get("gb-user-id"), r.PathValue("id")
+				httputil.Error(w,
+					http.StatusNotFound,
+					"research not found")
+			}),
+		))
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	cs, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, nil).Connect(t.Context(),
-		&sdk.StreamableClientTransport{Endpoint: srv.URL + Path, DisableStandaloneSSE: true}, nil)
+	cs, err := sdk.NewClient(&sdk.Implementation{
+		Name:    "test",
+		Version: "0",
+	}, nil).Connect(t.Context(),
+		&sdk.StreamableClientTransport{
+			Endpoint:             srv.URL + Path,
+			DisableStandaloneSSE: true,
+		},
+		nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,9 +255,14 @@ func TestResearchToolsForwardToTheHandlers(t *testing.T) {
 		t.Fatalf("tools: %v", names)
 	}
 
-	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchStart, Arguments: map[string]any{"user_id": "u1", "topic": "t", "max_steps": 7}})
+	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name:      ToolResearchStart,
+		Arguments: map[string]any{"user_id": "u1", "topic": "t", "max_steps": 7},
+	})
 	if err != nil || res.IsError {
-		t.Fatalf("start: %v %+v", err, res)
+		t.Fatalf("start: %v %+v",
+			err,
+			res)
 	}
 	if startUser != "u1" || startBody["topic"] != "t" || startBody["max_steps"] != 7.0 {
 		t.Fatalf("start body: %v", startBody)
@@ -194,23 +274,37 @@ func TestResearchToolsForwardToTheHandlers(t *testing.T) {
 		t.Fatalf("structured: %#v", res.StructuredContent)
 	}
 
-	if res, err = cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchList, Arguments: map[string]any{"user_id": "u1", "active": true, "limit": 3}}); err != nil || res.IsError {
-		t.Fatalf("list: %v %+v", err, res)
+	if res, err = cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name:      ToolResearchList,
+		Arguments: map[string]any{"user_id": "u1", "active": true, "limit": 3},
+	}); err != nil || res.IsError {
+		t.Fatalf("list: %v %+v",
+			err,
+			res)
 	}
 	if listQuery != "GET active=true&limit=3 u1" {
 		t.Fatalf("list query: %q", listQuery)
 	}
 	// An explicit active=false is sent, and nothing else is.
-	cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchList, Arguments: map[string]any{"user_id": "u1", "active": false}})
+	cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name:      ToolResearchList,
+		Arguments: map[string]any{"user_id": "u1", "active": false},
+	})
 	if listQuery != "GET active=false u1" {
 		t.Fatalf("list query: %q", listQuery)
 	}
 
-	res, err = cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchGet, Arguments: map[string]any{"user_id": "u1", "id": 5}})
+	res, err = cs.CallTool(t.Context(), &sdk.CallToolParams{
+		Name:      ToolResearchGet,
+		Arguments: map[string]any{"user_id": "u1", "id": 5},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if getQuery != "GET  u1" || getID != "5" || !res.IsError || !strings.Contains(text(t, res), "research not found") {
-		t.Fatalf("get: %q id %q result %+v", getQuery, getID, res)
+		t.Fatalf("get: %q id %q result %+v",
+			getQuery,
+			getID,
+			res)
 	}
 }

@@ -79,8 +79,24 @@ const (
 //
 // With adopt not 0 the row with that ID (made by the remember manager when the request was queued, see manager.go) is
 // used instead of creating one: it is overwritten with the run that starts now.
-func startRunLog(ctx context.Context, d *sql.DB, adopt int64, userID, dataset, kind string, params map[string]any) *runLog {
-	r := &runLog{runState: &runState{d: d, ctx: context.WithoutCancel(ctx), run: relational.NewRememberRun(userID, dataset, kind, params, relational.Now())}}
+func startRunLog(ctx context.Context,
+	d *sql.DB,
+	adopt int64,
+	userID,
+	dataset,
+	kind string,
+	params map[string]any) *runLog {
+	r := &runLog{
+		runState: &runState{
+			d:   d,
+			ctx: context.WithoutCancel(ctx),
+			run: relational.NewRememberRun(userID,
+				dataset,
+				kind,
+				params,
+				relational.Now()),
+		},
+	}
 	if adopt != 0 {
 		r.run.ID = adopt
 		r.mu.Lock()
@@ -88,7 +104,9 @@ func startRunLog(ctx context.Context, d *sql.DB, adopt int64, userID, dataset, k
 		r.mu.Unlock()
 		return r
 	}
-	id, err := relational.CreateRememberRun(r.ctx, d, r.run)
+	id, err := relational.CreateRememberRun(r.ctx,
+		d,
+		r.run)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{"user_id": userID, "dataset": dataset}).Error("remember run log: create")
 		return r
@@ -112,7 +130,9 @@ func (r *runLog) save() {
 	if r.run.ID == 0 {
 		return
 	}
-	if err := relational.SaveRememberRun(r.ctx, r.d, r.run); err != nil {
+	if err := relational.SaveRememberRun(r.ctx,
+		r.d,
+		r.run); err != nil {
 		log.WithError(err).WithField("remember_run_id", r.run.ID).Error("remember run log: save")
 	}
 }
@@ -171,7 +191,8 @@ func (r *runLog) Skip(stages ...string) {
 
 // Done marks the stages as ended now: failed with err's message if err is not nil, else succeeded. A stage that failed stays
 // failed. Call it after the stage, with the error it returned (nil if it had none).
-func (r *runLog) Done(err error, stages ...string) {
+func (r *runLog) Done(err error,
+	stages ...string) {
 	if r == nil || r.into != "" {
 		return
 	}
@@ -180,7 +201,9 @@ func (r *runLog) Done(err error, stages ...string) {
 	defer r.mu.Unlock()
 	for _, name := range stages {
 		if st := r.stage(name); st != nil {
-			end(st, err, now)
+			end(st,
+				err,
+				now)
 			r.run.Stages[name] = *st
 		}
 	}
@@ -190,7 +213,9 @@ func (r *runLog) Done(err error, stages ...string) {
 //------------------
 
 // end finishes st at now (see Done).
-func end(st *relational.RememberStage, err error, now time.Time) {
+func end(st *relational.RememberStage,
+	err error,
+	now time.Time) {
 	switch {
 	case st.Status == relational.RememberFailed:
 	case err != nil:
@@ -225,7 +250,9 @@ func (r *runLog) Finish(err error) {
 	defer r.mu.Unlock()
 	for name, st := range r.run.Stages {
 		if st.Status == relational.RememberStarted {
-			end(&st, err, now)
+			end(&st,
+				err,
+				now)
 			r.run.Stages[name] = st
 		}
 	}
@@ -245,7 +272,8 @@ func (r *runLog) Finish(err error) {
 // AddInference adds the inference with that ID (gb_inferences) to the stage that made it. Call it wherever a model is run
 // (an LLM call, an embedding request, a web search), with the ID that recording it returned; 0 (a run that could not be
 // recorded) is ignored. The stage must be one that runs a model (relational.RememberStages).
-func (r *runLog) AddInference(stage string, id int64) {
+func (r *runLog) AddInference(stage string,
+	id int64) {
 	if r == nil || id == 0 {
 		return
 	}
@@ -280,7 +308,10 @@ const maxStageOutputBytes = 64 << 10
 // The stage is the one the output belongs to; in a view made by Within every output is filed in the view's stage, whatever
 // stage it names, and the name keeps what the step was. An output of more than maxStageOutputBytes is replaced by
 // {"truncated": true, "bytes": n, "preview": the start of it}. Like everything here it never fails Remember.
-func (r *runLog) Output(stage, name, label string, v any) {
+func (r *runLog) Output(stage,
+	name,
+	label string,
+	v any) {
 	if r == nil {
 		return
 	}
@@ -303,8 +334,16 @@ func (r *runLog) Output(stage, name, label string, v any) {
 	if len(b) > maxStageOutputBytes {
 		b, _ = json.Marshal(map[string]any{"truncated": true, "bytes": len(b), "preview": strings.ToValidUTF8(string(b[:4096]), "")})
 	}
-	o := relational.RememberStageOutput{RunID: id, Stage: stage, Name: name, Label: label, Output: b}
-	if _, err := relational.AddRememberStageOutput(r.ctx, r.d, o); err != nil {
+	o := relational.RememberStageOutput{
+		RunID:  id,
+		Stage:  stage,
+		Name:   name,
+		Label:  label,
+		Output: b,
+	}
+	if _, err := relational.AddRememberStageOutput(r.ctx,
+		r.d,
+		o); err != nil {
 		log.WithError(err).WithFields(log.Fields{"remember_run_id": id, "stage": stage, "name": name}).Error("remember run log: add output")
 	}
 }
@@ -315,7 +354,10 @@ func (r *runLog) Within(stage string) *runLog {
 	if r == nil {
 		return nil
 	}
-	return &runLog{runState: r.runState, into: stage}
+	return &runLog{
+		runState: r.runState,
+		into:     stage,
+	}
 }
 
 //---------------------------------------------------------------------------------------------

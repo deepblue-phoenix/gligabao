@@ -56,12 +56,16 @@ var (
 // NewChromem opens (creating if needed) the vector store persisted in the directory dir.
 // dimensions is the embedding size; it is fixed once the store is created.
 // Use ":memory:" for a throwaway in-memory store.
-func NewChromem(dir string, dimensions int) (*Chromem, error) {
+func NewChromem(dir string,
+	dimensions int) (*Chromem, error) {
 	if dimensions < 1 {
 		return nil, fmt.Errorf("vector: invalid dimensions %d", dimensions)
 	}
 	if dir == chromemMemory {
-		return &Chromem{db: chromem.NewDB(), dims: dimensions}, nil
+		return &Chromem{
+			db:   chromem.NewDB(),
+			dims: dimensions,
+		}, nil
 	}
 	if dir == "" {
 		return nil, errors.New("vector: empty directory")
@@ -76,22 +80,31 @@ func NewChromem(dir string, dimensions int) (*Chromem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("vector: open chromem: %w", err)
 	}
-	return &Chromem{db: db, dims: dimensions, dir: dir}, nil
+	return &Chromem{
+		db:   db,
+		dims: dimensions,
+		dir:  dir,
+	}, nil
 }
 
 // checkDimensions verifies the size recorded in path, or records it if there is none yet.
-func checkDimensions(path string, dims int) error {
+func checkDimensions(path string,
+	dims int) error {
 	b, err := os.ReadFile(path)
 	switch {
 	case err == nil:
 		if stored := strings.TrimSpace(string(b)); stored != strconv.Itoa(dims) {
-			return fmt.Errorf("vector: store has %s-dimensional vectors, configured embedding_dimensions is %d", stored, dims)
+			return fmt.Errorf("vector: store has %s-dimensional vectors, configured embedding_dimensions is %d",
+				stored,
+				dims)
 		}
 		return nil
 	case !errors.Is(err, os.ErrNotExist):
 		return fmt.Errorf("vector: init: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(strconv.Itoa(dims)+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path,
+		[]byte(strconv.Itoa(dims)+"\n"),
+		0o644); err != nil {
 		return fmt.Errorf("vector: init: %w", err)
 	}
 	return nil
@@ -109,44 +122,61 @@ func collectionName(dataset string) string {
 
 // collection returns the dataset's collection, creating it if create is set (nil otherwise if missing).
 // Embeddings are always supplied by the caller, so the collection's embedding function is a stub.
-func (s *Chromem) collection(dataset string, create bool) (*chromem.Collection, error) {
+func (s *Chromem) collection(dataset string,
+	create bool) (*chromem.Collection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	name := collectionName(dataset)
 	if c := s.db.GetCollection(name, noEmbed); c != nil || !create {
 		return c, nil
 	}
-	c, err := s.db.CreateCollection(name, nil, noEmbed)
+	c, err := s.db.CreateCollection(name,
+		nil,
+		noEmbed)
 	if err != nil {
-		return nil, fmt.Errorf("vector: create dataset %q: %w", dataset, err)
+		return nil, fmt.Errorf("vector: create dataset %q: %w",
+			dataset,
+			err)
 	}
 	return c, nil
 }
 
-func noEmbed(context.Context, string) ([]float32, error) {
+func noEmbed(context.Context,
+	string) ([]float32, error) {
 	return nil, errors.New("vector: text embedding is not supported; supply embeddings")
 }
 
 //---------------------------------------------------------------------------------------------
 
 // Upsert inserts or overwrites vectors by ID. All vectors are validated before any is written.
-func (s *Chromem) Upsert(ctx context.Context, dataset string, vectors []Vector) error {
+func (s *Chromem) Upsert(ctx context.Context,
+	dataset string,
+	vectors []Vector) error {
 	docs := make([]chromem.Document, len(vectors))
 	for i, v := range vectors {
 		if v.ID == "" {
 			return fmt.Errorf("vector: vector %d has no ID", i)
 		}
 		if len(v.Values) != s.dims {
-			return fmt.Errorf("vector: vector %q has %d dimensions, want %d", v.ID, len(v.Values), s.dims)
+			return fmt.Errorf("vector: vector %q has %d dimensions, want %d",
+				v.ID,
+				len(v.Values),
+				s.dims)
 		}
 		if isZero(v.Values) {
 			return fmt.Errorf("vector: vector %q is all zeros", v.ID)
 		}
 		meta, err := encodeMetadata(v.Metadata)
 		if err != nil {
-			return fmt.Errorf("vector: metadata of %q: %w", v.ID, err)
+			return fmt.Errorf("vector: metadata of %q: %w",
+				v.ID,
+				err)
 		}
-		docs[i] = chromem.Document{ID: v.ID, Embedding: v.Values, Metadata: meta}
+		docs[i] = chromem.Document{
+			ID:        v.ID,
+			Embedding: v.Values,
+			Metadata:  meta,
+		}
 	}
 	if len(docs) == 0 {
 		return nil
@@ -157,7 +187,9 @@ func (s *Chromem) Upsert(ctx context.Context, dataset string, vectors []Vector) 
 	}
 	for _, d := range docs {
 		if err := c.AddDocument(ctx, d); err != nil {
-			return fmt.Errorf("vector: upsert %q: %w", d.ID, err)
+			return fmt.Errorf("vector: upsert %q: %w",
+				d.ID,
+				err)
 		}
 	}
 	return nil
@@ -168,9 +200,14 @@ func (s *Chromem) Upsert(ctx context.Context, dataset string, vectors []Vector) 
 // opts.Filter supports equality only: {"key": value} or {"key": {"$eq": value}}, all of which
 // must match (values are compared by their printed form). It is applied before the search, so
 // up to TopK matches are returned whenever that many vectors match.
-func (s *Chromem) Query(ctx context.Context, dataset string, vector []float32, opts QueryOptions) ([]Match, error) {
+func (s *Chromem) Query(ctx context.Context,
+	dataset string,
+	vector []float32,
+	opts QueryOptions) ([]Match, error) {
 	if len(vector) != s.dims {
-		return nil, fmt.Errorf("vector: query vector has %d dimensions, want %d", len(vector), s.dims)
+		return nil, fmt.Errorf("vector: query vector has %d dimensions, want %d",
+			len(vector),
+			s.dims)
 	}
 	if isZero(vector) {
 		return nil, errors.New("vector: query vector is all zeros")
@@ -195,17 +232,29 @@ func (s *Chromem) Query(ctx context.Context, dataset string, vector []float32, o
 	if n == 0 {
 		return nil, nil
 	}
-	res, err := c.QueryEmbedding(ctx, vector, min(topK, n), filter, nil)
+	res, err := c.QueryEmbedding(ctx,
+		vector,
+		min(topK, n),
+		filter,
+		nil)
 	if err != nil {
 		return nil, fmt.Errorf("vector: query: %w", err)
 	}
-	out := make([]Match, 0, len(res))
+	out := make([]Match,
+		0,
+		len(res))
 	for _, r := range res {
 		meta, err := decodeMetadata(r.Metadata)
 		if err != nil {
-			return nil, fmt.Errorf("vector: decode metadata of %q: %w", r.ID, err)
+			return nil, fmt.Errorf("vector: decode metadata of %q: %w",
+				r.ID,
+				err)
 		}
-		m := Match{ID: r.ID, Score: r.Similarity, Metadata: meta}
+		m := Match{
+			ID:       r.ID,
+			Score:    r.Similarity,
+			Metadata: meta,
+		}
 		if opts.IncludeValues {
 			m.Values = r.Embedding
 		}
@@ -215,7 +264,9 @@ func (s *Chromem) Query(ctx context.Context, dataset string, vector []float32, o
 }
 
 // Delete removes vectors by ID. Unknown IDs are ignored.
-func (s *Chromem) Delete(ctx context.Context, dataset string, ids []string) error {
+func (s *Chromem) Delete(ctx context.Context,
+	dataset string,
+	ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -223,14 +274,18 @@ func (s *Chromem) Delete(ctx context.Context, dataset string, ids []string) erro
 	if err != nil || c == nil {
 		return err
 	}
-	if err := c.Delete(ctx, nil, nil, ids...); err != nil {
+	if err := c.Delete(ctx,
+		nil,
+		nil,
+		ids...); err != nil {
 		return fmt.Errorf("vector: delete: %w", err)
 	}
 	return nil
 }
 
 // DeleteAll removes every vector in the dataset by deleting its collection.
-func (s *Chromem) DeleteAll(_ context.Context, dataset string) error {
+func (s *Chromem) DeleteAll(_ context.Context,
+	dataset string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.db.DeleteCollection(collectionName(dataset)); err != nil {
@@ -240,8 +295,12 @@ func (s *Chromem) DeleteAll(_ context.Context, dataset string) error {
 }
 
 // Stats returns the number of vectors in the dataset's collection.
-func (s *Chromem) Stats(_ context.Context, dataset string) (Stats, error) {
-	st := Stats{Backend: "chromem", Dimensions: s.dims}
+func (s *Chromem) Stats(_ context.Context,
+	dataset string) (Stats, error) {
+	st := Stats{
+		Backend:    "chromem",
+		Dimensions: s.dims,
+	}
 	c, err := s.collection(dataset, false)
 	if err != nil {
 		return st, err
@@ -274,7 +333,9 @@ func (s *Chromem) Datasets(context.Context) ([]string, error) {
 
 // Export calls fn for every vector of the dataset in ID order. Chromem has no way to list its documents, so they are read with a
 // search for all of them (a scan of the whole collection, which a search is anyway); the embeddings are the stored, normalized ones.
-func (s *Chromem) Export(ctx context.Context, dataset string, fn func(Vector) error) error {
+func (s *Chromem) Export(ctx context.Context,
+	dataset string,
+	fn func(Vector) error) error {
 	c, err := s.collection(dataset, false)
 	if err != nil || c == nil {
 		return err
@@ -285,17 +346,30 @@ func (s *Chromem) Export(ctx context.Context, dataset string, fn func(Vector) er
 	}
 	probe := make([]float32, s.dims)
 	probe[0] = 1
-	res, err := c.QueryEmbedding(ctx, probe, n, nil, nil)
+	res, err := c.QueryEmbedding(ctx,
+		probe,
+		n,
+		nil,
+		nil)
 	if err != nil {
 		return fmt.Errorf("vector: export: %w", err)
 	}
-	sort.Slice(res, func(i, j int) bool { return res[i].ID < res[j].ID })
+	sort.Slice(res, func(i,
+		j int) bool {
+		return res[i].ID < res[j].ID
+	})
 	for _, r := range res {
 		meta, err := decodeMetadata(r.Metadata)
 		if err != nil {
-			return fmt.Errorf("vector: decode metadata of %q: %w", r.ID, err)
+			return fmt.Errorf("vector: decode metadata of %q: %w",
+				r.ID,
+				err)
 		}
-		if err := fn(Vector{ID: r.ID, Values: r.Embedding, Metadata: meta}); err != nil {
+		if err := fn(Vector{
+			ID:       r.ID,
+			Values:   r.Embedding,
+			Metadata: meta,
+		}); err != nil {
 			return err
 		}
 	}

@@ -100,10 +100,15 @@ func lowerAll(list []string) []string {
 // check collects the problems of a definition on its own (see Registry for those between definitions); each is "key: what is wrong".
 func check(d *Def) []string {
 	var errs []string
-	bad := func(format string, args ...any) { errs = append(errs, fmt.Sprintf(format, args...)) }
+	bad := func(format string,
+		args ...any) {
+		errs = append(errs, fmt.Sprintf(format, args...))
+	}
 
 	if d.Schema != SchemaVersion {
-		bad("schema: %d is not supported (this version reads schema %d)", d.Schema, SchemaVersion)
+		bad("schema: %d is not supported (this version reads schema %d)",
+			d.Schema,
+			SchemaVersion)
 	}
 	switch {
 	case d.Name == "":
@@ -130,10 +135,14 @@ func check(d *Def) []string {
 		bad("model: %q is not a valid model name", d.Model)
 	}
 	if d.MaxSteps < 1 || d.MaxSteps > MaxStepsCeiling {
-		bad("max_steps: %d must be between 1 and %d", d.MaxSteps, MaxStepsCeiling)
+		bad("max_steps: %d must be between 1 and %d",
+			d.MaxSteps,
+			MaxStepsCeiling)
 	}
 	if d.MaxTokens < 1 || d.MaxTokens > maxTokensCeiling {
-		bad("max_tokens: %d must be between 1 and %d", d.MaxTokens, maxTokensCeiling)
+		bad("max_tokens: %d must be between 1 and %d",
+			d.MaxTokens,
+			maxTokensCeiling)
 	}
 	for _, p := range d.checkLoop() {
 		bad("%s", p)
@@ -145,7 +154,9 @@ func check(d *Def) []string {
 		case t == "query" || t == "remember":
 			bad("tools: %q is not listed here: the knowledge base tools come from [knowledge] access", t)
 		case !contains(KnownTools, t):
-			bad("tools: unknown tool %q (known: %s)", t, strings.Join(KnownTools, ", "))
+			bad("tools: unknown tool %q (known: %s)",
+				t,
+				strings.Join(KnownTools, ", "))
 		case seen[t]:
 			bad("tools: %q is listed twice", t)
 		}
@@ -156,7 +167,9 @@ func check(d *Def) []string {
 
 	for key, v := range map[string]float64{"limits.max_cost_usd": d.Limits.MaxCostUSD, "limits.max_tree_cost_usd": d.Limits.MaxTreeCostUSD} {
 		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
-			bad("%s: %v must be 0 (no cap) or a positive number of USD", key, v)
+			bad("%s: %v must be 0 (no cap) or a positive number of USD",
+				key,
+				v)
 		}
 	}
 	errs = append(errs, checkSchedule(d)...)
@@ -165,16 +178,24 @@ func check(d *Def) []string {
 
 func checkSearch(d *Def) []string {
 	var errs []string
-	bad := func(format string, args ...any) { errs = append(errs, fmt.Sprintf(format, args...)) }
+	bad := func(format string,
+		args ...any) {
+		errs = append(errs, fmt.Sprintf(format, args...))
+	}
 	s := d.Search
-	domains := func(key string, list []string) {
+	domains := func(key string,
+		list []string) {
 		seen := map[string]bool{}
 		for _, h := range list {
 			switch {
 			case !domainRe.MatchString(h):
-				bad("%s: %q is not a host name like example.com (no scheme, no path)", key, h)
+				bad("%s: %q is not a host name like example.com (no scheme, no path)",
+					key,
+					h)
 			case seen[h]:
-				bad("%s: %q is listed twice", key, h)
+				bad("%s: %q is listed twice",
+					key,
+					h)
 			}
 			seen[h] = true
 		}
@@ -212,13 +233,18 @@ func checkSearch(d *Def) []string {
 		}
 	}
 	if s.MaxUsesPerCall < 1 || s.MaxUsesPerCall > maxSearchUses {
-		bad("search.max_uses_per_call: %d must be between 1 and %d", s.MaxUsesPerCall, maxSearchUses)
+		bad("search.max_uses_per_call: %d must be between 1 and %d",
+			s.MaxUsesPerCall,
+			maxSearchUses)
 	}
 	if s.MaxCalls < 0 {
 		bad("search.max_calls: %d must not be negative", s.MaxCalls)
 	}
 	if s.Fetch.MaxPageChars < minPageChars || s.Fetch.MaxPageChars > maxPageChars {
-		bad("search.fetch.max_page_chars: %d must be between %d and %d", s.Fetch.MaxPageChars, minPageChars, maxPageChars)
+		bad("search.fetch.max_page_chars: %d must be between %d and %d",
+			s.Fetch.MaxPageChars,
+			minPageChars,
+			maxPageChars)
 	}
 	if s.Fetch.MaxCalls < 0 {
 		bad("search.fetch.max_calls: %d must not be negative", s.Fetch.MaxCalls)
@@ -234,7 +260,10 @@ func checkSearch(d *Def) []string {
 
 func checkKnowledge(d *Def) []string {
 	var errs []string
-	bad := func(format string, args ...any) { errs = append(errs, fmt.Sprintf(format, args...)) }
+	bad := func(format string,
+		args ...any) {
+		errs = append(errs, fmt.Sprintf(format, args...))
+	}
 	k := d.Knowledge
 	switch k.Access {
 	case AccessReadWrite, AccessReadOnly, AccessNone:
@@ -262,7 +291,10 @@ func checkSchedule(d *Def) []string {
 		return nil
 	}
 	var errs []string
-	bad := func(format string, args ...any) { errs = append(errs, fmt.Sprintf(format, args...)) }
+	bad := func(format string,
+		args ...any) {
+		errs = append(errs, fmt.Sprintf(format, args...))
+	}
 	loc, locErr := time.LoadLocation(sc.Timezone)
 	if locErr != nil {
 		bad("schedule.timezone: %q is not an IANA time zone like Europe/Berlin", sc.Timezone)
@@ -272,11 +304,21 @@ func checkSchedule(d *Def) []string {
 	} else if c, err := ParseCron(sc.Cron); err != nil {
 		bad("schedule.cron: %v", err)
 	} else if locErr == nil {
-		from := time.Date(2030, 1, 1, 0, 0, 0, 0, loc)
+		from := time.Date(2030,
+			1,
+			1,
+			0,
+			0,
+			0,
+			0,
+			loc)
 		if c.Next(from).IsZero() {
 			bad("schedule.cron: %q never matches a date", sc.Cron)
 		} else if gap := c.MinGap(from); gap > 0 && gap < MinScheduleInterval {
-			bad("schedule.cron: %q runs the agent every %v, at least %v is needed between two runs", sc.Cron, gap, MinScheduleInterval)
+			bad("schedule.cron: %q runs the agent every %v, at least %v is needed between two runs",
+				sc.Cron,
+				gap,
+				MinScheduleInterval)
 		}
 	}
 	switch {
@@ -295,7 +337,8 @@ func checkSchedule(d *Def) []string {
 	return errs
 }
 
-func contains(list []string, s string) bool {
+func contains(list []string,
+	s string) bool {
 	for _, x := range list {
 		if x == s {
 			return true
@@ -347,17 +390,42 @@ func (c Code) Check() []string {
 	if !c.Enabled {
 		out = append(out, "code: the table needs enabled = true (remove it to have no code tool)")
 	}
-	in := func(name string, value, lo, hi int) {
+	in := func(name string,
+		value,
+		lo,
+		hi int) {
 		if value != 0 && (value < lo || value > hi) {
-			out = append(out, fmt.Sprintf("code.%s: %d must be between %d and %d (or 0 for the default)", name, value, lo, hi))
+			out = append(out, fmt.Sprintf("code.%s: %d must be between %d and %d (or 0 for the default)",
+				name,
+				value,
+				lo,
+				hi))
 		}
 	}
-	in("timeout_s", c.TimeoutS, 1, 60)
-	in("max_memory_mb", c.MaxMemoryMB, 8, 1024)
-	in("max_recursion", c.MaxRecursion, 10, 5000)
-	in("max_output_chars", c.MaxOutputChars, 200, 20000)
-	in("max_host_calls", c.MaxHostCalls, 1, 1000)
-	in("max_result_chars", c.MaxResultChars, 100, 1000000)
+	in("timeout_s",
+		c.TimeoutS,
+		1,
+		60)
+	in("max_memory_mb",
+		c.MaxMemoryMB,
+		8,
+		1024)
+	in("max_recursion",
+		c.MaxRecursion,
+		10,
+		5000)
+	in("max_output_chars",
+		c.MaxOutputChars,
+		200,
+		20000)
+	in("max_host_calls",
+		c.MaxHostCalls,
+		1,
+		1000)
+	in("max_result_chars",
+		c.MaxResultChars,
+		100,
+		1000000)
 	if c.MaxCalls != nil && (*c.MaxCalls < 0 || *c.MaxCalls > 1000) {
 		out = append(out, fmt.Sprintf("code.max_calls: %d must be between 0 (no limit) and 1000", *c.MaxCalls))
 	}
@@ -370,29 +438,90 @@ func (c Code) Check() []string {
 // Check returns what is wrong with the knobs (each of them is 0, the default, or in its range).
 func (v Investigate) Check() []string {
 	var out []string
-	in := func(name string, value, lo, hi int) {
+	in := func(name string,
+		value,
+		lo,
+		hi int) {
 		if value != 0 && (value < lo || value > hi) {
-			out = append(out, fmt.Sprintf("investigate.%s: %d must be between %d and %d (or 0 for the default)", name, value, lo, hi))
+			out = append(out, fmt.Sprintf("investigate.%s: %d must be between %d and %d (or 0 for the default)",
+				name,
+				value,
+				lo,
+				hi))
 		}
 	}
-	in("max_depth", v.MaxDepth, 1, 6)
-	in("max_attempts", v.MaxAttempts, 1, 10)
-	in("max_questions", v.MaxQuestions, 2, 200)
-	in("max_iterations", v.MaxIterations, 2, 300)
-	in("max_total_tokens", v.MaxTotalTokens, 1000, 1<<30)
-	in("keep_turns", v.KeepTurns, 1, 5)
-	in("extraction_threshold", v.ExtractionThreshold, 200, 100000)
-	in("notes_max_tokens", v.NotesMaxTokens, 500, 50000)
-	in("min_sources", v.MinSources, 1, 100)
-	in("min_domains", v.MinDomains, 1, 100)
-	in("min_independent_sources", v.MinIndependentSources, 1, 10)
-	in("min_challenges", v.MinChallenges, 1, 10)
-	in("max_challenges_per_target", v.MaxChallengesPerTarget, 1, 10)
-	in("max_reopens", v.MaxReopens, 1, 5)
-	in("max_parallel", v.MaxParallel, 1, MaxParallelCeiling)
-	in("worker_max_steps", v.WorkerMaxSteps, 1, MaxStepsCeiling)
-	in("worker_context_tokens", v.WorkerContextTokens, 100, maxWorkerContextTokens)
-	in("max_workers", v.MaxWorkers, 1, MaxWorkersCeiling)
+	in("max_depth",
+		v.MaxDepth,
+		1,
+		6)
+	in("max_attempts",
+		v.MaxAttempts,
+		1,
+		10)
+	in("max_questions",
+		v.MaxQuestions,
+		2,
+		200)
+	in("max_iterations",
+		v.MaxIterations,
+		2,
+		300)
+	in("max_total_tokens",
+		v.MaxTotalTokens,
+		1000,
+		1<<30)
+	in("keep_turns",
+		v.KeepTurns,
+		1,
+		5)
+	in("extraction_threshold",
+		v.ExtractionThreshold,
+		200,
+		100000)
+	in("notes_max_tokens",
+		v.NotesMaxTokens,
+		500,
+		50000)
+	in("min_sources",
+		v.MinSources,
+		1,
+		100)
+	in("min_domains",
+		v.MinDomains,
+		1,
+		100)
+	in("min_independent_sources",
+		v.MinIndependentSources,
+		1,
+		10)
+	in("min_challenges",
+		v.MinChallenges,
+		1,
+		10)
+	in("max_challenges_per_target",
+		v.MaxChallengesPerTarget,
+		1,
+		10)
+	in("max_reopens",
+		v.MaxReopens,
+		1,
+		5)
+	in("max_parallel",
+		v.MaxParallel,
+		1,
+		MaxParallelCeiling)
+	in("worker_max_steps",
+		v.WorkerMaxSteps,
+		1,
+		MaxStepsCeiling)
+	in("worker_context_tokens",
+		v.WorkerContextTokens,
+		100,
+		maxWorkerContextTokens)
+	in("max_workers",
+		v.MaxWorkers,
+		1,
+		MaxWorkersCeiling)
 	if v.MinPriorityToDelegate < 0 || v.MinPriorityToDelegate > 1 || math.IsNaN(v.MinPriorityToDelegate) {
 		out = append(out, "investigate.min_priority_to_delegate: must be between 0 and 1 (0 for no minimum)")
 	}
@@ -407,27 +536,41 @@ func (v Investigate) Check() []string {
 
 // Merge returns v with the knobs that o sets (not 0) in place of its own: the run options over the definition.
 func (v Investigate) Merge(o Investigate) Investigate {
-	pick := func(a, b int) int {
+	pick := func(a,
+		b int) int {
 		if b != 0 {
 			return b
 		}
 		return a
 	}
-	pickF := func(a, b float64) float64 {
+	pickF := func(a,
+		b float64) float64 {
 		if b != 0 {
 			return b
 		}
 		return a
 	}
 	return Investigate{
-		MaxDepth: pick(v.MaxDepth, o.MaxDepth), MaxAttempts: pick(v.MaxAttempts, o.MaxAttempts), MaxQuestions: pick(v.MaxQuestions, o.MaxQuestions),
-		MaxIterations: pick(v.MaxIterations, o.MaxIterations), MaxTotalTokens: pick(v.MaxTotalTokens, o.MaxTotalTokens), KeepTurns: pick(v.KeepTurns, o.KeepTurns),
-		ExtractionThreshold: pick(v.ExtractionThreshold, o.ExtractionThreshold), NotesMaxTokens: pick(v.NotesMaxTokens, o.NotesMaxTokens),
-		MinSources: pick(v.MinSources, o.MinSources), MinDomains: pick(v.MinDomains, o.MinDomains),
-		MinIndependentSources: pick(v.MinIndependentSources, o.MinIndependentSources), MinChallenges: pick(v.MinChallenges, o.MinChallenges),
-		MaxChallengesPerTarget: pick(v.MaxChallengesPerTarget, o.MaxChallengesPerTarget), MaxReopens: pick(v.MaxReopens, o.MaxReopens),
-		MaxParallel: pick(v.MaxParallel, o.MaxParallel), WorkerMaxSteps: pick(v.WorkerMaxSteps, o.WorkerMaxSteps),
-		WorkerContextTokens: pick(v.WorkerContextTokens, o.WorkerContextTokens), MaxWorkers: pick(v.MaxWorkers, o.MaxWorkers),
-		MinPriorityToDelegate: pickF(v.MinPriorityToDelegate, o.MinPriorityToDelegate), SynthesisReserve: pickF(v.SynthesisReserve, o.SynthesisReserve), GatePriority: pickF(v.GatePriority, o.GatePriority),
+		MaxDepth:               pick(v.MaxDepth, o.MaxDepth),
+		MaxAttempts:            pick(v.MaxAttempts, o.MaxAttempts),
+		MaxQuestions:           pick(v.MaxQuestions, o.MaxQuestions),
+		MaxIterations:          pick(v.MaxIterations, o.MaxIterations),
+		MaxTotalTokens:         pick(v.MaxTotalTokens, o.MaxTotalTokens),
+		KeepTurns:              pick(v.KeepTurns, o.KeepTurns),
+		ExtractionThreshold:    pick(v.ExtractionThreshold, o.ExtractionThreshold),
+		NotesMaxTokens:         pick(v.NotesMaxTokens, o.NotesMaxTokens),
+		MinSources:             pick(v.MinSources, o.MinSources),
+		MinDomains:             pick(v.MinDomains, o.MinDomains),
+		MinIndependentSources:  pick(v.MinIndependentSources, o.MinIndependentSources),
+		MinChallenges:          pick(v.MinChallenges, o.MinChallenges),
+		MaxChallengesPerTarget: pick(v.MaxChallengesPerTarget, o.MaxChallengesPerTarget),
+		MaxReopens:             pick(v.MaxReopens, o.MaxReopens),
+		MaxParallel:            pick(v.MaxParallel, o.MaxParallel),
+		WorkerMaxSteps:         pick(v.WorkerMaxSteps, o.WorkerMaxSteps),
+		WorkerContextTokens:    pick(v.WorkerContextTokens, o.WorkerContextTokens),
+		MaxWorkers:             pick(v.MaxWorkers, o.MaxWorkers),
+		MinPriorityToDelegate:  pickF(v.MinPriorityToDelegate, o.MinPriorityToDelegate),
+		SynthesisReserve:       pickF(v.SynthesisReserve, o.SynthesisReserve),
+		GatePriority:           pickF(v.GatePriority, o.GatePriority),
 	}
 }

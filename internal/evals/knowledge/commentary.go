@@ -44,8 +44,13 @@ func (c *Commentary) Total() (count int, costUSD float64) { return c.count, c.co
 // Offer asks the person whether to run a commentary on f and, if so, runs it, prints it on out under the failure log and waits for the
 // person to confirm. It returns when that is done, or when ctx ends. Nothing it does (a refused prompt, a failed LLM call, input that
 // ends) fails the case; a failed LLM call is printed instead of the commentary.
-func (c *Commentary) Offer(ctx context.Context, out io.Writer, colors ansi.Palette, f commentary.Failure) {
-	yes, err := c.askYesNo(ctx, out, colors.Yellow("Run commentary on this failure?")+" [y/N] ")
+func (c *Commentary) Offer(ctx context.Context,
+	out io.Writer,
+	colors ansi.Palette,
+	f commentary.Failure) {
+	yes, err := c.askYesNo(ctx,
+		out,
+		colors.Yellow("Run commentary on this failure?")+" [y/N] ")
 	if err != nil || !yes {
 		return
 	}
@@ -53,8 +58,14 @@ func (c *Commentary) Offer(ctx context.Context, out io.Writer, colors ansi.Palet
 	if model == "" {
 		model = DefaultCommentaryModel
 	}
-	fmt.Fprintf(out, "  %s\n", colors.Dim(fmt.Sprintf("asking %s ...", model)))
-	text, resp, err := commentary.Run(ctx, c.LLM, model, c.MaxTokens, f)
+	fmt.Fprintf(out,
+		"  %s\n",
+		colors.Dim(fmt.Sprintf("asking %s ...", model)))
+	text, resp, err := commentary.Run(ctx,
+		c.LLM,
+		model,
+		c.MaxTokens,
+		f)
 	if err != nil {
 		fmt.Fprintln(out, colors.Red(fmt.Sprintf("  commentary failed: %v", err)))
 	} else {
@@ -64,9 +75,19 @@ func (c *Commentary) Offer(ctx context.Context, out io.Writer, colors ansi.Palet
 		if resp.CostUSD > 0 {
 			cost = fmt.Sprintf("cost $%.6f", resp.CostUSD)
 		}
-		fmt.Fprintf(out, "  %s\n%s\n  %s\n  %s\n", colors.Yellow(fmt.Sprintf("── commentary on %s (%s) ──", f.Case, resp.Model)),
-			indentBlock(strings.TrimSpace(text), "  "), colors.Yellow("──"),
-			colors.Dim(fmt.Sprintf("tokens: %d in, %d out; %s; commentary total this run: $%.6f (%d)", resp.InputTokens, resp.OutputTokens, cost, c.costUSD, c.count)))
+		fmt.Fprintf(out,
+			"  %s\n%s\n  %s\n  %s\n",
+			colors.Yellow(fmt.Sprintf("── commentary on %s (%s) ──",
+				f.Case,
+				resp.Model)),
+			indentBlock(strings.TrimSpace(text), "  "),
+			colors.Yellow("──"),
+			colors.Dim(fmt.Sprintf("tokens: %d in, %d out; %s; commentary total this run: $%.6f (%d)",
+				resp.InputTokens,
+				resp.OutputTokens,
+				cost,
+				c.costUSD,
+				c.count)))
 	}
 	if ctx.Err() != nil {
 		return
@@ -77,13 +98,18 @@ func (c *Commentary) Offer(ctx context.Context, out io.Writer, colors ansi.Palet
 }
 
 // indentBlock puts prefix before every line of s.
-func indentBlock(s, prefix string) string {
-	return prefix + strings.ReplaceAll(s, "\n", "\n"+prefix)
+func indentBlock(s,
+	prefix string) string {
+	return prefix + strings.ReplaceAll(s,
+		"\n",
+		"\n"+prefix)
 }
 
 // askYesNo prints prompt and reads an answer until it is a yes or a no; an empty answer is a no. It returns an error if the input ended
 // or ctx is done.
-func (c *Commentary) askYesNo(ctx context.Context, out io.Writer, prompt string) (bool, error) {
+func (c *Commentary) askYesNo(ctx context.Context,
+	out io.Writer,
+	prompt string) (bool, error) {
 	for {
 		fmt.Fprint(out, prompt)
 		line, err := c.readLine(ctx)

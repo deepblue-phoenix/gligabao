@@ -24,7 +24,11 @@ var _ flag.Value = (*DirsFlag)(nil)
 // ResolveDirs returns the directories the evals are read from: the ones given on the command line (flagDirs) if any; else the ones
 // the config file at configPath lists (pick selects the list of the config); else def. The config file is optional unless
 // configExplicit (-config was given): a missing default one is not an error.
-func ResolveDirs(flagDirs []string, configPath string, configExplicit bool, pick func(*config.Config) []string, def string) ([]string, error) {
+func ResolveDirs(flagDirs []string,
+	configPath string,
+	configExplicit bool,
+	pick func(*config.Config) []string,
+	def string) ([]string, error) {
 	if len(flagDirs) > 0 {
 		return flagDirs, nil
 	}

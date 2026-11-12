@@ -9,9 +9,12 @@ import (
 )
 
 func TestEmbedBatch(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.URL.Path != "/v1/embeddings" || r.Header.Get("authorization") != "Bearer k" {
-			t.Errorf("bad request: %s %v", r.URL.Path, r.Header)
+			t.Errorf("bad request: %s %v",
+				r.URL.Path,
+				r.Header)
 		}
 		var req embedRequest
 		json.NewDecoder(r.Body).Decode(&req)
@@ -26,12 +29,15 @@ func TestEmbedBatch(t *testing.T) {
 	e, _ := NewEmbedder("k", WithEmbedBaseURL(srv.URL))
 	got, err := e.EmbedBatch(context.Background(), []string{"a", "b"})
 	if err != nil || len(got) != 2 || got[0][0] != 1 || got[1][1] != 1 {
-		t.Fatalf("got %v, %v", got, err)
+		t.Fatalf("got %v, %v",
+			got,
+			err)
 	}
 }
 
 func TestEmbedError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		w.WriteHeader(401)
 		w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"bad key"}}`))
 	}))
@@ -53,7 +59,8 @@ func TestCosineSimilarity(t *testing.T) {
 }
 
 func TestEmbedUsageCost(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		w.Write([]byte(`{"data":[{"index":0,"embedding":[1]}],"usage":{"prompt_tokens":1000000,"total_tokens":1000000}}`))
 	}))
 	defer srv.Close()

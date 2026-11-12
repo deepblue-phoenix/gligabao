@@ -27,17 +27,20 @@ type fakeSidecar struct {
 	inferErr  error
 }
 
-func (f *fakeSidecar) Infer(_ context.Context, req sidecar.InferRequest) (sidecar.InferResponse, error) {
+func (f *fakeSidecar) Infer(_ context.Context,
+	req sidecar.InferRequest) (sidecar.InferResponse, error) {
 	f.infers = append(f.infers, req)
 	return f.inferResp, f.inferErr
 }
 
-func (f *fakeSidecar) CancelTrainingJob(_ context.Context, jobID string) error {
+func (f *fakeSidecar) CancelTrainingJob(_ context.Context,
+	jobID string) error {
 	f.cancelled = append(f.cancelled, jobID)
 	return f.cancelErr
 }
 
-func (f *fakeSidecar) StartTrainingJob(_ context.Context, req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error) {
+func (f *fakeSidecar) StartTrainingJob(_ context.Context,
+	req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error) {
 	f.reqs = append(f.reqs, req)
 	if f.err != nil {
 		return sidecar.TrainingJob{}, f.err
@@ -49,57 +52,97 @@ func (f *fakeSidecar) StartTrainingJob(_ context.Context, req sidecar.StartTrain
 	if steps == 0 {
 		steps = sidecar.DefaultNumTrainSteps
 	}
-	return sidecar.TrainingJob{JobID: "fc-" + size, ProviderJobID: "prov-" + size, Status: "started", ModelSize: size, NumTrainSteps: steps,
-		Dataset: req.Dataset, StartedAt: time.Now().Add(-time.Second)}, nil
+	return sidecar.TrainingJob{
+		JobID:         "fc-" + size,
+		ProviderJobID: "prov-" + size,
+		Status:        "started",
+		ModelSize:     size,
+		NumTrainSteps: steps,
+		Dataset:       req.Dataset,
+		StartedAt:     time.Now().Add(-time.Second),
+	}, nil
 }
 
 // TestStartTrainingJob checks the endpoint that starts a training job on the sidecar and records it.
 func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 
-func testStartTrainingJob(t *testing.T, d *sql.DB) {
+func testStartTrainingJob(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	dsDir := []string{t.TempDir()}
 	sc := &fakeSidecar{}
-	h := training.StartJobOf(d, dsDir, sc, nil)
-	if rec := upload(training.UploadDatasetOf(d, dsDir), "/x", "file", "mine.jsonl", goodDataset, nil); rec.Code != http.StatusCreated {
-		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+	h := training.StartJobOf(d,
+		dsDir,
+		sc,
+		nil)
+	if rec := upload(training.UploadDatasetOf(d, dsDir),
+		"/x",
+		"file",
+		"mine.jsonl",
+		goodDataset,
+		nil); rec.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %s",
+			rec.Code,
+			rec.Body)
 	}
-	post := func(h http.HandlerFunc, url, body string) *httptest.ResponseRecorder {
+	post := func(h http.HandlerFunc,
+		url,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		h(rec, httptest.NewRequest("POST", url, strings.NewReader(body)))
+		h(rec, httptest.NewRequest("POST",
+			url,
+			strings.NewReader(body)))
 		return rec
 	}
 
-	rec := post(h, "/x", `{"num_train_steps": 7, "model_size": "12B", "dataset": " mine "}`)
+	rec := post(h,
+		"/x",
+		`{"num_train_steps": 7, "model_size": "12B", "dataset": " mine "}`)
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("start: %d %s", rec.Code, rec.Body)
+		t.Fatalf("start: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	if len(sc.reqs) != 1 || sc.reqs[0].NumTrainSteps != 7 || sc.reqs[0].ModelSize != "12b" || sc.reqs[0].Dataset != "mine.jsonl" {
 		t.Fatalf("sidecar request: %+v", sc.reqs)
 	}
-	run, err := trainingdb.GetTrainingJobRun(ctx, d, 1)
+	run, err := trainingdb.GetTrainingJobRun(ctx,
+		d,
+		1)
 	if err != nil || run.JobID != "fc-12b" || run.ProviderJobID != "prov-12b" || run.Status != "started" || run.ModelSize != "12b" ||
 		run.NumTrainSteps != 7 || run.Dataset != "mine.jsonl" || run.FinishedAt != nil {
-		t.Fatalf("stored run: %+v, %v", run, err)
+		t.Fatalf("stored run: %+v, %v",
+			run,
+			err)
 	}
 	for _, want := range []string{`"id":1`, `"job_id":"fc-12b"`, `"num_train_steps":7`} {
 		if !strings.Contains(rec.Body.String(), want) {
-			t.Fatalf("response lacks %s: %s", want, rec.Body)
+			t.Fatalf("response lacks %s: %s",
+				want,
+				rec.Body)
 		}
 	}
 
 	// Only the dataset is required; the rest takes the sidecar's defaults. Every started job is a new record.
-	if rec := post(h, "/x", `{"dataset":"mine"}`); rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"id":2`) ||
+	if rec := post(h,
+		"/x",
+		`{"dataset":"mine"}`); rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"id":2`) ||
 		!strings.Contains(rec.Body.String(), `"model_size":"4b"`) {
-		t.Fatalf("defaults: %d %s", rec.Code, rec.Body)
+		t.Fatalf("defaults: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 
 	// Bad input never reaches the sidecar.
 	n := len(sc.reqs)
 	for _, body := range []string{`{`, ``, `{}`, `{"model_size":"99b","dataset":"mine"}`, `{"num_train_steps":-1,"dataset":"mine"}`,
 		`{"dataset":"../x"}`, `{"dataset":"a/b"}`, `{"dataset":"mine.jsonl"}`, `{"dataset":"unknown"}`} {
-		if rec := post(h, "/x", body); rec.Code != http.StatusBadRequest {
-			t.Fatalf("%s: %d", body, rec.Code)
+		if rec := post(h,
+			"/x",
+			body); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d",
+				body,
+				rec.Code)
 		}
 	}
 	if len(sc.reqs) != n {
@@ -108,13 +151,22 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 
 	// A sidecar failure records nothing; without a sidecar the endpoint is unavailable.
 	sc.err = errors.New("boom")
-	if rec := post(h, "/x", `{"dataset":"mine"}`); rec.Code != http.StatusBadGateway {
+	if rec := post(h,
+		"/x",
+		`{"dataset":"mine"}`); rec.Code != http.StatusBadGateway {
 		t.Fatalf("sidecar error: %d", rec.Code)
 	}
-	if _, err := trainingdb.GetTrainingJobRun(ctx, d, 3); !errors.Is(err, relational.ErrNotFound) {
+	if _, err := trainingdb.GetTrainingJobRun(ctx,
+		d,
+		3); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("a failed start was recorded: %v", err)
 	}
-	if rec := post(training.StartJobOf(d, dsDir, nil, nil), "/x", ""); rec.Code != http.StatusServiceUnavailable {
+	if rec := post(training.StartJobOf(d,
+		dsDir,
+		nil,
+		nil),
+		"/x",
+		""); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no sidecar: %d", rec.Code)
 	}
 }
@@ -123,32 +175,66 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	dir := t.TempDir()
-	addDataset(t, dir, "mine")
-	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"num_train_steps must be a positive integer"}`}}
+	addDataset(t,
+		dir,
+		"mine")
+	sc := &fakeSidecar{
+		err: &sidecar.StatusError{
+			Method: "POST",
+			Path:   "/training/job_start",
+			Code:   400,
+			Body:   `{"error":"num_train_steps must be a positive integer"}`,
+		},
+	}
 	rec := httptest.NewRecorder()
-	training.StartJobOf(d, []string{dir}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
+	training.StartJobOf(d,
+		[]string{dir},
+		sc,
+		nil)(rec, httptest.NewRequest("POST",
+		"/x",
+		strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
-		t.Fatalf("got %d %s", rec.Code, rec.Body)
+		t.Fatalf("got %d %s",
+			rec.Code,
+			rec.Body)
 	}
 }
 
 // TestStopTrainingJob checks the endpoint that asks the sidecar to stop a job.
 func TestStopTrainingJob(t *testing.T) { dbtest.Run(t, testStopTrainingJob) }
 
-func testStopTrainingJob(t *testing.T, d *sql.DB) {
+func testStopTrainingJob(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	sc := &fakeSidecar{}
 	for _, jobID := range []string{"j1", "j2"} {
-		if _, err := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: jobID, Status: "training", ModelSize: "4b", NumTrainSteps: 10, StartedAt: time.Now()}); err != nil {
+		if _, err := trainingdb.RecordTrainingJobRun(ctx,
+			d,
+			trainingdb.TrainingJobRun{
+				JobID:         jobID,
+				Status:        "training",
+				ModelSize:     "4b",
+				NumTrainSteps: 10,
+				StartedAt:     time.Now(),
+			}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	end := time.Now()
-	if err := trainingdb.UpdateTrainingJobRun(ctx, d, 2, trainingdb.TrainingJobRunUpdate{Status: trainingdb.TrainingJobCancelled, FinishedAt: &end}); err != nil {
+	if err := trainingdb.UpdateTrainingJobRun(ctx,
+		d,
+		2,
+		trainingdb.TrainingJobRunUpdate{
+			Status:     trainingdb.TrainingJobCancelled,
+			FinishedAt: &end,
+		}); err != nil {
 		t.Fatal(err)
 	}
-	stop := func(h http.HandlerFunc, id string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST", "/x", nil)
+	stop := func(h http.HandlerFunc,
+		id string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST",
+			"/x",
+			nil)
 		req.SetPathValue("id", id)
 		rec := httptest.NewRecorder()
 		h(rec, req)
@@ -157,7 +243,9 @@ func testStopTrainingJob(t *testing.T, d *sql.DB) {
 	h := training.StopJobOf(d, sc)
 
 	if rec := stop(h, "1"); rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"stopping"`) {
-		t.Fatalf("stop: %d %s", rec.Code, rec.Body)
+		t.Fatalf("stop: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	if len(sc.cancelled) != 1 || sc.cancelled[0] != "j1" {
 		t.Fatalf("sidecar asked to stop: %v", sc.cancelled)
@@ -165,14 +253,22 @@ func testStopTrainingJob(t *testing.T, d *sql.DB) {
 	// A job that is over, an unknown one and a bad id never reach the sidecar.
 	for id, want := range map[string]int{"2": http.StatusConflict, "99": http.StatusNotFound, "x": http.StatusBadRequest} {
 		if rec := stop(h, id); rec.Code != want {
-			t.Fatalf("id %s: %d, want %d", id, rec.Code, want)
+			t.Fatalf("id %s: %d, want %d",
+				id,
+				rec.Code,
+				want)
 		}
 	}
 	if len(sc.cancelled) != 1 {
 		t.Fatalf("sidecar called: %v", sc.cancelled)
 	}
 	// The sidecar's own answers: over already (409), or a failure (502).
-	sc.cancelErr = &sidecar.StatusError{Method: "POST", Path: "/training/job_cancel", Code: 409, Body: `{"error":"already over"}`}
+	sc.cancelErr = &sidecar.StatusError{
+		Method: "POST",
+		Path:   "/training/job_cancel",
+		Code:   409,
+		Body:   `{"error":"already over"}`,
+	}
 	if rec := stop(h, "1"); rec.Code != http.StatusConflict {
 		t.Fatalf("sidecar 409: %d", rec.Code)
 	}

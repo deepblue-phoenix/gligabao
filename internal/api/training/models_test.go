@@ -25,19 +25,37 @@ import (
 
 func TestTrainedModelEndpoints(t *testing.T) { dbtest.Run(t, testTrainedModelEndpoints) }
 
-func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
+func testTrainedModelEndpoints(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	for _, m := range []trainingdb.TrainedModel{
-		{JobID: "j1", ModelSize: "4b", NumTrainSteps: 10, Path: "trained/j1"},
-		{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2", Dataset: "mine.jsonl"},
+		{
+			JobID:         "j1",
+			ModelSize:     "4b",
+			NumTrainSteps: 10,
+			Path:          "trained/j1",
+		},
+		{
+			JobID:         "j2",
+			ModelSize:     "12b",
+			NumTrainSteps: 20,
+			Path:          "trained/j2",
+			Dataset:       "mine.jsonl",
+		},
 	} {
-		if _, _, err := trainingdb.RecordTrainedModel(ctx, d, m); err != nil {
+		if _, _, err := trainingdb.RecordTrainedModel(ctx,
+			d,
+			m); err != nil {
 			t.Fatal(err)
 		}
 	}
-	get := func(h http.HandlerFunc, url, path string) *httptest.ResponseRecorder {
+	get := func(h http.HandlerFunc,
+		url,
+		path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", url, nil)
+		req := httptest.NewRequest("GET",
+			url,
+			nil)
 		if path != "" {
 			req.SetPathValue("id", path)
 		}
@@ -45,57 +63,107 @@ func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 		return rec
 	}
 
-	rec := get(training.ListModelsOf(d), "/x", "")
+	rec := get(training.ListModelsOf(d),
+		"/x",
+		"")
 	var list struct{ Models []trainingdb.TrainedModel }
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Models) != 2 ||
 		list.Models[0].JobID != "j2" || list.Models[1].JobID != "j1" || list.Models[0].Files == nil {
-		t.Fatalf("list: %d %s", rec.Code, rec.Body)
+		t.Fatalf("list: %d %s",
+			rec.Code,
+			rec.Body)
 	}
-	if err := json.Unmarshal(get(training.ListModelsOf(d), "/x?limit=1", "").Body.Bytes(), &list); err != nil || len(list.Models) != 1 {
+	if err := json.Unmarshal(get(training.ListModelsOf(d),
+		"/x?limit=1",
+		"").Body.Bytes(), &list); err != nil || len(list.Models) != 1 {
 		t.Fatalf("limit: %+v", list)
 	}
 	for url, want := range map[string]int{"/x?limit=0": 400, "/x?limit=a": 400} {
-		if rec := get(training.ListModelsOf(d), url, ""); rec.Code != want {
-			t.Fatalf("%s: %d", url, rec.Code)
+		if rec := get(training.ListModelsOf(d),
+			url,
+			""); rec.Code != want {
+			t.Fatalf("%s: %d",
+				url,
+				rec.Code)
 		}
 	}
-	rec = get(training.GetModelOf(d), "/x", "2")
+	rec = get(training.GetModelOf(d),
+		"/x",
+		"2")
 	var m trainingdb.TrainedModel
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil || m.JobID != "j2" || m.Dataset != "mine.jsonl" {
-		t.Fatalf("get: %d %s", rec.Code, rec.Body)
+		t.Fatalf("get: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	for id, want := range map[string]int{"99": 404, "0": 400, "x": 400} {
-		if rec := get(training.GetModelOf(d), "/x", id); rec.Code != want {
-			t.Fatalf("get %s: %d", id, rec.Code)
+		if rec := get(training.GetModelOf(d),
+			"/x",
+			id); rec.Code != want {
+			t.Fatalf("get %s: %d",
+				id,
+				rec.Code)
 		}
 	}
 }
 
 func TestInferWithAnInferenceHook(t *testing.T) { dbtest.Run(t, testInferWithAnInferenceHook) }
 
-func testInferWithAnInferenceHook(t *testing.T, d *sql.DB) {
+func testInferWithAnInferenceHook(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	for _, m := range []trainingdb.TrainedModel{
-		{JobID: "j1", Name: "hooked", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"},
-		{JobID: "j2", Name: "plain", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j2"},
+		{
+			JobID:         "j1",
+			Name:          "hooked",
+			ModelSize:     "4b",
+			NumTrainSteps: 1,
+			Path:          "trained/j1",
+		},
+		{
+			JobID:         "j2",
+			Name:          "plain",
+			ModelSize:     "4b",
+			NumTrainSteps: 1,
+			Path:          "trained/j2",
+		},
 	} {
-		if _, _, err := trainingdb.RecordTrainedModel(ctx, d, m); err != nil {
+		if _, _, err := trainingdb.RecordTrainedModel(ctx,
+			d,
+			m); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var seen core.InferTrainedModelRequest
-	hooks := []core.TrainedModelInferenceHook{{Name: "ext", Model: "hooked", Description: "d",
-		Infer: func(_ context.Context, req core.InferTrainedModelRequest) (core.InferTrainedModelResult, error) {
+	hooks := []core.TrainedModelInferenceHook{{
+		Name:        "ext",
+		Model:       "hooked",
+		Description: "d",
+		Infer: func(_ context.Context,
+			req core.InferTrainedModelRequest) (core.InferTrainedModelResult, error) {
 			seen = req
 			if req.Prompt == "fail" {
 				return core.InferTrainedModelResult{}, errors.New("upstream down")
 			}
-			return core.InferTrainedModelResult{Response: "from hook", InputTokens: 5, OutputTokens: 2}, nil
-		}}}
-	sc := &fakeSidecar{inferResp: sidecar.InferResponse{Response: "from sidecar"}}
-	post := func(sc core.Inferer, modelID, body string) *httptest.ResponseRecorder {
+			return core.InferTrainedModelResult{
+				Response:     "from hook",
+				InputTokens:  5,
+				OutputTokens: 2,
+			}, nil
+		},
+	}}
+	sc := &fakeSidecar{
+		inferResp: sidecar.InferResponse{
+			Response: "from sidecar",
+		},
+	}
+	post := func(sc core.Inferer,
+		modelID,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
+		req := httptest.NewRequest("POST",
+			"/x",
+			strings.NewReader(body))
 		req.SetPathValue("id", modelID)
 		training.InferOf(d, core.NewInferRouter(sc, hooks))(rec, req)
 		return rec
@@ -108,9 +176,13 @@ func testInferWithAnInferenceHook(t *testing.T, d *sql.DB) {
 
 	// the hooked model runs on the hook, without a sidecar too
 	for _, s := range []core.Inferer{sc, nil} {
-		rec := post(s, "1", `{"prompt": "hi", "max_tokens": 9, "temperature": 0.5}`)
+		rec := post(s,
+			"1",
+			`{"prompt": "hi", "max_tokens": 9, "temperature": 0.5}`)
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 || out.Response != "from hook" || out.Hook != "ext" || out.InTok != 5 {
-			t.Fatalf("hooked: %d %s", rec.Code, rec.Body)
+			t.Fatalf("hooked: %d %s",
+				rec.Code,
+				rec.Body)
 		}
 	}
 	if seen.Model.Name != "hooked" || seen.Prompt != "hi" || seen.MaxTokens != 9 || seen.Temperature == nil || *seen.Temperature != 0.5 {
@@ -120,49 +192,90 @@ func testInferWithAnInferenceHook(t *testing.T, d *sql.DB) {
 		t.Fatalf("the sidecar was called: %+v", sc.infers)
 	}
 	// a model without a hook still runs on the sidecar
-	rec := post(sc, "2", `{"prompt": "hi"}`)
+	rec := post(sc,
+		"2",
+		`{"prompt": "hi"}`)
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 || out.Response != "from sidecar" || out.Hook != "" || len(sc.infers) != 1 {
-		t.Fatalf("plain: %d %s", rec.Code, rec.Body)
+		t.Fatalf("plain: %d %s",
+			rec.Code,
+			rec.Body)
 	}
-	if rec := post(nil, "2", `{"prompt": "hi"}`); rec.Code != http.StatusServiceUnavailable {
+	if rec := post(nil,
+		"2",
+		`{"prompt": "hi"}`); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("plain without sidecar: %d", rec.Code)
 	}
 	// a failing hook answers 502 with its message, and the request is stored as failed
-	if rec := post(sc, "1", `{"prompt": "fail"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upstream down") {
-		t.Fatalf("failing hook: %d %s", rec.Code, rec.Body)
+	if rec := post(sc,
+		"1",
+		`{"prompt": "fail"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upstream down") {
+		t.Fatalf("failing hook: %d %s",
+			rec.Code,
+			rec.Body)
 	}
-	list, err := trainingdb.ListTrainedModelInferences(ctx, d, 1, 0)
+	list, err := trainingdb.ListTrainedModelInferences(ctx,
+		d,
+		1,
+		0)
 	if err != nil || len(list) != 3 || list[0].Status != trainingdb.TrainedModelInferenceFailed || !strings.Contains(list[0].Error, "upstream down") || list[2].Response != "from hook" {
-		t.Fatalf("stored: %+v %v", list, err)
+		t.Fatalf("stored: %+v %v",
+			list,
+			err)
 	}
 
 	rec = httptest.NewRecorder()
-	training.ListInferenceHooksOf(hooks)(rec, httptest.NewRequest("GET", "/x", nil))
+	training.ListInferenceHooksOf(hooks)(rec, httptest.NewRequest("GET",
+		"/x",
+		nil))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"model":"hooked"`) || !strings.Contains(rec.Body.String(), `"name":"ext"`) {
-		t.Fatalf("list hooks: %d %s", rec.Code, rec.Body)
+		t.Fatalf("list hooks: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 }
 
 func TestInferWithATrainedModel(t *testing.T) { dbtest.Run(t, testInferWithATrainedModel) }
 
-func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
+func testInferWithATrainedModel(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	id, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2"})
+	id, _, err := trainingdb.RecordTrainedModel(ctx,
+		d,
+		trainingdb.TrainedModel{
+			JobID:         "j2",
+			ModelSize:     "12b",
+			NumTrainSteps: 20,
+			Path:          "trained/j2",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := &fakeSidecar{inferResp: sidecar.InferResponse{Response: "hello", InputTokens: 7, OutputTokens: 3}}
-	post := func(sc core.Inferer, modelID, body string) *httptest.ResponseRecorder {
+	sc := &fakeSidecar{
+		inferResp: sidecar.InferResponse{
+			Response:     "hello",
+			InputTokens:  7,
+			OutputTokens: 3,
+		},
+	}
+	post := func(sc core.Inferer,
+		modelID,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
+		req := httptest.NewRequest("POST",
+			"/x",
+			strings.NewReader(body))
 		req.SetPathValue("id", modelID)
 		training.InferOf(d, core.NewInferRouter(sc, nil))(rec, req)
 		return rec
 	}
 
-	rec := post(sc, "1", `{"prompt": "hi", "max_tokens": 50, "temperature": 0.2}`)
+	rec := post(sc,
+		"1",
+		`{"prompt": "hi", "max_tokens": 50, "temperature": 0.2}`)
 	if rec.Code != 200 || id != 1 {
-		t.Fatalf("infer: %d %s", rec.Code, rec.Body)
+		t.Fatalf("infer: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	var out struct {
 		ID       int    `json:"id"`
@@ -191,26 +304,48 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 		"max tokens":    {"1", `{"prompt":"hi","max_tokens":999999}`, 400},
 		"temperature":   {"1", `{"prompt":"hi","temperature":0}`, 400},
 	} {
-		if rec := post(sc, c.id, c.body); rec.Code != c.want {
-			t.Fatalf("%s: %d %s", name, rec.Code, rec.Body)
+		if rec := post(sc,
+			c.id,
+			c.body); rec.Code != c.want {
+			t.Fatalf("%s: %d %s",
+				name,
+				rec.Code,
+				rec.Body)
 		}
 	}
-	if rec := post(nil, "1", `{"prompt":"hi"}`); rec.Code != http.StatusServiceUnavailable {
+	if rec := post(nil,
+		"1",
+		`{"prompt":"hi"}`); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no sidecar: %d", rec.Code)
 	}
-	sc.inferErr = &sidecar.InferError{Message: "No trained model at 'trained/j2'"}
-	if rec := post(sc, "1", `{"prompt":"hi"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "No trained model") {
-		t.Fatalf("generation failed: %d %s", rec.Code, rec.Body)
+	sc.inferErr = &sidecar.InferError{
+		Message: "No trained model at 'trained/j2'",
+	}
+	if rec := post(sc,
+		"1",
+		`{"prompt":"hi"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "No trained model") {
+		t.Fatalf("generation failed: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	sc.inferErr = errors.New("connection refused")
-	if rec := post(sc, "1", `{"prompt":"hi"}`); rec.Code != http.StatusBadGateway || strings.Contains(rec.Body.String(), "refused") {
-		t.Fatalf("sidecar down: %d %s", rec.Code, rec.Body)
+	if rec := post(sc,
+		"1",
+		`{"prompt":"hi"}`); rec.Code != http.StatusBadGateway || strings.Contains(rec.Body.String(), "refused") {
+		t.Fatalf("sidecar down: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 
 	// Every request that reached the sidecar is stored, with its outcome.
-	list, err := trainingdb.ListTrainedModelInferences(ctx, d, 1, 0)
+	list, err := trainingdb.ListTrainedModelInferences(ctx,
+		d,
+		1,
+		0)
 	if err != nil || len(list) != 3 {
-		t.Fatalf("stored requests: %+v %v", list, err)
+		t.Fatalf("stored requests: %+v %v",
+			list,
+			err)
 	}
 	if r := list[2]; r.Status != trainingdb.TrainedModelInferenceCompleted || r.Response != "hello" || r.Prompt != "hi" || r.ModelPath != "trained/j2" ||
 		r.ModelSize != "12b" || r.MaxTokens != 50 || r.Temperature == nil || *r.Temperature != 0.2 || r.ID != int64(out.ID) {
@@ -223,17 +358,23 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("sidecar down request: %+v", r)
 	}
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/x?limit=2", nil)
+	req := httptest.NewRequest("GET",
+		"/x?limit=2",
+		nil)
 	req.SetPathValue("id", "1")
 	training.ListInferencesOf(d)(rec, req)
 	var listed struct {
 		Inferences []trainingdb.TrainedModelInference `json:"inferences"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Inferences) != 2 || listed.Inferences[0].ID != list[0].ID {
-		t.Fatalf("list inferences: %d %s", rec.Code, rec.Body)
+		t.Fatalf("list inferences: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/x", nil)
+	req = httptest.NewRequest("GET",
+		"/x",
+		nil)
 	req.SetPathValue("id", "9")
 	training.ListInferencesOf(d)(rec, req)
 	if rec.Code != 404 {
@@ -243,7 +384,10 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 
 type fakeFetcher struct{ files map[string]string }
 
-func (f fakeFetcher) DownloadModelFile(ctx context.Context, modelPath, file string, w io.Writer) (int64, error) {
+func (f fakeFetcher) DownloadModelFile(ctx context.Context,
+	modelPath,
+	file string,
+	w io.Writer) (int64, error) {
 	content, ok := f.files[modelPath+"/"+file]
 	if !ok {
 		return 0, errors.New("no such file")
@@ -254,51 +398,93 @@ func (f fakeFetcher) DownloadModelFile(ctx context.Context, modelPath, file stri
 
 func TestDeployATrainedModel(t *testing.T) { dbtest.Run(t, testDeployATrainedModel) }
 
-func testDeployATrainedModel(t *testing.T, d *sql.DB) {
+func testDeployATrainedModel(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	sum := sha256.Sum256([]byte("weights"))
-	if _, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "job1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/job1",
-		Files: []trainingdb.TrainedModelFile{{Path: "adapter_model.safetensors", SizeBytes: 7, SHA256: hex.EncodeToString(sum[:])}}}); err != nil {
+	if _, _, err := trainingdb.RecordTrainedModel(ctx,
+		d,
+		trainingdb.TrainedModel{
+			JobID:         "job1",
+			ModelSize:     "4b",
+			NumTrainSteps: 1,
+			Path:          "trained/job1",
+			Files: []trainingdb.TrainedModelFile{{
+				Path:      "adapter_model.safetensors",
+				SizeBytes: 7,
+				SHA256:    hex.EncodeToString(sum[:]),
+			}},
+		}); err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
 	var got []core.DeployTrainedModelRequest
 	var failErr error
 	deployers := []core.TrainedModelDeployer{
-		{Name: "copy", Deploy: func(ctx context.Context, req core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
-			got = append(got, req)
-			req.Update("copying the files")
-			req.Update("  ")                                           // blank: ignored
-			req.Update(strings.Repeat("x", 2*core.MaxDeployUpdateLen)) // too long: cut
-			if failErr != nil {
-				return core.DeployTrainedModelResult{}, failErr
-			}
-			if _, err := os.Stat(filepath.Join(req.Dir, "adapter_model.safetensors")); err != nil {
-				return core.DeployTrainedModelResult{}, err
-			}
-			return core.DeployTrainedModelResult{Ref: "ref-" + req.Model.JobID, Details: map[string]any{"files": 1}}, nil
-		}},
-		{Name: "panics", Deploy: func(context.Context, core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
-			panic("kaboom")
-		}},
+		{
+			Name: "copy",
+			Deploy: func(ctx context.Context,
+				req core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
+				got = append(got, req)
+				req.Update("copying the files")
+				req.Update("  ")                                           // blank: ignored
+				req.Update(strings.Repeat("x", 2*core.MaxDeployUpdateLen)) // too long: cut
+				if failErr != nil {
+					return core.DeployTrainedModelResult{}, failErr
+				}
+				if _, err := os.Stat(filepath.Join(req.Dir, "adapter_model.safetensors")); err != nil {
+					return core.DeployTrainedModelResult{}, err
+				}
+				return core.DeployTrainedModelResult{
+					Ref:     "ref-" + req.Model.JobID,
+					Details: map[string]any{"files": 1},
+				}, nil
+			},
+		},
+		{
+			Name: "panics",
+			Deploy: func(context.Context,
+				core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
+				panic("kaboom")
+			},
+		},
 	}
-	fetcher := fakeFetcher{files: map[string]string{"trained/job1/adapter_model.safetensors": "weights"}}
+	fetcher := fakeFetcher{
+		files: map[string]string{"trained/job1/adapter_model.safetensors": "weights"},
+	}
 	var events []string
-	monitoring.SetHooks([]monitoring.Hooks{{SystemEvent: func(_ context.Context, typ string, _ monitoring.Event) { events = append(events, typ) }}})
+	monitoring.SetHooks([]monitoring.Hooks{{
+		SystemEvent: func(_ context.Context,
+			typ string,
+			_ monitoring.Event) {
+			events = append(events, typ)
+		},
+	}})
 	defer monitoring.SetHooks(nil)
 
-	post := func(f core.ModelFileFetcher, modelID, body string) *httptest.ResponseRecorder {
+	post := func(f core.ModelFileFetcher,
+		modelID,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
+		req := httptest.NewRequest("POST",
+			"/x",
+			strings.NewReader(body))
 		req.SetPathValue("id", modelID)
-		training.DeployOf(d, f, deployers, root)(rec, req)
+		training.DeployOf(d,
+			f,
+			deployers,
+			root)(rec, req)
 		return rec
 	}
 
-	rec := post(fetcher, "1", `{"deployer":"copy","options":{"name":"x"}}`)
+	rec := post(fetcher,
+		"1",
+		`{"deployer":"copy","options":{"name":"x"}}`)
 	var out trainingdb.TrainedModelDeployment
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
-		t.Fatalf("deploy: %d %s", rec.Code, rec.Body)
+		t.Fatalf("deploy: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	wantDir := filepath.Join(root, "job1")
 	if out.Status != trainingdb.TrainedModelDeploymentCompleted || out.Ref != "ref-job1" || out.Deployer != "copy" || out.TrainedModelID != 1 ||
@@ -322,7 +508,9 @@ func testDeployATrainedModel(t *testing.T, d *sql.DB) {
 	}
 	// the files are left in place for later
 	if b, err := os.ReadFile(filepath.Join(wantDir, "adapter_model.safetensors")); err != nil || string(b) != "weights" {
-		t.Fatalf("fetched file: %q %v", b, err)
+		t.Fatalf("fetched file: %q %v",
+			b,
+			err)
 	}
 
 	for name, c := range map[string]struct {
@@ -337,31 +525,58 @@ func testDeployATrainedModel(t *testing.T, d *sql.DB) {
 		"bad json":         {fetcher, "1", `{`, 400},
 		"no sidecar":       {nil, "1", `{"deployer":"copy"}`, 503},
 	} {
-		if rec := post(c.f, c.id, c.body); rec.Code != c.want {
-			t.Fatalf("%s: %d %s", name, rec.Code, rec.Body)
+		if rec := post(c.f,
+			c.id,
+			c.body); rec.Code != c.want {
+			t.Fatalf("%s: %d %s",
+				name,
+				rec.Code,
+				rec.Body)
 		}
 	}
 	// requests that never reached the deployer are not recorded
-	if list, err := trainingdb.ListTrainedModelDeployments(ctx, d, 1, 0); err != nil || len(list) != 1 {
-		t.Fatalf("stored deployments: %+v %v", list, err)
+	if list, err := trainingdb.ListTrainedModelDeployments(ctx,
+		d,
+		1,
+		0); err != nil || len(list) != 1 {
+		t.Fatalf("stored deployments: %+v %v",
+			list,
+			err)
 	}
 
 	// the deployer failing, panicking, and the files not being fetchable: 502, recorded as failed
 	failErr = errors.New("upload refused")
-	if rec := post(fetcher, "1", `{"deployer":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upload refused") {
-		t.Fatalf("deployer error: %d %s", rec.Code, rec.Body)
+	if rec := post(fetcher,
+		"1",
+		`{"deployer":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upload refused") {
+		t.Fatalf("deployer error: %d %s",
+			rec.Code,
+			rec.Body)
 	}
-	if rec := post(fetcher, "1", `{"deployer":"panics"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "kaboom") {
-		t.Fatalf("deployer panic: %d %s", rec.Code, rec.Body)
+	if rec := post(fetcher,
+		"1",
+		`{"deployer":"panics"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "kaboom") {
+		t.Fatalf("deployer panic: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	os.RemoveAll(wantDir) // so the files have to be fetched again, which the fetcher cannot do
-	if rec := post(fakeFetcher{}, "1", `{"deployer":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "fetching") {
-		t.Fatalf("fetch error: %d %s", rec.Code, rec.Body)
+	if rec := post(fakeFetcher{},
+		"1",
+		`{"deployer":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "fetching") {
+		t.Fatalf("fetch error: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 
-	list, err := trainingdb.ListTrainedModelDeployments(ctx, d, 1, 0)
+	list, err := trainingdb.ListTrainedModelDeployments(ctx,
+		d,
+		1,
+		0)
 	if err != nil || len(list) != 4 {
-		t.Fatalf("stored deployments: %+v %v", list, err)
+		t.Fatalf("stored deployments: %+v %v",
+			list,
+			err)
 	}
 	if e := list[0]; e.Status != trainingdb.TrainedModelDeploymentFailed || !strings.Contains(e.Error, "fetching") || e.Dir != "" {
 		t.Fatalf("fetch failure record: %+v", e)
@@ -378,17 +593,23 @@ func testDeployATrainedModel(t *testing.T, d *sql.DB) {
 	}
 
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/x?limit=2", nil)
+	req := httptest.NewRequest("GET",
+		"/x?limit=2",
+		nil)
 	req.SetPathValue("id", "1")
 	training.ListDeploymentsOf(d)(rec, req)
 	var listed struct {
 		Deployments []trainingdb.TrainedModelDeployment `json:"deployments"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Deployments) != 2 || listed.Deployments[0].ID != list[0].ID {
-		t.Fatalf("list deployments: %d %s", rec.Code, rec.Body)
+		t.Fatalf("list deployments: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/x", nil)
+	req = httptest.NewRequest("GET",
+		"/x",
+		nil)
 	req.SetPathValue("id", "9")
 	training.ListDeploymentsOf(d)(rec, req)
 	if rec.Code != 404 {
@@ -399,7 +620,9 @@ func testDeployATrainedModel(t *testing.T, d *sql.DB) {
 func TestListDeployers(t *testing.T) {
 	list := func(deployers []core.TrainedModelDeployer) string {
 		rec := httptest.NewRecorder()
-		training.ListDeployersOf(deployers)(rec, httptest.NewRequest("GET", "/x", nil))
+		training.ListDeployersOf(deployers)(rec, httptest.NewRequest("GET",
+			"/x",
+			nil))
 		if rec.Code != 200 {
 			t.Fatalf("status %d", rec.Code)
 		}
@@ -408,7 +631,12 @@ func TestListDeployers(t *testing.T) {
 	if got := list(nil); got != `{"deployers":[]}` {
 		t.Fatalf("none: %s", got)
 	}
-	if got := list([]core.TrainedModelDeployer{{Name: "a", Description: "does a"}, {Name: "b"}}); got != `{"deployers":[{"name":"a","description":"does a"},{"name":"b","description":""}]}` {
+	if got := list([]core.TrainedModelDeployer{{
+		Name:        "a",
+		Description: "does a",
+	}, {
+		Name: "b",
+	}}); got != `{"deployers":[{"name":"a","description":"does a"},{"name":"b","description":""}]}` {
 		t.Fatalf("two: %s", got)
 	}
 }
@@ -417,36 +645,70 @@ func TestListDeployers(t *testing.T) {
 // of the request that ran it (they are not stored).
 func TestDeployProgressIsLive(t *testing.T) { dbtest.Run(t, testDeployProgressIsLive) }
 
-func testDeployProgressIsLive(t *testing.T, d *sql.DB) {
+func testDeployProgressIsLive(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	if _, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "job1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/job1",
-		Files: []trainingdb.TrainedModelFile{{Path: "f", SizeBytes: 1}}}); err != nil {
+	if _, _, err := trainingdb.RecordTrainedModel(ctx,
+		d,
+		trainingdb.TrainedModel{
+			JobID:         "job1",
+			ModelSize:     "4b",
+			NumTrainSteps: 1,
+			Path:          "trained/job1",
+			Files: []trainingdb.TrainedModelFile{{
+				Path:      "f",
+				SizeBytes: 1,
+			}},
+		}); err != nil {
 		t.Fatal(err)
 	}
 	reported, release := make(chan struct{}), make(chan struct{})
-	deployers := []core.TrainedModelDeployer{{Name: "slow", Deploy: func(ctx context.Context, req core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
-		req.Update("halfway")
-		close(reported)
-		<-release
-		return core.DeployTrainedModelResult{Ref: "r"}, nil
-	}}}
-	fetcher := fakeFetcher{files: map[string]string{"trained/job1/f": "x"}}
-	m, err := trainingdb.GetTrainedModel(ctx, d, 1)
+	deployers := []core.TrainedModelDeployer{{
+		Name: "slow",
+		Deploy: func(ctx context.Context,
+			req core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
+			req.Update("halfway")
+			close(reported)
+			<-release
+			return core.DeployTrainedModelResult{
+				Ref: "r",
+			}, nil
+		},
+	}}
+	fetcher := fakeFetcher{
+		files: map[string]string{"trained/job1/f": "x"},
+	}
+	m, err := trainingdb.GetTrainedModel(ctx,
+		d,
+		1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan *trainingdb.TrainedModelDeployment, 1)
 	go func() {
-		out, err := core.DeployModel(ctx, d, fetcher, deployers, t.TempDir(), m, core.DeployRequest{Deployer: "slow"})
+		out, err := core.DeployModel(ctx,
+			d,
+			fetcher,
+			deployers,
+			t.TempDir(),
+			m,
+			core.DeployRequest{
+				Deployer: "slow",
+			})
 		if err != nil {
 			t.Error(err)
 		}
 		done <- out
 	}()
 	<-reported
-	list, err := core.ListDeployments(ctx, d, 1, 0)
+	list, err := core.ListDeployments(ctx,
+		d,
+		1,
+		0)
 	if err != nil || len(list) != 1 || list[0].Status != trainingdb.TrainedModelDeploymentRunning {
-		t.Fatalf("running deployment: %+v %v", list, err)
+		t.Fatalf("running deployment: %+v %v",
+			list,
+			err)
 	}
 	var msgs []string
 	for _, u := range list[0].Updates {
@@ -459,7 +721,10 @@ func testDeployProgressIsLive(t *testing.T, d *sql.DB) {
 	if out := <-done; out == nil || len(out.Updates) != 4 {
 		t.Fatalf("answer of the request: %+v", out)
 	}
-	list, _ = core.ListDeployments(ctx, d, 1, 0)
+	list, _ = core.ListDeployments(ctx,
+		d,
+		1,
+		0)
 	if len(list) != 1 || list[0].Status != trainingdb.TrainedModelDeploymentCompleted || list[0].Updates == nil || len(list[0].Updates) != 0 {
 		t.Fatalf("finished deploy: %+v", list)
 	}

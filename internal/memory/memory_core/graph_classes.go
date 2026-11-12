@@ -57,7 +57,9 @@ func ResolveGraphClasses(classes []string) ([]string, error) {
 	for _, c := range classes {
 		n := NormalizeGraphClass(c)
 		if n == "" {
-			return nil, fmt.Errorf("%w: %q is not a class name (it needs letters or digits)", ErrInvalidGraphClasses, c)
+			return nil, fmt.Errorf("%w: %q is not a class name (it needs letters or digits)",
+				ErrInvalidGraphClasses,
+				c)
 		}
 		if !seen[n] {
 			seen[n] = true
@@ -65,7 +67,9 @@ func ResolveGraphClasses(classes []string) ([]string, error) {
 		}
 	}
 	if len(out) > MaxGraphClasses {
-		return nil, fmt.Errorf("%w: at most %d classes", ErrInvalidGraphClasses, MaxGraphClasses)
+		return nil, fmt.Errorf("%w: at most %d classes",
+			ErrInvalidGraphClasses,
+			MaxGraphClasses)
 	}
 	return out, nil
 }
@@ -73,6 +77,7 @@ func ResolveGraphClasses(classes []string) ([]string, error) {
 // WithClassifyGraph sets whether Remember classifies the graph of each artifact it stores with an LLM (the classify_graph stage; default
 // false, as it costs a call per artifact). With a non-empty classes (validated with ResolveGraphClasses first) the LLM can only choose
 // among them; without, it chooses freely, being told the classes the dataset already uses so that it reuses them.
-func WithClassifyGraph(on bool, classes []string) Option {
+func WithClassifyGraph(on bool,
+	classes []string) Option {
 	return func(o *CallOptions) { o.ClassifyGraph, o.GraphClasses = on, classes }
 }

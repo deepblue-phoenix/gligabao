@@ -95,10 +95,18 @@ func (r *Result) Summary() string {
 		added, merged, skipped = added+t.Added, merged+t.Merged, skipped+t.Skipped
 	}
 	return fmt.Sprintf("%d rows added, %d merged into stored rows, %d skipped; %d vectors (%d for merged entities, %d not imported); %d images; %d warnings",
-		added, merged, skipped, r.Vectors, r.VectorsMerged, r.VectorsSkipped, r.Images, len(r.Warnings))
+		added,
+		merged,
+		skipped,
+		r.Vectors,
+		r.VectorsMerged,
+		r.VectorsSkipped,
+		r.Images,
+		len(r.Warnings))
 }
 
-func (r *Result) warnf(format string, args ...any) {
+func (r *Result) warnf(format string,
+	args ...any) {
 	w := fmt.Sprintf(format, args...)
 	log.Warn("import: " + w)
 	r.Warnings = append(r.Warnings, w)
@@ -164,7 +172,10 @@ type importer struct {
 
 // Import loads the archive r into t. It returns what it did; the error is for a failure that left the relational database as it was
 // (nothing of the rows is in then). Problems after the rows were committed (the vectors, the image files) are in Result.Warnings.
-func Import(ctx context.Context, r *dbexport.Reader, t Target, o Options) (*Result, error) {
+func Import(ctx context.Context,
+	r *dbexport.Reader,
+	t Target,
+	o Options) (*Result, error) {
 	if strings.TrimSpace(o.UserID) == "" {
 		return nil, errors.New("dbimport: the user that owns the import is required")
 	}
@@ -175,12 +186,19 @@ func Import(ctx context.Context, r *dbexport.Reader, t Target, o Options) (*Resu
 		return nil, fmt.Errorf("dbimport: unknown database backend %q", t.Backend)
 	}
 	im := &importer{
-		r: r, t: t, o: o, pg: t.Backend == config.DBBackendPostgres,
-		res:   &Result{Tables: map[string]*TableResult{}, Datasets: map[string]int64{}},
-		ids:   map[string]map[int64]int64{},
-		same:  map[string]map[int64]bool{},
-		cols:  map[string]map[string]kind{},
-		roots: map[int64]bool{}, images: map[string]string{},
+		r:  r,
+		t:  t,
+		o:  o,
+		pg: t.Backend == config.DBBackendPostgres,
+		res: &Result{
+			Tables:   map[string]*TableResult{},
+			Datasets: map[string]int64{},
+		},
+		ids:        map[string]map[int64]int64{},
+		same:       map[string]map[int64]bool{},
+		cols:       map[string]map[string]kind{},
+		roots:      map[int64]bool{},
+		images:     map[string]string{},
 		exportedAt: r.Manifest.CreatedAt.UTC().Format(time.RFC3339),
 	}
 	if len(r.Manifest.Tables) == 0 {
@@ -197,10 +215,17 @@ func Import(ctx context.Context, r *dbexport.Reader, t Target, o Options) (*Resu
 	}
 	defer tx.Rollback()
 	tables := append([]dbexport.Table(nil), r.Manifest.Tables...)
-	sort.SliceStable(tables, func(i, j int) bool { return level(tables[i].Name) < level(tables[j].Name) })
+	sort.SliceStable(tables, func(i,
+		j int) bool {
+		return level(tables[i].Name) < level(tables[j].Name)
+	})
 	for _, tb := range tables {
-		if err := im.table(ctx, tx, tb); err != nil {
-			return nil, fmt.Errorf("dbimport: table %s: %w", tb.Name, err)
+		if err := im.table(ctx,
+			tx,
+			tb); err != nil {
+			return nil, fmt.Errorf("dbimport: table %s: %w",
+				tb.Name,
+				err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -264,11 +289,18 @@ func (im *importer) datasets(ctx context.Context) error {
 			res.Skipped++
 			return nil
 		}
-		id, err := relational.EnsureDataset(ctx, im.t.Relational, im.o.UserID, name)
+		id, err := relational.EnsureDataset(ctx,
+			im.t.Relational,
+			im.o.UserID,
+			name)
 		if err != nil {
-			return fmt.Errorf("dbimport: dataset %q: %w", name, err)
+			return fmt.Errorf("dbimport: dataset %q: %w",
+				name,
+				err)
 		}
-		im.setID(tableDatasets, old, id)
+		im.setID(tableDatasets,
+			old,
+			id)
 		im.res.Datasets[name] = id
 		res.Merged++
 		return nil
@@ -278,19 +310,23 @@ func (im *importer) datasets(ctx context.Context) error {
 //---------------------------------------------------------------------------------------------
 // Rows
 
-func (im *importer) setID(table string, old, new int64) {
+func (im *importer) setID(table string,
+	old,
+	new int64) {
 	if im.ids[table] == nil {
 		im.ids[table] = map[int64]int64{}
 	}
 	im.ids[table][old] = new
 }
 
-func (im *importer) mapID(table string, old int64) (int64, bool) {
+func (im *importer) mapID(table string,
+	old int64) (int64, bool) {
 	id, ok := im.ids[table][old]
 	return id, ok
 }
 
-func (im *importer) markSame(table string, old int64) {
+func (im *importer) markSame(table string,
+	old int64) {
 	if im.same[table] == nil {
 		im.same[table] = map[int64]bool{}
 	}
@@ -298,7 +334,9 @@ func (im *importer) markSame(table string, old int64) {
 }
 
 // table imports the rows of one table of the archive.
-func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) error {
+func (im *importer) table(ctx context.Context,
+	tx *sql.Tx,
+	tb dbexport.Table) error {
 	res := im.res.table(tb.Name)
 	if tb.Name != tableDatasets {
 		res.Rows = tb.Rows
@@ -307,13 +345,17 @@ func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) er
 	case notImported[tb.Name]:
 		if tb.Name != tableDatasets && tb.Rows > 0 {
 			res.Skipped = tb.Rows
-			im.res.warnf("table %s (%d rows) is not imported", tb.Name, tb.Rows)
+			im.res.warnf("table %s (%d rows) is not imported",
+				tb.Name,
+				tb.Rows)
 		}
 		return nil
 	case !imported[tb.Name]:
 		if tb.Rows > 0 {
 			res.Skipped = tb.Rows
-			im.res.warnf("table %s (%d rows) is not known to this version: not imported", tb.Name, tb.Rows)
+			im.res.warnf("table %s (%d rows) is not known to this version: not imported",
+				tb.Name,
+				tb.Rows)
 		}
 		return nil
 	case runTable(tb.Name) && im.o.RootRunID == 0:
@@ -321,14 +363,18 @@ func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) er
 		return nil
 	}
 
-	cols, err := im.targetColumns(ctx, tx, tb.Name)
+	cols, err := im.targetColumns(ctx,
+		tx,
+		tb.Name)
 	if err != nil {
 		return err
 	}
 	if len(cols) == 0 {
 		if tb.Rows > 0 {
 			res.Skipped = tb.Rows
-			im.res.warnf("the target has no table %s: its %d rows are not imported", tb.Name, tb.Rows)
+			im.res.warnf("the target has no table %s: its %d rows are not imported",
+				tb.Name,
+				tb.Rows)
 		}
 		return nil
 	}
@@ -347,7 +393,9 @@ func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) er
 		}
 		old, _ := asInt(vals["id"])
 
-		skip, err := im.before(tb.Name, vals, old)
+		skip, err := im.before(tb.Name,
+			vals,
+			old)
 		if err != nil {
 			return err
 		}
@@ -373,7 +421,11 @@ func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) er
 		if s, ok := vals["session_id"].(string); ok {
 			vals["session_id"] = im.session(s)
 		}
-		existing, skip, err := im.after(ctx, tx, tb.Name, vals, old)
+		existing, skip, err := im.after(ctx,
+			tx,
+			tb.Name,
+			vals,
+			old)
 		if err != nil {
 			return err
 		}
@@ -382,15 +434,23 @@ func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) er
 			res.Skipped++
 			return nil
 		case existing > 0:
-			im.setID(tb.Name, old, existing)
+			im.setID(tb.Name,
+				old,
+				existing)
 			im.markSame(tb.Name, old)
 			res.Merged++
 			return nil
 		}
 
-		names := make([]string, 0, len(vals))
-		args := make([]any, 0, len(vals))
-		ks := make([]kind, 0, len(vals))
+		names := make([]string,
+			0,
+			len(vals))
+		args := make([]any,
+			0,
+			len(vals))
+		ks := make([]kind,
+			0,
+			len(vals))
 		for _, c := range tb.Columns {
 			v, present := vals[c.Name]
 			k, inTarget := cols[c.Name]
@@ -399,13 +459,23 @@ func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) er
 			}
 			cv, err := im.convert(v, k)
 			if err != nil {
-				return fmt.Errorf("column %s: %w", c.Name, err)
+				return fmt.Errorf("column %s: %w",
+					c.Name,
+					err)
 			}
 			names, args, ks = append(names, c.Name), append(args, cv), append(ks, k)
 		}
-		id, added, err := im.insert(ctx, tx, tb.Name, names, args, ks, autoID)
+		id, added, err := im.insert(ctx,
+			tx,
+			tb.Name,
+			names,
+			args,
+			ks,
+			autoID)
 		if err != nil {
-			return fmt.Errorf("row %d: %w", old, err)
+			return fmt.Errorf("row %d: %w",
+				old,
+				err)
 		}
 		if !added { // a row that is already there (links and anchors are idempotent)
 			res.Skipped++
@@ -413,20 +483,26 @@ func (im *importer) table(ctx context.Context, tx *sql.Tx, tb dbexport.Table) er
 		}
 		res.Added++
 		if autoID {
-			im.setID(tb.Name, old, id)
+			im.setID(tb.Name,
+				old,
+				id)
 		}
 		return nil
 	})
 }
 
 // before is the part of the import of a row that comes before its foreign keys are mapped: it says whether to leave the row out.
-func (im *importer) before(table string, vals map[string]any, old int64) (skip bool, err error) {
+func (im *importer) before(table string,
+	vals map[string]any,
+	old int64) (skip bool, err error) {
 	switch table {
 	case tableRuns:
 		if vals["parent_id"] == nil {
 			// The main agent: the caller's run stands for it, and for the states it has.
 			im.roots[old] = true
-			im.setID(tableRuns, old, im.o.RootRunID)
+			im.setID(tableRuns,
+				old,
+				im.o.RootRunID)
 			return true, nil
 		}
 	case tableStates:
@@ -440,7 +516,11 @@ func (im *importer) before(table string, vals map[string]any, old int64) (skip b
 
 // after is the part that comes once the foreign keys, the user and the session are mapped: it fixes the columns that need the maps,
 // and finds the stored row an entity or series is merged into (existing > 0).
-func (im *importer) after(ctx context.Context, tx *sql.Tx, table string, vals map[string]any, old int64) (existing int64, skip bool, err error) {
+func (im *importer) after(ctx context.Context,
+	tx *sql.Tx,
+	table string,
+	vals map[string]any,
+	old int64) (existing int64, skip bool, err error) {
 	switch table {
 	case tableRuns:
 		if im.o.Runner != "" {
@@ -454,11 +534,22 @@ func (im *importer) after(ctx context.Context, tx *sql.Tx, table string, vals ma
 		}
 	case tableEntities:
 		dsID, _ := asInt(vals["dataset_id"])
-		id, err := im.lookup(ctx, tx, "SELECT id FROM gb_entities WHERE dataset_id = %s AND name_key = %s AND type = %s", dsID, vals["name_key"], vals["type"])
+		id, err := im.lookup(ctx,
+			tx,
+			"SELECT id FROM gb_entities WHERE dataset_id = %s AND name_key = %s AND type = %s",
+			dsID,
+			vals["name_key"],
+			vals["type"])
 		return id, false, err
 	case tableSeries:
 		dsID, _ := asInt(vals["dataset_id"])
-		id, err := im.lookup(ctx, tx, "SELECT id FROM gb_series WHERE dataset_id = %s AND provider = %s AND key = %s AND field = %s", dsID, vals["provider"], vals["key"], vals["field"])
+		id, err := im.lookup(ctx,
+			tx,
+			"SELECT id FROM gb_series WHERE dataset_id = %s AND provider = %s AND key = %s AND field = %s",
+			dsID,
+			vals["provider"],
+			vals["key"],
+			vals["field"])
 		if id > 0 {
 			im.mergedSeries = append(im.mergedSeries, id)
 		}
@@ -511,7 +602,8 @@ func (im *importer) after(ctx context.Context, tx *sql.Tx, table string, vals ma
 
 // fixRun maps what the rows of gb_remember_runs and gb_query_runs hold that is not a foreign key: the artifact of a run, the
 // inferences of the stages of a query run (gb_query_runs' <stage>_inference_ids), and the session in its parameters.
-func (im *importer) fixRun(table string, vals map[string]any) {
+func (im *importer) fixRun(table string,
+	vals map[string]any) {
 	if v, ok := vals["artifact_id"]; ok && v != nil {
 		old, _ := asInt(v)
 		if id, ok := im.mapID(tableArtifacts, old); ok {
@@ -555,7 +647,9 @@ func (im *importer) inferenceIDs(s string) string {
 	if json.Unmarshal([]byte(s), &list) != nil {
 		return s
 	}
-	out := make([]int64, 0, len(list))
+	out := make([]int64,
+		0,
+		len(list))
 	for _, old := range list {
 		if id, ok := im.mapID(tableInfs, old); ok {
 			out = append(out, id)
@@ -573,7 +667,9 @@ func (im *importer) session(s string) string {
 		return s
 	}
 	rest := s[len(prefix):]
-	n, err := strconv.ParseInt(rest, 10, 64)
+	n, err := strconv.ParseInt(rest,
+		10,
+		64)
 	if err != nil || strconv.FormatInt(n, 10) != rest {
 		return s
 	}
@@ -585,8 +681,14 @@ func (im *importer) session(s string) string {
 }
 
 // lookup returns the ID of the row that the query finds (0 if none); the query has one %s for each of args, as a placeholder.
-func (im *importer) lookup(ctx context.Context, tx *sql.Tx, query string, dsID int64, args ...any) (int64, error) {
-	ph := make([]any, 0, 1+len(args))
+func (im *importer) lookup(ctx context.Context,
+	tx *sql.Tx,
+	query string,
+	dsID int64,
+	args ...any) (int64, error) {
+	ph := make([]any,
+		0,
+		1+len(args))
 	vals := []any{dsID}
 	ph = append(ph, im.ph(1, kText))
 	for i, a := range args {
@@ -595,7 +697,9 @@ func (im *importer) lookup(ctx context.Context, tx *sql.Tx, query string, dsID i
 		vals = append(vals, s)
 	}
 	var id int64
-	err := tx.QueryRowContext(ctx, fmt.Sprintf(query, ph...), vals...).Scan(&id)
+	err := tx.QueryRowContext(ctx,
+		fmt.Sprintf(query, ph...),
+		vals...).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -640,13 +744,17 @@ func kindOf(typ string) kind {
 }
 
 // targetColumns returns the kinds of the columns of the target's table (empty if there is no such table).
-func (im *importer) targetColumns(ctx context.Context, tx *sql.Tx, table string) (map[string]kind, error) {
+func (im *importer) targetColumns(ctx context.Context,
+	tx *sql.Tx,
+	table string) (map[string]kind, error) {
 	if c, ok := im.cols[table]; ok {
 		return c, nil
 	}
 	out := map[string]kind{}
 	if im.pg {
-		rows, err := tx.QueryContext(ctx, `SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1`, table)
+		rows, err := tx.QueryContext(ctx,
+			`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1`,
+			table)
 		if err != nil {
 			return nil, err
 		}
@@ -673,7 +781,12 @@ func (im *importer) targetColumns(ctx context.Context, tx *sql.Tx, table string)
 				name, typ        string
 				dflt             sql.NullString
 			)
-			if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			if err := rows.Scan(&cid,
+				&name,
+				&typ,
+				&notNull,
+				&dflt,
+				&pk); err != nil {
 				return nil, err
 			}
 			out[name] = kindOf(typ)
@@ -686,10 +799,15 @@ func (im *importer) targetColumns(ctx context.Context, tx *sql.Tx, table string)
 	return out, nil
 }
 
-func quote(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
+func quote(name string) string {
+	return `"` + strings.ReplaceAll(name,
+		`"`,
+		`""`) + `"`
+}
 
 // ph is the placeholder of the n-th argument (from 1).
-func (im *importer) ph(n int, k kind) string {
+func (im *importer) ph(n int,
+	k kind) string {
 	if !im.pg {
 		return "?"
 	}
@@ -700,7 +818,13 @@ func (im *importer) ph(n int, k kind) string {
 }
 
 // insert adds a row; a row that conflicts with a stored one (a unique key) is not added. With withID it returns the ID the row got.
-func (im *importer) insert(ctx context.Context, tx *sql.Tx, table string, cols []string, args []any, kinds []kind, withID bool) (id int64, added bool, err error) {
+func (im *importer) insert(ctx context.Context,
+	tx *sql.Tx,
+	table string,
+	cols []string,
+	args []any,
+	kinds []kind,
+	withID bool) (id int64, added bool, err error) {
 	q := make([]string, len(cols))
 	quoted := make([]string, len(cols))
 	for i, c := range cols {
@@ -708,13 +832,17 @@ func (im *importer) insert(ctx context.Context, tx *sql.Tx, table string, cols [
 	}
 	stmt := "INSERT INTO " + quote(table) + " (" + strings.Join(quoted, ", ") + ") VALUES (" + strings.Join(q, ", ") + ") ON CONFLICT DO NOTHING"
 	if withID {
-		err = tx.QueryRowContext(ctx, stmt+" RETURNING id", args...).Scan(&id)
+		err = tx.QueryRowContext(ctx,
+			stmt+" RETURNING id",
+			args...).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, false, nil
 		}
 		return id, err == nil, err
 	}
-	res, err := tx.ExecContext(ctx, stmt, args...)
+	res, err := tx.ExecContext(ctx,
+		stmt,
+		args...)
 	if err != nil {
 		return 0, false, err
 	}
@@ -723,7 +851,8 @@ func (im *importer) insert(ctx context.Context, tx *sql.Tx, table string, cols [
 }
 
 // convert turns a value of the archive into one the driver gives to a column of kind k.
-func (im *importer) convert(v any, k kind) (any, error) {
+func (im *importer) convert(v any,
+	k kind) (any, error) {
 	switch x := v.(type) {
 	case nil:
 		return nil, nil
@@ -756,7 +885,9 @@ func (im *importer) convert(v any, k kind) (any, error) {
 	case string:
 		switch k {
 		case kInt:
-			return strconv.ParseInt(x, 10, 64)
+			return strconv.ParseInt(x,
+				10,
+				64)
 		case kFloat:
 			return strconv.ParseFloat(x, 64)
 		case kBool:
@@ -813,12 +944,15 @@ func asInt(v any) (int64, bool) {
 func (im *importer) refreshSeries(ctx context.Context) {
 	for _, id := range im.mergedSeries {
 		if err := im.refreshOne(ctx, id); err != nil {
-			im.res.warnf("the summary of series %d was not refreshed: %v", id, err)
+			im.res.warnf("the summary of series %d was not refreshed: %v",
+				id,
+				err)
 		}
 	}
 }
 
-func (im *importer) refreshOne(ctx context.Context, id int64) error {
+func (im *importer) refreshOne(ctx context.Context,
+	id int64) error {
 	tx, err := graph.Begin(ctx, im.t.Relational)
 	if err != nil {
 		return err
@@ -836,7 +970,13 @@ func (im *importer) refreshOne(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	if err := tx.UpdateSeriesSummary(ctx, id, &stats.FirstTS, &stats.LastTS, stats.Count, string(js), relational.Now()); err != nil {
+	if err := tx.UpdateSeriesSummary(ctx,
+		id,
+		&stats.FirstTS,
+		&stats.LastTS,
+		stats.Count,
+		string(js),
+		relational.Now()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -854,14 +994,18 @@ func (im *importer) vectors(ctx context.Context) {
 	}
 	skipAll := func(why string) {
 		im.res.VectorsSkipped += total
-		im.res.warnf("the %d vectors of the archive are not imported: %s", total, why)
+		im.res.warnf("the %d vectors of the archive are not imported: %s",
+			total,
+			why)
 	}
 	switch {
 	case im.t.Vector == nil:
 		skipAll("the target has no vector store")
 		return
 	case m.EmbeddingDimensions != im.t.EmbeddingDimensions:
-		skipAll(fmt.Sprintf("the archive's embeddings have %d dimensions and the target stores %d", m.EmbeddingDimensions, im.t.EmbeddingDimensions))
+		skipAll(fmt.Sprintf("the archive's embeddings have %d dimensions and the target stores %d",
+			m.EmbeddingDimensions,
+			im.t.EmbeddingDimensions))
 		return
 	}
 	for _, vd := range m.Vectors {
@@ -879,21 +1023,29 @@ func (im *importer) vectors(ctx context.Context) {
 		// MEMORY DATASET
 		target := memory_dataset.VectorDataset(newDS, memory_dataset.VectorIndex(vd.Index))
 		//------------------
-		if err := im.copyVectors(ctx, vd, target); err != nil {
-			im.res.warnf("vector dataset %q was not imported completely: %v", vd.Name, err)
+		if err := im.copyVectors(ctx,
+			vd,
+			target); err != nil {
+			im.res.warnf("vector dataset %q was not imported completely: %v",
+				vd.Name,
+				err)
 		}
 	}
 }
 
 const vectorBatch = 200
 
-func (im *importer) copyVectors(ctx context.Context, vd dbexport.VectorDataset, target string) error {
+func (im *importer) copyVectors(ctx context.Context,
+	vd dbexport.VectorDataset,
+	target string) error {
 	var batch []vector.Vector
 	flush := func() error {
 		if len(batch) == 0 {
 			return nil
 		}
-		err := im.t.Vector.Upsert(ctx, target, batch)
+		err := im.t.Vector.Upsert(ctx,
+			target,
+			batch)
 		if err == nil {
 			im.res.Vectors += int64(len(batch))
 		} else {
@@ -931,7 +1083,9 @@ func (im *importer) mapVector(v vector.Vector) (out vector.Vector, same, ok bool
 		return v, false, false
 	}
 	kindName, num := v.ID[:cut], v.ID[cut+1:]
-	old, err := strconv.ParseInt(num, 10, 64)
+	old, err := strconv.ParseInt(num,
+		10,
+		64)
 	if err != nil {
 		return v, false, false
 	}
@@ -953,7 +1107,10 @@ func (im *importer) mapVector(v vector.Vector) (out vector.Vector, same, ok bool
 	if !found {
 		return v, false, false
 	}
-	out = vector.Vector{ID: kindName + "-" + strconv.FormatInt(id, 10), Values: v.Values}
+	out = vector.Vector{
+		ID:     kindName + "-" + strconv.FormatInt(id, 10),
+		Values: v.Values,
+	}
 	if v.Metadata != nil {
 		out.Metadata = make(map[string]any, len(v.Metadata))
 		for k, val := range v.Metadata {
@@ -984,7 +1141,8 @@ func (im *importer) copyImages() {
 		im.res.warnf("the %d image files of the archive are not copied: the target has no image directory", len(im.images))
 		return
 	}
-	err := im.r.Images(func(p string, content io.Reader) error {
+	err := im.r.Images(func(p string,
+		content io.Reader) error {
 		newPath, ok := im.images[p]
 		if !ok {
 			return nil
@@ -994,7 +1152,9 @@ func (im *importer) copyImages() {
 			return nil // the same image of the same dataset is stored already
 		}
 		if err := writeFileAtomic(full, content); err != nil {
-			im.res.warnf("image file %s was not copied: %v", newPath, err)
+			im.res.warnf("image file %s was not copied: %v",
+				newPath,
+				err)
 			return nil
 		}
 		im.res.Images++

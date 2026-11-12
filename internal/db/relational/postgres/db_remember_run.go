@@ -79,10 +79,14 @@ func stageValues(st model.RememberStage) []any {
 }
 
 // saveRememberStages writes every stage of model.RememberStages of the run (inserting or overwriting its row).
-func saveRememberStages(ctx context.Context, tx *sql.Tx, runID int64, stages map[string]model.RememberStage) error {
+func saveRememberStages(ctx context.Context,
+	tx *sql.Tx,
+	runID int64,
+	stages map[string]model.RememberStage) error {
 	for _, s := range model.RememberStages {
 		args := append([]any{runID, s.Name}, stageValues(stages[s.Name])...)
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx,
+			`
 			INSERT INTO gb_remember_run_stages (run_id, stage_type, status, error, started_at, finished_at, inference_ids)
 			VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
 			ON CONFLICT (run_id, stage_type) DO UPDATE SET
@@ -90,8 +94,11 @@ func saveRememberStages(ctx context.Context, tx *sql.Tx, runID int64, stages map
 				error         = EXCLUDED.error,
 				started_at    = EXCLUDED.started_at,
 				finished_at   = EXCLUDED.finished_at,
-				inference_ids = EXCLUDED.inference_ids`, args...); err != nil {
-			return fmt.Errorf("stage %s: %w", s.Name, err)
+				inference_ids = EXCLUDED.inference_ids`,
+			args...); err != nil {
+			return fmt.Errorf("stage %s: %w",
+				s.Name,
+				err)
 		}
 	}
 	return nil
@@ -101,7 +108,10 @@ func saveRememberStages(ctx context.Context, tx *sql.Tx, runID int64, stages map
 func notStartedStages() map[string]model.RememberStage {
 	stages := make(map[string]model.RememberStage, len(model.RememberStages))
 	for _, s := range model.RememberStages {
-		stages[s.Name] = model.RememberStage{Status: model.RememberNotStarted, InferenceIDs: []int64{}}
+		stages[s.Name] = model.RememberStage{
+			Status:       model.RememberNotStarted,
+			InferenceIDs: []int64{},
+		}
 	}
 	return stages
 }
@@ -120,7 +130,16 @@ func scanRememberRun(sc scanner) (*model.RememberRun, error) {
 	var artifact sql.NullInt64
 	var errText sql.NullString
 	var finished sql.NullTime
-	if err := sc.Scan(&r.ID, &r.UserID, &r.Dataset, &r.Kind, &params, &artifact, &r.Status, &errText, &r.StartedAt, &finished); err != nil {
+	if err := sc.Scan(&r.ID,
+		&r.UserID,
+		&r.Dataset,
+		&r.Kind,
+		&params,
+		&artifact,
+		&r.Status,
+		&errText,
+		&r.StartedAt,
+		&finished); err != nil {
 		return nil, err
 	}
 	r.Params = parseObject(params)
@@ -138,20 +157,28 @@ func scanRememberRun(sc scanner) (*model.RememberRun, error) {
 
 // loadRememberStages fills in the stages of the runs (their Stages map) from gb_remember_run_stages. A run without a row for a
 // stage keeps it not started.
-func loadRememberStages(ctx context.Context, d *sql.DB, runs []model.RememberRun) error {
+func loadRememberStages(ctx context.Context,
+	d *sql.DB,
+	runs []model.RememberRun) error {
 	if len(runs) == 0 {
 		return nil
 	}
 	byID := make(map[int64]*model.RememberRun, len(runs))
-	args := make([]any, 0, len(runs))
-	marks := make([]string, 0, len(runs))
+	args := make([]any,
+		0,
+		len(runs))
+	marks := make([]string,
+		0,
+		len(runs))
 	for i := range runs {
 		byID[runs[i].ID] = &runs[i]
 		args = append(args, runs[i].ID)
 		marks = append(marks, "$"+strconv.Itoa(i+1))
 	}
-	rows, err := d.QueryContext(ctx, `SELECT run_id, stage_type, status, error, started_at, finished_at, inference_ids::text
-		FROM gb_remember_run_stages WHERE run_id IN (`+strings.Join(marks, ", ")+`)`, args...)
+	rows, err := d.QueryContext(ctx,
+		`SELECT run_id, stage_type, status, error, started_at, finished_at, inference_ids::text
+		FROM gb_remember_run_stages WHERE run_id IN (`+strings.Join(marks, ", ")+`)`,
+		args...)
 	if err != nil {
 		return fmt.Errorf("load remember stages: %w", err)
 	}
@@ -161,14 +188,25 @@ func loadRememberStages(ctx context.Context, d *sql.DB, runs []model.RememberRun
 		var name, status, ids string
 		var errText sql.NullString
 		var started, finished sql.NullTime
-		if err := rows.Scan(&runID, &name, &status, &errText, &started, &finished, &ids); err != nil {
+		if err := rows.Scan(&runID,
+			&name,
+			&status,
+			&errText,
+			&started,
+			&finished,
+			&ids); err != nil {
 			return fmt.Errorf("load remember stages: %w", err)
 		}
 		r := byID[runID]
 		if r == nil {
 			continue
 		}
-		st := model.RememberStage{Status: status, StartedAt: utc(started), FinishedAt: utc(finished), InferenceIDs: parseIDs(ids)}
+		st := model.RememberStage{
+			Status:       status,
+			StartedAt:    utc(started),
+			FinishedAt:   utc(finished),
+			InferenceIDs: parseIDs(ids),
+		}
 		if errText.Valid {
 			st.Error = &errText.String
 		}
@@ -182,7 +220,9 @@ func rememberRunSelect() string {
 }
 
 // InsertRememberRun stores a remember run with its stages (r.ID is ignored) and returns its ID.
-func InsertRememberRun(ctx context.Context, d *sql.DB, r model.RememberRun) (int64, error) {
+func InsertRememberRun(ctx context.Context,
+	d *sql.DB,
+	r model.RememberRun) (int64, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("insert remember run: %w", err)
@@ -193,12 +233,16 @@ func InsertRememberRun(ctx context.Context, d *sql.DB, r model.RememberRun) (int
 		marks[i] = rememberCol{c, c == "params"}.placeholder(i + 1)
 	}
 	var id int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO gb_remember_runs (`+strings.Join(rememberRunColumns, ", ")+`) VALUES (`+strings.Join(marks, ", ")+`) RETURNING id`,
+	err = tx.QueryRowContext(ctx,
+		`INSERT INTO gb_remember_runs (`+strings.Join(rememberRunColumns, ", ")+`) VALUES (`+strings.Join(marks, ", ")+`) RETURNING id`,
 		rememberRunValues(r)...).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert remember run: %w", err)
 	}
-	if err := saveRememberStages(ctx, tx, id, r.Stages); err != nil {
+	if err := saveRememberStages(ctx,
+		tx,
+		id,
+		r.Stages); err != nil {
 		return 0, fmt.Errorf("insert remember run: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -209,7 +253,9 @@ func InsertRememberRun(ctx context.Context, d *sql.DB, r model.RememberRun) (int
 
 // SaveRememberRun overwrites the stored remember run r.ID with r (the run and its stages). It returns model.ErrNotFound if there is
 // none.
-func SaveRememberRun(ctx context.Context, d *sql.DB, r model.RememberRun) error {
+func SaveRememberRun(ctx context.Context,
+	d *sql.DB,
+	r model.RememberRun) error {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("save remember run: %w", err)
@@ -219,7 +265,8 @@ func SaveRememberRun(ctx context.Context, d *sql.DB, r model.RememberRun) error 
 	for i, c := range rememberRunColumns {
 		sets[i] = c + " = " + rememberCol{c, c == "params"}.placeholder(i+1)
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE gb_remember_runs SET `+strings.Join(sets, ", ")+` WHERE id = $`+strconv.Itoa(len(rememberRunColumns)+1),
+	res, err := tx.ExecContext(ctx,
+		`UPDATE gb_remember_runs SET `+strings.Join(sets, ", ")+` WHERE id = $`+strconv.Itoa(len(rememberRunColumns)+1),
 		append(rememberRunValues(r), r.ID)...)
 	if err != nil {
 		return fmt.Errorf("save remember run: %w", err)
@@ -227,7 +274,10 @@ func SaveRememberRun(ctx context.Context, d *sql.DB, r model.RememberRun) error 
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return model.ErrNotFound
 	}
-	if err := saveRememberStages(ctx, tx, r.ID, r.Stages); err != nil {
+	if err := saveRememberStages(ctx,
+		tx,
+		r.ID,
+		r.Stages); err != nil {
 		return fmt.Errorf("save remember run: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -237,8 +287,12 @@ func SaveRememberRun(ctx context.Context, d *sql.DB, r model.RememberRun) error 
 }
 
 // GetRememberRun returns the remember run with that ID, or model.ErrNotFound.
-func GetRememberRun(ctx context.Context, d *sql.DB, id int64) (*model.RememberRun, error) {
-	r, err := scanRememberRun(d.QueryRowContext(ctx, rememberRunSelect()+" WHERE id = $1", id))
+func GetRememberRun(ctx context.Context,
+	d *sql.DB,
+	id int64) (*model.RememberRun, error) {
+	r, err := scanRememberRun(d.QueryRowContext(ctx,
+		rememberRunSelect()+" WHERE id = $1",
+		id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -246,7 +300,9 @@ func GetRememberRun(ctx context.Context, d *sql.DB, id int64) (*model.RememberRu
 		return nil, err
 	}
 	runs := []model.RememberRun{*r}
-	if err := loadRememberStages(ctx, d, runs); err != nil {
+	if err := loadRememberStages(ctx,
+		d,
+		runs); err != nil {
 		return nil, err
 	}
 	return &runs[0], nil
@@ -254,7 +310,11 @@ func GetRememberRun(ctx context.Context, d *sql.DB, id int64) (*model.RememberRu
 
 // ListRememberRuns returns the remember runs that match f, newest first (at most limit, after skipping offset), and how many
 // match f in all.
-func ListRememberRuns(ctx context.Context, d *sql.DB, f model.RememberRunFilter, limit, offset int) ([]model.RememberRun, int, error) {
+func ListRememberRuns(ctx context.Context,
+	d *sql.DB,
+	f model.RememberRunFilter,
+	limit,
+	offset int) ([]model.RememberRun, int, error) {
 	var conds []string
 	var args []any
 	for _, c := range []struct{ col, val string }{{"user_id", f.UserID}, {"dataset", f.Dataset}, {"status", f.Status}} {
@@ -268,12 +328,17 @@ func ListRememberRuns(ctx context.Context, d *sql.DB, f model.RememberRunFilter,
 		where = " WHERE " + strings.Join(conds, " AND ")
 	}
 	var total int
-	if err := d.QueryRowContext(ctx, "SELECT COUNT(*) FROM gb_remember_runs"+where, args...).Scan(&total); err != nil {
+	if err := d.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM gb_remember_runs"+where,
+		args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	n := len(args)
-	rows, err := d.QueryContext(ctx, rememberRunSelect()+where+" ORDER BY id DESC LIMIT $"+strconv.Itoa(n+1)+" OFFSET $"+strconv.Itoa(n+2),
-		append(args, limit, offset)...)
+	rows, err := d.QueryContext(ctx,
+		rememberRunSelect()+where+" ORDER BY id DESC LIMIT $"+strconv.Itoa(n+1)+" OFFSET $"+strconv.Itoa(n+2),
+		append(args,
+			limit,
+			offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -290,7 +355,9 @@ func ListRememberRuns(ctx context.Context, d *sql.DB, f model.RememberRunFilter,
 		return nil, 0, err
 	}
 	rows.Close() // the stages are read on the same connection pool
-	if err := loadRememberStages(ctx, d, out); err != nil {
+	if err := loadRememberStages(ctx,
+		d,
+		out); err != nil {
 		return nil, 0, err
 	}
 	return out, total, nil
@@ -300,10 +367,18 @@ func ListRememberRuns(ctx context.Context, d *sql.DB, f model.RememberRunFilter,
 // Stage outputs (gb_remember_run_stage_outputs)
 
 // InsertRememberStageOutput stores an output of a stage of a run (o.ID is ignored) and returns its ID.
-func InsertRememberStageOutput(ctx context.Context, d *sql.DB, o model.RememberStageOutput) (int64, error) {
+func InsertRememberStageOutput(ctx context.Context,
+	d *sql.DB,
+	o model.RememberStageOutput) (int64, error) {
 	var id int64
-	err := d.QueryRowContext(ctx, `INSERT INTO gb_remember_run_stage_outputs (run_id, stage, name, label, output, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id`,
-		o.RunID, o.Stage, o.Name, o.Label, string(o.Output), o.CreatedAt).Scan(&id)
+	err := d.QueryRowContext(ctx,
+		`INSERT INTO gb_remember_run_stage_outputs (run_id, stage, name, label, output, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id`,
+		o.RunID,
+		o.Stage,
+		o.Name,
+		o.Label,
+		string(o.Output),
+		o.CreatedAt).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert remember stage output: %w", err)
 	}
@@ -311,8 +386,14 @@ func InsertRememberStageOutput(ctx context.Context, d *sql.DB, o model.RememberS
 }
 
 // ListRememberStageOutputs returns the outputs of the run, in the order they were made; only those of the stage if it is not "".
-func ListRememberStageOutputs(ctx context.Context, d *sql.DB, runID int64, stage string) ([]model.RememberStageOutput, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id, run_id, stage, name, label, output::text, created_at FROM gb_remember_run_stage_outputs WHERE run_id = $1 AND ($2 = '' OR stage = $2) ORDER BY id`, runID, stage)
+func ListRememberStageOutputs(ctx context.Context,
+	d *sql.DB,
+	runID int64,
+	stage string) ([]model.RememberStageOutput, error) {
+	rows, err := d.QueryContext(ctx,
+		`SELECT id, run_id, stage, name, label, output::text, created_at FROM gb_remember_run_stage_outputs WHERE run_id = $1 AND ($2 = '' OR stage = $2) ORDER BY id`,
+		runID,
+		stage)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +402,13 @@ func ListRememberStageOutputs(ctx context.Context, d *sql.DB, runID int64, stage
 	for rows.Next() {
 		var o model.RememberStageOutput
 		var output string
-		if err := rows.Scan(&o.ID, &o.RunID, &o.Stage, &o.Name, &o.Label, &output, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID,
+			&o.RunID,
+			&o.Stage,
+			&o.Name,
+			&o.Label,
+			&output,
+			&o.CreatedAt); err != nil {
 			return nil, err
 		}
 		o.Output, o.CreatedAt = []byte(output), o.CreatedAt.UTC()
@@ -331,13 +418,17 @@ func ListRememberStageOutputs(ctx context.Context, d *sql.DB, runID int64, stage
 }
 
 // DeleteRememberStageOutputs deletes the outputs made before the time (all of them if it is zero) and returns how many.
-func DeleteRememberStageOutputs(ctx context.Context, d *sql.DB, before time.Time) (int64, error) {
+func DeleteRememberStageOutputs(ctx context.Context,
+	d *sql.DB,
+	before time.Time) (int64, error) {
 	var res sql.Result
 	var err error
 	if before.IsZero() {
 		res, err = d.ExecContext(ctx, `DELETE FROM gb_remember_run_stage_outputs`)
 	} else {
-		res, err = d.ExecContext(ctx, `DELETE FROM gb_remember_run_stage_outputs WHERE created_at < $1`, before)
+		res, err = d.ExecContext(ctx,
+			`DELETE FROM gb_remember_run_stage_outputs WHERE created_at < $1`,
+			before)
 	}
 	if err != nil {
 		return 0, fmt.Errorf("delete remember stage outputs: %w", err)

@@ -42,12 +42,15 @@ func Open(path string) (*Reader, error) {
 }
 
 // NewReader reads the archive of the given size from r. Closing the Reader does not close r.
-func NewReader(r io.ReaderAt, size int64) (*Reader, error) {
+func NewReader(r io.ReaderAt,
+	size int64) (*Reader, error) {
 	zr, err := zip.NewReader(r, size)
 	if err != nil {
 		return nil, fmt.Errorf("dbexport: not an archive: %w", err)
 	}
-	rd := &Reader{zr: zr}
+	rd := &Reader{
+		zr: zr,
+	}
 	body, err := rd.read(ManifestFile)
 	if err != nil {
 		return nil, err
@@ -59,7 +62,9 @@ func NewReader(r io.ReaderAt, size int64) (*Reader, error) {
 		return nil, fmt.Errorf("dbexport: not a gligabao export (format %q)", rd.Manifest.Format)
 	}
 	if rd.Manifest.FormatVersion != FormatVersion {
-		return nil, fmt.Errorf("dbexport: format version %d is not supported (this program reads version %d)", rd.Manifest.FormatVersion, FormatVersion)
+		return nil, fmt.Errorf("dbexport: format version %d is not supported (this program reads version %d)",
+			rd.Manifest.FormatVersion,
+			FormatVersion)
 	}
 	return rd, nil
 }
@@ -106,7 +111,8 @@ func (r *Reader) Table(name string) (Table, bool) {
 type Row map[string]any
 
 // Rows calls fn for each row of the table, in the order of its primary key. It stops at the first error of fn and returns it.
-func (r *Reader) Rows(table string, fn func(Row) error) error {
+func (r *Reader) Rows(table string,
+	fn func(Row) error) error {
 	t, ok := r.Table(table)
 	if !ok {
 		return fmt.Errorf("dbexport: the archive has no table %s", table)
@@ -116,14 +122,17 @@ func (r *Reader) Rows(table string, fn func(Row) error) error {
 		dec.UseNumber()
 		var row Row
 		if err := dec.Decode(&row); err != nil {
-			return fmt.Errorf("table %s: %w", table, err)
+			return fmt.Errorf("table %s: %w",
+				table,
+				err)
 		}
 		return fn(row)
 	})
 }
 
 // Vectors calls fn for each vector of the dataset of the vector store (named as in the manifest), in ID order.
-func (r *Reader) Vectors(dataset string, fn func(vector.Vector) error) error {
+func (r *Reader) Vectors(dataset string,
+	fn func(vector.Vector) error) error {
 	for _, vd := range r.Manifest.Vectors {
 		if vd.Name != dataset {
 			continue
@@ -131,9 +140,15 @@ func (r *Reader) Vectors(dataset string, fn func(vector.Vector) error) error {
 		return r.lines(vd.File, func(line []byte) error {
 			var vl vectorLine
 			if err := json.Unmarshal(line, &vl); err != nil {
-				return fmt.Errorf("vector dataset %q: %w", dataset, err)
+				return fmt.Errorf("vector dataset %q: %w",
+					dataset,
+					err)
 			}
-			return fn(vector.Vector{ID: vl.ID, Values: vl.Values, Metadata: vl.Metadata})
+			return fn(vector.Vector{
+				ID:       vl.ID,
+				Values:   vl.Values,
+				Metadata: vl.Metadata,
+			})
 		})
 	}
 	return fmt.Errorf("dbexport: the archive has no vector dataset %q", dataset)
@@ -141,7 +156,8 @@ func (r *Reader) Vectors(dataset string, fn func(vector.Vector) error) error {
 
 // Images calls fn for each image file, with its path (relative to the image directory) and its content, which is only valid during the
 // call.
-func (r *Reader) Images(fn func(path string, content io.Reader) error) error {
+func (r *Reader) Images(fn func(path string,
+	content io.Reader) error) error {
 	for _, img := range r.Manifest.Images {
 		rc, err := r.open(img.File)
 		if err != nil {
@@ -167,7 +183,8 @@ func (r *Reader) Extra(name string) ([]byte, error) {
 }
 
 // lines calls fn with each line of the entry.
-func (r *Reader) lines(name string, fn func([]byte) error) error {
+func (r *Reader) lines(name string,
+	fn func([]byte) error) error {
 	rc, err := r.open(name)
 	if err != nil {
 		return err
@@ -185,7 +202,9 @@ func (r *Reader) lines(name string, fn func([]byte) error) error {
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("dbexport: read %s: %w", name, err)
+			return fmt.Errorf("dbexport: read %s: %w",
+				name,
+				err)
 		}
 	}
 }

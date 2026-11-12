@@ -37,7 +37,9 @@ type EvalRerunner interface {
 	// the query (opts; an empty one keeps that setting as it was). It returns the new case run, already recorded (running), while the rerun goes on in the background. Its
 	// errors: evalsdb.ErrNotFound (unknown case run), core.ErrRerunRefused (it cannot be rerun), core.ErrRerunBusy (one is running),
 	// memory_core.ErrInvalidModels (a model name is malformed), memory_core.ErrInvalidReasoning (a level is unknown).
-	Rerun(ctx context.Context, caseRun core.CaseRunID, opts core.RerunOptions) (core.CaseRunID, error)
+	Rerun(ctx context.Context,
+		caseRun core.CaseRunID,
+		opts core.RerunOptions) (core.CaseRunID, error)
 }
 
 // evalRerunInfo is the part of the debug view about reruns: what can be picked.
@@ -76,7 +78,13 @@ func rerunOf(p core.Params) *rerunView {
 	queryModel, _ := p[core.ParamQueryModel].(string)
 	rememberReasoning, _ := p[core.ParamRememberReasoning].(string)
 	queryReasoning, _ := p[core.ParamQueryReasoning].(string)
-	return &rerunView{Of: of, RememberModel: rememberModel, QueryModel: queryModel, RememberReasoning: rememberReasoning, QueryReasoning: queryReasoning}
+	return &rerunView{
+		Of:                of,
+		RememberModel:     rememberModel,
+		QueryModel:        queryModel,
+		RememberReasoning: rememberReasoning,
+		QueryReasoning:    queryReasoning,
+	}
 }
 
 // rerunListItem is one rerun in the list of the reruns of a case run: the case run it made, the case run it repeated, the models it
@@ -96,12 +104,18 @@ type rerunListItem struct {
 // rerunsOf lists the reruns of case run id, whose eval run is er: the case runs that repeated it, and those that repeated those (they
 // are all the same case), oldest first. A rerun is an eval run of its own, with the one case, in the experiment run of the case run it
 // repeats, so they are found among the eval runs of that experiment run; a case run that is in none has no reruns to list. Never nil.
-func rerunsOf(ctx context.Context, d *sql.DB, s evalsdb.Store, er *core.EvalRun, id core.CaseRunID) ([]rerunListItem, error) {
+func rerunsOf(ctx context.Context,
+	d *sql.DB,
+	s evalsdb.Store,
+	er *core.EvalRun,
+	id core.CaseRunID) ([]rerunListItem, error) {
 	out := []rerunListItem{}
 	if er.ExperimentRunID == nil {
 		return out, nil
 	}
-	evalRuns, err := s.ListEvalRunsOfExperimentRun(ctx, d, *er.ExperimentRunID)
+	evalRuns, err := s.ListEvalRunsOfExperimentRun(ctx,
+		d,
+		*er.ExperimentRunID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,14 +126,25 @@ func rerunsOf(ctx context.Context, d *sql.DB, s evalsdb.Store, er *core.EvalRun,
 		if rv == nil || !family[rv.Of] {
 			continue
 		}
-		cases, err := s.ListCaseRuns(ctx, d, evalRuns[i].ID)
+		cases, err := s.ListCaseRuns(ctx,
+			d,
+			evalRuns[i].ID)
 		if err != nil {
 			return nil, err
 		}
 		for _, c := range cases {
 			family[int64(c.ID)] = true
-			out = append(out, rerunListItem{CaseRunID: int64(c.ID), Of: rv.Of, RememberModel: rv.RememberModel, QueryModel: rv.QueryModel,
-				RememberReasoning: rv.RememberReasoning, QueryReasoning: rv.QueryReasoning, Status: c.Status, Verdict: c.Verdict, CostUSD: c.CostUSD})
+			out = append(out, rerunListItem{
+				CaseRunID:         int64(c.ID),
+				Of:                rv.Of,
+				RememberModel:     rv.RememberModel,
+				QueryModel:        rv.QueryModel,
+				RememberReasoning: rv.RememberReasoning,
+				QueryReasoning:    rv.QueryReasoning,
+				Status:            c.Status,
+				Verdict:           c.Verdict,
+				CostUSD:           c.CostUSD,
+			})
 		}
 	}
 	return out, nil
@@ -130,7 +155,10 @@ func rerunInfo(rr EvalRerunner) *evalRerunInfo {
 	if rr == nil {
 		return nil
 	}
-	info := &evalRerunInfo{Models: []string{}, Reasoning: slices.Clone(ai.ReasoningLevels)}
+	info := &evalRerunInfo{
+		Models:    []string{},
+		Reasoning: slices.Clone(ai.ReasoningLevels),
+	}
 	for _, m := range rr.Models() {
 		info.Models = append(info.Models, m.Name)
 	}
@@ -167,78 +195,122 @@ type rerunStarted struct {
 // an unknown or non-knowledge case run, 400 for a model that is not in the price table or an unknown level, 409 for a case run that cannot be rerun (it has
 // not ended, its experiment run is still running, its case is gone) or when another rerun is in progress, 503 when the server cannot
 // rerun (no LLM, or no eval database to write to).
-func EvalCaseRunRerun(d *sql.DB, s evalsdb.Store, rr EvalRerunner) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalCaseRunRerun(d *sql.DB,
+	s evalsdb.Store,
+	rr EvalRerunner) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		var req rerunRequest
-		if body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<16)); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "request body too large or unreadable")
+		if body, err := io.ReadAll(http.MaxBytesReader(w,
+			r.Body,
+			1<<16)); err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"request body too large or unreadable")
 			return
 		} else if len(strings.TrimSpace(string(body))) > 0 {
 			if err := json.Unmarshal(body, &req); err != nil {
-				httputil.Error(w, http.StatusBadRequest, "request body is not valid JSON")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"request body is not valid JSON")
 				return
 			}
 		}
 		if rr == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "reruns are not available (no LLM is configured: the Anthropic API key is missing)")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"reruns are not available (no LLM is configured: the Anthropic API key is missing)")
 			return
 		}
 		req.RememberModel, req.QueryModel = strings.TrimSpace(req.RememberModel), strings.TrimSpace(req.QueryModel)
 		known := rerunInfo(rr).Models
 		for _, m := range []struct{ what, model string }{{"remember_model", req.RememberModel}, {"query_model", req.QueryModel}} {
 			if m.model != "" && !slices.Contains(known, m.model) {
-				httputil.Error(w, http.StatusBadRequest, m.what+" "+m.model+" is not a model of the price table")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					m.what+" "+m.model+" is not a model of the price table")
 				return
 			}
 		}
 		req.RememberReasoning, req.QueryReasoning = strings.TrimSpace(req.RememberReasoning), strings.TrimSpace(req.QueryReasoning)
 		for _, l := range []struct{ what, level string }{{"remember_reasoning", req.RememberReasoning}, {"query_reasoning", req.QueryReasoning}} {
 			if _, valid := ai.NormalizeReasoning(l.level); !valid {
-				httputil.Error(w, http.StatusBadRequest, l.what+" "+l.level+" is not a reasoning level (levels: "+strings.Join(ai.ReasoningLevels, ", ")+")")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					l.what+" "+l.level+" is not a reasoning level (levels: "+strings.Join(ai.ReasoningLevels, ", ")+")")
 				return
 			}
 		}
 		ctx := r.Context()
-		if _, err := knowledgeCaseRunOf(ctx, d, s, id); err != nil {
-			evalFail(w, err, "case run")
+		if _, err := knowledgeCaseRunOf(ctx,
+			d,
+			s,
+			id); err != nil {
+			evalFail(w,
+				err,
+				"case run")
 			return
 		}
-		newID, err := rr.Rerun(ctx, core.CaseRunID(id), core.RerunOptions{
-			RememberModel: req.RememberModel, QueryModel: req.QueryModel, RememberReasoning: req.RememberReasoning, QueryReasoning: req.QueryReasoning})
+		newID, err := rr.Rerun(ctx,
+			core.CaseRunID(id),
+			core.RerunOptions{
+				RememberModel:     req.RememberModel,
+				QueryModel:        req.QueryModel,
+				RememberReasoning: req.RememberReasoning,
+				QueryReasoning:    req.QueryReasoning,
+			})
 		switch {
 		case errors.Is(err, evalsdb.ErrNotFound):
-			httputil.Error(w, http.StatusNotFound, "case run not found")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"case run not found")
 			return
 		case errors.Is(err, core.ErrRerunRefused), errors.Is(err, core.ErrRerunBusy):
-			httputil.Error(w, http.StatusConflict, err.Error())
+			httputil.Error(w,
+				http.StatusConflict,
+				err.Error())
 			return
 		case errors.Is(err, memory_core.ErrInvalidModels), errors.Is(err, memory_core.ErrInvalidReasoning):
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		case err != nil:
 			log.WithError(err).WithField("case_run_id", id).Error("admin: eval rerun failed")
-			httputil.Error(w, http.StatusInternalServerError, "the rerun could not be started: "+err.Error())
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"the rerun could not be started: "+err.Error())
 			return
 		}
-		out := rerunStarted{CaseRunID: int64(newID)}
+		out := rerunStarted{
+			CaseRunID: int64(newID),
+		}
 		// The rerun is recorded by a connection of its own: read where it was put from this one (it is committed before Rerun returns).
-		c, err := s.GetCaseRun(ctx, d, newID)
+		c, err := s.GetCaseRun(ctx,
+			d,
+			newID)
 		if err == nil {
 			out.EvalRunID = int64(c.EvalRunID)
 			var er *core.EvalRun
-			if er, err = s.GetEvalRun(ctx, d, c.EvalRunID); err == nil && er.ExperimentRunID != nil {
+			if er, err = s.GetEvalRun(ctx,
+				d,
+				c.EvalRunID); err == nil && er.ExperimentRunID != nil {
 				x := int64(*er.ExperimentRunID)
 				out.ExperimentRunID = &x
 			}
 		}
 		if err != nil {
-			evalFail(w, err, "rerun")
+			evalFail(w,
+				err,
+				"rerun")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusAccepted, out)
+		httputil.WriteJSON(w,
+			http.StatusAccepted,
+			out)
 	}
 }

@@ -30,11 +30,17 @@ type app struct {
 
 // openApp opens the databases described by cfg (PostgreSQL, and a remote vector store: Pinecone or S3 Vectors; see checkRemote) and builds
 // the app over them. Call close when done.
-func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory_core.Embedder) (*app, error) {
+func openApp(ctx context.Context,
+	cfg *config.Config,
+	llm *ai.Client,
+	emb memory_core.Embedder) (*app, error) {
 	if err := checkRemote(cfg); err != nil {
 		return nil, err
 	}
-	dbCfg := db.ConfigFrom(cfg, "", "", "")
+	dbCfg := db.ConfigFrom(cfg,
+		"",
+		"",
+		"")
 	dbCfg.Geo = cfg.Geo
 	dbCfg.Models = ai.SupportedModels(ai.NewPriceTable(cfg.AIPrices()))
 	database, err := db.Open(dbCfg)
@@ -48,7 +54,10 @@ func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory
 		geo = memory_geo.Default()
 	}
 	// The same options as the remember and query endpoints of the server (internal/api), less what a command line cannot ask for.
-	a := &app{database: database, llm: llm}
+	a := &app{
+		database: database,
+		llm:      llm,
+	}
 	a.rememberOpts = []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithChunking(database.Chunking), memory_core.WithGeoResolver(geo)}
 	a.queryOpts = []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithGeoResolver(geo), memory_core.WithGeoRadius(cfg.GeoRadiusKm)}
 
@@ -60,8 +69,17 @@ func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory
 		stop()
 		return nil, err
 	}
-	a.remember = memory_remember.NewManager(mgrCtx, database.Relational, llm)
-	a.mem = &agent_memory.Memory{Remember: a.remember, DB: database.Relational, LLM: llm, RememberOpts: a.rememberOpts, QueryOpts: a.queryOpts, ErrSink: errSink}
+	a.remember = memory_remember.NewManager(mgrCtx,
+		database.Relational,
+		llm)
+	a.mem = &agent_memory.Memory{
+		Remember:     a.remember,
+		DB:           database.Relational,
+		LLM:          llm,
+		RememberOpts: a.rememberOpts,
+		QueryOpts:    a.queryOpts,
+		ErrSink:      errSink,
+	}
 	return a, nil
 }
 
@@ -78,11 +96,17 @@ func (a *app) close() {
 // works on the databases of the main gligabao instance, which see every write at once, so nothing has to be synced.
 func checkRemote(cfg *config.Config) error {
 	if cfg.DBBackend != config.DBBackendPostgres {
-		return fmt.Errorf("db_backend %q is not supported: the worker needs %q (set db_backend and postgres_dsn, or %s)", cfg.DBBackend, config.DBBackendPostgres, config.EnvPostgresDSN)
+		return fmt.Errorf("db_backend %q is not supported: the worker needs %q (set db_backend and postgres_dsn, or %s)",
+			cfg.DBBackend,
+			config.DBBackendPostgres,
+			config.EnvPostgresDSN)
 	}
 	switch cfg.VectorStore {
 	case config.VectorStorePinecone, config.VectorStoreS3Vectors:
 		return nil
 	}
-	return fmt.Errorf("vector_store %q is not supported: the worker needs %q or %q", cfg.VectorStore, config.VectorStorePinecone, config.VectorStoreS3Vectors)
+	return fmt.Errorf("vector_store %q is not supported: the worker needs %q or %q",
+		cfg.VectorStore,
+		config.VectorStorePinecone,
+		config.VectorStoreS3Vectors)
 }

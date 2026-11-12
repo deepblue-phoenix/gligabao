@@ -373,88 +373,145 @@ type Tx interface {
 
 	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode, ArtifactKnowledge), attached to the
 	// session sessionID ("" for none).
-	InsertArtifact(ctx context.Context, dsID int64, kind, text, sessionID string, validAt, createdAt time.Time) (int64, error)
+	InsertArtifact(ctx context.Context,
+		dsID int64,
+		kind,
+		text,
+		sessionID string,
+		validAt,
+		createdAt time.Time) (int64, error)
 	// InsertChunkArtifact stores a chunk: an artifact that is a child of the artifact c.ParentID (which must be in the
 	// same dataset and already stored), with its position, byte range and token count in the parent. The children of
 	// an artifact are deleted with it.
-	InsertChunkArtifact(ctx context.Context, c NewChunkArtifact) (int64, error)
+	InsertChunkArtifact(ctx context.Context,
+		c NewChunkArtifact) (int64, error)
 	// InsertWebSearchArtifact stores the result of a web search: an artifact of kind ArtifactWebSearch that records
 	// the query and is a child of the artifact w.ParentID (the one the searched entity came from; which must be in the
 	// same dataset and already stored). It is not a chunk. The children of an artifact are deleted with it.
-	InsertWebSearchArtifact(ctx context.Context, w NewWebSearchArtifact) (int64, error)
+	InsertWebSearchArtifact(ctx context.Context,
+		w NewWebSearchArtifact) (int64, error)
 	// InsertSeriesObservationArtifact stores an observation of a series: an artifact of kind ArtifactSeriesObservation
 	// that records the series (o.SeriesID) and the query, and is a child of the artifact o.ParentID (the one that anchors
 	// the series; which must be in the same dataset and already stored). It is not a chunk. The children of an artifact
 	// are deleted with it.
-	InsertSeriesObservationArtifact(ctx context.Context, o NewSeriesObservationArtifact) (int64, error)
+	InsertSeriesObservationArtifact(ctx context.Context,
+		o NewSeriesObservationArtifact) (int64, error)
 	// InsertChunkSummaryArtifact stores the summary of a chunk: an artifact of kind ArtifactChunkSummary that is a child
 	// of the chunk artifact s.ParentID (which must be in the same dataset and already stored). It is not a chunk. The
 	// children of an artifact are deleted with it.
-	InsertChunkSummaryArtifact(ctx context.Context, s NewChunkSummaryArtifact) (int64, error)
+	InsertChunkSummaryArtifact(ctx context.Context,
+		s NewChunkSummaryArtifact) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
 	// description replaces the stored one (and e.ModelID the stored model_id, which follows the description; an empty
 	// stored model_id is always filled). It returns the entity ID.
-	UpsertEntity(ctx context.Context, dsID int64, e Entity, nameKey string) (int64, error)
+	UpsertEntity(ctx context.Context,
+		dsID int64,
+		e Entity,
+		nameKey string) (int64, error)
 	// LinkEntity records that the entity was inferred from the artifact. It is idempotent: linking the same pair
 	// again is a no-op. Call it for every entity an artifact mentions, whether the entity was just created or
 	// already existed (see the gb_entity_artifacts schema comment for why entities need a link table).
-	LinkEntity(ctx context.Context, entityID, artifactID int64) error
+	LinkEntity(ctx context.Context,
+		entityID,
+		artifactID int64) error
 	// LinkEdge records that the edge was inferred from the artifact. It is idempotent. Call it for the artifact
 	// that created the edge and for every later artifact that states the same fact (a duplicate merged into the
 	// stored edge), see the gb_edge_artifacts schema comment.
-	LinkEdge(ctx context.Context, edgeID, artifactID int64) error
+	LinkEdge(ctx context.Context,
+		edgeID,
+		artifactID int64) error
 	// LinkEntitySession records that the entity was inferred from an artifact of the session. It is idempotent. Call
 	// it for every entity an artifact of the session mentions, whether the entity was just created or already
 	// existed: this is how the sessions an entity was discovered in are kept even when the entity is a duplicate
 	// that is not written again (see the gb_entity_sessions schema comment).
-	LinkEntitySession(ctx context.Context, entityID int64, sessionID string) error
+	LinkEntitySession(ctx context.Context,
+		entityID int64,
+		sessionID string) error
 	// LinkEdgeSession records that the edge was inferred from an artifact of the session. It is idempotent. Call it
 	// for the session of the artifact that created the edge and of every later artifact that states the same fact
 	// (a duplicate merged into the stored edge), see the gb_edge_sessions schema comment.
-	LinkEdgeSession(ctx context.Context, edgeID int64, sessionID string) error
+	LinkEdgeSession(ctx context.Context,
+		edgeID int64,
+		sessionID string) error
 	// FindEntityID returns the oldest entity of the dataset with the given nameKey, of any type.
-	FindEntityID(ctx context.Context, dsID int64, nameKey string) (int64, error)
+	FindEntityID(ctx context.Context,
+		dsID int64,
+		nameKey string) (int64, error)
 	// GetEntity reads one entity (its stored state), inside the dataset only. It returns ErrNotFound if there is none.
-	GetEntity(ctx context.Context, dsID, id int64) (*EvidenceEntity, error)
+	GetEntity(ctx context.Context,
+		dsID,
+		id int64) (*EvidenceEntity, error)
 	// InsertEdge stores an edge and returns its ID.
-	InsertEdge(ctx context.Context, e NewEdge) (int64, error)
+	InsertEdge(ctx context.Context,
+		e NewEdge) (int64, error)
 	// MergeDuplicateEdge records the end of an already stored fact if it has none yet (invalidAt may be nil).
-	MergeDuplicateEdge(ctx context.Context, dsID, id int64, invalidAt *time.Time) error
+	MergeDuplicateEdge(ctx context.Context,
+		dsID,
+		id int64,
+		invalidAt *time.Time) error
 	// GetEdge reads one edge with its endpoint names, inside the dataset only.
-	GetEdge(ctx context.Context, dsID, id int64) (*Edge, error)
+	GetEdge(ctx context.Context,
+		dsID,
+		id int64) (*Edge, error)
 	// InvalidateEdge sets the end of a fact (event time) and when we learned it (system time).
-	InvalidateEdge(ctx context.Context, id int64, invalidAt, expiredAt time.Time) error
+	InvalidateEdge(ctx context.Context,
+		id int64,
+		invalidAt,
+		expiredAt time.Time) error
 	// InsertEdgeEvent appends an event to the log of what Remember did to the facts (gb_edge_events).
-	InsertEdgeEvent(ctx context.Context, e EdgeEvent) error
+	InsertEdgeEvent(ctx context.Context,
+		e EdgeEvent) error
 
 	// FindEntity returns the oldest entity of the dataset with the given nameKey and type.
-	FindEntity(ctx context.Context, dsID int64, nameKey, typ string) (int64, error)
+	FindEntity(ctx context.Context,
+		dsID int64,
+		nameKey,
+		typ string) (int64, error)
 	// FindEdgeID returns the newest edge of the dataset between the entities with the normalized names sourceKey and
 	// targetKey, with the given relation; a live (not expired) one is preferred to an expired one.
-	FindEdgeID(ctx context.Context, dsID int64, sourceKey, relation, targetKey string) (int64, error)
+	FindEdgeID(ctx context.Context,
+		dsID int64,
+		sourceKey,
+		relation,
+		targetKey string) (int64, error)
 	// CheckArtifact returns ErrNotFound unless the dataset has an artifact with the ID.
-	CheckArtifact(ctx context.Context, dsID, id int64) error
+	CheckArtifact(ctx context.Context,
+		dsID,
+		id int64) error
 
 	// UpsertSeries inserts the series, or updates the name, unit, frequency and definition of the one with the same
 	// (dataset, provider, key, field). created says which. It returns the series ID.
-	UpsertSeries(ctx context.Context, s NewSeries) (id int64, created bool, err error)
+	UpsertSeries(ctx context.Context,
+		s NewSeries) (id int64, created bool, err error)
 	// UpsertSeriesPoints writes the points: a point at a time the series already has replaces its value. The times
 	// of the points must be distinct.
-	UpsertSeriesPoints(ctx context.Context, seriesID int64, pts []SeriesPoint) error
+	UpsertSeriesPoints(ctx context.Context,
+		seriesID int64,
+		pts []SeriesPoint) error
 	// ListSeriesPoints returns every point of the series, oldest first.
-	ListSeriesPoints(ctx context.Context, seriesID int64) ([]SeriesPoint, error)
+	ListSeriesPoints(ctx context.Context,
+		seriesID int64) ([]SeriesPoint, error)
 	// UpdateSeriesSummary stores what describes all the points of the series: the first and last time, the number of
 	// points and the stats JSON.
-	UpdateSeriesSummary(ctx context.Context, seriesID int64, first, last *time.Time, count int, stats string, now time.Time) error
+	UpdateSeriesSummary(ctx context.Context,
+		seriesID int64,
+		first,
+		last *time.Time,
+		count int,
+		stats string,
+		now time.Time) error
 	// AnchorSeries links the series to an artifact, entity or edge of its dataset (idempotent: it replaces the role
 	// and window of an existing anchor).
-	AnchorSeries(ctx context.Context, a NewSeriesAnchor) error
+	AnchorSeries(ctx context.Context,
+		a NewSeriesAnchor) error
 
 	// UpsertEntityGeo stores the geo metadata of an entity of the dataset, replacing the stored one (an entity has at
 	// most one). The entity must exist.
-	UpsertEntityGeo(ctx context.Context, g NewEntityGeo) error
+	UpsertEntityGeo(ctx context.Context,
+		g NewEntityGeo) error
 	// GetEntityGeo reads the geo metadata of an entity. It returns ErrNotFound if the entity has none.
-	GetEntityGeo(ctx context.Context, entityID int64) (*EntityGeo, error)
+	GetEntityGeo(ctx context.Context,
+		entityID int64) (*EntityGeo, error)
 }
 
 // ClassCount is a class with the number of artifact graphs of a dataset it was given to.

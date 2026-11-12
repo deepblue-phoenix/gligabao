@@ -23,13 +23,19 @@ type cacheEntry struct {
 
 // Cached wraps r so that a query asked before is answered from memory: places and "not found" are kept, failures of r
 // are not. Queries are compared ignoring case and surrounding space.
-func Cached(r Resolver) Resolver { return &cached{Resolver: r, m: map[string]cacheEntry{}} }
+func Cached(r Resolver) Resolver {
+	return &cached{
+		Resolver: r,
+		m:        map[string]cacheEntry{},
+	}
+}
 
 func cacheKey(q Query) string {
 	return strings.ToLower(strings.Join(strings.Fields(q.Text), " ")) + "\x00" + NormKind(q.Kind) + "\x00" + strings.ToLower(q.CountryCode)
 }
 
-func (c *cached) Resolve(ctx context.Context, q Query) (*Place, error) {
+func (c *cached) Resolve(ctx context.Context,
+	q Query) (*Place, error) {
 	k := cacheKey(q)
 	c.mu.Lock()
 	e, ok := c.m[k]
@@ -51,7 +57,9 @@ func (c *cached) Resolve(ctx context.Context, q Query) (*Place, error) {
 	}
 	if err == nil {
 		cp := *p
-		c.m[k] = cacheEntry{place: &cp}
+		c.m[k] = cacheEntry{
+			place: &cp,
+		}
 	} else {
 		c.m[k] = cacheEntry{}
 	}

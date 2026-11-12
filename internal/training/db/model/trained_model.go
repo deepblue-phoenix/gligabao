@@ -64,7 +64,8 @@ func (m TrainedModel) FilesJSON() string {
 }
 
 // SetStoredJSON sets Params and Files from the columns they are stored in (an unreadable column leaves the field empty).
-func (m *TrainedModel) SetStoredJSON(params, files string) {
+func (m *TrainedModel) SetStoredJSON(params,
+	files string) {
 	m.Params = json.RawMessage("{}")
 	if json.Valid([]byte(params)) {
 		m.Params = json.RawMessage(params)

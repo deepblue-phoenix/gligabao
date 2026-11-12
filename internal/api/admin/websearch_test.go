@@ -26,7 +26,8 @@ type webLLM struct{}
 
 var briefingAbout = regexp.MustCompile(`BRIEFING about (\w+)`)
 
-func (webLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+func (webLLM) Complete(_ context.Context,
+	req ai.Request) (*ai.Response, error) {
 	out := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"},{"name":"Globex","type":"organization"}],
 		"edges":[{"source":"Alice","target":"Acme","relation":"works_at"},{"source":"Acme","target":"Globex","relation":"acquired"}]}`
 	switch msg := req.Messages[0].Content; {
@@ -37,63 +38,118 @@ func (webLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) 
 		out = `{"entities":[{"name":"Initech","type":"organization"},{"name":"` + x + `","type":"organization"}],
 			"edges":[{"source":"Initech","target":"` + x + `","relation":"partnered_with"}]}`
 	}
-	return &ai.Response{Text: out, StopReason: "end_turn", Model: "fake-model"}, nil
+	return &ai.Response{
+		Text:       out,
+		StopReason: "end_turn",
+		Model:      "fake-model",
+	}, nil
 }
 
 // fakeSearcher finds a briefing for every entity but Alice, for whom nothing is found.
 type fakeSearcher struct{}
 
-func (fakeSearcher) WebSearch(_ context.Context, req ai.WebSearchRequest) (*ai.WebSearchResponse, error) {
+func (fakeSearcher) WebSearch(_ context.Context,
+	req ai.WebSearchRequest) (*ai.WebSearchResponse, error) {
 	name := regexp.MustCompile(`name: (\w+)`).FindStringSubmatch(req.Prompt)[1]
 	text := "BRIEFING about " + name + " in 2026."
 	if name == "Alice" {
 		text = "NO_RESULTS"
 	}
-	return &ai.WebSearchResponse{Text: text, Queries: []string{name + " news", name + " deal"}, Provider: ai.ProviderAnthropic, Model: "fake-search-model",
-		Sources:  []ai.WebSource{{URL: "https://news.example/" + name, Title: "News of " + name, PageAge: "May 1, 2026"}},
-		Searches: 2, InputTokens: 10, OutputTokens: 5, CostUSD: 0.02}, nil
+	return &ai.WebSearchResponse{
+		Text:     text,
+		Queries:  []string{name + " news", name + " deal"},
+		Provider: ai.ProviderAnthropic,
+		Model:    "fake-search-model",
+		Sources: []ai.WebSource{{
+			URL:     "https://news.example/" + name,
+			Title:   "News of " + name,
+			PageAge: "May 1, 2026",
+		}},
+		Searches:     2,
+		InputTokens:  10,
+		OutputTokens: 5,
+		CostUSD:      0.02,
+	}, nil
 }
 
 // TestWebSearches checks the web search endpoints of the admin UI: what a remember call with web_search left in the
 // database (stats, per dataset) and what its trajectory recorded (per result, and the totals).
 func TestWebSearches(t *testing.T) { dbtest.Run(t, testWebSearches) }
 
-func testWebSearches(t *testing.T, d *sql.DB) {
+func testWebSearches(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	res, err := memory_remember.Remember(ctx, d, webLLM{}, "u1", "main", "knowledge", "Alice works at Acme, which acquired Globex.", time.Time{},
-		memory_core.WithEval(), memory_core.WithTrajectoryDir(dir), memory_core.WithWebSearcher(fakeSearcher{}), memory_core.WithWebSearch(true))
+	res, err := memory_remember.Remember(ctx,
+		d,
+		webLLM{},
+		"u1",
+		"main",
+		"knowledge",
+		"Alice works at Acme, which acquired Globex.",
+		time.Time{},
+		memory_core.WithEval(),
+		memory_core.WithTrajectoryDir(dir),
+		memory_core.WithWebSearcher(fakeSearcher{}),
+		memory_core.WithWebSearch(true))
 	if err != nil || len(res.WebSearches) != 3 || res.Trajectory == nil {
-		t.Fatalf("remember: %v %+v", err, res)
+		t.Fatalf("remember: %v %+v",
+			err,
+			res)
 	}
 	// A call without web search leaves no web search behind.
-	plain, err := memory_remember.Remember(ctx, d, webLLM{}, "u2", "main", "knowledge", "Alice works at Acme.", time.Time{},
-		memory_core.WithEval(), memory_core.WithTrajectoryDir(dir))
+	plain, err := memory_remember.Remember(ctx,
+		d,
+		webLLM{},
+		"u2",
+		"main",
+		"knowledge",
+		"Alice works at Acme.",
+		time.Time{},
+		memory_core.WithEval(),
+		memory_core.WithTrajectoryDir(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	dsID, err := relational.DatasetID(ctx, d, "u1", "main")
+	dsID, err := relational.DatasetID(ctx,
+		d,
+		"u1",
+		"main")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	get := func(h http.HandlerFunc, url string, out any) int {
+	get := func(h http.HandlerFunc,
+		url string,
+		out any) int {
 		t.Helper()
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /x/{id}", h)
 		mux.HandleFunc("GET /x", h)
 		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, url, nil))
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
+			url,
+			nil))
 		if out != nil && w.Code == http.StatusOK {
 			if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
-				t.Fatalf("%s: %v", w.Body, err)
+				t.Fatalf("%s: %v",
+					w.Body,
+					err)
 			}
 		}
 		return w.Code
 	}
 
 	// The case that holds both calls.
-	rec := recordCase(t, d, "web", "s", "a", dsID, dir, res.Trajectory, plain.Trajectory)
+	rec := recordCase(t,
+		d,
+		"web",
+		"s",
+		"a",
+		dsID,
+		dir,
+		res.Trajectory,
+		plain.Trajectory)
 	store := storeOf(t, d)
 
 	// Per result (case), from the trajectory.
@@ -103,8 +159,14 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 			Searches []admin.WebSearch     `json:"searches"`
 		} `json:"case_runs"`
 	}
-	if c := get(admin.EvalRunWebSearches(d, store, dir), "/x/"+strconv.FormatInt(int64(rec.RunID), 10), &perResult); c != 200 || len(perResult.CaseRuns) != 1 {
-		t.Fatalf("per result: %d %+v", c, perResult)
+	if c := get(admin.EvalRunWebSearches(d,
+		store,
+		dir),
+		"/x/"+strconv.FormatInt(int64(rec.RunID), 10),
+		&perResult); c != 200 || len(perResult.CaseRuns) != 1 {
+		t.Fatalf("per result: %d %+v",
+			c,
+			perResult)
 	}
 	e := perResult.CaseRuns[0]
 	if e.Totals.EntitySearches != 3 || e.Totals.Found != 2 || e.Totals.Empty != 1 || e.Totals.EngineSearches != 6 || e.Totals.Latency.Count != 3 || e.Totals.Sources != 3 {
@@ -126,7 +188,12 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 	}
 
 	// The totals of the eval database: the same, from all the recorded trajectories.
-	named := []admin.Named{{Name: "eval", DB: d, EvalStore: &store, TrajectoryDir: dir}}
+	named := []admin.Named{{
+		Name:          "eval",
+		DB:            d,
+		EvalStore:     &store,
+		TrajectoryDir: dir,
+	}}
 	var stats struct {
 		Database struct {
 			Datasets int `json:"datasets"`
@@ -140,7 +207,9 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 			admin.WebSearchTotals
 		} `json:"trajectories"`
 	}
-	if c := get(admin.WebSearchStatsOf(named), "/x?db=eval", &stats); c != 200 {
+	if c := get(admin.WebSearchStatsOf(named),
+		"/x?db=eval",
+		&stats); c != 200 {
 		t.Fatalf("stats: %d", c)
 	}
 	db := stats.Database
@@ -148,18 +217,29 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 	// the only entity that no text of the user mentions.
 	if db.Datasets != 1 || db.Artifacts != 2 || db.Parents != 1 || db.Sources != 2 || db.Entities != 3 || db.OnlyWeb != 1 || db.Edges != 2 ||
 		len(stats.Datasets) != 1 || stats.Datasets[0].ID != dsID {
-		t.Errorf("database stats = %+v / %+v", db, stats.Datasets)
+		t.Errorf("database stats = %+v / %+v",
+			db,
+			stats.Datasets)
 	}
 	if stats.Trajectories == nil || stats.Trajectories.Calls != 1 || stats.Trajectories.EntitySearches != 3 || stats.Trajectories.EngineSearches != 6 {
 		t.Errorf("trajectory stats = %+v", stats.Trajectories)
 	}
-	if c := get(admin.WebSearchStatsOf(named), "/x?db=nope", nil); c != http.StatusNotFound {
+	if c := get(admin.WebSearchStatsOf(named),
+		"/x?db=nope",
+		nil); c != http.StatusNotFound {
 		t.Errorf("unknown db: %d", c)
 	}
 	// A database without trajectories reports none.
 	stats.Trajectories = nil
-	if c := get(admin.WebSearchStatsOf([]admin.Named{{Name: "standard", DB: d}}), "/x", &stats); c != 200 || stats.Trajectories != nil {
-		t.Errorf("standard: %d %+v", c, stats.Trajectories)
+	if c := get(admin.WebSearchStatsOf([]admin.Named{{
+		Name: "standard",
+		DB:   d,
+	}}),
+		"/x",
+		&stats); c != 200 || stats.Trajectories != nil {
+		t.Errorf("standard: %d %+v",
+			c,
+			stats.Trajectories)
 	}
 
 	// Per dataset, from the database.
@@ -167,8 +247,12 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 		Summary  admin.DatasetWebSummary `json:"summary"`
 		Searches []admin.WebSearch       `json:"searches"`
 	}
-	if c := get(admin.WebSearchDatasetOf(named), "/x?dataset_id="+strconv.FormatInt(dsID, 10), &ds); c != 200 || len(ds.Searches) != 2 {
-		t.Fatalf("dataset: %d %+v", c, ds)
+	if c := get(admin.WebSearchDatasetOf(named),
+		"/x?dataset_id="+strconv.FormatInt(dsID, 10),
+		&ds); c != 200 || len(ds.Searches) != 2 {
+		t.Fatalf("dataset: %d %+v",
+			c,
+			ds)
 	}
 	s := ds.Searches[0]
 	if s.Entity == "" || s.EntityType != "organization" || s.ParentArtifactID == 0 || !strings.Contains(s.ParentText, "Alice works at Acme") || !strings.Contains(s.Briefing, "BRIEFING about "+s.Entity) ||
@@ -176,10 +260,14 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 		len(s.Entities) != 2 || len(s.Edges) != 1 || !s.Edges[0].Created || s.LatencyMS != nil {
 		t.Errorf("dataset search = %+v", s)
 	}
-	if c := get(admin.WebSearchDatasetOf(named), "/x?dataset_id=999", nil); c != http.StatusNotFound {
+	if c := get(admin.WebSearchDatasetOf(named),
+		"/x?dataset_id=999",
+		nil); c != http.StatusNotFound {
 		t.Errorf("unknown dataset: %d", c)
 	}
-	if c := get(admin.WebSearchDatasetOf(named), "/x?dataset_id=abc", nil); c != http.StatusBadRequest {
+	if c := get(admin.WebSearchDatasetOf(named),
+		"/x?dataset_id=abc",
+		nil); c != http.StatusBadRequest {
 		t.Errorf("bad dataset id: %d", c)
 	}
 }

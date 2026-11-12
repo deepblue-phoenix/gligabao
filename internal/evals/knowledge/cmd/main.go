@@ -51,32 +51,66 @@ import (
 
 func main() {
 	if err := mainErr(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr,
+			"error:",
+			err)
 		os.Exit(2)
 	}
 }
 
 func mainErr() error {
-	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
+	verbose := flag.Bool("v",
+		false,
+		"print the input and output of every LLM call")
 	var evalsFlag evalfile.DirsFlag
-	flag.Var(&evalsFlag, "evals", "directory the evals (*.json) and their corpus files are read from; repeatable, searched in order (default: evals_knowledge_dirs of the config, else "+knowledge.DefaultEvalDir+")")
-	configPath := flag.String("config", evalfile.DefaultConfigPath, "config file whose evals_knowledge_dirs lists the eval directories (relative paths in it are relative to the file)")
-	eval := flag.String("eval", "", "run only the cases of this eval (its name as set in the JSON file; see -list-evals)")
-	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
-	atifDir := flag.String("atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
-	experiment := flag.String("experiment", "", `name of the experiment this run belongs to (created if new); "" runs the evals on their own; if not given: the name of the eval when -eval picks one, else the start time`)
-	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
-	evalDBPath := flag.String("db", "build/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; show it with ./run_server_local.sh)")
-	modelsFlag := flag.String("models", "", `LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)
-	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
-	geoFlag := flag.Bool("geo", true, "turn geo on in the eval server: remember stores the coordinates of the places it finds, looked up in Nominatim (OpenStreetMap; needs internet, costs one more LLM call per text) and query finds the places of the question; -geo=false turns it off")
-	commentary := flag.Bool("commentary", false, "eval commentary, for interactive runs: when a case fails, ask whether to have an LLM diagnose it from the failure and the ATIF trajectories, print the diagnosis under the failure log and wait for Enter (needs a terminal on stdin)")
-	commentaryModel := flag.String("commentary-model", knowledge.DefaultCommentaryModel, "the model that writes the commentary (-commentary)")
+	flag.Var(&evalsFlag,
+		"evals",
+		"directory the evals (*.json) and their corpus files are read from; repeatable, searched in order (default: evals_knowledge_dirs of the config, else "+knowledge.DefaultEvalDir+")")
+	configPath := flag.String("config",
+		evalfile.DefaultConfigPath,
+		"config file whose evals_knowledge_dirs lists the eval directories (relative paths in it are relative to the file)")
+	eval := flag.String("eval",
+		"",
+		"run only the cases of this eval (its name as set in the JSON file; see -list-evals)")
+	listEvals := flag.Bool("list-evals",
+		false,
+		"print the available evals and their cases, then exit")
+	atifDir := flag.String("atif",
+		"",
+		`store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
+	experiment := flag.String("experiment",
+		"",
+		`name of the experiment this run belongs to (created if new); "" runs the evals on their own; if not given: the name of the eval when -eval picks one, else the start time`)
+	experimentDesc := flag.String("experiment-desc",
+		"",
+		"description of the experiment, used when it is created")
+	evalDBPath := flag.String("db",
+		"build/gligabao-eval.db",
+		"SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; show it with ./run_server_local.sh)")
+	modelsFlag := flag.String("models",
+		"",
+		`LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)
+	reasoningFlag := flag.String("reasoning",
+		"",
+		`reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
+	geoFlag := flag.Bool("geo",
+		true,
+		"turn geo on in the eval server: remember stores the coordinates of the places it finds, looked up in Nominatim (OpenStreetMap; needs internet, costs one more LLM call per text) and query finds the places of the question; -geo=false turns it off")
+	commentary := flag.Bool("commentary",
+		false,
+		"eval commentary, for interactive runs: when a case fails, ask whether to have an LLM diagnose it from the failure and the ATIF trajectories, print the diagnosis under the failure log and wait for Enter (needs a terminal on stdin)")
+	commentaryModel := flag.String("commentary-model",
+		knowledge.DefaultCommentaryModel,
+		"the model that writes the commentary (-commentary)")
 	flag.Parse()
 
 	configSet := false
 	flag.Visit(func(f *flag.Flag) { configSet = configSet || f.Name == "config" })
-	evalsDirs, err := evalfile.ResolveDirs(evalsFlag, *configPath, configSet, func(c *config.Config) []string { return c.EvalsKnowledgeDirs }, knowledge.DefaultEvalDir)
+	evalsDirs, err := evalfile.ResolveDirs(evalsFlag,
+		*configPath,
+		configSet,
+		func(c *config.Config) []string { return c.EvalsKnowledgeDirs },
+		knowledge.DefaultEvalDir)
 	if err != nil {
 		return err
 	}
@@ -88,7 +122,9 @@ func mainErr() error {
 		printEvals(os.Stdout, loaded)
 		return nil
 	}
-	selected, err := knowledge.SelectEvals(loaded, *eval, flag.Args())
+	selected, err := knowledge.SelectEvals(loaded,
+		*eval,
+		flag.Args())
 	if err != nil {
 		return err
 	}
@@ -130,7 +166,10 @@ func mainErr() error {
 		return fmt.Errorf("OPENAI_API_KEY must be set to run evals: %w", err)
 	}
 
-	database, err := dbfull.Open(db.Config{SQLitePath: *evalDBPath, Geo: *geoFlag})
+	database, err := dbfull.Open(db.Config{
+		SQLitePath: *evalDBPath,
+		Geo:        *geoFlag,
+	})
 	if err != nil {
 		return err
 	}
@@ -165,14 +204,22 @@ func mainErr() error {
 	params["geo"] = *geoFlag
 	experimentSet := false
 	flag.Visit(func(f *flag.Flag) { experimentSet = experimentSet || f.Name == "experiment" })
-	*experiment = runner.ExperimentName(experimentSet, *experiment, *eval, time.Now())
+	*experiment = runner.ExperimentName(experimentSet,
+		*experiment,
+		*eval,
+		time.Now())
 	var xr *runner.ExperimentRecorder
 	var xdef *core.ExperimentDef
 	if *experiment != "" {
-		if xdef, err = r.EnsureExperiment(ctx, *experiment, *experimentDesc, defIDs); err != nil {
+		if xdef, err = r.EnsureExperiment(ctx,
+			*experiment,
+			*experimentDesc,
+			defIDs); err != nil {
 			return err
 		}
-		if xr, err = r.StartExperimentRun(ctx, xdef, params); err != nil {
+		if xr, err = r.StartExperimentRun(ctx,
+			xdef,
+			params); err != nil {
 			return fmt.Errorf("start experiment: %w", err)
 		}
 	}
@@ -183,21 +230,43 @@ func mainErr() error {
 	}
 	colors := ansi.New(os.Stdout)
 	x := &knowledge.Executor{
-		DB: database, LLM: llm, Embedder: emb, WebSearch: llm, Geo: geoResolver, EvalsDirs: evalsDirs, Models: models, Reasoning: reasoning,
-		TrajectoryDir: *atifDir, Verbose: *verbose, Out: os.Stdout, Colors: colors,
+		DB:            database,
+		LLM:           llm,
+		Embedder:      emb,
+		WebSearch:     llm,
+		Geo:           geoResolver,
+		EvalsDirs:     evalsDirs,
+		Models:        models,
+		Reasoning:     reasoning,
+		TrajectoryDir: *atifDir,
+		Verbose:       *verbose,
+		Out:           os.Stdout,
+		Colors:        colors,
 	}
 	if *commentary {
-		x.Commentary = &knowledge.Commentary{LLM: llm, Model: *commentaryModel, In: os.Stdin}
+		x.Commentary = &knowledge.Commentary{
+			LLM:   llm,
+			Model: *commentaryModel,
+			In:    os.Stdin,
+		}
 	}
 	var counts core.Counts
 	var runErr error
 	for _, def := range defs {
-		opts := runner.EvalOptions{Params: params, Meta: &core.KnowledgeEvalRunMeta{}}
+		opts := runner.EvalOptions{
+			Params: params,
+			Meta:   &core.KnowledgeEvalRunMeta{},
+		}
 		if xr != nil {
 			opts.ExperimentRunID = &xr.Run().ID
 		}
-		fmt.Printf("--- eval %s (%d cases)\n", colors.Yellow(def.Name), len(def.Cases))
-		run, err := r.RunEval(ctx, def, x, opts)
+		fmt.Printf("--- eval %s (%d cases)\n",
+			colors.Yellow(def.Name),
+			len(def.Cases))
+		run, err := r.RunEval(ctx,
+			def,
+			x,
+			opts)
 		if run != nil {
 			counts.Passed += run.Counts.Passed
 			counts.Failed += run.Counts.Failed
@@ -207,7 +276,11 @@ func mainErr() error {
 			counts.Total += run.Counts.Total
 			if xr != nil {
 				if addErr := xr.Add(context.WithoutCancel(ctx), run); addErr != nil {
-					fmt.Fprintf(os.Stderr, "warning: record eval %s in experiment %q: %v\n", def.Name, *experiment, addErr)
+					fmt.Fprintf(os.Stderr,
+						"warning: record eval %s in experiment %q: %v\n",
+						def.Name,
+						*experiment,
+						addErr)
 				}
 			}
 		}
@@ -218,19 +291,28 @@ func mainErr() error {
 	}
 
 	failed := counts.Failed + counts.Errored + counts.Cancelled + counts.Pending
-	fmt.Printf("---\n%s, %s\n", colors.Green(fmt.Sprintf("passed: %d", counts.Passed)),
+	fmt.Printf("---\n%s, %s\n",
+		colors.Green(fmt.Sprintf("passed: %d", counts.Passed)),
 		colors.Verdict(failed == 0, fmt.Sprintf("failed: %d", failed)))
 	if x.Commentary != nil {
 		if n, usd := x.Commentary.Total(); n > 0 {
-			fmt.Printf("commentary: %d, cost $%.6f (not included in the run's cost)\n", n, usd)
+			fmt.Printf("commentary: %d, cost $%.6f (not included in the run's cost)\n",
+				n,
+				usd)
 		}
 	}
 	if xr != nil {
 		if err := xr.Finish(ctx, runErr); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			fmt.Fprintf(os.Stderr,
+				"warning: %v\n",
+				err)
 		} else {
 			run := xr.Run()
-			fmt.Printf("experiment %q run %d: %s, cost $%.6f\n", xdef.Name, run.ID, run.Status, run.CostUSD)
+			fmt.Printf("experiment %q run %d: %s, cost $%.6f\n",
+				xdef.Name,
+				run.ID,
+				run.Status,
+				run.CostUSD)
 		}
 	}
 	if runErr != nil {
@@ -243,7 +325,8 @@ func mainErr() error {
 }
 
 // printEvals prints the evals with their cases, as a table.
-func printEvals(w *os.File, evals []knowledge.Eval) {
+func printEvals(w *os.File,
+	evals []knowledge.Eval) {
 	colors := ansi.New(w)
 	width := 0
 	for _, e := range evals {
@@ -258,6 +341,14 @@ func printEvals(w *os.File, evals []knowledge.Eval) {
 		if len(names) == 1 {
 			noun = "case "
 		}
-		fmt.Fprintf(w, "  %s  %s  %s\n", colors.Yellow(fmt.Sprintf("%-*s", width, e.Name)), colors.Dim(fmt.Sprintf("%2d %s", len(names), noun)), strings.Join(names, ", "))
+		fmt.Fprintf(w,
+			"  %s  %s  %s\n",
+			colors.Yellow(fmt.Sprintf("%-*s",
+				width,
+				e.Name)),
+			colors.Dim(fmt.Sprintf("%2d %s",
+				len(names),
+				noun)),
+			strings.Join(names, ", "))
 	}
 }

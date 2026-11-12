@@ -33,7 +33,9 @@ func ResolveUserID(userID string) (string, error) {
 		return "", fmt.Errorf("%w: user_id is required", ErrInvalidUser)
 	}
 	if len(userID) > MaxUserIDLen {
-		return "", fmt.Errorf("%w: at most %d bytes", ErrInvalidUser, MaxUserIDLen)
+		return "", fmt.Errorf("%w: at most %d bytes",
+			ErrInvalidUser,
+			MaxUserIDLen)
 	}
 	for _, r := range userID {
 		if r < 0x20 || r == 0x7f {
@@ -51,7 +53,9 @@ const MaxSessionIDLen = 128
 func ResolveSessionID(sessionID string) (string, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if len(sessionID) > MaxSessionIDLen {
-		return "", fmt.Errorf("%w: at most %d bytes", ErrInvalidSession, MaxSessionIDLen)
+		return "", fmt.Errorf("%w: at most %d bytes",
+			ErrInvalidSession,
+			MaxSessionIDLen)
 	}
 	for _, r := range sessionID {
 		if r < 0x20 || r == 0x7f {
@@ -78,8 +82,14 @@ func ResolveDatasetName(name string) (string, error) {
 func Key(name string) string { return strings.ToLower(strings.Join(strings.Fields(name), " ")) }
 
 // DatasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound.
-func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
-	id, err := relational.DatasetID(ctx, d, userID, name)
+func DatasetID(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (int64, error) {
+	id, err := relational.DatasetID(ctx,
+		d,
+		userID,
+		name)
 	if errors.Is(err, relational.ErrNotFound) {
 		return 0, ErrDatasetNotFound
 	}

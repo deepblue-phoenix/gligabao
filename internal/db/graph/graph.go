@@ -126,7 +126,8 @@ func unsupported() error { return fmt.Errorf("unknown graph backend %q", backend
 // means sqlite) and makes it the backend all other functions of this package route to. The relational backends
 // keep the graph in the database d they were opened with, so call it with the *sql.DB returned by
 // relational.Open (whose schema the graph tables reference), using the same backend name.
-func Open(backendName string, d *sql.DB) error {
+func Open(backendName string,
+	d *sql.DB) error {
 	if backendName == "" {
 		backendName = config.DBBackendSQLite
 	}
@@ -150,7 +151,8 @@ func Open(backendName string, d *sql.DB) error {
 // Writing a memory
 
 // Begin starts a transaction on the backend in use. The returned Tx is that backend's implementation.
-func Begin(ctx context.Context, d *sql.DB) (Tx, error) {
+func Begin(ctx context.Context,
+	d *sql.DB) (Tx, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		tx, err := sqlite.Begin(ctx, d)
@@ -173,64 +175,101 @@ func Begin(ctx context.Context, d *sql.DB) (Tx, error) {
 
 // InsertImage stores an image artifact and its extraction (with the text blocks) in one transaction and returns
 // their IDs.
-func InsertImage(ctx context.Context, d *sql.DB, img NewImage) (artifactID, extractionID int64, err error) {
+func InsertImage(ctx context.Context,
+	d *sql.DB,
+	img NewImage) (artifactID, extractionID int64, err error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.InsertImage(ctx, d, img)
+		return sqlite.InsertImage(ctx,
+			d,
+			img)
 	case config.DBBackendPostgres:
-		return postgres.InsertImage(ctx, d, img)
+		return postgres.InsertImage(ctx,
+			d,
+			img)
 	}
 	return 0, 0, unsupported()
 }
 
 // ListImageArtifacts returns the image artifacts of the dataset by ID.
-func ListImageArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]ImageArtifact, error) {
+func ListImageArtifacts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]ImageArtifact, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListImageArtifacts(ctx, d, dsID)
+		return sqlite.ListImageArtifacts(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListImageArtifacts(ctx, d, dsID)
+		return postgres.ListImageArtifacts(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // FindImageBySHA256 returns the newest image artifact of the dataset whose content has the given hex SHA-256, with
 // its newest extraction. It returns ErrNotFound if the dataset has no such image (or none with an extraction).
-func FindImageBySHA256(ctx context.Context, d *sql.DB, dsID int64, sha string) (*ImageArtifact, *ImageExtraction, error) {
+func FindImageBySHA256(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	sha string) (*ImageArtifact, *ImageExtraction, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.FindImageBySHA256(ctx, d, dsID, sha)
+		return sqlite.FindImageBySHA256(ctx,
+			d,
+			dsID,
+			sha)
 	case config.DBBackendPostgres:
-		return postgres.FindImageBySHA256(ctx, d, dsID, sha)
+		return postgres.FindImageBySHA256(ctx,
+			d,
+			dsID,
+			sha)
 	}
 	return nil, nil, unsupported()
 }
 
 // GetImageArtifact returns one image artifact of the dataset. It returns ErrNotFound if there is none.
-func GetImageArtifact(ctx context.Context, d *sql.DB, dsID, artifactID int64) (*ImageArtifact, error) {
+func GetImageArtifact(ctx context.Context,
+	d *sql.DB,
+	dsID,
+	artifactID int64) (*ImageArtifact, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.GetImageArtifact(ctx, d, dsID, artifactID)
+		return sqlite.GetImageArtifact(ctx,
+			d,
+			dsID,
+			artifactID)
 	case config.DBBackendPostgres:
-		return postgres.GetImageArtifact(ctx, d, dsID, artifactID)
+		return postgres.GetImageArtifact(ctx,
+			d,
+			dsID,
+			artifactID)
 	}
 	return nil, unsupported()
 }
 
 // ListImageExtractions returns the image extractions of the dataset, with their text blocks, by ID.
-func ListImageExtractions(ctx context.Context, d *sql.DB, dsID int64) ([]ImageExtraction, error) {
+func ListImageExtractions(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]ImageExtraction, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListImageExtractions(ctx, d, dsID)
+		return sqlite.ListImageExtractions(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListImageExtractions(ctx, d, dsID)
+		return postgres.ListImageExtractions(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ImageStatistics returns the totals over all image artifacts and extractions of the database (every dataset, deleted
 // ones included), with the path of every image file.
-func ImageStatistics(ctx context.Context, d *sql.DB) (*ImageStats, error) {
+func ImageStatistics(ctx context.Context,
+	d *sql.DB) (*ImageStats, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.ImageStats(ctx, d)
@@ -244,46 +283,82 @@ func ImageStatistics(ctx context.Context, d *sql.DB) (*ImageStats, error) {
 // Timeseries (writes go through Tx; see docs/timeseries.md)
 
 // ListSeries returns the series of the dataset by ID.
-func ListSeries(ctx context.Context, d *sql.DB, dsID int64) ([]Series, error) {
+func ListSeries(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]Series, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListSeries(ctx, d, dsID)
+		return sqlite.ListSeries(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListSeries(ctx, d, dsID)
+		return postgres.ListSeries(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // GetSeries returns one series of the dataset. It returns ErrNotFound if there is none.
-func GetSeries(ctx context.Context, d *sql.DB, dsID, id int64) (*Series, error) {
+func GetSeries(ctx context.Context,
+	d *sql.DB,
+	dsID,
+	id int64) (*Series, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.GetSeries(ctx, d, dsID, id)
+		return sqlite.GetSeries(ctx,
+			d,
+			dsID,
+			id)
 	case config.DBBackendPostgres:
-		return postgres.GetSeries(ctx, d, dsID, id)
+		return postgres.GetSeries(ctx,
+			d,
+			dsID,
+			id)
 	}
 	return nil, unsupported()
 }
 
 // SeriesPoints returns the points of the series between from and to (both inclusive, nil for no bound), oldest first,
 // at most limit (0 for all).
-func SeriesPoints(ctx context.Context, d *sql.DB, seriesID int64, from, to *time.Time, limit int) ([]SeriesPoint, error) {
+func SeriesPoints(ctx context.Context,
+	d *sql.DB,
+	seriesID int64,
+	from,
+	to *time.Time,
+	limit int) ([]SeriesPoint, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.SeriesPoints(ctx, d, seriesID, from, to, limit)
+		return sqlite.SeriesPoints(ctx,
+			d,
+			seriesID,
+			from,
+			to,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.SeriesPoints(ctx, d, seriesID, from, to, limit)
+		return postgres.SeriesPoints(ctx,
+			d,
+			seriesID,
+			from,
+			to,
+			limit)
 	}
 	return nil, unsupported()
 }
 
 // ListSeriesAnchors returns what the series is anchored to, by anchor ID.
-func ListSeriesAnchors(ctx context.Context, d *sql.DB, seriesID int64) ([]SeriesAnchor, error) {
+func ListSeriesAnchors(ctx context.Context,
+	d *sql.DB,
+	seriesID int64) ([]SeriesAnchor, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListSeriesAnchors(ctx, d, seriesID)
+		return sqlite.ListSeriesAnchors(ctx,
+			d,
+			seriesID)
 	case config.DBBackendPostgres:
-		return postgres.ListSeriesAnchors(ctx, d, seriesID)
+		return postgres.ListSeriesAnchors(ctx,
+			d,
+			seriesID)
 	}
 	return nil, unsupported()
 }
@@ -295,7 +370,8 @@ func ListSeriesAnchors(ctx context.Context, d *sql.DB, seriesID int64) ([]Series
 // of PostgreSQL. It is not part of Open: only a server with geo on calls it (see db.Config.Geo). The result says whether the index
 // exists: false for PostgreSQL without the PostGIS extension enabled in the database (never an error then). The places stored
 // before the index existed are not indexed on SQLite (no backfill); on PostgreSQL the generated column covers them.
-func EnableGeoIndex(ctx context.Context, d *sql.DB) (bool, error) {
+func EnableGeoIndex(ctx context.Context,
+	d *sql.DB) (bool, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.EnableGeoIndex(d)
@@ -306,23 +382,35 @@ func EnableGeoIndex(ctx context.Context, d *sql.DB) (bool, error) {
 }
 
 // GetEntityGeo returns the geo metadata of an entity. It returns ErrNotFound if the entity has none.
-func GetEntityGeo(ctx context.Context, d *sql.DB, entityID int64) (*EntityGeo, error) {
+func GetEntityGeo(ctx context.Context,
+	d *sql.DB,
+	entityID int64) (*EntityGeo, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.GetEntityGeo(ctx, d, entityID)
+		return sqlite.GetEntityGeo(ctx,
+			d,
+			entityID)
 	case config.DBBackendPostgres:
-		return postgres.GetEntityGeo(ctx, d, entityID)
+		return postgres.GetEntityGeo(ctx,
+			d,
+			entityID)
 	}
 	return nil, unsupported()
 }
 
 // ListEntityGeo returns the geo metadata of the entities of the dataset by entity ID, with each entity's name and type.
-func ListEntityGeo(ctx context.Context, d *sql.DB, dsID int64) ([]EntityGeo, error) {
+func ListEntityGeo(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]EntityGeo, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEntityGeo(ctx, d, dsID)
+		return sqlite.ListEntityGeo(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListEntityGeo(ctx, d, dsID)
+		return postgres.ListEntityGeo(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
@@ -331,9 +419,18 @@ func ListEntityGeo(ctx context.Context, d *sql.DB, dsID int64) ([]EntityGeo, err
 // limit (limit <= 0: all), without those of the entities in exclude. The geo index prefilters them (the R*Tree of SQLite, the GiST
 // index of PostGIS); without one (geo was never on for the database) the coordinates index is used, and the result is the same.
 // It is exact: the candidates of the index are refined with the haversine distance, and the antimeridian and the poles are handled.
-func NearbyEntityGeo(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiusKm float64, limit int, exclude ...int64) ([]NearbyGeo, error) {
+func NearbyEntityGeo(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	lat,
+	lon,
+	radiusKm float64,
+	limit int,
+	exclude ...int64) ([]NearbyGeo, error) {
 	if math.IsNaN(lat) || math.IsNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
-		return nil, fmt.Errorf("nearby entity geo: invalid coordinates (%v, %v)", lat, lon)
+		return nil, fmt.Errorf("nearby entity geo: invalid coordinates (%v, %v)",
+			lat,
+			lon)
 	}
 	if !(radiusKm > 0) || math.IsInf(radiusKm, 0) {
 		return nil, fmt.Errorf("nearby entity geo: invalid radius %v km", radiusKm)
@@ -342,9 +439,19 @@ func NearbyEntityGeo(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiu
 	var err error
 	switch backend() {
 	case config.DBBackendSQLite:
-		cands, err = sqlite.EntityGeoWithin(ctx, d, dsID, lat, lon, radiusKm)
+		cands, err = sqlite.EntityGeoWithin(ctx,
+			d,
+			dsID,
+			lat,
+			lon,
+			radiusKm)
 	case config.DBBackendPostgres:
-		cands, err = postgres.EntityGeoWithin(ctx, d, dsID, lat, lon, radiusKm)
+		cands, err = postgres.EntityGeoWithin(ctx,
+			d,
+			dsID,
+			lat,
+			lon,
+			radiusKm)
 	default:
 		return nil, unsupported()
 	}
@@ -360,11 +467,18 @@ func NearbyEntityGeo(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiu
 		if skip[c.EntityID] {
 			continue
 		}
-		if dist := memory_geo.DistanceKm(lat, lon, c.Latitude, c.Longitude); dist <= radiusKm {
-			out = append(out, NearbyGeo{EntityGeo: c, DistanceKm: dist})
+		if dist := memory_geo.DistanceKm(lat,
+			lon,
+			c.Latitude,
+			c.Longitude); dist <= radiusKm {
+			out = append(out, NearbyGeo{
+				EntityGeo:  c,
+				DistanceKm: dist,
+			})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
+	sort.Slice(out, func(i,
+		j int) bool {
 		if out[i].DistanceKm != out[j].DistanceKm {
 			return out[i].DistanceKm < out[j].DistanceKm
 		}
@@ -378,12 +492,18 @@ func NearbyEntityGeo(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiu
 
 // GeoStatistics returns how many entities of the live datasets have geo metadata, and the limit most connected of them (by
 // live edges), most connected first.
-func GeoStatistics(ctx context.Context, d *sql.DB, limit int) (*GeoStats, error) {
+func GeoStatistics(ctx context.Context,
+	d *sql.DB,
+	limit int) (*GeoStats, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.GeoStats(ctx, d, limit)
+		return sqlite.GeoStats(ctx,
+			d,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.GeoStats(ctx, d, limit)
+		return postgres.GeoStats(ctx,
+			d,
+			limit)
 	}
 	return nil, unsupported()
 }
@@ -393,23 +513,44 @@ func GeoStatistics(ctx context.Context, d *sql.DB, limit int) (*GeoStats, error)
 
 // LoadCandidateEdges returns live (not expired) edges of the dataset touching at least one entity whose normalized
 // name is in nameKeys, newest first, at most limit.
-func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, nameKeys []string, limit int) ([]Edge, error) {
+func LoadCandidateEdges(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	nameKeys []string,
+	limit int) ([]Edge, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.LoadCandidateEdges(ctx, d, dsID, nameKeys, limit)
+		return sqlite.LoadCandidateEdges(ctx,
+			d,
+			dsID,
+			nameKeys,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.LoadCandidateEdges(ctx, d, dsID, nameKeys, limit)
+		return postgres.LoadCandidateEdges(ctx,
+			d,
+			dsID,
+			nameKeys,
+			limit)
 	}
 	return nil, unsupported()
 }
 
 // ListEdges returns every edge (expired ones included) of userID's live dataset called name, by ID.
-func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]Edge, error) {
+func ListEdges(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) ([]Edge, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEdges(ctx, d, userID, name)
+		return sqlite.ListEdges(ctx,
+			d,
+			userID,
+			name)
 	case config.DBBackendPostgres:
-		return postgres.ListEdges(ctx, d, userID, name)
+		return postgres.ListEdges(ctx,
+			d,
+			userID,
+			name)
 	}
 	return nil, unsupported()
 }
@@ -417,12 +558,18 @@ func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]Edge, err
 // ListEdgeEvents returns the edge events (what Remember did to the facts, see model.EdgeEvent) of the artifact and of all
 // its descendants (the chunks of a long text, the web searches and observations made for it), oldest first, each with its
 // edge (current state, with the names of its endpoints). An artifact without events has none.
-func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]EdgeEvent, error) {
+func ListEdgeEvents(ctx context.Context,
+	d *sql.DB,
+	artifactID int64) ([]EdgeEvent, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEdgeEvents(ctx, d, artifactID)
+		return sqlite.ListEdgeEvents(ctx,
+			d,
+			artifactID)
 	case config.DBBackendPostgres:
-		return postgres.ListEdgeEvents(ctx, d, artifactID)
+		return postgres.ListEdgeEvents(ctx,
+			d,
+			artifactID)
 	}
 	return nil, unsupported()
 }
@@ -432,26 +579,44 @@ func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]EdgeEve
 // model.InContextEvent). It is the one function the pipelines call, at each place they put stored entities or edges into a prompt, or return
 // them as the context of a retrieval-only query (see memory_core.CountInContext, which they use). Repeated IDs count once, and IDs that are
 // not in the database are skipped.
-func CountInContext(ctx context.Context, d *sql.DB, ev InContextEvent, entityIDs, edgeIDs []int64) error {
+func CountInContext(ctx context.Context,
+	d *sql.DB,
+	ev InContextEvent,
+	entityIDs,
+	edgeIDs []int64) error {
 	if ev.Pipeline != PipelineQuery && ev.Pipeline != PipelineRemember {
 		return fmt.Errorf("count in context: unknown pipeline %q", ev.Pipeline)
 	}
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.CountInContext(ctx, d, ev, entityIDs, edgeIDs)
+		return sqlite.CountInContext(ctx,
+			d,
+			ev,
+			entityIDs,
+			edgeIDs)
 	case config.DBBackendPostgres:
-		return postgres.CountInContext(ctx, d, ev, entityIDs, edgeIDs)
+		return postgres.CountInContext(ctx,
+			d,
+			ev,
+			entityIDs,
+			edgeIDs)
 	}
 	return unsupported()
 }
 
 // ListInContextEvents returns the in-context events of the dataset, newest first.
-func ListInContextEvents(ctx context.Context, d *sql.DB, dsID int64) ([]InContextEvent, error) {
+func ListInContextEvents(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]InContextEvent, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListInContextEvents(ctx, d, dsID)
+		return sqlite.ListInContextEvents(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListInContextEvents(ctx, d, dsID)
+		return postgres.ListInContextEvents(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
@@ -459,82 +624,148 @@ func ListInContextEvents(ctx context.Context, d *sql.DB, dsID int64) ([]InContex
 // InContextCounts returns, for every entity and edge of the dataset that went into a context at least once, how many times it did, per
 // pipeline (the rows of gb_graph_in_ctx_counters, grouped; items without rows are not listed). Unlike ListInContextEvents it does not
 // load every row, so it is the one to use to show the usage of a whole dataset.
-func InContextCounts(ctx context.Context, d *sql.DB, dsID int64) ([]InContextCount, error) {
+func InContextCounts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]InContextCount, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.InContextCounts(ctx, d, dsID)
+		return sqlite.InContextCounts(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.InContextCounts(ctx, d, dsID)
+		return postgres.InContextCounts(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // FallbackSeedEntities returns the IDs of the most recently updated entities of the dataset.
-func FallbackSeedEntities(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]int64, error) {
+func FallbackSeedEntities(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	limit int) ([]int64, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.FallbackSeedEntities(ctx, d, dsID, limit)
+		return sqlite.FallbackSeedEntities(ctx,
+			d,
+			dsID,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.FallbackSeedEntities(ctx, d, dsID, limit)
+		return postgres.FallbackSeedEntities(ctx,
+			d,
+			dsID,
+			limit)
 	}
 	return nil, unsupported()
 }
 
 // MatchEntities returns the IDs of the best entities whose name or description mention the query terms, best
 // first. queryKey is the normalized query; tokens are its distinct terms.
-func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, tokens []string, limit int) ([]int64, error) {
+func MatchEntities(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	queryKey string,
+	tokens []string,
+	limit int) ([]int64, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.MatchEntities(ctx, d, dsID, queryKey, tokens, limit)
+		return sqlite.MatchEntities(ctx,
+			d,
+			dsID,
+			queryKey,
+			tokens,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.MatchEntities(ctx, d, dsID, queryKey, tokens, limit)
+		return postgres.MatchEntities(ctx,
+			d,
+			dsID,
+			queryKey,
+			tokens,
+			limit)
 	}
 	return nil, unsupported()
 }
 
 // EdgesAround returns the live edges of the dataset (those that are not expired: newer knowledge has not superseded them) that
 // start or end at one of the entity IDs, newest first.
-func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, limit int) ([]EvidenceEdge, error) {
+func EdgesAround(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	entityIDs []int64,
+	limit int) ([]EvidenceEdge, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.EdgesAround(ctx, d, dsID, entityIDs, limit)
+		return sqlite.EdgesAround(ctx,
+			d,
+			dsID,
+			entityIDs,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.EdgesAround(ctx, d, dsID, entityIDs, limit)
+		return postgres.EdgesAround(ctx,
+			d,
+			dsID,
+			entityIDs,
+			limit)
 	}
 	return nil, unsupported()
 }
 
 // EdgesByID returns the live edges of the dataset (those that are not expired) with the given IDs, by ID, like EdgesAround.
 // IDs that are not live edges of the dataset are left out.
-func EdgesByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]EvidenceEdge, error) {
+func EdgesByID(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	ids []int64) ([]EvidenceEdge, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.EdgesByID(ctx, d, dsID, ids)
+		return sqlite.EdgesByID(ctx,
+			d,
+			dsID,
+			ids)
 	case config.DBBackendPostgres:
-		return postgres.EdgesByID(ctx, d, dsID, ids)
+		return postgres.EdgesByID(ctx,
+			d,
+			dsID,
+			ids)
 	}
 	return nil, unsupported()
 }
 
 // ArtifactsByID returns the artifacts of the dataset with the given IDs, by ID. IDs that are not artifacts of the dataset
 // are left out.
-func ArtifactsByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]Artifact, error) {
+func ArtifactsByID(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	ids []int64) ([]Artifact, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ArtifactsByID(ctx, d, dsID, ids)
+		return sqlite.ArtifactsByID(ctx,
+			d,
+			dsID,
+			ids)
 	case config.DBBackendPostgres:
-		return postgres.ArtifactsByID(ctx, d, dsID, ids)
+		return postgres.ArtifactsByID(ctx,
+			d,
+			dsID,
+			ids)
 	}
 	return nil, unsupported()
 }
 
 // EntitiesByID returns the entities with the given IDs.
-func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]EvidenceEntity, error) {
+func EntitiesByID(ctx context.Context,
+	d *sql.DB,
+	ids []int64) ([]EvidenceEntity, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.EntitiesByID(ctx, d, ids)
+		return sqlite.EntitiesByID(ctx,
+			d,
+			ids)
 	case config.DBBackendPostgres:
-		return postgres.EntitiesByID(ctx, d, ids)
+		return postgres.EntitiesByID(ctx,
+			d,
+			ids)
 	}
 	return nil, unsupported()
 }
@@ -543,23 +774,35 @@ func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]EvidenceEntity
 // Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
 
 // DatasetCounts returns the number of artifacts (and of those that are chunks), entities and edges in the dataset.
-func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (Counts, error) {
+func DatasetCounts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) (Counts, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.DatasetCounts(ctx, d, dsID)
+		return sqlite.DatasetCounts(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.DatasetCounts(ctx, d, dsID)
+		return postgres.DatasetCounts(ctx,
+			d,
+			dsID)
 	}
 	return Counts{}, unsupported()
 }
 
 // ListArtifacts returns the artifacts of the dataset by ID.
-func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]Artifact, error) {
+func ListArtifacts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]Artifact, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListArtifacts(ctx, d, dsID)
+		return sqlite.ListArtifacts(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListArtifacts(ctx, d, dsID)
+		return postgres.ListArtifacts(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
@@ -567,134 +810,218 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]Artifact, erro
 // InsertArtifactClasses stores the classes an LLM gave to the graph of an artifact of the dataset (see model.ArtifactClass): one record
 // (row of gb_artifact_classes) for each, all with the run of the model call that gave them (inferenceID, 0 if unrecorded), stamped
 // createdAt. It returns the records, in the order of classes. classes must not be empty strings.
-func InsertArtifactClasses(ctx context.Context, d *sql.DB, dsID, artifactID, inferenceID int64, classes []string, createdAt time.Time) ([]ArtifactClass, error) {
+func InsertArtifactClasses(ctx context.Context,
+	d *sql.DB,
+	dsID,
+	artifactID,
+	inferenceID int64,
+	classes []string,
+	createdAt time.Time) ([]ArtifactClass, error) {
 	if len(classes) == 0 {
 		return []ArtifactClass{}, nil
 	}
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.InsertArtifactClasses(ctx, d, dsID, artifactID, inferenceID, classes, createdAt)
+		return sqlite.InsertArtifactClasses(ctx,
+			d,
+			dsID,
+			artifactID,
+			inferenceID,
+			classes,
+			createdAt)
 	case config.DBBackendPostgres:
-		return postgres.InsertArtifactClasses(ctx, d, dsID, artifactID, inferenceID, classes, createdAt)
+		return postgres.InsertArtifactClasses(ctx,
+			d,
+			dsID,
+			artifactID,
+			inferenceID,
+			classes,
+			createdAt)
 	}
 	return nil, unsupported()
 }
 
 // ListArtifactClasses returns the class records of the artifacts of the dataset, by artifact ID then record ID (the order they were made in).
-func ListArtifactClasses(ctx context.Context, d *sql.DB, dsID int64) ([]ArtifactClass, error) {
+func ListArtifactClasses(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]ArtifactClass, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListArtifactClasses(ctx, d, dsID)
+		return sqlite.ListArtifactClasses(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListArtifactClasses(ctx, d, dsID)
+		return postgres.ListArtifactClasses(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ClassNames returns the distinct class names used in the dataset, the most used first (then by name), at most limit.
-func ClassNames(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]string, error) {
+func ClassNames(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	limit int) ([]string, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ClassNames(ctx, d, dsID, limit)
+		return sqlite.ClassNames(ctx,
+			d,
+			dsID,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.ClassNames(ctx, d, dsID, limit)
+		return postgres.ClassNames(ctx,
+			d,
+			dsID,
+			limit)
 	}
 	return nil, unsupported()
 }
 
 // TopArtifactClasses returns the classes given to the artifact graphs of the dataset with the number of artifacts of each, the most
 // used first (then by name), at most limit.
-func TopArtifactClasses(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]ClassCount, error) {
+func TopArtifactClasses(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	limit int) ([]ClassCount, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.TopArtifactClasses(ctx, d, dsID, limit)
+		return sqlite.TopArtifactClasses(ctx,
+			d,
+			dsID,
+			limit)
 	case config.DBBackendPostgres:
-		return postgres.TopArtifactClasses(ctx, d, dsID, limit)
+		return postgres.TopArtifactClasses(ctx,
+			d,
+			dsID,
+			limit)
 	}
 	return nil, unsupported()
 }
 
 // ListEntityArtifacts returns the entity-to-artifact links (which artifacts each entity was inferred from) of the
 // dataset, by entity ID then artifact ID.
-func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]EntityArtifact, error) {
+func ListEntityArtifacts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]EntityArtifact, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEntityArtifacts(ctx, d, dsID)
+		return sqlite.ListEntityArtifacts(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListEntityArtifacts(ctx, d, dsID)
+		return postgres.ListEntityArtifacts(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ListEdgeArtifacts returns the edge-to-artifact links (every artifact each edge was inferred from) of the dataset,
 // by edge ID then artifact ID.
-func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]EdgeArtifact, error) {
+func ListEdgeArtifacts(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]EdgeArtifact, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEdgeArtifacts(ctx, d, dsID)
+		return sqlite.ListEdgeArtifacts(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListEdgeArtifacts(ctx, d, dsID)
+		return postgres.ListEdgeArtifacts(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ListEntitySessions returns the entity-to-session links (which sessions each entity was discovered in, including
 // sessions in which it was a duplicate of a stored entity) of the dataset, by entity ID then session ID.
-func ListEntitySessions(ctx context.Context, d *sql.DB, dsID int64) ([]EntitySession, error) {
+func ListEntitySessions(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]EntitySession, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEntitySessions(ctx, d, dsID)
+		return sqlite.ListEntitySessions(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListEntitySessions(ctx, d, dsID)
+		return postgres.ListEntitySessions(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ListEdgeSessions returns the edge-to-session links (which sessions each edge, i.e. fact, was discovered in,
 // including sessions that restated it) of the dataset, by edge ID then session ID.
-func ListEdgeSessions(ctx context.Context, d *sql.DB, dsID int64) ([]EdgeSession, error) {
+func ListEdgeSessions(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]EdgeSession, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEdgeSessions(ctx, d, dsID)
+		return sqlite.ListEdgeSessions(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListEdgeSessions(ctx, d, dsID)
+		return postgres.ListEdgeSessions(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ListEntities returns the entities of the dataset by ID.
-func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEntity, error) {
+func ListEntities(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]EvidenceEntity, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEntities(ctx, d, dsID)
+		return sqlite.ListEntities(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListEntities(ctx, d, dsID)
+		return postgres.ListEntities(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ListGraphEdges returns every edge of the dataset (expired ones included) with its endpoint IDs and names, by ID.
-func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEdge, error) {
+func ListGraphEdges(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]EvidenceEdge, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListGraphEdges(ctx, d, dsID)
+		return sqlite.ListGraphEdges(ctx,
+			d,
+			dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListGraphEdges(ctx, d, dsID)
+		return postgres.ListGraphEdges(ctx,
+			d,
+			dsID)
 	}
 	return nil, unsupported()
 }
 
 // ListArtifactsBySessions returns the artifacts, of any dataset, that carry one of the session IDs, by ID: what the sessions
 // remembered (the provenance of a session). Empty for no sessions.
-func ListArtifactsBySessions(ctx context.Context, d *sql.DB, sessionIDs []string) ([]Artifact, error) {
+func ListArtifactsBySessions(ctx context.Context,
+	d *sql.DB,
+	sessionIDs []string) ([]Artifact, error) {
 	if len(sessionIDs) == 0 {
 		return nil, nil
 	}
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListArtifactsBySessions(ctx, d, sessionIDs)
+		return sqlite.ListArtifactsBySessions(ctx,
+			d,
+			sessionIDs)
 	case config.DBBackendPostgres:
-		return postgres.ListArtifactsBySessions(ctx, d, sessionIDs)
+		return postgres.ListArtifactsBySessions(ctx,
+			d,
+			sessionIDs)
 	}
 	return nil, unsupported()
 }
@@ -702,37 +1029,50 @@ func ListArtifactsBySessions(ctx context.Context, d *sql.DB, sessionIDs []string
 // ListEntitiesBySessions returns the entities, of any dataset, that were discovered in one of the sessions (gb_entity_sessions),
 // by ID, each with the sessions it was discovered in (of those asked for). An entity is also listed when the session only
 // mentioned it again after another session created it. Empty for no sessions.
-func ListEntitiesBySessions(ctx context.Context, d *sql.DB, sessionIDs []string) ([]SessionEntity, error) {
+func ListEntitiesBySessions(ctx context.Context,
+	d *sql.DB,
+	sessionIDs []string) ([]SessionEntity, error) {
 	if len(sessionIDs) == 0 {
 		return nil, nil
 	}
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEntitiesBySessions(ctx, d, sessionIDs)
+		return sqlite.ListEntitiesBySessions(ctx,
+			d,
+			sessionIDs)
 	case config.DBBackendPostgres:
-		return postgres.ListEntitiesBySessions(ctx, d, sessionIDs)
+		return postgres.ListEntitiesBySessions(ctx,
+			d,
+			sessionIDs)
 	}
 	return nil, unsupported()
 }
 
 // ListEdgesBySessions returns the edges (facts), of any dataset and expired ones included, that were discovered in one of the
 // sessions (gb_edge_sessions), by ID, each with the sessions it was discovered in (of those asked for). Empty for no sessions.
-func ListEdgesBySessions(ctx context.Context, d *sql.DB, sessionIDs []string) ([]SessionEdge, error) {
+func ListEdgesBySessions(ctx context.Context,
+	d *sql.DB,
+	sessionIDs []string) ([]SessionEdge, error) {
 	if len(sessionIDs) == 0 {
 		return nil, nil
 	}
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListEdgesBySessions(ctx, d, sessionIDs)
+		return sqlite.ListEdgesBySessions(ctx,
+			d,
+			sessionIDs)
 	case config.DBBackendPostgres:
-		return postgres.ListEdgesBySessions(ctx, d, sessionIDs)
+		return postgres.ListEdgesBySessions(ctx,
+			d,
+			sessionIDs)
 	}
 	return nil, unsupported()
 }
 
 // CountCrossDatasetEdges returns the number of edges whose dataset differs from that of one of their endpoints
 // (always 0 unless datasets leak into each other).
-func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {
+func CountCrossDatasetEdges(ctx context.Context,
+	d *sql.DB) (int, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.CountCrossDatasetEdges(ctx, d)
@@ -748,12 +1088,24 @@ func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {
 // LoadOntology stores the classes and edges of the ontology whose metadata row is ontologyID (see package
 // relational), replacing any it had stored, in one transaction: either the new ones replace the old or nothing changes. Edges refer to classes by IRI, so every
 // endpoint must be in classes.
-func LoadOntology(ctx context.Context, d *sql.DB, ontologyID int64, classes []OntologyClass, edges []OntologyEdge) error {
+func LoadOntology(ctx context.Context,
+	d *sql.DB,
+	ontologyID int64,
+	classes []OntologyClass,
+	edges []OntologyEdge) error {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.LoadOntology(ctx, d, ontologyID, classes, edges)
+		return sqlite.LoadOntology(ctx,
+			d,
+			ontologyID,
+			classes,
+			edges)
 	case config.DBBackendPostgres:
-		return postgres.LoadOntology(ctx, d, ontologyID, classes, edges)
+		return postgres.LoadOntology(ctx,
+			d,
+			ontologyID,
+			classes,
+			edges)
 	}
 	return unsupported()
 }
@@ -771,34 +1123,58 @@ func LoadOntology(ctx context.Context, d *sql.DB, ontologyID int64, classes []On
 //   - stored classes and edges that are not supplied are left alone.
 //
 // Overwriting keeps the row (its ID), so the edges attached to a class stay attached.
-func MergeOntology(ctx context.Context, d *sql.DB, ontologyID int64, classes []OntologyClass, edges []OntologyEdge) (OntologyCounts, error) {
+func MergeOntology(ctx context.Context,
+	d *sql.DB,
+	ontologyID int64,
+	classes []OntologyClass,
+	edges []OntologyEdge) (OntologyCounts, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.MergeOntology(ctx, d, ontologyID, classes, edges)
+		return sqlite.MergeOntology(ctx,
+			d,
+			ontologyID,
+			classes,
+			edges)
 	case config.DBBackendPostgres:
-		return postgres.MergeOntology(ctx, d, ontologyID, classes, edges)
+		return postgres.MergeOntology(ctx,
+			d,
+			ontologyID,
+			classes,
+			edges)
 	}
 	return OntologyCounts{}, unsupported()
 }
 
 // ListOntologyClasses returns the classes of the ontology, in the order they were stored.
-func ListOntologyClasses(ctx context.Context, d *sql.DB, ontologyID int64) ([]OntologyClass, error) {
+func ListOntologyClasses(ctx context.Context,
+	d *sql.DB,
+	ontologyID int64) ([]OntologyClass, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListOntologyClasses(ctx, d, ontologyID)
+		return sqlite.ListOntologyClasses(ctx,
+			d,
+			ontologyID)
 	case config.DBBackendPostgres:
-		return postgres.ListOntologyClasses(ctx, d, ontologyID)
+		return postgres.ListOntologyClasses(ctx,
+			d,
+			ontologyID)
 	}
 	return nil, unsupported()
 }
 
 // ListOntologyEdges returns the edges of the ontology, in the order they were stored.
-func ListOntologyEdges(ctx context.Context, d *sql.DB, ontologyID int64) ([]OntologyEdge, error) {
+func ListOntologyEdges(ctx context.Context,
+	d *sql.DB,
+	ontologyID int64) ([]OntologyEdge, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListOntologyEdges(ctx, d, ontologyID)
+		return sqlite.ListOntologyEdges(ctx,
+			d,
+			ontologyID)
 	case config.DBBackendPostgres:
-		return postgres.ListOntologyEdges(ctx, d, ontologyID)
+		return postgres.ListOntologyEdges(ctx,
+			d,
+			ontologyID)
 	}
 	return nil, unsupported()
 }

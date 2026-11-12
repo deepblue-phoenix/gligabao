@@ -15,13 +15,23 @@ import (
 // Training job runs and their events (see sqlite/db_training_job_run.go for what the functions do)
 
 // InsertTrainingJobRun stores one training job run and returns its ID.
-func InsertTrainingJobRun(ctx context.Context, d *sql.DB, r model.TrainingJobRun) (int64, error) {
+func InsertTrainingJobRun(ctx context.Context,
+	d *sql.DB,
+	r model.TrainingJobRun) (int64, error) {
 	var id int64
-	err := d.QueryRowContext(ctx, `
+	err := d.QueryRowContext(ctx,
+		`
 		INSERT INTO gb_training_job_runs (job_id, provider_job_id, status, model_size, dataset, num_train_steps, started_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`,
-		r.JobID, r.ProviderJobID, r.Status, r.ModelSize, r.Dataset, r.NumTrainSteps, rpostgres.Normalize(r.StartedAt), rpostgres.Now()).Scan(&id)
+		r.JobID,
+		r.ProviderJobID,
+		r.Status,
+		r.ModelSize,
+		r.Dataset,
+		r.NumTrainSteps,
+		rpostgres.Normalize(r.StartedAt),
+		rpostgres.Now()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert training job run: %w", err)
 	}
@@ -37,8 +47,20 @@ func scanTrainingJobRun(s rowScanner) (*model.TrainingJobRun, error) {
 	var r model.TrainingJobRun
 	var lastLoss, finalLoss sql.NullFloat64
 	var finished sql.NullTime
-	if err := s.Scan(&r.ID, &r.JobID, &r.ProviderJobID, &r.Status, &r.ModelSize, &r.Dataset, &r.NumTrainSteps, &r.LastStep,
-		&lastLoss, &finalLoss, &r.Error, &r.StartedAt, &r.CreatedAt, &finished); err != nil {
+	if err := s.Scan(&r.ID,
+		&r.JobID,
+		&r.ProviderJobID,
+		&r.Status,
+		&r.ModelSize,
+		&r.Dataset,
+		&r.NumTrainSteps,
+		&r.LastStep,
+		&lastLoss,
+		&finalLoss,
+		&r.Error,
+		&r.StartedAt,
+		&r.CreatedAt,
+		&finished); err != nil {
 		return nil, err
 	}
 	if lastLoss.Valid {
@@ -56,8 +78,12 @@ func scanTrainingJobRun(s rowScanner) (*model.TrainingJobRun, error) {
 }
 
 // GetTrainingJobRun returns the training job run with that ID, or model.ErrNotFound.
-func GetTrainingJobRun(ctx context.Context, d *sql.DB, id int64) (*model.TrainingJobRun, error) {
-	r, err := scanTrainingJobRun(d.QueryRowContext(ctx, `SELECT `+trainingJobRunColumns+` FROM gb_training_job_runs WHERE id = $1`, id))
+func GetTrainingJobRun(ctx context.Context,
+	d *sql.DB,
+	id int64) (*model.TrainingJobRun, error) {
+	r, err := scanTrainingJobRun(d.QueryRowContext(ctx,
+		`SELECT `+trainingJobRunColumns+` FROM gb_training_job_runs WHERE id = $1`,
+		id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -66,7 +92,10 @@ func GetTrainingJobRun(ctx context.Context, d *sql.DB, id int64) (*model.Trainin
 
 // ListTrainingJobRuns returns the newest training job runs first, at most limit of them; with unfinished only the runs
 // that have not completed, failed or been cancelled (all of them, oldest first, for limit <= 0).
-func ListTrainingJobRuns(ctx context.Context, d *sql.DB, limit int, unfinished bool) ([]model.TrainingJobRun, error) {
+func ListTrainingJobRuns(ctx context.Context,
+	d *sql.DB,
+	limit int,
+	unfinished bool) ([]model.TrainingJobRun, error) {
 	q := `SELECT ` + trainingJobRunColumns + ` FROM gb_training_job_runs`
 	if unfinished {
 		q += ` WHERE status NOT IN ('` + model.TrainingJobCompleted + `', '` + model.TrainingJobFailed + `', '` + model.TrainingJobCancelled + `')`
@@ -78,7 +107,9 @@ func ListTrainingJobRuns(ctx context.Context, d *sql.DB, limit int, unfinished b
 	} else {
 		q += ` ORDER BY id`
 	}
-	rows, err := d.QueryContext(ctx, q, args...)
+	rows, err := d.QueryContext(ctx,
+		q,
+		args...)
 	if err != nil {
 		return nil, err
 	}
@@ -95,12 +126,18 @@ func ListTrainingJobRuns(ctx context.Context, d *sql.DB, limit int, unfinished b
 }
 
 // UpdateTrainingJobRun writes the fields of u that are set to the run; model.ErrNotFound if there is no such run.
-func UpdateTrainingJobRun(ctx context.Context, d *sql.DB, id int64, u model.TrainingJobRunUpdate) error {
+func UpdateTrainingJobRun(ctx context.Context,
+	d *sql.DB,
+	id int64,
+	u model.TrainingJobRunUpdate) error {
 	var sets []string
 	var args []any
-	set := func(col string, v any) {
+	set := func(col string,
+		v any) {
 		args = append(args, v)
-		sets = append(sets, fmt.Sprintf("%s = $%d", col, len(args)))
+		sets = append(sets, fmt.Sprintf("%s = $%d",
+			col,
+			len(args)))
 	}
 	if u.Status != "" {
 		set("status", u.Status)
@@ -124,7 +161,9 @@ func UpdateTrainingJobRun(ctx context.Context, d *sql.DB, id int64, u model.Trai
 		return nil
 	}
 	args = append(args, id)
-	res, err := d.ExecContext(ctx, `UPDATE gb_training_job_runs SET `+strings.Join(sets, ", ")+fmt.Sprintf(` WHERE id = $%d`, len(args)), args...)
+	res, err := d.ExecContext(ctx,
+		`UPDATE gb_training_job_runs SET `+strings.Join(sets, ", ")+fmt.Sprintf(` WHERE id = $%d`, len(args)),
+		args...)
 	if err != nil {
 		return fmt.Errorf("update training job run: %w", err)
 	}
@@ -135,10 +174,21 @@ func UpdateTrainingJobRun(ctx context.Context, d *sql.DB, id int64, u model.Trai
 }
 
 // InsertTrainingJobEvent stores the event with index seq of a run. It reports whether it was new.
-func InsertTrainingJobEvent(ctx context.Context, d *sql.DB, runID int64, seq int, typ, data string) (bool, error) {
-	res, err := d.ExecContext(ctx, `
+func InsertTrainingJobEvent(ctx context.Context,
+	d *sql.DB,
+	runID int64,
+	seq int,
+	typ,
+	data string) (bool, error) {
+	res, err := d.ExecContext(ctx,
+		`
 		INSERT INTO gb_training_job_events (run_id, seq, type, data, created_at) VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (run_id, seq) DO NOTHING`, runID, seq, typ, data, rpostgres.Now())
+		ON CONFLICT (run_id, seq) DO NOTHING`,
+		runID,
+		seq,
+		typ,
+		data,
+		rpostgres.Now())
 	if err != nil {
 		return false, fmt.Errorf("insert training job event: %w", err)
 	}
@@ -147,10 +197,16 @@ func InsertTrainingJobEvent(ctx context.Context, d *sql.DB, runID int64, seq int
 }
 
 // ListTrainingJobEvents returns the events of a run with seq >= from, in order.
-func ListTrainingJobEvents(ctx context.Context, d *sql.DB, runID int64, from int) ([]model.TrainingJobEvent, error) {
-	rows, err := d.QueryContext(ctx, `
+func ListTrainingJobEvents(ctx context.Context,
+	d *sql.DB,
+	runID int64,
+	from int) ([]model.TrainingJobEvent, error) {
+	rows, err := d.QueryContext(ctx,
+		`
 		SELECT run_id, seq, type, data, created_at FROM gb_training_job_events
-		WHERE run_id = $1 AND seq >= $2 ORDER BY seq`, runID, from)
+		WHERE run_id = $1 AND seq >= $2 ORDER BY seq`,
+		runID,
+		from)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +214,11 @@ func ListTrainingJobEvents(ctx context.Context, d *sql.DB, runID int64, from int
 	out := []model.TrainingJobEvent{}
 	for rows.Next() {
 		var e model.TrainingJobEvent
-		if err := rows.Scan(&e.RunID, &e.Seq, &e.Type, &e.Data, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.RunID,
+			&e.Seq,
+			&e.Type,
+			&e.Data,
+			&e.CreatedAt); err != nil {
 			return nil, err
 		}
 		e.CreatedAt = e.CreatedAt.UTC()
@@ -168,8 +228,12 @@ func ListTrainingJobEvents(ctx context.Context, d *sql.DB, runID int64, from int
 }
 
 // NextTrainingJobEventSeq returns the seq the next event of a run would have: one past the newest stored (0 if none).
-func NextTrainingJobEventSeq(ctx context.Context, d *sql.DB, runID int64) (int, error) {
+func NextTrainingJobEventSeq(ctx context.Context,
+	d *sql.DB,
+	runID int64) (int, error) {
 	var n int
-	err := d.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq) + 1, 0) FROM gb_training_job_events WHERE run_id = $1`, runID).Scan(&n)
+	err := d.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(seq) + 1, 0) FROM gb_training_job_events WHERE run_id = $1`,
+		runID).Scan(&n)
 	return n, err
 }

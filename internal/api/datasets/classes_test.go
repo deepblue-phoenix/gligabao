@@ -19,7 +19,8 @@ import (
 // TestClasses checks GET /v1/gb/datasets/{name}/classes: the classes are counted per artifact over the whole dataset, most frequent first.
 func TestClasses(t *testing.T) { dbtest.Run(t, testClasses) }
 
-func testClasses(t *testing.T, d *sql.DB) {
+func testClasses(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	must := func(err error) {
 		t.Helper()
@@ -27,35 +28,76 @@ func testClasses(t *testing.T, d *sql.DB) {
 			t.Fatal(err)
 		}
 	}
-	ds, err := relational.CreateDataset(ctx, d, userID, "classesds", "", nil)
+	ds, err := relational.CreateDataset(ctx,
+		d,
+		userID,
+		"classesds",
+		"",
+		nil)
 	must(err)
-	other, err := relational.CreateDataset(ctx, d, userID, "otherds", "", nil)
+	other, err := relational.CreateDataset(ctx,
+		d,
+		userID,
+		"otherds",
+		"",
+		nil)
 	must(err)
-	now := time.Date(2025, 3, 1, 9, 0, 0, 0, time.UTC)
-	add := func(dsID int64, classes ...string) {
+	now := time.Date(2025,
+		3,
+		1,
+		9,
+		0,
+		0,
+		0,
+		time.UTC)
+	add := func(dsID int64,
+		classes ...string) {
 		tx, err := graph.Begin(ctx, d)
 		must(err)
 		defer tx.Rollback()
-		a, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactEpisode, "text", "", now, now)
+		a, err := tx.InsertArtifact(ctx,
+			dsID,
+			graph.ArtifactEpisode,
+			"text",
+			"",
+			now,
+			now)
 		must(err)
 		must(tx.Commit())
-		_, err = graph.InsertArtifactClasses(ctx, d, dsID, a, 0, classes, now)
+		_, err = graph.InsertArtifactClasses(ctx,
+			d,
+			dsID,
+			a,
+			0,
+			classes,
+			now)
 		must(err)
 	}
-	add(ds.ID, "sports", "politics")
+	add(ds.ID,
+		"sports",
+		"politics")
 	add(ds.ID, "sports")
-	add(ds.ID, "sports", "finance")
+	add(ds.ID,
+		"sports",
+		"finance")
 	add(ds.ID, "finance")
 	add(other.ID, "other")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/gb/datasets/{name}/classes", datasets.Classes(d))
-	get := func(path string, want int) *httptest.ResponseRecorder {
+	get := func(path string,
+		want int) *httptest.ResponseRecorder {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httputiltest.NewRequest("GET", path, nil))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("GET",
+			path,
+			nil))
 		if rec.Code != want {
-			t.Fatalf("GET %s: status %d, want %d: %s", path, rec.Code, want, rec.Body)
+			t.Fatalf("GET %s: status %d, want %d: %s",
+				path,
+				rec.Code,
+				want,
+				rec.Body)
 		}
 		return rec
 	}

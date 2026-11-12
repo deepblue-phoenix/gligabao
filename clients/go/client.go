@@ -37,7 +37,9 @@ func (e *Error) Error() string {
 	if e.Status == 0 {
 		return "gligabao: " + e.Message
 	}
-	return fmt.Sprintf("gligabao: %d: %s", e.Status, e.Message)
+	return fmt.Sprintf("gligabao: %d: %s",
+		e.Status,
+		e.Message)
 }
 
 // Client talks to a gligabao server. Safe for concurrent use.
@@ -64,15 +66,25 @@ func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h
 
 // WithTimeout sets the timeout of the default http.Client. remember can take minutes for a long text.
 func WithTimeout(d time.Duration) Option {
-	return func(c *Client) { c.http = &http.Client{Timeout: d} }
+	return func(c *Client) {
+		c.http = &http.Client{
+			Timeout: d,
+		}
+	}
 }
 
 // New returns a client for the server at baseURL ("" is DefaultBaseURL).
-func New(baseURL string, opts ...Option) *Client {
+func New(baseURL string,
+	opts ...Option) *Client {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
-	c := &Client{baseURL: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: 5 * time.Minute}}
+	c := &Client{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		http: &http.Client{
+			Timeout: 5 * time.Minute,
+		},
+	}
 	for _, o := range opts {
 		o(c)
 	}
@@ -146,9 +158,12 @@ type RememberResponse struct {
 }
 
 // Remember stores req.Text in memory (POST /v1/gb/remember): the server extracts a knowledge graph from it.
-func (c *Client) Remember(ctx context.Context, req RememberRequest) (*RememberResponse, error) {
+func (c *Client) Remember(ctx context.Context,
+	req RememberRequest) (*RememberResponse, error) {
 	if req.Text == "" {
-		return nil, &Error{Message: "remember: text is empty"}
+		return nil, &Error{
+			Message: "remember: text is empty",
+		}
 	}
 	body, err := toMap(req)
 	if err != nil {
@@ -158,7 +173,10 @@ func (c *Client) Remember(ctx context.Context, req RememberRequest) (*RememberRe
 		body[k] = v
 	}
 	var out RememberResponse
-	if out.Raw, err = c.post(ctx, "/v1/gb/remember", body, &out); err != nil {
+	if out.Raw, err = c.post(ctx,
+		"/v1/gb/remember",
+		body,
+		&out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -214,9 +232,12 @@ type QueryResponse struct {
 }
 
 // Query answers req.Query from the knowledge graph (POST /v1/gb/query). A dataset that does not exist is a 404 Error.
-func (c *Client) Query(ctx context.Context, req QueryRequest) (*QueryResponse, error) {
+func (c *Client) Query(ctx context.Context,
+	req QueryRequest) (*QueryResponse, error) {
 	if req.Query == "" {
-		return nil, &Error{Message: "query: query is empty"}
+		return nil, &Error{
+			Message: "query: query is empty",
+		}
 	}
 	body, err := toMap(req)
 	if err != nil {
@@ -226,7 +247,10 @@ func (c *Client) Query(ctx context.Context, req QueryRequest) (*QueryResponse, e
 		body[k] = v
 	}
 	var out QueryResponse
-	if out.Raw, err = c.post(ctx, "/v1/gb/query", body, &out); err != nil {
+	if out.Raw, err = c.post(ctx,
+		"/v1/gb/query",
+		body,
+		&out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -236,25 +260,39 @@ func (c *Client) Query(ctx context.Context, req QueryRequest) (*QueryResponse, e
 func toMap(v any) (map[string]any, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return nil, &Error{Message: "encode request: " + err.Error()}
+		return nil, &Error{
+			Message: "encode request: " + err.Error(),
+		}
 	}
 	m := map[string]any{}
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, &Error{Message: "encode request: " + err.Error()}
+		return nil, &Error{
+			Message: "encode request: " + err.Error(),
+		}
 	}
 	return m, nil
 }
 
 // post sends body as JSON and decodes the answer into out; it returns the raw answer.
-func (c *Client) post(ctx context.Context, path string, body map[string]any, out any) (json.RawMessage, error) {
+func (c *Client) post(ctx context.Context,
+	path string,
+	body map[string]any,
+	out any) (json.RawMessage, error) {
 	delete(body, "user_id") // the server only takes the user from the header
 	b, err := json.Marshal(body)
 	if err != nil {
-		return nil, &Error{Message: "encode request: " + err.Error()}
+		return nil, &Error{
+			Message: "encode request: " + err.Error(),
+		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodPost,
+		c.baseURL+path,
+		bytes.NewReader(b))
 	if err != nil {
-		return nil, &Error{Message: err.Error()}
+		return nil, &Error{
+			Message: err.Error(),
+		}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -266,12 +304,19 @@ func (c *Client) post(ctx context.Context, path string, body map[string]any, out
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, &Error{Message: fmt.Sprintf("cannot reach %s: %v", c.baseURL, err)}
+		return nil, &Error{
+			Message: fmt.Sprintf("cannot reach %s: %v",
+				c.baseURL,
+				err),
+		}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, &Error{Status: resp.StatusCode, Message: "read answer: " + err.Error()}
+		return nil, &Error{
+			Status:  resp.StatusCode,
+			Message: "read answer: " + err.Error(),
+		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		var e struct {
@@ -284,10 +329,16 @@ func (c *Client) post(ctx context.Context, path string, body map[string]any, out
 		if msg == "" {
 			msg = http.StatusText(resp.StatusCode)
 		}
-		return nil, &Error{Status: resp.StatusCode, Message: msg}
+		return nil, &Error{
+			Status:  resp.StatusCode,
+			Message: msg,
+		}
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return nil, &Error{Status: resp.StatusCode, Message: "decode answer: " + err.Error()}
+		return nil, &Error{
+			Status:  resp.StatusCode,
+			Message: "decode answer: " + err.Error(),
+		}
 	}
 	return raw, nil
 }

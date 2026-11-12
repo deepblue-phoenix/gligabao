@@ -18,9 +18,13 @@ import (
 // TestQueryRuns checks the query runs endpoint of the admin API: the counts by status, and the filtered, paged list.
 func TestQueryRuns(t *testing.T) { dbtest.Run(t, testQueryRuns) }
 
-func testQueryRuns(t *testing.T, d *sql.DB) {
+func testQueryRuns(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	h := admin.QueryRunsOf([]admin.Named{{Name: "standard", DB: d}})
+	h := admin.QueryRunsOf([]admin.Named{{
+		Name: "standard",
+		DB:   d,
+	}})
 	type response struct {
 		Counts admin.QueryRunCounts  `json:"counts"`
 		Stages []string              `json:"stages"`
@@ -29,10 +33,13 @@ func testQueryRuns(t *testing.T, d *sql.DB) {
 		Limit  int                   `json:"limit"`
 		Offset int                   `json:"offset"`
 	}
-	get := func(url string, out ...any) int {
+	get := func(url string,
+		out ...any) int {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		h(rec, httptest.NewRequest("GET", url, nil))
+		h(rec, httptest.NewRequest("GET",
+			url,
+			nil))
 		if len(out) > 0 && rec.Code == 200 {
 			if err := json.Unmarshal(rec.Body.Bytes(), out[0]); err != nil {
 				t.Fatal(err)
@@ -46,14 +53,26 @@ func testQueryRuns(t *testing.T, d *sql.DB) {
 	}
 
 	for _, s := range []struct{ dataset, status string }{{"zz_a", relational.RememberSucceeded}, {"zz_a", relational.RememberFailed}, {"zz_b", relational.RememberStarted}} {
-		run := relational.NewQueryRun("u", s.dataset, "q?", "", map[string]any{"k": "v"}, time.Now().UTC())
-		id, err := relational.CreateQueryRun(ctx, d, run)
+		run := relational.NewQueryRun("u",
+			s.dataset,
+			"q?",
+			"",
+			map[string]any{"k": "v"},
+			time.Now().UTC())
+		id, err := relational.CreateQueryRun(ctx,
+			d,
+			run)
 		if err != nil {
 			t.Fatal(err)
 		}
 		run.ID, run.Status = id, s.status
-		run.Stages[relational.QueryStageDetectGeo] = relational.QueryStage{Status: relational.RememberSkipped, InferenceIDs: []int64{}}
-		if err := relational.SaveQueryRun(ctx, d, run); err != nil {
+		run.Stages[relational.QueryStageDetectGeo] = relational.QueryStage{
+			Status:       relational.RememberSkipped,
+			InferenceIDs: []int64{},
+		}
+		if err := relational.SaveQueryRun(ctx,
+			d,
+			run); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -72,14 +91,21 @@ func testQueryRuns(t *testing.T, d *sql.DB) {
 	// Filters apply to the list and its total, not to the counts; limit and offset page it.
 	var f response
 	if c := get("/x?dataset=zz_a&status=failed", &f); c != 200 || f.Total != 1 || len(f.Runs) != 1 || f.Runs[0].Status != relational.RememberFailed || f.Counts != a {
-		t.Errorf("filtered: %d %+v", c, f)
+		t.Errorf("filtered: %d %+v",
+			c,
+			f)
 	}
 	if c := get("/x?dataset=zz_a&limit=1&offset=1", &f); c != 200 || f.Total != 2 || len(f.Runs) != 1 || f.Limit != 1 || f.Offset != 1 {
-		t.Errorf("paged: %d %+v", c, f)
+		t.Errorf("paged: %d %+v",
+			c,
+			f)
 	}
 	for url, want := range map[string]int{"/x?limit=0": 400, "/x?limit=a": 400, "/x?offset=-1": 400, "/x?status=zz": 400, "/x?db=nope": http.StatusNotFound} {
 		if c := get(url); c != want {
-			t.Errorf("%s: %d, want %d", url, c, want)
+			t.Errorf("%s: %d, want %d",
+				url,
+				c,
+				want)
 		}
 	}
 }
@@ -87,9 +113,20 @@ func testQueryRuns(t *testing.T, d *sql.DB) {
 // TestQueryRunOf checks the endpoint that serves one query run (the admin UI opens a bookmarked run with it).
 func TestQueryRunOf(t *testing.T) { dbtest.Run(t, testQueryRunOf) }
 
-func testQueryRunOf(t *testing.T, d *sql.DB) {
-	h := admin.QueryRunOf([]admin.Named{{Name: "standard", DB: d}})
-	id, err := relational.CreateQueryRun(context.Background(), d, relational.NewQueryRun("u", "zz_one", "q?", "", map[string]any{"k": "v"}, time.Now().UTC()))
+func testQueryRunOf(t *testing.T,
+	d *sql.DB) {
+	h := admin.QueryRunOf([]admin.Named{{
+		Name: "standard",
+		DB:   d,
+	}})
+	id, err := relational.CreateQueryRun(context.Background(),
+		d,
+		relational.NewQueryRun("u",
+			"zz_one",
+			"q?",
+			"",
+			map[string]any{"k": "v"},
+			time.Now().UTC()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +137,9 @@ func testQueryRunOf(t *testing.T, d *sql.DB) {
 	get := func(url string) (int, response) {
 		var out response
 		rec := httptest.NewRecorder()
-		h(rec, httptest.NewRequest("GET", url, nil))
+		h(rec, httptest.NewRequest("GET",
+			url,
+			nil))
 		if rec.Code == 200 {
 			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 				t.Fatal(err)
@@ -110,11 +149,16 @@ func testQueryRunOf(t *testing.T, d *sql.DB) {
 	}
 	c, out := get("/x?run_id=" + strconv.FormatInt(id, 10))
 	if c != 200 || out.Run.ID != id || out.Run.Question != "q?" || len(out.Stages) != len(relational.QueryStages) || len(out.Run.Stages) != len(out.Stages) {
-		t.Errorf("run: %d %+v", c, out)
+		t.Errorf("run: %d %+v",
+			c,
+			out)
 	}
 	for url, want := range map[string]int{"/x": 400, "/x?run_id=a": 400, "/x?run_id=0": 400, "/x?run_id=999999999": 404, "/x?run_id=1&db=nope": 404} {
 		if c, _ := get(url); c != want {
-			t.Errorf("%s: %d, want %d", url, c, want)
+			t.Errorf("%s: %d, want %d",
+				url,
+				c,
+				want)
 		}
 	}
 }

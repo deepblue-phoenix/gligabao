@@ -22,20 +22,32 @@ type fakeJev struct {
 	calls int
 }
 
-func (f *fakeJev) Classify(context.Context, string) (*jev.Classification, jev.Call, error) {
+func (f *fakeJev) Classify(context.Context,
+	string) (*jev.Classification, jev.Call, error) {
 	f.calls++
-	call := jev.Call{Started: time.Now(), Latency: 12 * time.Millisecond}
+	call := jev.Call{
+		Started: time.Now(),
+		Latency: 12 * time.Millisecond,
+	}
 	if f.err != nil {
 		return nil, call, f.err
 	}
-	return &jev.Classification{Complexity: jev.Medium, Confidence: 0.7, Model: "jev-1", InputTokens: 30, OutputTokens: 5, Call: call}, call, nil
+	return &jev.Classification{
+		Complexity:   jev.Medium,
+		Confidence:   0.7,
+		Model:        "jev-1",
+		InputTokens:  30,
+		OutputTokens: 5,
+		Call:         call,
+	}, call, nil
 }
 
 func TestRememberJev(t *testing.T) { dbtest.Run(t, testRememberJev) }
 
 // testRememberJev: with Jev configured the classify_complexity step runs first and its latency is in the trajectory; a
 // Jev failure never fails remember; without Jev there is no step.
-func testRememberJev(t *testing.T, d *sql.DB) {
+func testRememberJev(t *testing.T,
+	d *sql.DB) {
 	llm := fakeLLM{`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`}
 	body := `{"user_id":"u1","text":"Alice works at Acme."}`
 
@@ -46,9 +58,16 @@ func testRememberJev(t *testing.T, d *sql.DB) {
 			opts = append(opts, memory_core.WithJev(jv))
 		}
 		rec := httptest.NewRecorder()
-		testEvalHandler(t, d, llm, opts...).ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/eval/remember", strings.NewReader(body)))
+		testEvalHandler(t,
+			d,
+			llm,
+			opts...).ServeHTTP(rec, httputiltest.NewRequest("POST",
+			"/v1/gb/eval/remember",
+			strings.NewReader(body)))
 		if rec.Code != 200 {
-			t.Fatalf("status %d: %s", rec.Code, rec.Body)
+			t.Fatalf("status %d: %s",
+				rec.Code,
+				rec.Body)
 		}
 		var out struct {
 			Trajectory struct {
@@ -76,7 +95,9 @@ func testRememberJev(t *testing.T, d *sql.DB) {
 	fj := &fakeJev{}
 	s := find(run(fj))
 	if s == nil || fj.calls != 1 {
-		t.Fatalf("step = %v, calls = %d", s, fj.calls)
+		t.Fatalf("step = %v, calls = %d",
+			s,
+			fj.calls)
 	}
 	extra := s["extra"].(map[string]any)
 	if extra["latency_ms"].(float64) != 12 || extra["provider"] != "jev" || s["model_name"] != "jev-1" {
@@ -87,7 +108,9 @@ func testRememberJev(t *testing.T, d *sql.DB) {
 		t.Errorf("result = %s", res)
 	}
 
-	s = find(run(&fakeJev{err: errors.New("down")}))
+	s = find(run(&fakeJev{
+		err: errors.New("down"),
+	}))
 	if s == nil || !strings.Contains(s["observation"].(map[string]any)["results"].([]any)[0].(map[string]any)["content"].(string), "down") {
 		t.Errorf("failed step = %v", s)
 	}

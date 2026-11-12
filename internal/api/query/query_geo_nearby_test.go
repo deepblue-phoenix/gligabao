@@ -28,7 +28,8 @@ type mapResolver struct {
 }
 
 func (m *mapResolver) Name() string { return "map" }
-func (m *mapResolver) Resolve(_ context.Context, q memory_geo.Query) (*memory_geo.Place, error) {
+func (m *mapResolver) Resolve(_ context.Context,
+	q memory_geo.Query) (*memory_geo.Place, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.asked = append(m.asked, q.Text)
@@ -36,7 +37,12 @@ func (m *mapResolver) Resolve(_ context.Context, q memory_geo.Query) (*memory_ge
 	if !ok {
 		return nil, memory_geo.ErrNotFound
 	}
-	return &memory_geo.Place{Latitude: c[0], Longitude: c[1], DisplayName: q.Text, Provider: "map"}, nil
+	return &memory_geo.Place{
+		Latitude:    c[0],
+		Longitude:   c[1],
+		DisplayName: q.Text,
+		Provider:    "map",
+	}, nil
 }
 
 // TestQueryGeoNearby checks the proximity step of query: it is off unless the request asks (geo_nearby, geo_radius_km); then the geo
@@ -45,7 +51,8 @@ func (m *mapResolver) Resolve(_ context.Context, q memory_geo.Query) (*memory_ge
 // a bad one is a 400.
 func TestQueryGeoNearby(t *testing.T) { dbtest.Run(t, testQueryGeoNearby) }
 
-func testQueryGeoNearby(t *testing.T, d *sql.DB) {
+func testQueryGeoNearby(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	check := func(err error) {
 		t.Helper()
@@ -53,39 +60,95 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 			t.Fatal(err)
 		}
 	}
-	dsID, err := relational.EnsureDataset(ctx, d, "u2", "main")
+	dsID, err := relational.EnsureDataset(ctx,
+		d,
+		"u2",
+		"main")
 	check(err)
 	now := relational.Now()
 	tx, err := graph.Begin(ctx, d)
 	check(err)
 	defer tx.Rollback()
-	ent := func(name, typ string, lat, lon float64) int64 {
-		id, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: name, Type: typ, Description: name + " description"}, name)
+	ent := func(name,
+		typ string,
+		lat,
+		lon float64) int64 {
+		id, err := tx.UpsertEntity(ctx,
+			dsID,
+			graph.Entity{
+				Name:        name,
+				Type:        typ,
+				Description: name + " description",
+			},
+			name)
 		check(err)
 		if typ == "place" {
-			check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: id, Kind: "city", Latitude: lat, Longitude: lon, Provider: "stub", Now: now}))
+			check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{
+				EntityID:  id,
+				Kind:      "city",
+				Latitude:  lat,
+				Longitude: lon,
+				Provider:  "stub",
+				Now:       now,
+			}))
 		}
 		return id
 	}
-	ent("Paris", "place", 48.8566, 2.3522)
-	versailles := ent("Versailles", "place", 48.8049, 2.1204) // 17 km from Paris
-	ent("Reims", "place", 49.2583, 4.0317)                    // 130 km
-	ent("Villeurbanne", "place", 45.7665, 4.8795)             // 5 km from Lyon
-	alice := ent("Alice", "person", 0, 0)
-	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactEpisode, "text", "", now, now)
+	ent("Paris",
+		"place",
+		48.8566,
+		2.3522)
+	versailles := ent("Versailles",
+		"place",
+		48.8049,
+		2.1204) // 17 km from Paris
+	ent("Reims",
+		"place",
+		49.2583,
+		4.0317) // 130 km
+	ent("Villeurbanne",
+		"place",
+		45.7665,
+		4.8795) // 5 km from Lyon
+	alice := ent("Alice",
+		"person",
+		0,
+		0)
+	artID, err := tx.InsertArtifact(ctx,
+		dsID,
+		graph.ArtifactEpisode,
+		"text",
+		"",
+		now,
+		now)
 	check(err)
-	_, err = tx.InsertEdge(ctx, graph.NewEdge{DatasetID: dsID, SourceID: alice, TargetID: versailles, Relation: "lives_in",
-		Description: "Alice lives in Versailles", ValidAt: now, CreatedAt: now, ArtifactID: artID})
+	_, err = tx.InsertEdge(ctx, graph.NewEdge{
+		DatasetID:   dsID,
+		SourceID:    alice,
+		TargetID:    versailles,
+		Relation:    "lives_in",
+		Description: "Alice lives in Versailles",
+		ValidAt:     now,
+		CreatedAt:   now,
+		ArtifactID:  artID,
+	})
 	check(err)
 	check(tx.Commit())
 
-	llm := &geoStubLLM{places: `{"places":[{"text":"Lyon","kind":"city","query":"Lyon, France"},{"text":"Paris","kind":"city","query":"Paris, France"}]}`}
-	resolver := &mapResolver{places: map[string][2]float64{"Lyon, France": {45.764, 4.8357}, "Paris, France": {48.8566, 2.3522}}}
-	post := func(h http.HandlerFunc, body string) (*httptest.ResponseRecorder, string) {
+	llm := &geoStubLLM{
+		places: `{"places":[{"text":"Lyon","kind":"city","query":"Lyon, France"},{"text":"Paris","kind":"city","query":"Paris, France"}]}`,
+	}
+	resolver := &mapResolver{
+		places: map[string][2]float64{"Lyon, France": {45.764, 4.8357}, "Paris, France": {48.8566, 2.3522}},
+	}
+	post := func(h http.HandlerFunc,
+		body string) (*httptest.ResponseRecorder, string) {
 		t.Helper()
 		llm.reqs = nil
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
+		h.ServeHTTP(rec, httputiltest.NewRequest("POST",
+			"/v1/gb/query",
+			strings.NewReader(body)))
 		var user string
 		if r := llm.requestOf("ONLY a knowledge graph"); r != nil {
 			user = r.Messages[0].Content
@@ -93,13 +156,18 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 		return rec, user
 	}
 	const q = `"query":"What is near Paris and Lyon?"`
-	h := Handler(d, llm, withVectors(t), memory_core.WithGeoResolver(resolver))
+	h := Handler(d,
+		llm,
+		withVectors(t),
+		memory_core.WithGeoResolver(resolver))
 	entityNamed := func(name string) (id int64, g *graph.EntityGeo) {
 		t.Helper()
 		tx, err := graph.Begin(ctx, d)
 		check(err)
 		defer tx.Rollback()
-		id, err = tx.FindEntityID(ctx, dsID, memory_core.Key(name))
+		id, err = tx.FindEntityID(ctx,
+			dsID,
+			memory_core.Key(name))
 		if err != nil {
 			return 0, nil
 		}
@@ -113,10 +181,15 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 	// OFF BY DEFAULT: no nearby section, the resolver is not asked, nothing is stored.
 	rec, user := post(h, `{"user_id":"u2",`+q+`}`)
 	if rec.Code != 200 {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	if strings.Contains(user, "<nearby") || strings.Contains(rec.Body.String(), `"nearby"`) || len(resolver.asked) != 0 {
-		t.Errorf("nearby by default: asked %v\n%s\n%s", resolver.asked, user, rec.Body)
+		t.Errorf("nearby by default: asked %v\n%s\n%s",
+			resolver.asked,
+			user,
+			rec.Body)
 	}
 	if id, _ := entityNamed("Lyon"); id != 0 {
 		t.Error("Lyon was stored by a query that did not ask for the nearby search")
@@ -128,7 +201,9 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 	// geo_nearby: the default radius, 50 km: Versailles (near the entity Paris) and Villeurbanne (near Lyon, which is only in the question).
 	rec, user = post(h, `{"user_id":"u2",`+q+`,"geo_nearby":true}`)
 	if rec.Code != 200 {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	nearby := user[strings.Index(user, "<nearby"):strings.Index(user, "</nearby>")]
 	if !strings.HasPrefix(nearby, `<nearby radius_km="50">`) || !strings.Contains(nearby, "Versailles is 17.9 km from Paris") ||
@@ -170,16 +245,25 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 	// The place of the question was stored: an entity "Lyon" of the type place, with its coordinates.
 	lyon, g := entityNamed("Lyon")
 	if lyon == 0 || g == nil || g.Latitude != 45.764 || g.Longitude != 4.8357 || g.Kind != "city" || g.Query != "Lyon, France" || g.Provider != "map" {
-		t.Fatalf("Lyon after the query: id %d, geo %+v", lyon, g)
+		t.Fatalf("Lyon after the query: id %d, geo %+v",
+			lyon,
+			g)
 	}
-	if e, err := graph.EntitiesByID(ctx, d, []int64{lyon}); err != nil || len(e) != 1 || e[0].Type != "place" || e[0].Name != "Lyon" {
-		t.Errorf("Lyon entity: %+v, %v", e, err)
+	if e, err := graph.EntitiesByID(ctx,
+		d,
+		[]int64{lyon}); err != nil || len(e) != 1 || e[0].Type != "place" || e[0].Name != "Lyon" {
+		t.Errorf("Lyon entity: %+v, %v",
+			e,
+			err)
 	}
 	// ... so the same question finds it in the database: the resolver is not asked again, and it is not stored again.
 	resolver.asked = nil
 	rec, user = post(h, `{"user_id":"u2",`+q+`,"geo_nearby":true}`)
 	if len(resolver.asked) != 0 || !strings.Contains(user, "km from Lyon") || strings.Contains(rec.Body.String(), `"stored"`) {
-		t.Errorf("second ask: the resolver was asked %v\n%s\n%s", resolver.asked, user, rec.Body)
+		t.Errorf("second ask: the resolver was asked %v\n%s\n%s",
+			resolver.asked,
+			user,
+			rec.Body)
 	}
 
 	// The radius: the request sets it, and setting it turns the search on by itself.
@@ -193,7 +277,11 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 	}
 
 	// The server's default radius (it does not turn the search on), which the request overrides.
-	h10 := Handler(d, llm, withVectors(t), memory_core.WithGeoResolver(resolver), memory_core.WithGeoRadius(10))
+	h10 := Handler(d,
+		llm,
+		withVectors(t),
+		memory_core.WithGeoResolver(resolver),
+		memory_core.WithGeoRadius(10))
 	if _, user = post(h10, `{"user_id":"u2",`+q+`}`); strings.Contains(user, "<nearby") {
 		t.Errorf("a server radius turned the search on:\n%s", user)
 	}
@@ -212,35 +300,60 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 	resolver.places["Orange, France"] = [2]float64{44.138, 4.8067}
 	tx, err = graph.Begin(ctx, d)
 	check(err)
-	lisbon, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Lisbon", Type: "organization"}, "lisbon")
+	lisbon, err := tx.UpsertEntity(ctx,
+		dsID,
+		graph.Entity{
+			Name: "Lisbon",
+			Type: "organization",
+		},
+		"lisbon")
 	check(err)
-	orangePerson, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Orange", Type: "person"}, "orange")
+	orangePerson, err := tx.UpsertEntity(ctx,
+		dsID,
+		graph.Entity{
+			Name: "Orange",
+			Type: "person",
+		},
+		"orange")
 	check(err)
 	check(tx.Commit())
 	llm.places = `{"places":[{"text":"Lisbon","kind":"city","query":"Lisbon, Portugal"},{"text":"Orange","kind":"city","query":"Orange, France"}]}`
 	rec, _ = post(h, `{"user_id":"u2","query":"What is near Lisbon and Orange?","geo_nearby":true}`)
 	if rec.Code != 200 {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	if id, g := entityNamed("Lisbon"); id != lisbon || g == nil || g.Latitude != 38.7223 {
-		t.Errorf("Lisbon: id %d (was %d), geo %+v", id, lisbon, g)
+		t.Errorf("Lisbon: id %d (was %d), geo %+v",
+			id,
+			lisbon,
+			g)
 	}
-	if _, err := graph.GetEntityGeo(ctx, d, orangePerson); err == nil {
+	if _, err := graph.GetEntityGeo(ctx,
+		d,
+		orangePerson); err == nil {
 		t.Error("the person Orange got coordinates")
 	}
 	var orangePlace int64
 	if err := d.QueryRow(`SELECT id FROM gb_entities WHERE dataset_id = ` + fmt.Sprint(dsID) + ` AND name = 'Orange' AND type = 'place'`).Scan(&orangePlace); err != nil {
 		t.Fatalf("no place Orange: %v", err)
 	}
-	if g, err := graph.GetEntityGeo(ctx, d, orangePlace); err != nil || g.Latitude != 44.138 {
-		t.Errorf("place Orange: %+v, %v", g, err)
+	if g, err := graph.GetEntityGeo(ctx,
+		d,
+		orangePlace); err != nil || g.Latitude != 44.138 {
+		t.Errorf("place Orange: %+v, %v",
+			g,
+			err)
 	}
 	llm.places = `{"places":[{"text":"Lyon","kind":"city","query":"Lyon, France"},{"text":"Paris","kind":"city","query":"Paris, France"}]}`
 
 	// A bad radius, or a contradiction, is a 400.
 	for _, r := range []string{`0`, `-5`, `20016`, `"far"`} {
 		if rec, _ := post(h, `{"user_id":"u2",`+q+`,"geo_radius_km":`+r+`}`); rec.Code != 400 {
-			t.Errorf("geo_radius_km %s: status %d", r, rec.Code)
+			t.Errorf("geo_radius_km %s: status %d",
+				r,
+				rec.Code)
 		}
 	}
 	if rec, _ := post(h, `{"user_id":"u2",`+q+`,"geo_nearby":false,"geo_radius_km":5}`); rec.Code != 400 {
@@ -249,11 +362,19 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 
 	// Without a geo resolver the server cannot do it: a request that asks for it is a 400, one that does not is as before.
 	for _, body := range []string{`,"geo_nearby":true`, `,"geo_radius_km":200`} {
-		if rec, _ := post(Handler(d, llm, withVectors(t)), `{"user_id":"u2",`+q+body+`}`); rec.Code != 400 {
-			t.Errorf("no geo on the server, %s: status %d", body, rec.Code)
+		if rec, _ := post(Handler(d,
+			llm,
+			withVectors(t)), `{"user_id":"u2",`+q+body+`}`); rec.Code != 400 {
+			t.Errorf("no geo on the server, %s: status %d",
+				body,
+				rec.Code)
 		}
 	}
-	if rec, user := post(Handler(d, llm, withVectors(t)), `{"user_id":"u2",`+q+`}`); rec.Code != 200 || strings.Contains(user, "<nearby") {
-		t.Errorf("no geo on the server: %d\n%s", rec.Code, user)
+	if rec, user := post(Handler(d,
+		llm,
+		withVectors(t)), `{"user_id":"u2",`+q+`}`); rec.Code != 200 || strings.Contains(user, "<nearby") {
+		t.Errorf("no geo on the server: %d\n%s",
+			rec.Code,
+			user)
 	}
 }

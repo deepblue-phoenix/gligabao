@@ -20,19 +20,23 @@ import (
 // Sink receives the files of a bare git repository: "HEAD", "config", "refs/heads/main" and the loose objects
 // "objects/ab/cdef...". Paths use "/" and are relative to the repository.
 type Sink interface {
-	WriteFile(path string, data []byte) error
+	WriteFile(path string,
+		data []byte) error
 }
 
 // DirSink writes the repository into a directory (created if needed).
 type DirSink struct{ Dir string }
 
 // WriteFile implements Sink.
-func (s DirSink) WriteFile(path string, data []byte) error {
+func (s DirSink) WriteFile(path string,
+	data []byte) error {
 	full := filepath.Join(s.Dir, filepath.FromSlash(path))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(full, data, 0o644)
+	return os.WriteFile(full,
+		data,
+		0o644)
 }
 
 // TarGzSink writes the repository as a gzip-compressed tar archive, every entry under the directory Prefix
@@ -44,18 +48,30 @@ type TarGzSink struct {
 }
 
 // NewTarGzSink returns a TarGzSink that writes to w.
-func NewTarGzSink(w io.Writer, prefix string) *TarGzSink {
+func NewTarGzSink(w io.Writer,
+	prefix string) *TarGzSink {
 	gz := gzip.NewWriter(w)
-	return &TarGzSink{Prefix: prefix, gz: gz, tw: tar.NewWriter(gz)}
+	return &TarGzSink{
+		Prefix: prefix,
+		gz:     gz,
+		tw:     tar.NewWriter(gz),
+	}
 }
 
 // WriteFile implements Sink.
-func (s *TarGzSink) WriteFile(path string, data []byte) error {
+func (s *TarGzSink) WriteFile(path string,
+	data []byte) error {
 	name := path
 	if s.Prefix != "" {
 		name = s.Prefix + "/" + path
 	}
-	hdr := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(data)), Typeflag: tar.TypeReg, Format: tar.FormatPAX}
+	hdr := &tar.Header{
+		Name:     name,
+		Mode:     0o644,
+		Size:     int64(len(data)),
+		Typeflag: tar.TypeReg,
+		Format:   tar.FormatPAX,
+	}
 	if err := s.tw.WriteHeader(hdr); err != nil {
 		return err
 	}
@@ -80,10 +96,16 @@ type store struct {
 	buf  bytes.Buffer
 }
 
-func newStore(sink Sink) *store { return &store{sink: sink, seen: map[string]bool{}} }
+func newStore(sink Sink) *store {
+	return &store{
+		sink: sink,
+		seen: map[string]bool{},
+	}
+}
 
 // put stores one object and returns its ID (40 hex characters).
-func (s *store) put(kind string, content []byte) (string, error) {
+func (s *store) put(kind string,
+	content []byte) (string, error) {
 	header := kind + " " + strconv.Itoa(len(content)) + "\x00"
 	h := sha1.New() //nolint:gosec
 	h.Write([]byte(header))
@@ -111,8 +133,14 @@ func (s *store) put(kind string, content []byte) (string, error) {
 }
 
 // commit stores a commit object. parent is "" for the first commit. Author and committer are the same.
-func (s *store) commit(tree, parent string, at time.Time, message string) (string, error) {
-	sig := fmt.Sprintf("%s <%s> %d +0000", authorName, authorEmail, at.Unix())
+func (s *store) commit(tree,
+	parent string,
+	at time.Time,
+	message string) (string, error) {
+	sig := fmt.Sprintf("%s <%s> %d +0000",
+		authorName,
+		authorEmail,
+		at.Unix())
 	var b strings.Builder
 	b.WriteString("tree " + tree + "\n")
 	if parent != "" {
@@ -134,10 +162,17 @@ type dir struct {
 	dirty bool
 }
 
-func newDir() *dir { return &dir{files: map[string]string{}, dirs: map[string]*dir{}, dirty: true} }
+func newDir() *dir {
+	return &dir{
+		files: map[string]string{},
+		dirs:  map[string]*dir{},
+		dirty: true,
+	}
+}
 
 // set puts the blob at path ("a/b/c.md"), creating directories as needed.
-func (d *dir) set(path, blob string) {
+func (d *dir) set(path,
+	blob string) {
 	d.dirty = true
 	i := strings.IndexByte(path, '/')
 	if i < 0 {
@@ -160,14 +195,19 @@ func (d *dir) write(s *store) (string, error) {
 	type entry struct {
 		name, key, mode, id string
 	}
-	entries := make([]entry, 0, len(d.files)+len(d.dirs))
+	entries := make([]entry,
+		0,
+		len(d.files)+len(d.dirs))
 	for name, id := range d.files {
 		entries = append(entries, entry{name, name, "100644", id})
 	}
 	for name := range d.dirs {
 		entries = append(entries, entry{name, name + "/", "40000", ""}) // git sorts a directory as if its name ended in "/"
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].key < entries[j].key })
+	sort.Slice(entries, func(i,
+		j int) bool {
+		return entries[i].key < entries[j].key
+	})
 	for i := range entries { // in order, so the objects are written in a fixed order
 		if e := &entries[i]; e.mode == "40000" {
 			id, err := d.dirs[e.name].write(s)

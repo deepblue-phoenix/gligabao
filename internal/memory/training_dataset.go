@@ -14,7 +14,10 @@ var ErrNoTrainingHook = errors.New("no training hook")
 
 // LoadKnowledgeDataset reads the knowledge dataset of userID's live dataset called name (empty means the default dataset): all its
 // artifacts and the graph of each artifact that has one. It returns ErrDatasetNotFound if there is no such dataset.
-func LoadKnowledgeDataset(ctx context.Context, d *sql.DB, userID, name string) (memory_core.KnowledgeDataset, error) {
+func LoadKnowledgeDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (memory_core.KnowledgeDataset, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
@@ -23,31 +26,46 @@ func LoadKnowledgeDataset(ctx context.Context, d *sql.DB, userID, name string) (
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
-	dsID, err := memory_core.DatasetID(ctx, d, userID, name)
+	dsID, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		name)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
-	artifacts, err := graph.ListArtifacts(ctx, d, dsID)
+	artifacts, err := graph.ListArtifacts(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
-	entities, err := graph.ListEntities(ctx, d, dsID)
+	entities, err := graph.ListEntities(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
-	edges, err := graph.ListGraphEdges(ctx, d, dsID)
+	edges, err := graph.ListGraphEdges(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
-	entityLinks, err := graph.ListEntityArtifacts(ctx, d, dsID)
+	entityLinks, err := graph.ListEntityArtifacts(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
-	edgeLinks, err := graph.ListEdgeArtifacts(ctx, d, dsID)
+	edgeLinks, err := graph.ListEdgeArtifacts(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
-	classes, err := graph.ListArtifactClasses(ctx, d, dsID)
+	classes, err := graph.ListArtifactClasses(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
@@ -55,18 +73,34 @@ func LoadKnowledgeDataset(ctx context.Context, d *sql.DB, userID, name string) (
 		artifacts = []graph.Artifact{}
 	}
 	return memory_core.KnowledgeDataset{
-		UserID: userID, Dataset: name, DatasetID: dsID,
+		UserID:    userID,
+		Dataset:   name,
+		DatasetID: dsID,
 		Artifacts: artifacts,
-		Graphs:    artifactGraphs(artifacts, entities, edges, entityLinks, edgeLinks, classes),
-		TopClassesFunc: func(ctx context.Context, n int) ([]graph.ClassCount, error) {
-			return graph.TopArtifactClasses(ctx, d, dsID, n)
+		Graphs: artifactGraphs(artifacts,
+			entities,
+			edges,
+			entityLinks,
+			edgeLinks,
+			classes),
+		TopClassesFunc: func(ctx context.Context,
+			n int) ([]graph.ClassCount, error) {
+			return graph.TopArtifactClasses(ctx,
+				d,
+				dsID,
+				n)
 		},
 	}, nil
 }
 
 // artifactGraphs groups the entities and edges by the artifacts they are linked to, and gives each graph the classes of its artifact. The result has one graph per artifact that has
 // at least one entity or edge, in the order of artifacts; the entities and edges of a graph are in the order they were given.
-func artifactGraphs(artifacts []graph.Artifact, entities []graph.EvidenceEntity, edges []graph.EvidenceEdge, entityLinks []graph.EntityArtifact, edgeLinks []graph.EdgeArtifact, classes []graph.ArtifactClass) []memory_core.ArtifactGraph {
+func artifactGraphs(artifacts []graph.Artifact,
+	entities []graph.EvidenceEntity,
+	edges []graph.EvidenceEdge,
+	entityLinks []graph.EntityArtifact,
+	edgeLinks []graph.EdgeArtifact,
+	classes []graph.ArtifactClass) []memory_core.ArtifactGraph {
 	entityByID := make(map[int64]graph.EvidenceEntity, len(entities))
 	for _, e := range entities {
 		entityByID[e.ID] = e
@@ -89,7 +123,12 @@ func artifactGraphs(artifacts []graph.Artifact, entities []graph.EvidenceEntity,
 	}
 	graphs := []memory_core.ArtifactGraph{}
 	for _, a := range artifacts {
-		g := memory_core.ArtifactGraph{ArtifactID: a.ID, Entities: []graph.EvidenceEntity{}, Edges: []graph.EvidenceEdge{}, Classes: []graph.ArtifactClass{}}
+		g := memory_core.ArtifactGraph{
+			ArtifactID: a.ID,
+			Entities:   []graph.EvidenceEntity{},
+			Edges:      []graph.EvidenceEdge{},
+			Classes:    []graph.ArtifactClass{},
+		}
 		for _, id := range entityIDs[a.ID] {
 			if e, ok := entityByID[id]; ok {
 				g.Entities = append(g.Entities, e)
@@ -112,13 +151,22 @@ func artifactGraphs(artifacts []graph.Artifact, entities []graph.EvidenceEntity,
 // whole dataset, or a filtered subset, with the class of each graph). The result is checked (memory_core.ValidateTrainingDataset): a bad
 // one is an error that wraps memory_core.ErrInvalidTrainingDataset. An error of the hook is returned, as is a panic of it. Nothing is
 // stored. It returns ErrNoTrainingHook for a nil hook and memory_core.ErrDatasetNotFound if there is no such dataset.
-func MakeTrainingDataset(ctx context.Context, d *sql.DB, hook memory_core.ClassifyingTrainingHook, userID, name string) (memory_core.TrainingDataset, error) {
+func MakeTrainingDataset(ctx context.Context,
+	d *sql.DB,
+	hook memory_core.ClassifyingTrainingHook,
+	userID,
+	name string) (memory_core.TrainingDataset, error) {
 	if hook == nil {
 		return memory_core.TrainingDataset{}, ErrNoTrainingHook
 	}
-	ds, err := LoadKnowledgeDataset(ctx, d, userID, name)
+	ds, err := LoadKnowledgeDataset(ctx,
+		d,
+		userID,
+		name)
 	if err != nil {
 		return memory_core.TrainingDataset{}, err
 	}
-	return memory_core.CallClassifyingTrainingHook(ctx, hook, ds)
+	return memory_core.CallClassifyingTrainingHook(ctx,
+		hook,
+		ds)
 }

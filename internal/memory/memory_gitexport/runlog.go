@@ -65,22 +65,42 @@ func utcPtr(t *time.Time) *time.Time {
 	return &u
 }
 
-func stagesOut(names []string, stages map[string]relational.RememberStage, inferences map[int64]relational.Inference) []stageOut {
+func stagesOut(names []string,
+	stages map[string]relational.RememberStage,
+	inferences map[int64]relational.Inference) []stageOut {
 	out := []stageOut{}
 	for _, name := range names {
 		st, ok := stages[name]
 		if !ok || st.Status == "" || st.Status == relational.RememberNotStarted {
 			continue
 		}
-		so := stageOut{Stage: name, Status: st.Status, Error: st.Error, StartedAt: utcPtr(st.StartedAt), FinishedAt: utcPtr(st.FinishedAt)}
+		so := stageOut{
+			Stage:      name,
+			Status:     st.Status,
+			Error:      st.Error,
+			StartedAt:  utcPtr(st.StartedAt),
+			FinishedAt: utcPtr(st.FinishedAt),
+		}
 		for _, id := range st.InferenceIDs {
 			inf, ok := inferences[id]
 			if !ok {
-				so.Inferences = append(so.Inferences, inferenceOut{ID: id, Reasoning: "unknown"})
+				so.Inferences = append(so.Inferences, inferenceOut{
+					ID:        id,
+					Reasoning: "unknown",
+				})
 				continue
 			}
-			so.Inferences = append(so.Inferences, inferenceOut{ID: inf.ID, Stage: inf.Stage, Model: inf.Model, Provider: inf.Provider, Reasoning: inf.Reasoning,
-				InputTokens: inf.InputTokens, OutputTokens: inf.OutputTokens, CostUSD: inf.CostUSD, CreatedAt: inf.CreatedAt.UTC()})
+			so.Inferences = append(so.Inferences, inferenceOut{
+				ID:           inf.ID,
+				Stage:        inf.Stage,
+				Model:        inf.Model,
+				Provider:     inf.Provider,
+				Reasoning:    inf.Reasoning,
+				InputTokens:  inf.InputTokens,
+				OutputTokens: inf.OutputTokens,
+				CostUSD:      inf.CostUSD,
+				CreatedAt:    inf.CreatedAt.UTC(),
+			})
 		}
 		out = append(out, so)
 	}
@@ -121,21 +141,50 @@ func (r *renderer) queryRunPath(id int64) string { return fmt.Sprintf("runs/quer
 
 func (r *renderer) rememberRunFile(l RememberRunLog) string {
 	run := l.Run
-	out := runOut{ID: run.ID, Kind: run.Kind, Status: run.Status, Error: run.Error, Params: run.Params, ArtifactID: run.ArtifactID,
-		StartedAt: run.StartedAt.UTC(), FinishedAt: utcPtr(run.FinishedAt), Stages: stagesOut(rememberStageNames(), run.Stages, l.Inferences)}
+	out := runOut{
+		ID:         run.ID,
+		Kind:       run.Kind,
+		Status:     run.Status,
+		Error:      run.Error,
+		Params:     run.Params,
+		ArtifactID: run.ArtifactID,
+		StartedAt:  run.StartedAt.UTC(),
+		FinishedAt: utcPtr(run.FinishedAt),
+		Stages: stagesOut(rememberStageNames(),
+			run.Stages,
+			l.Inferences),
+	}
 	if out.Params == nil {
 		out.Params = map[string]any{}
 	}
 	for _, o := range l.Outputs {
-		out.Outputs = append(out.Outputs, outputOut{ID: o.ID, Stage: o.Stage, Name: o.Name, Label: o.Label, Output: o.Output, CreatedAt: o.CreatedAt.UTC()})
+		out.Outputs = append(out.Outputs, outputOut{
+			ID:        o.ID,
+			Stage:     o.Stage,
+			Name:      o.Name,
+			Label:     o.Label,
+			Output:    o.Output,
+			CreatedAt: o.CreatedAt.UTC(),
+		})
 	}
 	return indentJSON(out)
 }
 
 func (r *renderer) queryRunFile(l QueryRunLog) string {
 	run := l.Run
-	out := runOut{ID: run.ID, Question: run.Question, SessionID: run.SessionID, Status: run.Status, Error: run.Error, Params: run.Params,
-		StartedAt: run.StartedAt.UTC(), FinishedAt: utcPtr(run.FinishedAt), Stages: stagesOut(queryStageNames(), run.Stages, l.Inferences)}
+	out := runOut{
+		ID:         run.ID,
+		Question:   run.Question,
+		SessionID:  run.SessionID,
+		Status:     run.Status,
+		Error:      run.Error,
+		Params:     run.Params,
+		StartedAt:  run.StartedAt.UTC(),
+		FinishedAt: utcPtr(run.FinishedAt),
+		Stages: stagesOut(queryStageNames(),
+			run.Stages,
+			l.Inferences),
+	}
 	if out.Params == nil {
 		out.Params = map[string]any{}
 	}
@@ -143,30 +192,48 @@ func (r *renderer) queryRunFile(l QueryRunLog) string {
 }
 
 // firstLine is the first line of s, cut to n runes.
-func firstLine(s string, n int) string {
+func firstLine(s string,
+	n int) string {
 	return subject(s, n)
 }
 
 func (r *renderer) rememberRunMessage(run relational.RememberRun) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "remember run #%d %s", run.ID, run.Status)
+	fmt.Fprintf(&b,
+		"remember run #%d %s",
+		run.ID,
+		run.Status)
 	if run.Error != nil {
 		b.WriteString(": " + firstLine(*run.Error, 60))
 	}
 	b.WriteString("\n\nNo artifact of this call is in the dataset (the call failed or was stopped, or its artifact was deleted).\n\n")
-	fmt.Fprintf(&b, "Remember-Run-Id: %d\nKind: %s\nStatus: %s\n", run.ID, run.Kind, run.Status)
+	fmt.Fprintf(&b,
+		"Remember-Run-Id: %d\nKind: %s\nStatus: %s\n",
+		run.ID,
+		run.Kind,
+		run.Status)
 	return b.String()
 }
 
 func (r *renderer) queryRunMessage(run relational.QueryRun) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "query #%d: %s\n\nA question asked of the dataset; it does not change it.\n\n", run.ID, firstLine(run.Question, 60))
-	fmt.Fprintf(&b, "Query-Run-Id: %d\nStatus: %s\n", run.ID, run.Status)
+	fmt.Fprintf(&b,
+		"query #%d: %s\n\nA question asked of the dataset; it does not change it.\n\n",
+		run.ID,
+		firstLine(run.Question, 60))
+	fmt.Fprintf(&b,
+		"Query-Run-Id: %d\nStatus: %s\n",
+		run.ID,
+		run.Status)
 	if run.SessionID != "" {
-		fmt.Fprintf(&b, "Session-Id: %s\n", run.SessionID)
+		fmt.Fprintf(&b,
+			"Session-Id: %s\n",
+			run.SessionID)
 	}
 	if run.Error != nil {
-		fmt.Fprintf(&b, "Error: %s\n", firstLine(*run.Error, 100))
+		fmt.Fprintf(&b,
+			"Error: %s\n",
+			firstLine(*run.Error, 100))
 	}
 	return b.String()
 }

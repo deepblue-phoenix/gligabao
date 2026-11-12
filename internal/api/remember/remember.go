@@ -107,111 +107,171 @@ type fetchRequest struct {
 // and returns the ID of the run at once; the handler then waits for the run to complete. An image is remembered by the handler
 // itself, with d.
 // mo are extra options for every memory_remember.Remember call (e.g. memory.WithVectors).
-func Handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
-	return handler(mgr, d, llm, false, mo)
+func Handler(mgr *memory_remember.Manager,
+	d *sql.DB,
+	llm memory_core.LLM,
+	mo ...memory_core.Option) http.HandlerFunc {
+	return handler(mgr,
+		d,
+		llm,
+		false,
+		mo)
 }
 
 // EvalHandler serves POST /v1/gb/eval/remember: like Handler, but the response also carries the call's ATIF
 // trajectory. It is only registered when the server runs in eval mode.
-func EvalHandler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
-	return handler(mgr, d, llm, true, mo)
+func EvalHandler(mgr *memory_remember.Manager,
+	d *sql.DB,
+	llm memory_core.LLM,
+	mo ...memory_core.Option) http.HandlerFunc {
+	return handler(mgr,
+		d,
+		llm,
+		true,
+		mo)
 }
 
 // failureMessage is what a 502 says: the generic message, or in eval mode (the internal eval endpoints, whose caller is the eval runner)
 // also the cause, which is what the case run then records as the reason it errored (e.g. the provider's refusal of a request).
-func failureMessage(generic string, err error, eval bool) string {
+func failureMessage(generic string,
+	err error,
+	eval bool) string {
 	if eval {
 		return generic + ": " + err.Error()
 	}
 	return generic
 }
 
-func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option) http.HandlerFunc {
+func handler(mgr *memory_remember.Manager,
+	d *sql.DB,
+	llm memory_core.LLM,
+	eval bool,
+	mo []memory_core.Option) http.HandlerFunc {
 	opts := append([]memory_core.Option(nil), mo...)
 	if eval {
 		opts = append(opts, memory_core.WithEval())
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		if llm == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "LLM not configured (set ANTHROPIC_API_KEY)")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"LLM not configured (set ANTHROPIC_API_KEY)")
 			return
 		}
 		var req rememberRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		if err := json.NewDecoder(http.MaxBytesReader(w,
+			r.Body,
+			maxBodyBytes)).Decode(&req); err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body: "+err.Error())
 			return
 		}
 		req.Text = strings.TrimSpace(req.Text)
 		if req.Image != "" {
-			rememberImage(w, r, d, llm, req, opts)
+			rememberImage(w,
+				r,
+				d,
+				llm,
+				req,
+				opts)
 			return
 		}
 		if req.Text == "" {
-			httputil.Error(w, http.StatusBadRequest, "text is required")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"text is required")
 			return
 		}
 		if len(req.Text) > maxRememberBytes {
-			httputil.Error(w, http.StatusBadRequest, "text is larger than 1 MiB")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"text is larger than 1 MiB")
 			return
 		}
 		var ref time.Time
 		if req.ReferenceTime != "" {
 			var err error
 			if ref, err = relational.ParseTimeStrict(req.ReferenceTime); err != nil {
-				httputil.Error(w, http.StatusBadRequest, "reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
 				return
 			}
 		}
 		if _, err := memory_core.ResolveUserID(httputil.UserID(r)); err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		if _, err := memory_core.ResolveDatasetName(req.Dataset); err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		if _, err := memory_remember.ResolveKind(req.Kind); err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		sessionID, err := memory_core.ResolveSessionID(req.SessionID)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		graphIndex, err := resolveGraphIndex(req.GraphIndex, opts)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		models, err := memory_core.ResolveModels(req.Models)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		reasoning, err := memory_core.ResolveReasoning(req.Reasoning)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		// On by default, except on the eval endpoint, whose trajectories and costs must not change under an eval that did not ask for it.
 		classifyGraph := req.ClassifyGraph != nil && *req.ClassifyGraph || req.ClassifyGraph == nil && !eval
 		graphClasses, err := resolveGraphClasses(classifyGraph, req.GraphClasses)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		if req.WebSearch && memory_core.NewCallOptions(opts).WebSearcher == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, memory_core.ErrWebSearchUnavailable.Error())
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				memory_core.ErrWebSearchUnavailable.Error())
 			return
 		}
 		series, fetch, observe, err := resolveTimeseries(req.Timeseries, memory_core.NewCallOptions(opts).SeriesProviders)
 		if errors.Is(err, memory_core.ErrSeriesProvidersUnavailable) {
-			httputil.Error(w, http.StatusServiceUnavailable, err.Error())
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				err.Error())
 			return
 		}
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
 		start := time.Now()
@@ -219,19 +279,37 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 		// channel, which the manager sends the result to when the run is over.
 		outcome := make(chan memory_remember.Outcome, 1)
 		runID, err := mgr.Submit(memory_remember.Request{
-			UserID: httputil.UserID(r), Dataset: req.Dataset, Kind: req.Kind, Text: req.Text, Ref: ref,
-			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithClassifyGraph(classifyGraph, graphClasses), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
-			Ctx:  r.Context(), Outcome: outcome,
+			UserID:  httputil.UserID(r),
+			Dataset: req.Dataset,
+			Kind:    req.Kind,
+			Text:    req.Text,
+			Ref:     ref,
+			Opts: append(opts[:len(opts):len(opts)],
+				memory_core.WithSessionID(sessionID),
+				memory_core.WithGraphIndex(graphIndex),
+				memory_core.WithModels(models),
+				memory_core.WithReasoning(reasoning),
+				memory_core.WithWebSearch(req.WebSearch),
+				memory_core.WithClassifyGraph(classifyGraph, graphClasses),
+				memory_core.WithSeries(series),
+				memory_core.WithSeriesFetch(fetch),
+				memory_core.WithSeriesObservations(observe)),
+			Ctx:     r.Context(),
+			Outcome: outcome,
 		})
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": req.Dataset}).Error("remember not queued")
-			httputil.Error(w, http.StatusServiceUnavailable, "remember is not available")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"remember is not available")
 			return
 		}
 		out := <-outcome
 		res, err := out.Result, out.Err
 		if errors.Is(err, memory_timeseries.ErrAnchor) { // nothing was stored
-			httputil.Error(w, http.StatusUnprocessableEntity, err.Error())
+			httputil.Error(w,
+				http.StatusUnprocessableEntity,
+				err.Error())
 			return
 		}
 		if err != nil {
@@ -241,16 +319,22 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 				"session_id":      sessionID,
 				"remember_run_id": runID,
 			}).Error("remember failed")
-			monitoring.EmitSystemEvent(r.Context(), "remember.failed", monitoring.Event{
-				"user_id":         httputil.UserID(r),
-				"dataset":         req.Dataset,
-				"session_id":      sessionID,
-				"remember_run_id": runID,
-				"text_bytes":      len(req.Text),
-				"duration_ms":     time.Since(start).Milliseconds(),
-				"error":           err.Error(),
-			})
-			httputil.Error(w, http.StatusBadGateway, failureMessage("failed to process text", err, eval))
+			monitoring.EmitSystemEvent(r.Context(),
+				"remember.failed",
+				monitoring.Event{
+					"user_id":         httputil.UserID(r),
+					"dataset":         req.Dataset,
+					"session_id":      sessionID,
+					"remember_run_id": runID,
+					"text_bytes":      len(req.Text),
+					"duration_ms":     time.Since(start).Milliseconds(),
+					"error":           err.Error(),
+				})
+			httputil.Error(w,
+				http.StatusBadGateway,
+				failureMessage("failed to process text",
+					err,
+					eval))
 			return
 		}
 		log.WithFields(log.Fields{
@@ -268,30 +352,35 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 			"series_observations": len(res.SeriesObservations),
 			"duration_ms":         time.Since(start).Milliseconds(),
 		}).Debug("remember completed")
-		monitoring.EmitSystemEvent(r.Context(), "remember.completed", monitoring.Event{
-			"user_id":             res.UserID,
-			"dataset":             res.Dataset,
-			"artifact_id":         res.ArtifactID,
-			"session_id":          res.SessionID,
-			"kind":                res.Kind,
-			"text_bytes":          len(req.Text),
-			"chunks":              len(res.Chunks),
-			"entities":            len(res.Entities),
-			"edges":               len(res.Edges),
-			"invalidated_edges":   len(res.InvalidatedEdges),
-			"web_searches":        len(res.WebSearches),
-			"series":              len(res.Series),
-			"series_fetches":      len(res.SeriesFetches),
-			"series_observations": len(res.SeriesObservations),
-			"duration_ms":         time.Since(start).Milliseconds(),
-		})
-		httputil.WriteJSON(w, http.StatusOK, res)
+		monitoring.EmitSystemEvent(r.Context(),
+			"remember.completed",
+			monitoring.Event{
+				"user_id":             res.UserID,
+				"dataset":             res.Dataset,
+				"artifact_id":         res.ArtifactID,
+				"session_id":          res.SessionID,
+				"kind":                res.Kind,
+				"text_bytes":          len(req.Text),
+				"chunks":              len(res.Chunks),
+				"entities":            len(res.Entities),
+				"edges":               len(res.Edges),
+				"invalidated_edges":   len(res.InvalidatedEdges),
+				"web_searches":        len(res.WebSearches),
+				"series":              len(res.Series),
+				"series_fetches":      len(res.SeriesFetches),
+				"series_observations": len(res.SeriesObservations),
+				"duration_ms":         time.Since(start).Milliseconds(),
+			})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			res)
 	}
 }
 
 // resolveTimeseries validates the timeseries of a request (nil for none) against the registered providers: the series
 // that were supplied, what to fetch (nil if nothing), and whether to derive an observation artifact from each series.
-func resolveTimeseries(t *timeseriesRequest, providers []memory_core.SeriesProvider) ([]memory_core.SeriesSpec, *memory_core.SeriesFetch, bool, error) {
+func resolveTimeseries(t *timeseriesRequest,
+	providers []memory_core.SeriesProvider) ([]memory_core.SeriesSpec, *memory_core.SeriesFetch, bool, error) {
 	if t == nil {
 		return nil, nil, false, nil
 	}
@@ -305,7 +394,9 @@ func resolveTimeseries(t *timeseriesRequest, providers []memory_core.SeriesProvi
 	if t.Fetch == nil {
 		return series, nil, t.Observations, nil
 	}
-	f := &memory_core.SeriesFetch{Providers: t.Fetch.Providers}
+	f := &memory_core.SeriesFetch{
+		Providers: t.Fetch.Providers,
+	}
 	if f.Before, err = memory_core.ParseFetchWindow(t.Fetch.Before); err != nil {
 		return nil, nil, false, fmt.Errorf("timeseries.fetch.before: %w", err)
 	}
@@ -318,7 +409,8 @@ func resolveTimeseries(t *timeseriesRequest, providers []memory_core.SeriesProvi
 
 // resolveGraphClasses validates graph_classes of a request: they only make sense when the graph is classified (it is, unless the
 // request says classify_graph false).
-func resolveGraphClasses(classify bool, classes []string) ([]string, error) {
+func resolveGraphClasses(classify bool,
+	classes []string) ([]string, error) {
 	if len(classes) > 0 && !classify {
 		return nil, errors.New("graph_classes needs classify_graph, which is false")
 	}
@@ -327,7 +419,8 @@ func resolveGraphClasses(classify bool, classes []string) ([]string, error) {
 
 // resolveGraphIndex validates the graph_index of a request: empty is none; a name needs the graph embedder hook (opts), which is what
 // gets it, so without one the request is refused instead of the name being silently dropped.
-func resolveGraphIndex(name string, opts []memory_core.Option) (string, error) {
+func resolveGraphIndex(name string,
+	opts []memory_core.Option) (string, error) {
 	name, err := memory_core.ResolveGraphIndex(name)
 	if err != nil {
 		return "", err
@@ -339,84 +432,130 @@ func resolveGraphIndex(name string, opts []memory_core.Option) (string, error) {
 }
 
 // rememberImage serves a remember request that carries an image: the image pipeline.
-func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory_core.LLM, req rememberRequest, opts []memory_core.Option) {
+func rememberImage(w http.ResponseWriter,
+	r *http.Request,
+	d *sql.DB,
+	llm memory_core.LLM,
+	req rememberRequest,
+	opts []memory_core.Option) {
 	if req.Text != "" || req.Kind != "" {
-		httputil.Error(w, http.StatusBadRequest, "image excludes text and kind")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"image excludes text and kind")
 		return
 	}
 	if req.WebSearch {
-		httputil.Error(w, http.StatusBadRequest, "web_search does not apply to an image")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"web_search does not apply to an image")
 		return
 	}
 	if req.Timeseries != nil {
-		httputil.Error(w, http.StatusBadRequest, "timeseries does not apply to an image")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"timeseries does not apply to an image")
 		return
 	}
 	if req.GraphIndex != "" {
-		httputil.Error(w, http.StatusBadRequest, "graph_index does not apply to an image")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"graph_index does not apply to an image")
 		return
 	}
 	if (req.ClassifyGraph != nil && *req.ClassifyGraph) || len(req.GraphClasses) > 0 {
-		httputil.Error(w, http.StatusBadRequest, "classify_graph does not apply to an image")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"classify_graph does not apply to an image")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, "image must be base64: "+err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"image must be base64: "+err.Error())
 		return
 	}
 	var ref time.Time
 	if req.ReferenceTime != "" {
 		if ref, err = relational.ParseTimeStrict(req.ReferenceTime); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
 			return
 		}
 	}
 	if _, err := memory_core.ResolveUserID(httputil.UserID(r)); err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return
 	}
 	if _, err := memory_core.ResolveDatasetName(req.Dataset); err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return
 	}
 	if _, err := memory_image.ResolveImage(data); err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return
 	}
 	sessionID, err := memory_core.ResolveSessionID(req.SessionID)
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return
 	}
 	models, err := memory_core.ResolveModels(req.Models)
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return
 	}
 	reasoning, err := memory_core.ResolveReasoning(req.Reasoning)
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return
 	}
 	start := time.Now()
-	res, err := memory_image.RememberImage(r.Context(), d, llm, httputil.UserID(r), req.Dataset, data, ref,
-		append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning))...)
+	res, err := memory_image.RememberImage(r.Context(),
+		d,
+		llm,
+		httputil.UserID(r),
+		req.Dataset,
+		data,
+		ref,
+		append(opts[:len(opts):len(opts)],
+			memory_core.WithSessionID(sessionID),
+			memory_core.WithModels(models),
+			memory_core.WithReasoning(reasoning))...)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"user_id":    httputil.UserID(r),
 			"dataset":    req.Dataset,
 			"session_id": sessionID,
 		}).Error("remember image failed")
-		monitoring.EmitSystemEvent(r.Context(), "remember_image.failed", monitoring.Event{
-			"user_id":     httputil.UserID(r),
-			"dataset":     req.Dataset,
-			"session_id":  sessionID,
-			"image_bytes": len(data),
-			"duration_ms": time.Since(start).Milliseconds(),
-			"error":       err.Error(),
-		})
-		httputil.Error(w, http.StatusBadGateway, failureMessage("failed to process image", err, memory_core.NewCallOptions(opts).Eval))
+		monitoring.EmitSystemEvent(r.Context(),
+			"remember_image.failed",
+			monitoring.Event{
+				"user_id":     httputil.UserID(r),
+				"dataset":     req.Dataset,
+				"session_id":  sessionID,
+				"image_bytes": len(data),
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       err.Error(),
+			})
+		httputil.Error(w,
+			http.StatusBadGateway,
+			failureMessage("failed to process image",
+				err,
+				memory_core.NewCallOptions(opts).Eval))
 		return
 	}
 	log.WithFields(log.Fields{
@@ -428,17 +567,21 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		"text_blocks":       len(res.TextBlocks),
 		"duration_ms":       time.Since(start).Milliseconds(),
 	}).Debug("remember image completed")
-	monitoring.EmitSystemEvent(r.Context(), "remember_image.completed", monitoring.Event{
-		"user_id":           res.UserID,
-		"dataset":           res.Dataset,
-		"image_artifact_id": res.ImageArtifactID,
-		"session_id":        res.SessionID,
-		"extraction_id":     res.ExtractionID,
-		"media_type":        res.MediaType,
-		"image_bytes":       res.SizeBytes,
-		"theme":             res.Theme,
-		"text_blocks":       len(res.TextBlocks),
-		"duration_ms":       time.Since(start).Milliseconds(),
-	})
-	httputil.WriteJSON(w, http.StatusOK, res)
+	monitoring.EmitSystemEvent(r.Context(),
+		"remember_image.completed",
+		monitoring.Event{
+			"user_id":           res.UserID,
+			"dataset":           res.Dataset,
+			"image_artifact_id": res.ImageArtifactID,
+			"session_id":        res.SessionID,
+			"extraction_id":     res.ExtractionID,
+			"media_type":        res.MediaType,
+			"image_bytes":       res.SizeBytes,
+			"theme":             res.Theme,
+			"text_blocks":       len(res.TextBlocks),
+			"duration_ms":       time.Since(start).Milliseconds(),
+		})
+	httputil.WriteJSON(w,
+		http.StatusOK,
+		res)
 }

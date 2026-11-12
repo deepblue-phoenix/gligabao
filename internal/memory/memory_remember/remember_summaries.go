@@ -56,22 +56,40 @@ func (s *chunkSummary) RunID() int64 {
 // summarize_chunk stage, which applies its model and reasoning level (see memory_core.CallOptions.ModelLLM); the level the
 // call ran with and its run are read from the response (see memory_core.WithRecording). If the LLM answered but its answer
 // is no use, the error comes with a summary that is empty but for its InferenceID.
-func summarizeChunk(ctx context.Context, llm memory_core.LLM, text string) (*chunkSummary, error) {
+func summarizeChunk(ctx context.Context,
+	llm memory_core.LLM,
+	text string) (*chunkSummary, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:    summarySystemPrompt,
-		Messages:  []ai.Message{{Role: ai.RoleUser, Content: "<text>\n" + text + "\n</text>"}},
+		System: summarySystemPrompt,
+		Messages: []ai.Message{{
+			Role:    ai.RoleUser,
+			Content: "<text>\n" + text + "\n</text>",
+		}},
 		MaxTokens: summaryMaxTokens,
 	})
 	if err != nil {
 		return nil, err
 	}
 	if resp.StopReason == "max_tokens" {
-		return &chunkSummary{InferenceID: resp.InferenceID, Raw: resp.Text}, errors.New("memory: LLM summary truncated")
+		return &chunkSummary{
+			InferenceID: resp.InferenceID,
+			Raw:         resp.Text,
+		}, errors.New("memory: LLM summary truncated")
 	}
 	s := strings.TrimSpace(resp.Text)
 	if s == "" {
-		return &chunkSummary{InferenceID: resp.InferenceID, Raw: resp.Text}, errors.New("memory: LLM returned an empty summary")
+		return &chunkSummary{
+			InferenceID: resp.InferenceID,
+			Raw:         resp.Text,
+		}, errors.New("memory: LLM returned an empty summary")
 	}
 	level, _ := ai.NormalizeReasoning(resp.Reasoning)
-	return &chunkSummary{Text: s, Provider: resp.Provider, Model: resp.Model, InferenceID: resp.InferenceID, Reasoning: level, Raw: resp.Text}, nil
+	return &chunkSummary{
+		Text:        s,
+		Provider:    resp.Provider,
+		Model:       resp.Model,
+		InferenceID: resp.InferenceID,
+		Reasoning:   level,
+		Raw:         resp.Text,
+	}, nil
 }

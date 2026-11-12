@@ -18,9 +18,29 @@ import (
 // TestTrainingEndpointsAreNotAdmin checks that the training endpoints are served under /v1/gb/training/ without the admin UI
 // (and not under the admin path any more).
 func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
-	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
+	dbtest.Run(t, func(t *testing.T,
+		d *sql.DB) {
 		dir := filepath.Join(t.TempDir(), "datasets_training")
-		h := NewHandler(t.Context(), &db.DB{Relational: d}, nil, nil, nil, nil, nil, nil, coretraining.Hooks{}, coretraining.Dirs{Datasets: []string{dir}}, nil, nil, false, true, false, nil)
+		h := NewHandler(t.Context(),
+			&db.DB{
+				Relational: d,
+			},
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			coretraining.Hooks{},
+			coretraining.Dirs{
+				Datasets: []string{dir},
+			},
+			nil,
+			nil,
+			false,
+			true,
+			false,
+			nil)
 		do := func(req *http.Request) *httptest.ResponseRecorder {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
@@ -32,28 +52,50 @@ func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 		fw, _ := mw.CreateFormFile("file", "a.jsonl")
 		fw.Write([]byte(`{"instruction":"a","output":"b"}` + "\n"))
 		mw.Close()
-		req := httptest.NewRequest("POST", "/v1/gb/training/datasets", &b)
+		req := httptest.NewRequest("POST",
+			"/v1/gb/training/datasets",
+			&b)
 		req.Header.Set("Content-Type", mw.FormDataContentType())
 		if rec := do(req); rec.Code != http.StatusCreated {
-			t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+			t.Fatalf("upload: %d %s",
+				rec.Code,
+				rec.Body)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets", nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"name":"a"`) { // no sidecar needed
-			t.Fatalf("datasets: %d %s", rec.Code, rec.Body)
+		if rec := do(httptest.NewRequest("GET",
+			"/v1/gb/training/datasets",
+			nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"name":"a"`) { // no sidecar needed
+			t.Fatalf("datasets: %d %s",
+				rec.Code,
+				rec.Body)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?name=a&lines=5", nil)); rec.Code != 200 ||
+		if rec := do(httptest.NewRequest("GET",
+			"/v1/gb/training/datasets/preview?name=a&lines=5",
+			nil)); rec.Code != 200 ||
 			!strings.Contains(rec.Body.String(), `"truncated":false`) || !strings.Contains(rec.Body.String(), `"lines":["{\"instruction`) {
-			t.Fatalf("preview: %d %s", rec.Code, rec.Body)
+			t.Fatalf("preview: %d %s",
+				rec.Code,
+				rec.Body)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?name=nope", nil)); rec.Code != http.StatusNotFound {
+		if rec := do(httptest.NewRequest("GET",
+			"/v1/gb/training/datasets/preview?name=nope",
+			nil)); rec.Code != http.StatusNotFound {
 			t.Fatalf("preview unknown: %d", rec.Code)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/jobs", nil)); rec.Code != 200 {
-			t.Fatalf("jobs: %d %s", rec.Code, rec.Body)
+		if rec := do(httptest.NewRequest("GET",
+			"/v1/gb/training/jobs",
+			nil)); rec.Code != 200 {
+			t.Fatalf("jobs: %d %s",
+				rec.Code,
+				rec.Body)
 		}
-		if rec := do(httptest.NewRequest("POST", "/v1/gb/training/jobs", strings.NewReader("{}"))); rec.Code != http.StatusServiceUnavailable {
+		if rec := do(httptest.NewRequest("POST",
+			"/v1/gb/training/jobs",
+			strings.NewReader("{}"))); rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("start: %d", rec.Code)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/admin/api/training/jobs", nil)); rec.Code == 200 && strings.Contains(rec.Body.String(), "jobs") {
+		if rec := do(httptest.NewRequest("GET",
+			"/v1/gb/admin/api/training/jobs",
+			nil)); rec.Code == 200 && strings.Contains(rec.Body.String(), "jobs") {
 			t.Fatalf("the admin path still serves training: %s", rec.Body)
 		}
 	})

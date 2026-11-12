@@ -19,25 +19,37 @@ import (
 
 func TestTimeseries(t *testing.T) { dbtest.Run(t, testTimeseries) }
 
-func testTimeseries(t *testing.T, d *sql.DB) {
+func testTimeseries(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/timeseries", Attach(d))
 	mux.HandleFunc("GET /v1/gb/timeseries", List(d))
 	mux.HandleFunc("GET /v1/gb/timeseries/{id}", Get(d))
-	do := func(method, url, body string) *httptest.ResponseRecorder {
+	do := func(method,
+		url,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httputiltest.NewRequest(method, url, strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest(method,
+			url,
+			strings.NewReader(body)))
 		return rec
 	}
 
 	// The dataset must exist.
-	if rec := do("POST", "/v1/gb/timeseries", `{"user_id":"u1","series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}`); rec.Code != 404 {
-		t.Fatalf("missing dataset: status %d: %s", rec.Code, rec.Body)
+	if rec := do("POST",
+		"/v1/gb/timeseries",
+		`{"user_id":"u1","series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}`); rec.Code != 404 {
+		t.Fatalf("missing dataset: status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 
 	// Something stored to anchor to.
-	dsID, err := relational.EnsureDataset(ctx, d, "u1", "main")
+	dsID, err := relational.EnsureDataset(ctx,
+		d,
+		"u1",
+		"main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,8 +58,20 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	now := relational.Now()
-	artID, _ := tx.InsertArtifact(ctx, dsID, graph.ArtifactEpisode, "Apple fell.", "", now, now)
-	entID, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Apple", Type: "organization"}, "apple")
+	artID, _ := tx.InsertArtifact(ctx,
+		dsID,
+		graph.ArtifactEpisode,
+		"Apple fell.",
+		"",
+		now,
+		now)
+	entID, err := tx.UpsertEntity(ctx,
+		dsID,
+		graph.Entity{
+			Name: "Apple",
+			Type: "organization",
+		},
+		"apple")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,12 +80,16 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 	}
 
 	// Attach by ID and by selector, with a window; the standalone endpoint has no artifact of its own.
-	rec := do("POST", "/v1/gb/timeseries", `{"user_id":"u1","series":[{"key":"AAPL.close","unit":"USD","frequency":"1d",
+	rec := do("POST",
+		"/v1/gb/timeseries",
+		`{"user_id":"u1","series":[{"key":"AAPL.close","unit":"USD","frequency":"1d",
 		"points":[["2025-01-29T00:00:00Z",235.1],["2025-01-30T00:00:00Z",237.6],["2025-01-31T00:00:00Z",222.0]],
 		"anchors":[{"entity":{"name":"Apple"}},{"artifact_id":`+itoa(artID)+`,"window":["2025-01-30T00:00:00Z","2025-01-31T00:00:00Z"],"role":"event"}]},
 		{"key":"unanchored","points":[["2025-01-31T00:00:00Z",5]]}]}`)
 	if rec.Code != 200 {
-		t.Fatalf("attach: status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("attach: status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	var att struct {
 		Dataset string
@@ -90,16 +118,26 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 		`{"user_id":"","series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}`: 400,
 		`{`: 400,
 	} {
-		if rec := do("POST", "/v1/gb/timeseries", body); rec.Code != code {
-			t.Errorf("%s: status %d, want %d: %s", body, rec.Code, code, rec.Body)
+		if rec := do("POST",
+			"/v1/gb/timeseries",
+			body); rec.Code != code {
+			t.Errorf("%s: status %d, want %d: %s",
+				body,
+				rec.Code,
+				code,
+				rec.Body)
 		}
 	}
-	if all, _ := graph.ListSeries(ctx, d, dsID); len(all) != 2 { // the rejected ones left nothing
+	if all, _ := graph.ListSeries(ctx,
+		d,
+		dsID); len(all) != 2 { // the rejected ones left nothing
 		t.Errorf("series stored: %d", len(all))
 	}
 
 	// List: stats and anchors, no points.
-	rec = do("GET", "/v1/gb/timeseries?user_id=u1", "")
+	rec = do("GET",
+		"/v1/gb/timeseries?user_id=u1",
+		"")
 	var list struct {
 		Series []struct {
 			ID         int64
@@ -111,7 +149,10 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 		}
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 {
-		t.Fatalf("list: %d %v %s", rec.Code, err, rec.Body)
+		t.Fatalf("list: %d %v %s",
+			rec.Code,
+			err,
+			rec.Body)
 	}
 	if len(list.Series) != 2 || list.Series[0].Key != "AAPL.close" || list.Series[0].PointCount != 3 || list.Series[0].Stats.Trend != "down" || len(list.Series[0].Anchors) != 2 || list.Series[0].Points != nil {
 		t.Errorf("list: %s", rec.Body)
@@ -129,22 +170,37 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 		} `json:"window_stats"`
 	}
 	var g got
-	rec = do("GET", url, "")
+	rec = do("GET",
+		url,
+		"")
 	if err := json.Unmarshal(rec.Body.Bytes(), &g); err != nil || rec.Code != 200 || len(g.Points) != 3 || g.Truncated || g.WindowStats != nil || g.Stats.Count != 3 {
-		t.Fatalf("get: %d %v %s", rec.Code, err, rec.Body)
+		t.Fatalf("get: %d %v %s",
+			rec.Code,
+			err,
+			rec.Body)
 	}
 	if g.Points[0][0] != "2025-01-29T00:00:00Z" || g.Points[0][1] != 235.1 {
 		t.Errorf("first point: %v", g.Points[0])
 	}
 	g = got{}
-	rec = do("GET", url+"&from=2025-01-30T00:00:00Z", "")
+	rec = do("GET",
+		url+"&from=2025-01-30T00:00:00Z",
+		"")
 	if err := json.Unmarshal(rec.Body.Bytes(), &g); err != nil || len(g.Points) != 2 || g.WindowStats == nil || g.WindowStats.Count != 2 || g.WindowStats.Min != 222.0 {
-		t.Fatalf("get window: %d %v %s", rec.Code, err, rec.Body)
+		t.Fatalf("get window: %d %v %s",
+			rec.Code,
+			err,
+			rec.Body)
 	}
 	g = got{}
-	rec = do("GET", url+"&limit=2", "")
+	rec = do("GET",
+		url+"&limit=2",
+		"")
 	if err := json.Unmarshal(rec.Body.Bytes(), &g); err != nil || len(g.Points) != 2 || !g.Truncated {
-		t.Fatalf("get limit: %d %v %s", rec.Code, err, rec.Body)
+		t.Fatalf("get limit: %d %v %s",
+			rec.Code,
+			err,
+			rec.Body)
 	}
 	for u, code := range map[string]int{
 		"/v1/gb/timeseries/999?user_id=u1":             404,
@@ -154,8 +210,14 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 		url + "&limit=0":                               400,
 		"/v1/gb/timeseries?user_id=u1&dataset=nothing": 404,
 	} {
-		if rec := do("GET", u, ""); rec.Code != code {
-			t.Errorf("GET %s: status %d, want %d: %s", u, rec.Code, code, rec.Body)
+		if rec := do("GET",
+			u,
+			""); rec.Code != code {
+			t.Errorf("GET %s: status %d, want %d: %s",
+				u,
+				rec.Code,
+				code,
+				rec.Body)
 		}
 	}
 
@@ -163,10 +225,15 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 	if _, err := d.ExecContext(ctx, `DELETE FROM gb_artifacts WHERE id = `+itoa(artID)); err != nil {
 		t.Fatal(err)
 	}
-	if anchors, _ := graph.ListSeriesAnchors(ctx, d, a.ID); len(anchors) != 1 || anchors[0].Type != graph.AnchorEntity {
+	if anchors, _ := graph.ListSeriesAnchors(ctx,
+		d,
+		a.ID); len(anchors) != 1 || anchors[0].Type != graph.AnchorEntity {
 		t.Errorf("anchors after deleting the artifact: %+v", anchors)
 	}
-	if _, err := graph.GetSeries(ctx, d, dsID, a.ID); err != nil {
+	if _, err := graph.GetSeries(ctx,
+		d,
+		dsID,
+		a.ID); err != nil {
 		t.Errorf("series gone with its artifact: %v", err)
 	}
 }

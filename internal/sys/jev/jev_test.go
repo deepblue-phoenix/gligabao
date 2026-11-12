@@ -9,10 +9,14 @@ import (
 )
 
 // server answers the classify question with the given raw "complexity" answer.
-func server(t *testing.T, answer string) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func server(t *testing.T,
+	answer string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.URL.Path != "/v1/systemone" || r.Header.Get("authorization") != "Bearer k" {
-			t.Errorf("unexpected request %s auth=%q", r.URL.Path, r.Header.Get("authorization"))
+			t.Errorf("unexpected request %s auth=%q",
+				r.URL.Path,
+				r.Header.Get("authorization"))
 		}
 		var req struct {
 			State     string              `json:"state"`
@@ -69,7 +73,10 @@ func TestConfidenceMissingOrOutOfRange(t *testing.T) {
 		c, _ := New("k", WithBaseURL(srv.URL))
 		cl, _, err := c.Classify(context.Background(), "Alice works at Acme.")
 		if err != nil || cl.Confidence != -1 {
-			t.Errorf("%s: %+v, %v; want confidence -1", answer, cl, err)
+			t.Errorf("%s: %+v, %v; want confidence -1",
+				answer,
+				cl,
+				err)
 		}
 		srv.Close()
 	}
@@ -81,25 +88,34 @@ func TestNewRequiresKey(t *testing.T) {
 	}
 	c, _ := New("k")
 	if c.baseURL != DefaultBaseURL || c.model != DefaultModel {
-		t.Errorf("defaults: %s %s", c.baseURL, c.model)
+		t.Errorf("defaults: %s %s",
+			c.baseURL,
+			c.model)
 	}
 }
 
 func TestErrorStillTimed(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"detail":"bad question"}`, 422)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
+		http.Error(w,
+			`{"detail":"bad question"}`,
+			422)
 	}))
 	defer srv.Close()
 	c, _ := New("k", WithBaseURL(srv.URL))
 	_, call, err := c.Classify(context.Background(), "x")
 	if err == nil || call.Latency <= 0 {
-		t.Errorf("err=%v call=%+v", err, call)
+		t.Errorf("err=%v call=%+v",
+			err,
+			call)
 	}
 }
 
 func TestCutKeepsRunes(t *testing.T) {
 	s, tr := cut("aé", 2) // é is 2 bytes starting at 1
 	if !tr || s != "a" {
-		t.Errorf("cut = %q, %v", s, tr)
+		t.Errorf("cut = %q, %v",
+			s,
+			tr)
 	}
 }

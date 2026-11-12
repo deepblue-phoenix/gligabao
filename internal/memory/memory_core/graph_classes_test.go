@@ -17,7 +17,10 @@ func TestNormalizeGraphClass(t *testing.T) {
 		strings.Repeat("a", 80): strings.Repeat("a", MaxGraphClassLen),
 	} {
 		if got := NormalizeGraphClass(in); got != want {
-			t.Errorf("NormalizeGraphClass(%q) = %q, want %q", in, got, want)
+			t.Errorf("NormalizeGraphClass(%q) = %q, want %q",
+				in,
+				got,
+				want)
 		}
 	}
 }
@@ -25,10 +28,14 @@ func TestNormalizeGraphClass(t *testing.T) {
 func TestResolveGraphClasses(t *testing.T) {
 	got, err := ResolveGraphClasses([]string{"Staff", "staff", "Supply Chain"})
 	if err != nil || strings.Join(got, ",") != "staff,supply_chain" {
-		t.Fatalf("got %v, %v", got, err)
+		t.Fatalf("got %v, %v",
+			got,
+			err)
 	}
 	if got, err := ResolveGraphClasses(nil); got != nil || err != nil {
-		t.Fatalf("nil: %v, %v", got, err)
+		t.Fatalf("nil: %v, %v",
+			got,
+			err)
 	}
 	if _, err := ResolveGraphClasses([]string{"ok", "--"}); !errors.Is(err, ErrInvalidGraphClasses) {
 		t.Fatalf("empty class: %v", err)

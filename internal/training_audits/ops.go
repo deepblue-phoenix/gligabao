@@ -28,8 +28,14 @@ type Ops struct {
 
 // The Ops of each backend.
 var (
-	SQLiteOps   = Ops{Store: sqlite.Store, CallType: CallJudge}
-	PostgresOps = Ops{Store: postgres.Store, CallType: CallJudge}
+	SQLiteOps = Ops{
+		Store:    sqlite.Store,
+		CallType: CallJudge,
+	}
+	PostgresOps = Ops{
+		Store:    postgres.Store,
+		CallType: CallJudge,
+	}
 )
 
 // OpsFor returns the Ops of a database backend (config.DBBackendSQLite or config.DBBackendPostgres; empty is sqlite).
@@ -50,7 +56,8 @@ const postgresSchemaLock = 0x67620007
 // Open applies the schema of the training audits tables to d, the relational database opened for the backend (config.DBBackendSQLite
 // or config.DBBackendPostgres; empty is sqlite). The statements are idempotent. The training tables (the trained models) are made
 // by internal/training/db's Open, which is called before.
-func Open(backend string, d *sql.DB) error {
+func Open(backend string,
+	d *sql.DB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	switch backend {
@@ -65,10 +72,14 @@ func Open(backend string, d *sql.DB) error {
 			return fmt.Errorf("training audits: init schema: %w", err)
 		}
 		defer conn.Close()
-		if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, int64(postgresSchemaLock)); err != nil {
+		if _, err := conn.ExecContext(ctx,
+			`SELECT pg_advisory_lock($1)`,
+			int64(postgresSchemaLock)); err != nil {
 			return fmt.Errorf("training audits: init schema: lock: %w", err)
 		}
-		defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(postgresSchemaLock))
+		defer conn.ExecContext(context.WithoutCancel(ctx),
+			`SELECT pg_advisory_unlock($1)`,
+			int64(postgresSchemaLock))
 		if _, err := conn.ExecContext(ctx, postgres.Schema); err != nil {
 			return fmt.Errorf("training audits: init schema: %w", err)
 		}

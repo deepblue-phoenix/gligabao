@@ -16,7 +16,8 @@ import (
 // WithVectors makes Remember embed the entities, edges and chunks it stores and write the embeddings to store, into the
 // dataset's vector datasets (one per index, see VectorDataset). Without it (or if either argument is nil)
 // Remember does not touch vectors.
-func WithVectors(store vector.Store, emb memory_core.Embedder) memory_core.Option {
+func WithVectors(store vector.Store,
+	emb memory_core.Embedder) memory_core.Option {
 	return func(o *memory_core.CallOptions) { o.Vectors, o.Embedder = store, emb }
 }
 
@@ -72,7 +73,11 @@ type DatasetVectorStats struct {
 // VectorStats reports, for every vector index of userID's live dataset name, the vectors the store holds next to the
 // number of rows that should have one. vectors may be nil (no indexes are listed then).
 // It returns ErrDatasetNotFound if there is no such dataset.
-func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, name string) (*DatasetVectorStats, error) {
+func VectorStats(ctx context.Context,
+	d *sql.DB,
+	vectors vector.Store,
+	userID,
+	name string) (*DatasetVectorStats, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -81,11 +86,17 @@ func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, n
 	if err != nil {
 		return nil, err
 	}
-	id, err := memory_core.DatasetID(ctx, d, userID, name)
+	id, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		name)
 	if err != nil {
 		return nil, err
 	}
-	return datasetVectorStats(ctx, d, vectors, id)
+	return datasetVectorStats(ctx,
+		d,
+		vectors,
+		id)
 }
 
 // DatasetVectors is the vector state of one live dataset, in the list of VectorStatsAll.
@@ -97,30 +108,53 @@ type DatasetVectors struct {
 
 // VectorStatsAll is VectorStats for every live dataset (of all users) of the database d, oldest dataset first: what
 // the admin UI's vectors view shows. vectors may be nil (every dataset is then listed without indexes).
-func VectorStatsAll(ctx context.Context, d *sql.DB, vectors vector.Store) ([]DatasetVectors, error) {
-	list, err := relational.ListAllDatasets(ctx, d, false)
+func VectorStatsAll(ctx context.Context,
+	d *sql.DB,
+	vectors vector.Store) ([]DatasetVectors, error) {
+	list, err := relational.ListAllDatasets(ctx,
+		d,
+		false)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]DatasetVectors, 0, len(list))
+	out := make([]DatasetVectors,
+		0,
+		len(list))
 	for _, ds := range list {
-		st, err := datasetVectorStats(ctx, d, vectors, ds.ID)
+		st, err := datasetVectorStats(ctx,
+			d,
+			vectors,
+			ds.ID)
 		if err != nil {
-			return nil, fmt.Errorf("memory: vector stats of dataset %s/%s: %w", ds.UserID, ds.Name, err)
+			return nil, fmt.Errorf("memory: vector stats of dataset %s/%s: %w",
+				ds.UserID,
+				ds.Name,
+				err)
 		}
-		out = append(out, DatasetVectors{UserID: ds.UserID, Dataset: ds.Name, DatasetVectorStats: *st})
+		out = append(out, DatasetVectors{
+			UserID:             ds.UserID,
+			Dataset:            ds.Name,
+			DatasetVectorStats: *st,
+		})
 	}
 	return out, nil
 }
 
 // datasetVectorStats is VectorStats of the dataset with the given ID.
-func datasetVectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, id int64) (*DatasetVectorStats, error) {
-	out := &DatasetVectorStats{Indexes: []IndexStats{}}
+func datasetVectorStats(ctx context.Context,
+	d *sql.DB,
+	vectors vector.Store,
+	id int64) (*DatasetVectorStats, error) {
+	out := &DatasetVectorStats{
+		Indexes: []IndexStats{},
+	}
 	statter, ok := vectors.(vector.Statter)
 	if !ok {
 		return out, nil
 	}
-	counts, err := graph.DatasetCounts(ctx, d, id)
+	counts, err := graph.DatasetCounts(ctx,
+		d,
+		id)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +164,9 @@ func datasetVectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, id
 		ds := memory_dataset.VectorDataset(id, idx)
 		st, err := statter.Stats(ctx, ds)
 		if err != nil {
-			return nil, fmt.Errorf("memory: stats of vector dataset %s: %w", ds, err)
+			return nil, fmt.Errorf("memory: stats of vector dataset %s: %w",
+				ds,
+				err)
 		}
 		var expected int
 		switch idx {
@@ -144,7 +180,12 @@ func datasetVectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, id
 			expected = counts.Summaries
 		}
 		out.Backend = st.Backend
-		out.Indexes = append(out.Indexes, IndexStats{Index: idx, VectorDataset: ds, Expected: expected, Stats: st})
+		out.Indexes = append(out.Indexes, IndexStats{
+			Index:         idx,
+			VectorDataset: ds,
+			Expected:      expected,
+			Stats:         st,
+		})
 	}
 	//------------------
 	return out, nil

@@ -14,37 +14,77 @@ import (
 
 func TestGraphExport(t *testing.T) { dbtest.Run(t, testGraphExport) }
 
-func testGraphExport(t *testing.T, d *sql.DB) {
+func testGraphExport(t *testing.T,
+	d *sql.DB) {
 	mux := http.NewServeMux()
-	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, echoLLM{}), &db.DB{Relational: d, Graph: d}, echoLLM{}, nil, nil, nil, nil)
-	do := func(method, path, body string) *httptest.ResponseRecorder {
+	Register(mux,
+		mgrFor(t,
+			&db.DB{
+				Relational: d,
+				Graph:      d,
+			},
+			echoLLM{}),
+		&db.DB{
+			Relational: d,
+			Graph:      d,
+		},
+		echoLLM{},
+		nil,
+		nil,
+		nil,
+		nil)
+	do := func(method,
+		path,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq(method,
+			path,
+			strings.NewReader(body)))
 		return rec
 	}
-	want := func(rec *httptest.ResponseRecorder, code int) {
+	want := func(rec *httptest.ResponseRecorder,
+		code int) {
 		t.Helper()
 		if rec.Code != code {
-			t.Fatalf("status %d, want %d: %s", rec.Code, code, rec.Body)
+			t.Fatalf("status %d, want %d: %s",
+				rec.Code,
+				code,
+				rec.Body)
 		}
 	}
 
-	want(do("GET", "/v1/gb/datasets/main/graph", ""), 400)            // user_id required
-	want(do("GET", "/v1/gb/datasets/main/graph?user_id=u1", ""), 404) // no such dataset
-	want(do("GET", "/v1/gb/datasets/a%20b/graph?user_id=u1", ""), 404)
+	want(do("GET",
+		"/v1/gb/datasets/main/graph",
+		""), 400) // user_id required
+	want(do("GET",
+		"/v1/gb/datasets/main/graph?user_id=u1",
+		""), 404) // no such dataset
+	want(do("GET",
+		"/v1/gb/datasets/a%20b/graph?user_id=u1",
+		""), 404)
 
 	// An empty dataset exports empty arrays, not null.
-	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"empty"}`), 201)
-	rec := do("GET", "/v1/gb/datasets/empty/graph?user_id=u1", "")
+	want(do("POST",
+		"/v1/gb/datasets",
+		`{"user_id":"u1","name":"empty"}`), 201)
+	rec := do("GET",
+		"/v1/gb/datasets/empty/graph?user_id=u1",
+		"")
 	want(rec, 200)
 	if !strings.Contains(rec.Body.String(), `"entities":[]`) || !strings.Contains(rec.Body.String(), `"edges":[]`) {
 		t.Errorf("empty graph: %s", rec.Body)
 	}
 
-	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"Alice works at Acme."}`), 200)
-	want(do("POST", "/v1/gb/remember", `{"user_id":"u2","text":"Alice works at Acme.","dataset":"other"}`), 200)
+	want(do("POST",
+		"/v1/gb/remember",
+		`{"user_id":"u1","text":"Alice works at Acme."}`), 200)
+	want(do("POST",
+		"/v1/gb/remember",
+		`{"user_id":"u2","text":"Alice works at Acme.","dataset":"other"}`), 200)
 
-	rec = do("GET", "/v1/gb/datasets/main/graph?user_id=u1", "")
+	rec = do("GET",
+		"/v1/gb/datasets/main/graph?user_id=u1",
+		"")
 	want(rec, 200)
 	if ct := rec.Header().Get("content-type"); ct != "application/json" {
 		t.Errorf("content-type = %q", ct)
@@ -80,10 +120,18 @@ func testGraphExport(t *testing.T, d *sql.DB) {
 	}
 
 	// Datasets are isolated per user.
-	want(do("GET", "/v1/gb/datasets/other/graph?user_id=u1", ""), 404)
-	want(do("GET", "/v1/gb/datasets/other/graph?user_id=u2", ""), 200)
+	want(do("GET",
+		"/v1/gb/datasets/other/graph?user_id=u1",
+		""), 404)
+	want(do("GET",
+		"/v1/gb/datasets/other/graph?user_id=u2",
+		""), 200)
 
 	// Soft-deleted datasets cannot be exported.
-	want(do("DELETE", "/v1/gb/datasets/main?user_id=u1", ""), 204)
-	want(do("GET", "/v1/gb/datasets/main/graph?user_id=u1", ""), 404)
+	want(do("DELETE",
+		"/v1/gb/datasets/main?user_id=u1",
+		""), 204)
+	want(do("GET",
+		"/v1/gb/datasets/main/graph?user_id=u1",
+		""), 404)
 }

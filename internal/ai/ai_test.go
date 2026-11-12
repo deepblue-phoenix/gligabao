@@ -11,9 +11,12 @@ import (
 )
 
 func TestComplete(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.URL.Path != "/v1/messages" || r.Header.Get("x-api-key") != "k" {
-			t.Errorf("bad request: %s %v", r.URL.Path, r.Header)
+			t.Errorf("bad request: %s %v",
+				r.URL.Path,
+				r.Header)
 		}
 		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":2}}`))
 	}))
@@ -22,12 +25,15 @@ func TestComplete(t *testing.T) {
 	c, _ := New("k", WithBaseURL(srv.URL))
 	got, err := c.Ask(context.Background(), "yo")
 	if err != nil || got != "hi" {
-		t.Fatalf("got %q, %v", got, err)
+		t.Fatalf("got %q, %v",
+			got,
+			err)
 	}
 }
 
 func TestError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		w.WriteHeader(401)
 		w.Write([]byte(`{"error":{"type":"authentication_error","message":"bad key"}}`))
 	}))
@@ -40,13 +46,19 @@ func TestError(t *testing.T) {
 }
 
 func TestCost(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		w.Write([]byte(`{"model":"claude-haiku-4-5-20251001","stop_reason":"end_turn","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1000000,"output_tokens":100000,"cache_read_input_tokens":1000000}}`))
 	}))
 	defer srv.Close()
 
 	c, _ := New("k", WithBaseURL(srv.URL))
-	r, err := c.Complete(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "yo"}}})
+	r, err := c.Complete(context.Background(), Request{
+		Messages: []Message{{
+			Role:    RoleUser,
+			Content: "yo",
+		}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +66,9 @@ func TestCost(t *testing.T) {
 	if r.CostUSD < 1.5999 || r.CostUSD > 1.6001 || r.InputTokens != 2000000 || r.OutputTokens != 100000 || r.Provider != ProviderAnthropic {
 		t.Fatalf("bad response: %+v", r)
 	}
-	if _, ok := NewPriceTable(nil).Cost("unknown-model", Usage{InputTokens: 1}); ok {
+	if _, ok := NewPriceTable(nil).Cost("unknown-model", Usage{
+		InputTokens: 1,
+	}); ok {
 		t.Fatal("unknown model should have no price")
 	}
 }
@@ -66,7 +80,8 @@ func TestCompleteImage(t *testing.T) {
 			Content json.RawMessage
 		} `json:"messages"`
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Error(err)
 		}
@@ -75,10 +90,22 @@ func TestCompleteImage(t *testing.T) {
 	defer srv.Close()
 
 	c, _ := New("k", WithBaseURL(srv.URL))
-	_, err := c.Complete(context.Background(), Request{Messages: []Message{
-		{Role: RoleUser, Content: "plain"},
-		{Role: RoleUser, Content: "look", Images: []Image{{MediaType: "image/png", Data: []byte("abc")}}},
-	}})
+	_, err := c.Complete(context.Background(), Request{
+		Messages: []Message{
+			{
+				Role:    RoleUser,
+				Content: "plain",
+			},
+			{
+				Role:    RoleUser,
+				Content: "look",
+				Images: []Image{{
+					MediaType: "image/png",
+					Data:      []byte("abc"),
+				}},
+			},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,13 +114,16 @@ func TestCompleteImage(t *testing.T) {
 	}
 	want := `[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"YWJj"}},{"type":"text","text":"look"}]`
 	if string(got.Messages[1].Content) != want {
-		t.Fatalf("image message content = %s, want %s", got.Messages[1].Content, want)
+		t.Fatalf("image message content = %s, want %s",
+			got.Messages[1].Content,
+			want)
 	}
 }
 
 func TestWebSearch(t *testing.T) {
 	var bodies []map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		var b map[string]any
 		json.NewDecoder(r.Body).Decode(&b)
 		bodies = append(bodies, b)
@@ -116,7 +146,11 @@ func TestWebSearch(t *testing.T) {
 	defer srv.Close()
 
 	c, _ := New("k", WithBaseURL(srv.URL))
-	got, err := c.WebSearch(context.Background(), WebSearchRequest{System: "sys", Prompt: "news on Acme", MaxUses: 2})
+	got, err := c.WebSearch(context.Background(), WebSearchRequest{
+		System:  "sys",
+		Prompt:  "news on Acme",
+		MaxUses: 2,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,17 +185,27 @@ func TestWebSearch(t *testing.T) {
 
 func TestCompleteReasoning(t *testing.T) {
 	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		got = nil
 		json.NewDecoder(r.Body).Decode(&got)
 		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":2}}`))
 	}))
 	defer srv.Close()
 	c, _ := New("k", WithBaseURL(srv.URL))
-	req := Request{Messages: []Message{{Role: RoleUser, Content: "yo"}}, MaxTokens: 500, Reasoning: ReasoningMedium}
+	req := Request{
+		Messages: []Message{{
+			Role:    RoleUser,
+			Content: "yo",
+		}},
+		MaxTokens: 500,
+		Reasoning: ReasoningMedium,
+	}
 	r, err := c.Complete(context.Background(), req)
 	if err != nil || r.Text != "hi" {
-		t.Fatalf("got %+v, %v", r, err)
+		t.Fatalf("got %+v, %v",
+			r,
+			err)
 	}
 	th, _ := got["thinking"].(map[string]any)
 	if th["type"] != "enabled" || th["budget_tokens"] != float64(4096) || got["max_tokens"] != float64(500+4096) {
@@ -173,11 +217,15 @@ func TestCompleteReasoning(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, ok := got["thinking"]; ok || got["max_tokens"] != float64(500) {
-			t.Errorf("level %q: request = %v", level, got)
+			t.Errorf("level %q: request = %v",
+				level,
+				got)
 		}
 	}
 	if l, ok := NormalizeReasoning(" High "); !ok || l != ReasoningHigh {
-		t.Errorf("normalize = %q, %v", l, ok)
+		t.Errorf("normalize = %q, %v",
+			l,
+			ok)
 	}
 	if _, ok := NormalizeReasoning("max"); ok {
 		t.Error("an unknown level was accepted")
@@ -187,7 +235,8 @@ func TestCompleteReasoning(t *testing.T) {
 // A model without extended thinking (Claude 3.x) gets no thinking budget, and the response says it did not reason.
 func TestCompleteReasoningReported(t *testing.T) {
 	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		got = nil
 		json.NewDecoder(r.Body).Decode(&got)
 		w.Write([]byte(`{"model":"` + got["model"].(string) + `","stop_reason":"end_turn","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":2}}`))
@@ -199,12 +248,24 @@ func TestCompleteReasoningReported(t *testing.T) {
 		{"claude-haiku-4-5", "", ReasoningNone},
 		{"claude-3-haiku-20240307", ReasoningMedium, ReasoningNone},
 	} {
-		r, err := c.Complete(context.Background(), Request{Model: tc.model, Messages: []Message{{Role: RoleUser, Content: "yo"}}, Reasoning: tc.ask})
+		r, err := c.Complete(context.Background(), Request{
+			Model: tc.model,
+			Messages: []Message{{
+				Role:    RoleUser,
+				Content: "yo",
+			}},
+			Reasoning: tc.ask,
+		})
 		if err != nil || r.Reasoning != tc.want {
-			t.Fatalf("%+v: got %+v, %v", tc, r, err)
+			t.Fatalf("%+v: got %+v, %v",
+				tc,
+				r,
+				err)
 		}
 		if _, thinks := got["thinking"]; thinks != (tc.want != ReasoningNone) {
-			t.Errorf("%+v: request = %v", tc, got)
+			t.Errorf("%+v: request = %v",
+				tc,
+				got)
 		}
 	}
 }
@@ -220,7 +281,8 @@ func TestCompleteThinkingRefused(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls []map[string]any
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+				r *http.Request) {
 				var got map[string]any
 				json.NewDecoder(r.Body).Decode(&got)
 				calls = append(calls, got)
@@ -234,11 +296,22 @@ func TestCompleteThinkingRefused(t *testing.T) {
 			}))
 			defer srv.Close()
 			c, _ := New("k", WithBaseURL(srv.URL))
-			req := Request{Model: "claude-new", Messages: []Message{{Role: RoleUser, Content: "yo"}}, MaxTokens: 500, Reasoning: ReasoningHigh}
+			req := Request{
+				Model: "claude-new",
+				Messages: []Message{{
+					Role:    RoleUser,
+					Content: "yo",
+				}},
+				MaxTokens: 500,
+				Reasoning: ReasoningHigh,
+			}
 			for i := 0; i < 2; i++ {
 				r, err := c.Complete(context.Background(), req)
 				if err != nil || r.Text != "hi" || r.Reasoning != tc.wantReasoning || !strings.Contains(r.Warning, "claude-new") {
-					t.Fatalf("call %d: got %+v, %v", i, r, err)
+					t.Fatalf("call %d: got %+v, %v",
+						i,
+						r,
+						err)
 				}
 			}
 			if len(calls) != 3 { // the first call is retried; the second one learns from it
@@ -259,13 +332,20 @@ func TestCompleteThinkingRefused(t *testing.T) {
 
 // Any other error is still an error, and a model that was asked for no thinking never gets the fallback.
 func TestCompleteOtherErrorsFail(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens is too large"}}`))
 	}))
 	defer srv.Close()
 	c, _ := New("k", WithBaseURL(srv.URL))
-	_, err := c.Complete(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "yo"}}, Reasoning: ReasoningLow})
+	_, err := c.Complete(context.Background(), Request{
+		Messages: []Message{{
+			Role:    RoleUser,
+			Content: "yo",
+		}},
+		Reasoning: ReasoningLow,
+	})
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.Status != 400 || !strings.Contains(err.Error(), "ai: anthropic 400 invalid_request_error: max_tokens is too large") {
 		t.Fatalf("err = %v", err)

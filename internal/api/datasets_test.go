@@ -18,7 +18,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 )
 
-func must0(t *testing.T, err error) {
+func must0(t *testing.T,
+	err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
@@ -28,33 +29,63 @@ func must0(t *testing.T, err error) {
 // echoLLM answers extraction requests with a fixed graph and query requests with a fixed answer.
 type echoLLM struct{}
 
-func (echoLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, error) {
+func (echoLLM) Complete(_ context.Context,
+	r ai.Request) (*ai.Response, error) {
 	out := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],
 		"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`
 	if r.System == "" || strings.Contains(r.Messages[0].Content, "<question>") {
 		out = `{"answer":"ok","entities":[],"edges":[]}`
 	}
-	return &ai.Response{Text: out, StopReason: "end_turn"}, nil
+	return &ai.Response{
+		Text:       out,
+		StopReason: "end_turn",
+	}, nil
 }
 
 func TestDatasets(t *testing.T) { dbtest.Run(t, testDatasets) }
 
-func testDatasets(t *testing.T, d *sql.DB) {
+func testDatasets(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
 	vectors, err := vector.NewChromem(":memory:", 2)
 	must0(t, err)
-	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{}), &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{}, fakeEmbedder{}, nil, nil, nil)
+	Register(mux,
+		mgrFor(t,
+			&db.DB{
+				Relational: d,
+				Graph:      d,
+				Vector:     vectors,
+			},
+			echoLLM{}),
+		&db.DB{
+			Relational: d,
+			Graph:      d,
+			Vector:     vectors,
+		},
+		echoLLM{},
+		fakeEmbedder{},
+		nil,
+		nil,
+		nil)
 
-	do := func(method, path, body string) *httptest.ResponseRecorder {
+	do := func(method,
+		path,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq(method,
+			path,
+			strings.NewReader(body)))
 		return rec
 	}
-	want := func(rec *httptest.ResponseRecorder, code int) {
+	want := func(rec *httptest.ResponseRecorder,
+		code int) {
 		t.Helper()
 		if rec.Code != code {
-			t.Fatalf("status %d, want %d: %s", rec.Code, code, rec.Body)
+			t.Fatalf("status %d, want %d: %s",
+				rec.Code,
+				code,
+				rec.Body)
 		}
 	}
 	must := func(err error) {
@@ -64,32 +95,43 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		}
 	}
 	// datasets returns userID's datasets (live ones, or also deleted ones), oldest first.
-	datasets := func(userID string, includeDeleted bool) []relational.Dataset {
+	datasets := func(userID string,
+		includeDeleted bool) []relational.Dataset {
 		t.Helper()
-		list, err := relational.ListDatasets(ctx, d, userID, includeDeleted)
+		list, err := relational.ListDatasets(ctx,
+			d,
+			userID,
+			includeDeleted)
 		must(err)
 		return list
 	}
 	// dataset returns userID's live dataset called name.
-	dataset := func(userID, name string) relational.Dataset {
+	dataset := func(userID,
+		name string) relational.Dataset {
 		t.Helper()
 		for _, ds := range datasets(userID, false) {
 			if ds.Name == name {
 				return ds
 			}
 		}
-		t.Fatalf("%s has no live dataset %q", userID, name)
+		t.Fatalf("%s has no live dataset %q",
+			userID,
+			name)
 		return relational.Dataset{}
 	}
 	counts := func(dsID int64) graph.Counts {
 		t.Helper()
-		c, err := graph.DatasetCounts(ctx, d, dsID)
+		c, err := graph.DatasetCounts(ctx,
+			d,
+			dsID)
 		must(err)
 		return c
 	}
 	names := func(path string) []string {
 		t.Helper()
-		rec := do("GET", path, "")
+		rec := do("GET",
+			path,
+			"")
 		want(rec, 200)
 		var out struct {
 			Datasets []struct {
@@ -117,14 +159,26 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		t.Fatalf("initial datasets = %v", got)
 	}
 	// user_id is required everywhere.
-	want(do("GET", "/v1/gb/datasets", ""), 400)
-	want(do("POST", "/v1/gb/datasets", `{"name":"x"}`), 400)
-	want(do("DELETE", "/v1/gb/datasets/x", ""), 400)
-	want(do("POST", "/v1/gb/remember", `{"text":"x"}`), 400)
-	want(do("POST", "/v1/gb/query", `{"query":"x"}`), 400)
+	want(do("GET",
+		"/v1/gb/datasets",
+		""), 400)
+	want(do("POST",
+		"/v1/gb/datasets",
+		`{"name":"x"}`), 400)
+	want(do("DELETE",
+		"/v1/gb/datasets/x",
+		""), 400)
+	want(do("POST",
+		"/v1/gb/remember",
+		`{"text":"x"}`), 400)
+	want(do("POST",
+		"/v1/gb/query",
+		`{"query":"x"}`), 400)
 
 	// Create.
-	rec := do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1","tags":["a"," b ","a",""],"description":"first"}`)
+	rec := do("POST",
+		"/v1/gb/datasets",
+		`{"user_id":"u1","name":"ds1","tags":["a"," b ","a",""],"description":"first"}`)
 	want(rec, 201)
 	var ds struct {
 		ID        int64
@@ -136,17 +190,31 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	if strings.Join(ds.Tags, ",") != "a,b" || ds.CreatedAt == "" || ds.Deleted {
 		t.Errorf("created dataset: %s", rec.Body)
 	}
-	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1"}`), 409)
-	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":""}`), 400)
-	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"a b/c"}`), 400)
+	want(do("POST",
+		"/v1/gb/datasets",
+		`{"user_id":"u1","name":"ds1"}`), 409)
+	want(do("POST",
+		"/v1/gb/datasets",
+		`{"user_id":"u1","name":""}`), 400)
+	want(do("POST",
+		"/v1/gb/datasets",
+		`{"user_id":"u1","name":"a b/c"}`), 400)
 
 	// remember/query are scoped: the same entity in two datasets is two rows, never linked.
-	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds1"}`), 200)
-	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds2"}`), 200) // created on demand
-	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x"}`), 200)                 // default: main
+	want(do("POST",
+		"/v1/gb/remember",
+		`{"user_id":"u1","text":"x","dataset":"ds1"}`), 200)
+	want(do("POST",
+		"/v1/gb/remember",
+		`{"user_id":"u1","text":"x","dataset":"ds2"}`), 200) // created on demand
+	want(do("POST",
+		"/v1/gb/remember",
+		`{"user_id":"u1","text":"x"}`), 200) // default: main
 	alice := 0
 	for _, ds := range datasets("u1", false) {
-		ents, err := graph.ListEntities(ctx, d, ds.ID)
+		ents, err := graph.ListEntities(ctx,
+			d,
+			ds.ID)
 		must(err)
 		for _, e := range ents {
 			if e.Name == "Alice" {
@@ -158,7 +226,9 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		t.Errorf("Alice rows = %d, want 3 (one per dataset)", alice)
 	}
 	if n, err := graph.CountCrossDatasetEdges(ctx, d); err != nil || n != 0 {
-		t.Errorf("%d edges cross datasets (err %v)", n, err)
+		t.Errorf("%d edges cross datasets (err %v)",
+			n,
+			err)
 	}
 	if n := counts(dataset("u1", "main").ID).Edges; n != 1 {
 		t.Errorf("main edges = %d, want 1", n)
@@ -168,23 +238,39 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	}
 
 	// query: unknown dataset is a 404, an empty one answers without evidence.
-	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"nope"}`), 404)
-	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"bad name"}`), 400)
-	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 200)
-	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?"}`), 200)
+	want(do("POST",
+		"/v1/gb/query",
+		`{"user_id":"u1","query":"Alice?","dataset":"nope"}`), 404)
+	want(do("POST",
+		"/v1/gb/query",
+		`{"user_id":"u1","query":"Alice?","dataset":"bad name"}`), 400)
+	want(do("POST",
+		"/v1/gb/query",
+		`{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 200)
+	want(do("POST",
+		"/v1/gb/query",
+		`{"user_id":"u1","query":"Alice?"}`), 200)
 
 	// Each dataset has its own vector dataset, keyed by dataset ID.
 	for _, name := range []string{"ds1", "ds2"} {
 		//------------------
 		// MEMORY DATASET
-		must(vectors.Upsert(ctx, memory_dataset.EntityDataset(dataset("u1", name).ID), []vector.Vector{{ID: "v", Values: []float32{1, 0}}}))
+		must(vectors.Upsert(ctx,
+			memory_dataset.EntityDataset(dataset("u1", name).ID),
+			[]vector.Vector{{
+				ID:     "v",
+				Values: []float32{1, 0},
+			}}))
 		//------------------
 	}
 	vectorCount := func(dsID int64) int {
 		t.Helper()
 		//------------------
 		// MEMORY DATASET
-		got, err := vectors.Query(ctx, memory_dataset.EntityDataset(dsID), []float32{1, 0}, vector.QueryOptions{})
+		got, err := vectors.Query(ctx,
+			memory_dataset.EntityDataset(dsID),
+			[]float32{1, 0},
+			vector.QueryOptions{})
 		//------------------
 		must(err)
 		n := 0
@@ -203,8 +289,12 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	//------------------
 
 	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/query/list.
-	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 204)
-	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 404)
+	want(do("DELETE",
+		"/v1/gb/datasets/ds1?user_id=u1",
+		""), 204)
+	want(do("DELETE",
+		"/v1/gb/datasets/ds1?user_id=u1",
+		""), 404)
 	if n := vectorCount(ds.ID); n != 0 {
 		t.Errorf("deleted dataset still has %d vectors", n)
 	}
@@ -223,7 +313,9 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	if n := counts(ds.ID).Entities; n != 2 {
 		t.Errorf("deleted dataset's entities = %d, want kept (2)", n)
 	}
-	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 404)
+	want(do("POST",
+		"/v1/gb/query",
+		`{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 404)
 	if got := names("/v1/gb/datasets?user_id=u1"); strings.Join(got, ",") != "ds2,main" {
 		t.Errorf("datasets after delete = %v", got)
 	}
@@ -232,7 +324,9 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	}
 
 	// The name can be reused: a new dataset with a new id and an empty graph.
-	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1"}`), 201)
+	want(do("POST",
+		"/v1/gb/datasets",
+		`{"user_id":"u1","name":"ds1"}`), 201)
 	if n := counts(dataset("u1", "ds1").ID).Entities; n != 0 {
 		t.Errorf("recreated dataset has %d entities", n)
 	}
@@ -244,10 +338,18 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	if got := names("/v1/gb/datasets?user_id=u2"); len(got) != 0 {
 		t.Errorf("u2 datasets = %v, want none", got)
 	}
-	want(do("POST", "/v1/gb/query", `{"user_id":"u2","query":"Alice?","dataset":"ds2"}`), 404)
-	want(do("DELETE", "/v1/gb/datasets/ds2?user_id=u2", ""), 404)
-	want(do("POST", "/v1/gb/datasets", `{"user_id":"u2","name":"ds2"}`), 201)
-	want(do("POST", "/v1/gb/remember", `{"user_id":"u2","text":"x","dataset":"ds2"}`), 200)
+	want(do("POST",
+		"/v1/gb/query",
+		`{"user_id":"u2","query":"Alice?","dataset":"ds2"}`), 404)
+	want(do("DELETE",
+		"/v1/gb/datasets/ds2?user_id=u2",
+		""), 404)
+	want(do("POST",
+		"/v1/gb/datasets",
+		`{"user_id":"u2","name":"ds2"}`), 201)
+	want(do("POST",
+		"/v1/gb/remember",
+		`{"user_id":"u2","text":"x","dataset":"ds2"}`), 200)
 	live := 0
 	for _, user := range []string{"u1", "u2"} {
 		for _, x := range datasets(user, false) {

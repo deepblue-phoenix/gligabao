@@ -24,41 +24,61 @@ func caseName(c *core.KnowledgeCase) string { return c.Name }
 // name in a later one. Case names are unique within an eval. A text of a case is given by its Text, or by its TextFile (a file
 // of one of dirs, the first that has it, read when the case runs), not both, and the file must exist.
 func LoadEvals(dirs ...string) ([]Eval, error) {
-	return evalfile.ReadDirs(dirs, caseName, func(c *core.KnowledgeCase) error {
-		for i, m := range c.Remember {
-			if m.TextFile == "" {
-				continue
+	return evalfile.ReadDirs(dirs,
+		caseName,
+		func(c *core.KnowledgeCase) error {
+			for i, m := range c.Remember {
+				if m.TextFile == "" {
+					continue
+				}
+				if m.Text != "" {
+					return fmt.Errorf("remember #%d has both text and text_file", i+1)
+				}
+				if _, err := statTextFile(dirs, m.TextFile); err != nil {
+					return fmt.Errorf("remember #%d: %w",
+						i+1,
+						err)
+				}
 			}
-			if m.Text != "" {
-				return fmt.Errorf("remember #%d has both text and text_file", i+1)
-			}
-			if _, err := statTextFile(dirs, m.TextFile); err != nil {
-				return fmt.Errorf("remember #%d: %w", i+1, err)
-			}
-		}
-		return nil
-	})
+			return nil
+		})
 }
 
 // SelectEvals picks the eval called eval (all if empty) and, in it, the cases called by the names in only (all if none); see
 // evalfile.Select.
-func SelectEvals(evals []Eval, eval string, only []string) ([]Eval, error) {
-	return evalfile.Select(evals, caseName, eval, only)
+func SelectEvals(evals []Eval,
+	eval string,
+	only []string) ([]Eval, error) {
+	return evalfile.Select(evals,
+		caseName,
+		eval,
+		only)
 }
 
 // Spec is the eval as the runner puts it in the database: an eval def of the Type knowledge, with a case def for each case.
 func Spec(e Eval) runner.EvalSpec {
-	spec := runner.EvalSpec{Name: e.Name, Type: core.TypeKnowledge, Description: e.Description}
+	spec := runner.EvalSpec{
+		Name:        e.Name,
+		Type:        core.TypeKnowledge,
+		Description: e.Description,
+	}
 	for _, c := range e.Cases {
-		spec.Cases = append(spec.Cases, runner.CaseSpec{Name: c.Name, Meta: &core.KnowledgeCaseDefMeta{
-			KnowledgeInput: c.KnowledgeInput, KnowledgeExpected: c.KnowledgeExpected, KnowledgeParams: c.KnowledgeParams}})
+		spec.Cases = append(spec.Cases, runner.CaseSpec{
+			Name: c.Name,
+			Meta: &core.KnowledgeCaseDefMeta{
+				KnowledgeInput:    c.KnowledgeInput,
+				KnowledgeExpected: c.KnowledgeExpected,
+				KnowledgeParams:   c.KnowledgeParams,
+			},
+		})
 	}
 	return spec
 }
 
 // statTextFile finds the TextFile name in the eval directories: the first of dirs that has it. If none has, the error is the one
 // of the first directory.
-func statTextFile(dirs []string, name string) (fs.FS, error) {
+func statTextFile(dirs []string,
+	name string) (fs.FS, error) {
 	var firstErr error
 	for _, dir := range dirs {
 		fsys := os.DirFS(dir)
@@ -78,7 +98,8 @@ func statTextFile(dirs []string, name string) (fs.FS, error) {
 
 // readTexts returns a copy of in with the text of every TextFile read from the eval directories dirs (the first that has the file)
 // into Text (the TextFile stays, as the reference).
-func readTexts(dirs []string, in core.KnowledgeInput) (core.KnowledgeInput, error) {
+func readTexts(dirs []string,
+	in core.KnowledgeInput) (core.KnowledgeInput, error) {
 	if len(dirs) == 0 {
 		dirs = []string{DefaultEvalDir}
 	}
@@ -94,11 +115,15 @@ func readTexts(dirs []string, in core.KnowledgeInput) (core.KnowledgeInput, erro
 		}
 		fsys, err := statTextFile(dirs, m.TextFile)
 		if err != nil {
-			return in, fmt.Errorf("remember #%d: %w", i+1, err)
+			return in, fmt.Errorf("remember #%d: %w",
+				i+1,
+				err)
 		}
 		b, err := fs.ReadFile(fsys, m.TextFile)
 		if err != nil {
-			return in, fmt.Errorf("remember #%d: %w", i+1, err)
+			return in, fmt.Errorf("remember #%d: %w",
+				i+1,
+				err)
 		}
 		out.Remember[i].Text = string(b)
 	}

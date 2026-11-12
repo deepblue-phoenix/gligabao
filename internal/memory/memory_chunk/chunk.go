@@ -39,7 +39,10 @@ type Config struct {
 
 // DefaultConfig is DefaultSize tokens with DefaultOverlapPercent overlap, counted by Estimator.
 func DefaultConfig() Config {
-	return Config{Size: DefaultSize, OverlapPercent: DefaultOverlapPercent}
+	return Config{
+		Size:           DefaultSize,
+		OverlapPercent: DefaultOverlapPercent,
+	}
 }
 
 // WithDefaults returns c with the defaults for an unset Size and Tokenizer.
@@ -57,10 +60,15 @@ func (c Config) WithDefaults() Config {
 func (c Config) Validate() error {
 	c = c.WithDefaults()
 	if c.Size < MinSize || c.Size > MaxSize {
-		return fmt.Errorf("chunk size %d must be between %d and %d tokens", c.Size, MinSize, MaxSize)
+		return fmt.Errorf("chunk size %d must be between %d and %d tokens",
+			c.Size,
+			MinSize,
+			MaxSize)
 	}
 	if c.OverlapPercent < 0 || c.OverlapPercent > MaxOverlapPercent {
-		return fmt.Errorf("chunk overlap %d%% must be between 0 and %d", c.OverlapPercent, MaxOverlapPercent)
+		return fmt.Errorf("chunk overlap %d%% must be between 0 and %d",
+			c.OverlapPercent,
+			MaxOverlapPercent)
 	}
 	return nil
 }
@@ -101,7 +109,8 @@ type Chunk struct {
 //     words. The overlap is shortened (or dropped) if the chunk would otherwise not have room for its first new unit.
 //
 // A text that fits one chunk yields one chunk. Empty or blank text yields none.
-func Split(text string, cfg Config) ([]Chunk, error) {
+func Split(text string,
+	cfg Config) ([]Chunk, error) {
 	cfg = cfg.WithDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -111,7 +120,12 @@ func Split(text string, cfg Config) ([]Chunk, error) {
 	}
 	budget := cfg.Size * cfg.OverlapPercent / 100
 	// Units cut out of a sentence (words, pieces of a word) are kept small enough to leave room for the overlap.
-	s := &splitter{text: text, tok: cfg.Tokenizer, size: cfg.Size, cutSize: cfg.Size - budget}
+	s := &splitter{
+		text:    text,
+		tok:     cfg.Tokenizer,
+		size:    cfg.Size,
+		cutSize: cfg.Size - budget,
+	}
 	units := s.units()
 	if len(units) == 0 {
 		return nil, errors.New("chunk: no text units") // unreachable: the text is not blank
@@ -164,8 +178,12 @@ func Split(text string, cfg Config) ([]Chunk, error) {
 		end := units[k-1].end
 		body := text[ovStart:end]
 		chunks = append(chunks, Chunk{
-			Index: len(chunks), Text: body, Tokens: cfg.Tokenizer.Count(body),
-			Start: ovStart, End: end, OverlapTokens: ovTokens,
+			Index:         len(chunks),
+			Text:          body,
+			Tokens:        cfg.Tokenizer.Count(body),
+			Start:         ovStart,
+			End:           end,
+			OverlapTokens: ovTokens,
 		})
 		prevFirst = first
 		i = k
@@ -248,7 +266,8 @@ func (s *splitter) paragraphs() []span {
 // anywhere) and at line breaks, so lists and verse split by line too.
 func (s *splitter) sentences(p span) []span {
 	var out []span
-	emit := func(a, b int) {
+	emit := func(a,
+		b int) {
 		seg := s.text[a:b]
 		lead := len(seg) - len(strings.TrimLeftFunc(seg, unicode.IsSpace))
 		seg = strings.TrimRightFunc(seg[lead:], unicode.IsSpace)
@@ -293,12 +312,16 @@ func (s *splitter) sentences(p span) []span {
 // words packs the words of sen into units of at most cutSize tokens; a word that is too large alone is cut in pieces.
 func (s *splitter) words(sen span) []unit {
 	var out []unit
-	cur := unit{start: -1}
+	cur := unit{
+		start: -1,
+	}
 	flush := func() {
 		if cur.start >= 0 {
 			out = append(out, cur)
 		}
-		cur = unit{start: -1}
+		cur = unit{
+			start: -1,
+		}
 	}
 	for _, w := range s.fields(sen) {
 		n := s.tok.Count(s.text[w.start:w.end])
@@ -311,7 +334,9 @@ func (s *splitter) words(sen span) []unit {
 			flush()
 		}
 		if cur.start < 0 {
-			cur = unit{start: w.start}
+			cur = unit{
+				start: w.start,
+			}
 		}
 		cur.end = w.end
 		cur.tokens += n
@@ -364,7 +389,8 @@ func (s *splitter) pieces(w span) []unit {
 }
 
 // runeOffset is the byte offset of the n-th rune of s (n may be the number of runes).
-func runeOffset(s string, n int) int {
+func runeOffset(s string,
+	n int) int {
 	for i := range s {
 		if n == 0 {
 			return i
@@ -376,7 +402,8 @@ func runeOffset(s string, n int) int {
 
 // tail returns the start offset and token count of the last words of u that fit in budget tokens (0 tokens if not
 // even the last word does).
-func (s *splitter) tail(u unit, budget int) (start, tokens int) {
+func (s *splitter) tail(u unit,
+	budget int) (start, tokens int) {
 	ws := s.fields(span{u.start, u.end})
 	start = u.end
 	for i := len(ws) - 1; i >= 0; i-- {

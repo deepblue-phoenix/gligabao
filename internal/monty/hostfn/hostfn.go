@@ -46,13 +46,17 @@ type Env struct {
 	Questions []map[string]any
 	Claims    []map[string]any
 	// Fetch runs the tool of the agent called tool (web_search, fetch_page, query) with that input and returns the text it gives. Nil: none.
-	Fetch func(ctx context.Context, tool string, input map[string]any) (string, error)
+	Fetch func(ctx context.Context,
+		tool string,
+		input map[string]any) (string, error)
 	// Log adds a line to the trace of the call (nil: dropped).
 	Log func(line string)
 }
 
 // Handler is the implementation of a function: a function of the view and the arguments.
-type Handler func(ctx context.Context, env Env, args Args) (any, error)
+type Handler func(ctx context.Context,
+	env Env,
+	args Args) (any, error)
 
 // Spec declares one function of the sandbox's world. Immutable.
 type Spec struct {
@@ -92,19 +96,30 @@ func New(specs ...Spec) (Registry, error) {
 			problems = append(problems, s.Name+": no handler")
 		}
 		if !slices.Contains(resultType, s.Result) {
-			problems = append(problems, fmt.Sprintf("%s: result type %q is not supported", s.Name, s.Result))
+			problems = append(problems, fmt.Sprintf("%s: result type %q is not supported",
+				s.Name,
+				s.Result))
 		}
 		names, optional := map[string]bool{}, false
 		for _, p := range s.Params {
 			switch {
 			case !identRe.MatchString(p.Name) || names[p.Name]:
-				problems = append(problems, fmt.Sprintf("%s: bad or duplicate parameter %q", s.Name, p.Name))
+				problems = append(problems, fmt.Sprintf("%s: bad or duplicate parameter %q",
+					s.Name,
+					p.Name))
 			case !slices.Contains(paramTypes, p.Type):
-				problems = append(problems, fmt.Sprintf("%s.%s: type %q is not supported", s.Name, p.Name, p.Type))
+				problems = append(problems, fmt.Sprintf("%s.%s: type %q is not supported",
+					s.Name,
+					p.Name,
+					p.Type))
 			case p.Required && optional:
-				problems = append(problems, fmt.Sprintf("%s.%s: a required parameter after an optional one", s.Name, p.Name))
+				problems = append(problems, fmt.Sprintf("%s.%s: a required parameter after an optional one",
+					s.Name,
+					p.Name))
 			case !p.Required && p.Default == nil:
-				problems = append(problems, fmt.Sprintf("%s.%s: an optional parameter needs a default", s.Name, p.Name))
+				problems = append(problems, fmt.Sprintf("%s.%s: an optional parameter needs a default",
+					s.Name,
+					p.Name))
 			}
 			names[p.Name] = true
 			optional = optional || !p.Required
@@ -113,7 +128,9 @@ func New(specs ...Spec) (Registry, error) {
 	if len(problems) > 0 {
 		return Registry{}, fmt.Errorf("host functions: %s", strings.Join(problems, "; "))
 	}
-	return Registry{specs: slices.Clone(specs)}, nil
+	return Registry{
+		specs: slices.Clone(specs),
+	}, nil
 }
 
 // Names are the function names in order.
@@ -148,7 +165,9 @@ func (r Registry) Only(names []string) (Registry, error) {
 		}
 	}
 	if len(unknown) > 0 {
-		return Registry{}, fmt.Errorf("unknown host function(s): %s (known: %s)", strings.Join(unknown, ", "), strings.Join(have, ", "))
+		return Registry{}, fmt.Errorf("unknown host function(s): %s (known: %s)",
+			strings.Join(unknown, ", "),
+			strings.Join(have, ", "))
 	}
 	return r.Filter(func(s Spec) bool { return slices.Contains(names, s.Name) }), nil
 }
@@ -161,7 +180,9 @@ func (r Registry) Filter(keep func(Spec) bool) Registry {
 			out = append(out, s)
 		}
 	}
-	return Registry{specs: out}
+	return Registry{
+		specs: out,
+	}
 }
 
 // Len is the number of functions.
@@ -195,7 +216,10 @@ func (s Spec) Signature() string {
 			ps[i] += " = " + pyDefault(p.Default)
 		}
 	}
-	return fmt.Sprintf("%s(%s) -> %s", s.Name, strings.Join(ps, ", "), s.Result)
+	return fmt.Sprintf("%s(%s) -> %s",
+		s.Name,
+		strings.Join(ps, ", "),
+		s.Result)
 }
 
 // Stubs is the .pyi-style text of the registry (sent to the sandbox for the optional type check).
@@ -211,15 +235,21 @@ func (r Registry) Stubs() string {
 func (r Registry) Describe() string {
 	lines := make([]string, len(r.specs))
 	for i, s := range r.specs {
-		lines[i] = fmt.Sprintf("- %s: %s", s.Signature(), s.Doc)
+		lines[i] = fmt.Sprintf("- %s: %s",
+			s.Signature(),
+			s.Doc)
 	}
 	return strings.Join(lines, "\n")
 }
 
 // Decode matches the call's positional and keyword arguments to the parameters, checks their types and fills the defaults.
-func (s Spec) Decode(args []any, kwargs map[string]any) (Args, error) {
+func (s Spec) Decode(args []any,
+	kwargs map[string]any) (Args, error) {
 	if len(args) > len(s.Params) {
-		return nil, fmt.Errorf("%s takes at most %d argument(s), got %d", s.Name, len(s.Params), len(args))
+		return nil, fmt.Errorf("%s takes at most %d argument(s), got %d",
+			s.Name,
+			len(s.Params),
+			len(args))
 	}
 	out := Args{}
 	for i, v := range args {
@@ -227,10 +257,14 @@ func (s Spec) Decode(args []any, kwargs map[string]any) (Args, error) {
 	}
 	for k, v := range kwargs {
 		if !slices.ContainsFunc(s.Params, func(p Param) bool { return p.Name == k }) {
-			return nil, fmt.Errorf("%s got an unexpected argument %q", s.Name, k)
+			return nil, fmt.Errorf("%s got an unexpected argument %q",
+				s.Name,
+				k)
 		}
 		if _, dup := out[k]; dup {
-			return nil, fmt.Errorf("%s got several values for %q", s.Name, k)
+			return nil, fmt.Errorf("%s got several values for %q",
+				s.Name,
+				k)
 		}
 		out[k] = v
 	}
@@ -238,14 +272,19 @@ func (s Spec) Decode(args []any, kwargs map[string]any) (Args, error) {
 		v, ok := out[p.Name]
 		if !ok {
 			if p.Required {
-				return nil, fmt.Errorf("%s needs the argument %q", s.Name, p.Name)
+				return nil, fmt.Errorf("%s needs the argument %q",
+					s.Name,
+					p.Name)
 			}
 			out[p.Name] = p.Default
 			continue
 		}
 		c, err := coerce(p.Type, v)
 		if err != nil {
-			return nil, fmt.Errorf("%s: argument %q: %w", s.Name, p.Name, err)
+			return nil, fmt.Errorf("%s: argument %q: %w",
+				s.Name,
+				p.Name,
+				err)
 		}
 		out[p.Name] = c
 	}
@@ -253,8 +292,11 @@ func (s Spec) Decode(args []any, kwargs map[string]any) (Args, error) {
 }
 
 // coerce checks a JSON-decoded value against a parameter type (numbers arrive as float64 or json.Number).
-func coerce(typ string, v any) (any, error) {
-	bad := fmt.Errorf("expected %s, got %T", typ, v)
+func coerce(typ string,
+	v any) (any, error) {
+	bad := fmt.Errorf("expected %s, got %T",
+		typ,
+		v)
 	switch typ {
 	case "str":
 		if s, ok := v.(string); ok {
@@ -297,7 +339,12 @@ func coerce(typ string, v any) (any, error) {
 }
 
 // Call runs the function name with the arguments of the call. A result over maxResultChars (0: no limit) is refused.
-func (r Registry) Call(ctx context.Context, env Env, name string, args []any, kwargs map[string]any, maxResultChars int) (any, error) {
+func (r Registry) Call(ctx context.Context,
+	env Env,
+	name string,
+	args []any,
+	kwargs map[string]any,
+	maxResultChars int) (any, error) {
 	s, ok := r.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("%s is not a function you may call", name)
@@ -306,17 +353,24 @@ func (r Registry) Call(ctx context.Context, env Env, name string, args []any, kw
 	if err != nil {
 		return nil, err
 	}
-	v, err := s.Handler(ctx, env, a)
+	v, err := s.Handler(ctx,
+		env,
+		a)
 	if err != nil {
 		return nil, err
 	}
 	if maxResultChars > 0 {
 		b, merr := json.Marshal(v)
 		if merr != nil {
-			return nil, fmt.Errorf("%s: the result cannot be passed to the sandbox: %w", name, merr)
+			return nil, fmt.Errorf("%s: the result cannot be passed to the sandbox: %w",
+				name,
+				merr)
 		}
 		if n := len([]rune(string(b))); n > maxResultChars {
-			return nil, fmt.Errorf("%s: the result is %d chars, over the limit of %d: ask for less (a smaller max_chars, a narrower filter)", name, n, maxResultChars)
+			return nil, fmt.Errorf("%s: the result is %d chars, over the limit of %d: ask for less (a smaller max_chars, a narrower filter)",
+				name,
+				n,
+				maxResultChars)
 		}
 	}
 	return v, nil

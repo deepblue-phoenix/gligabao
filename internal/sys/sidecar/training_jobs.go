@@ -55,12 +55,16 @@ type StartTrainingJobRequest struct {
 }
 
 // StartTrainingJob starts a training job on the sidecar via POST /training/job_start and returns the job it reports.
-func (c *Client) StartTrainingJob(ctx context.Context, req StartTrainingJobRequest) (TrainingJob, error) {
+func (c *Client) StartTrainingJob(ctx context.Context,
+	req StartTrainingJobRequest) (TrainingJob, error) {
 	var out TrainingJob
 	if req.NumTrainSteps < 0 {
 		return out, errors.New("sidecar: num_train_steps must be positive")
 	}
-	if err := c.post(ctx, "/training/job_start", req, &out); err != nil {
+	if err := c.post(ctx,
+		"/training/job_start",
+		req,
+		&out); err != nil {
 		return out, err
 	}
 	if strings.TrimSpace(out.JobID) == "" {
@@ -72,42 +76,69 @@ func (c *Client) StartTrainingJob(ctx context.Context, req StartTrainingJobReque
 // CancelTrainingJob asks the sidecar to stop a training job (POST /training/job_cancel). The job ends with a "cancelled"
 // event at its next step, not at once. The sidecar answers 404 for a job it does not know and 409 for one that is over
 // (a *StatusError).
-func (c *Client) CancelTrainingJob(ctx context.Context, jobID string) error {
+func (c *Client) CancelTrainingJob(ctx context.Context,
+	jobID string) error {
 	if strings.TrimSpace(jobID) == "" {
 		return errors.New("sidecar: job_id is required")
 	}
 	var out struct {
 		Status string `json:"status"`
 	}
-	return c.post(ctx, "/training/job_cancel", map[string]string{"job_id": jobID}, &out)
+	return c.post(ctx,
+		"/training/job_cancel",
+		map[string]string{"job_id": jobID},
+		&out)
 }
 
-func (c *Client) post(ctx context.Context, path string, in, out any) error {
-	return c.postVia(ctx, c.http, path, in, out)
+func (c *Client) post(ctx context.Context,
+	path string,
+	in,
+	out any) error {
+	return c.postVia(ctx,
+		c.http,
+		path,
+		in,
+		out)
 }
 
 // postVia is post with another HTTP client: c.stream for a call that takes long (it has no timeout of its own).
-func (c *Client) postVia(ctx context.Context, hc *http.Client, path string, in, out any) error {
+func (c *Client) postVia(ctx context.Context,
+	hc *http.Client,
+	path string,
+	in,
+	out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodPost,
+		c.baseURL+path,
+		bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("sidecar POST %s: %w", path, err)
+		return fmt.Errorf("sidecar POST %s: %w",
+			path,
+			err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return &StatusError{Method: http.MethodPost, Path: path, Code: resp.StatusCode, Body: strings.TrimSpace(string(msg))}
+		return &StatusError{
+			Method: http.MethodPost,
+			Path:   path,
+			Code:   resp.StatusCode,
+			Body:   strings.TrimSpace(string(msg)),
+		}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("sidecar POST %s: decode: %w", path, err)
+		return fmt.Errorf("sidecar POST %s: decode: %w",
+			path,
+			err)
 	}
 	return nil
 }

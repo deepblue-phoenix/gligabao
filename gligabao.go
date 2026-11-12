@@ -291,7 +291,9 @@ func LoadConfig(path string) (*Config, error) { return config.Load(path) }
 
 // Serve starts the HTTP server and blocks until ctx is cancelled or SIGINT/SIGTERM is
 // received, then shuts down gracefully. A nil cfg means DefaultConfig().
-func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
+func Serve(ctx context.Context,
+	cfg *Config,
+	opts ServeOptions) error {
 	serverOpts, restore := serverOptions(cfg, opts)
 	defer restore()
 	return server.Run(ctx, serverOpts)
@@ -322,10 +324,16 @@ const MountPrefix = server.MountPrefix
 //
 // gligabao's own "/", "/health" and "/version" routes are not registered, they belong to the host.
 // A nil cfg means DefaultConfig().
-func Mount(ctx context.Context, cfg *Config, opts ServeOptions, mount MountOptions) (release func(), err error) {
+func Mount(ctx context.Context,
+	cfg *Config,
+	opts ServeOptions,
+	mount MountOptions) (release func(), err error) {
 	serverOpts, restore := serverOptions(cfg, opts)
 	serverOpts.Addr = ""
-	rel, err := server.Mount(ctx, serverOpts, mount.Mux, mount.Wrap)
+	rel, err := server.Mount(ctx,
+		serverOpts,
+		mount.Mux,
+		mount.Wrap)
 	if err != nil {
 		restore()
 		return nil, err
@@ -346,7 +354,8 @@ func Mount(ctx context.Context, cfg *Config, opts ServeOptions, mount MountOptio
 
 // serverOptions turns the config and the ServeOptions into the server's options. It also installs the process-wide settings
 // of opts (App, Hooks); restore undoes them.
-func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, restore func()) {
+func serverOptions(cfg *Config,
+	opts ServeOptions) (serverOpts server.Options, restore func()) {
 	if cfg == nil {
 		cfg = config.Default()
 	}
@@ -357,15 +366,26 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		monitoring.SetHooks(nil)
 	}
 	if opts.App != nil {
-		buildinfo.SetApp(&buildinfo.Component{Name: opts.App.Name, Version: opts.App.Version, Commit: opts.App.Commit})
+		buildinfo.SetApp(&buildinfo.Component{
+			Name:    opts.App.Name,
+			Version: opts.App.Version,
+			Commit:  opts.App.Commit,
+		})
 		restore = func() {
 			buildinfo.SetApp(nil)
 			monitoring.SetHooks(nil)
 		}
 	}
 	monitoring.SetHooks(opts.Hooks)
-	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
-	trainingDirs := training.Dirs{Datasets: opts.TrainingDatasetDirs, Evals: opts.TrainingEvalDirs, ModelDeploy: opts.TrainedModelDeployDir}
+	dbConfig := db.ConfigFrom(cfg,
+		opts.DBPath,
+		opts.VectorDir,
+		opts.ImageDir)
+	trainingDirs := training.Dirs{
+		Datasets:    opts.TrainingDatasetDirs,
+		Evals:       opts.TrainingEvalDirs,
+		ModelDeploy: opts.TrainedModelDeployDir,
+	}
 	if len(trainingDirs.Datasets) == 0 {
 		trainingDirs.Datasets = cfg.DatasetsTrainingDirs
 	}
@@ -391,9 +411,16 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		AgentDefsDir:       agentDefsDir,
 		ResearchMaxCostUSD: cfg.ResearchMaxCostUSD,
 		ResearchNotesDir:   cfg.ResearchNotesDirOrDefault(),
-		Monty:              monty.Config{Python: cfg.MontyPython, Bin: cfg.MontyBin, Workers: cfg.MontyWorkers, RequestTimeoutS: cfg.MontyRequestTimeoutS},
+		Monty: monty.Config{
+			Python:          cfg.MontyPython,
+			Bin:             cfg.MontyBin,
+			Workers:         cfg.MontyWorkers,
+			RequestTimeoutS: cfg.MontyRequestTimeoutS,
+		},
 		ResearchNotesS3: investigate.NotesS3Config{
-			Bucket: cfg.ResearchNotesS3Bucket, Region: cfg.ResearchNotesS3Region, Prefix: cfg.ResearchNotesS3Prefix,
+			Bucket: cfg.ResearchNotesS3Bucket,
+			Region: cfg.ResearchNotesS3Region,
+			Prefix: cfg.ResearchNotesS3Prefix,
 		},
 		AnthropicKey: cfg.AnthropicKey,
 		OpenAIKey:    cfg.OpenAIKey,

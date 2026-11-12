@@ -38,9 +38,26 @@ type runLog struct {
 
 // startRunLog records the start of a Query call (status started, all the stages not started) and returns its log. params is how
 // the call was made. If the row cannot be written the log is kept in memory only (and the error logged).
-func startRunLog(ctx context.Context, d *sql.DB, userID, dataset, question, sessionID string, params map[string]any) *runLog {
-	r := &runLog{d: d, ctx: context.WithoutCancel(ctx), run: relational.NewQueryRun(userID, dataset, question, sessionID, params, relational.Now())}
-	id, err := relational.CreateQueryRun(r.ctx, d, r.run)
+func startRunLog(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset,
+	question,
+	sessionID string,
+	params map[string]any) *runLog {
+	r := &runLog{
+		d:   d,
+		ctx: context.WithoutCancel(ctx),
+		run: relational.NewQueryRun(userID,
+			dataset,
+			question,
+			sessionID,
+			params,
+			relational.Now()),
+	}
+	id, err := relational.CreateQueryRun(r.ctx,
+		d,
+		r.run)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{"user_id": userID, "dataset": dataset}).Error("query run log: create")
 		return r
@@ -64,7 +81,9 @@ func (r *runLog) save() {
 	if r.run.ID == 0 {
 		return
 	}
-	if err := relational.SaveQueryRun(r.ctx, r.d, r.run); err != nil {
+	if err := relational.SaveQueryRun(r.ctx,
+		r.d,
+		r.run); err != nil {
 		log.WithError(err).WithField("query_run_id", r.run.ID).Error("query run log: save")
 	}
 }
@@ -103,7 +122,8 @@ func (r *runLog) Start(stages ...string) {
 }
 
 // Done marks the stages as ended now: failed with err's message if err is not nil, else succeeded.
-func (r *runLog) Done(err error, stages ...string) {
+func (r *runLog) Done(err error,
+	stages ...string) {
 	if r == nil {
 		return
 	}
@@ -112,7 +132,9 @@ func (r *runLog) Done(err error, stages ...string) {
 	defer r.mu.Unlock()
 	for _, name := range stages {
 		if st := r.stage(name); st != nil {
-			end(st, err, now)
+			end(st,
+				err,
+				now)
 			r.run.Stages[name] = *st
 		}
 	}
@@ -138,7 +160,9 @@ func (r *runLog) Skip(stages ...string) {
 //------------------
 
 // end finishes st at now (see Done).
-func end(st *relational.QueryStage, err error, now time.Time) {
+func end(st *relational.QueryStage,
+	err error,
+	now time.Time) {
 	switch {
 	case st.Status == relational.RememberFailed:
 	case err != nil:
@@ -155,7 +179,8 @@ func end(st *relational.QueryStage, err error, now time.Time) {
 
 // AddInference adds the inference with that ID (gb_inferences) to the stage that made it; 0 (a run that could not be recorded)
 // is ignored. The stage must be one that runs a model (relational.QueryStages).
-func (r *runLog) AddInference(stage string, id int64) {
+func (r *runLog) AddInference(stage string,
+	id int64) {
 	if r == nil || id == 0 {
 		return
 	}
@@ -196,7 +221,9 @@ func (r *runLog) Finish(err error) {
 	defer r.mu.Unlock()
 	for name, st := range r.run.Stages {
 		if st.Status == relational.RememberStarted {
-			end(&st, err, now)
+			end(&st,
+				err,
+				now)
 			r.run.Stages[name] = st
 		}
 	}

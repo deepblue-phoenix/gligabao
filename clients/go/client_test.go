@@ -13,9 +13,12 @@ import (
 func TestRemember(t *testing.T) {
 	var got map[string]any
 	var auth, user string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/v1/gb/remember" {
-			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected %s %s",
+				r.Method,
+				r.URL.Path)
 		}
 		auth, user = r.Header.Get("Authorization"), r.Header.Get("gb-user-id")
 		json.NewDecoder(r.Body).Decode(&got)
@@ -26,11 +29,21 @@ func TestRemember(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL+"/", WithAPIKey("k1"), WithUserID("u1"))
+	c := New(srv.URL+"/",
+		WithAPIKey("k1"),
+		WithUserID("u1"))
 	res, err := c.Remember(context.Background(), RememberRequest{
-		Text: "Alice works at Acme.", Kind: "episode",
-		ReferenceTime: time.Date(2025, 1, 31, 9, 0, 0, 0, time.UTC),
-		Extra:         map[string]any{"timeseries": map[string]any{"fetch": map[string]any{}}},
+		Text: "Alice works at Acme.",
+		Kind: "episode",
+		ReferenceTime: time.Date(2025,
+			1,
+			31,
+			9,
+			0,
+			0,
+			0,
+			time.UTC),
+		Extra: map[string]any{"timeseries": map[string]any{"fetch": map[string]any{}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +71,8 @@ func TestRemember(t *testing.T) {
 func TestQuery(t *testing.T) {
 	var got map[string]any
 	var user string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		user = r.Header.Get("gb-user-id")
 		json.NewDecoder(r.Body).Decode(&got)
 		w.Write([]byte(`{"answer":"Acme.","query_run_id":9,"evidence":{"entities":[{"id":1,"name":"Alice"}],
@@ -68,7 +82,10 @@ func TestQuery(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, WithUserID("u1"))
-	res, err := c.Query(context.Background(), QueryRequest{Query: "Where does Alice work?", Reasoning: map[string]string{"query": "low"}})
+	res, err := c.Query(context.Background(), QueryRequest{
+		Query:     "Where does Alice work?",
+		Reasoning: map[string]string{"query": "low"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,18 +98,23 @@ func TestQuery(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		w.WriteHeader(404)
 		w.Write([]byte(`{"error":"dataset not found"}`))
 	}))
 	c := New(srv.URL)
-	_, err := c.Query(context.Background(), QueryRequest{Query: "x"})
+	_, err := c.Query(context.Background(), QueryRequest{
+		Query: "x",
+	})
 	var ge *Error
 	if !errors.As(err, &ge) || ge.Status != 404 || ge.Message != "dataset not found" {
 		t.Errorf("err = %v", err)
 	}
 	srv.Close()
-	if _, err := c.Query(context.Background(), QueryRequest{Query: "x"}); !errors.As(err, &ge) || ge.Status != 0 {
+	if _, err := c.Query(context.Background(), QueryRequest{
+		Query: "x",
+	}); !errors.As(err, &ge) || ge.Status != 0 {
 		t.Errorf("unreachable: err = %v", err)
 	}
 	if _, err := c.Remember(context.Background(), RememberRequest{}); err == nil {

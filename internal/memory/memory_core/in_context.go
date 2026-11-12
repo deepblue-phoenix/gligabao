@@ -19,11 +19,19 @@ const InContextEvidenceOnly = "evidence_only"
 // stage, or InContextEvidenceOnly) and RunID (the run log of the call, which says who started it). The log tells which nodes and edges
 // contribute a lot to what the LLM reasons from, and which hardly do. Counting is bookkeeping: a failure is logged and never fails the
 // call, and a cancelled call still counts what it sent.
-func CountInContext(ctx context.Context, d *sql.DB, src graph.InContextEvent, entityIDs, edgeIDs []int64) {
+func CountInContext(ctx context.Context,
+	d *sql.DB,
+	src graph.InContextEvent,
+	entityIDs,
+	edgeIDs []int64) {
 	if len(entityIDs)+len(edgeIDs) == 0 {
 		return
 	}
-	if err := graph.CountInContext(context.WithoutCancel(ctx), d, src, entityIDs, edgeIDs); err != nil {
+	if err := graph.CountInContext(context.WithoutCancel(ctx),
+		d,
+		src,
+		entityIDs,
+		edgeIDs); err != nil {
 		log.WithError(err).WithFields(log.Fields{"pipeline": src.Pipeline, "stage": src.Stage}).
 			Warn("memory: counting the entities and edges in the LLM context failed")
 	}

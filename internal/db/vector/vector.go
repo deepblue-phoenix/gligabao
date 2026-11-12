@@ -39,13 +39,21 @@ type QueryOptions struct {
 // primitive: a chromem collection, a Pinecone namespace. An empty dataset name is the backend's default one.
 type Store interface {
 	// Upsert inserts or overwrites vectors by ID.
-	Upsert(ctx context.Context, dataset string, vectors []Vector) error
+	Upsert(ctx context.Context,
+		dataset string,
+		vectors []Vector) error
 	// Query returns the vectors closest to the given embedding, best first.
-	Query(ctx context.Context, dataset string, vector []float32, opts QueryOptions) ([]Match, error)
+	Query(ctx context.Context,
+		dataset string,
+		vector []float32,
+		opts QueryOptions) ([]Match, error)
 	// Delete removes vectors by ID. Unknown IDs are ignored.
-	Delete(ctx context.Context, dataset string, ids []string) error
+	Delete(ctx context.Context,
+		dataset string,
+		ids []string) error
 	// DeleteAll removes every vector in the dataset (and the dataset itself, if the backend has such a thing).
-	DeleteAll(ctx context.Context, dataset string) error
+	DeleteAll(ctx context.Context,
+		dataset string) error
 }
 
 // Stats describes the vectors of one dataset.
@@ -69,7 +77,8 @@ type Stats struct {
 // Statter is implemented by stores that can report statistics about a dataset; both Chromem and Pinecone do.
 type Statter interface {
 	// Stats returns the statistics of the dataset. A dataset that does not exist has zero Count.
-	Stats(ctx context.Context, dataset string) (Stats, error)
+	Stats(ctx context.Context,
+		dataset string) (Stats, error)
 }
 
 // Exporter is implemented by the stores that keep their vectors locally (Chromem), to copy them elsewhere (see internal/db/dbexport).
@@ -79,5 +88,7 @@ type Exporter interface {
 	Datasets(ctx context.Context) ([]string, error)
 	// Export calls fn for every vector of the dataset, with its embedding and metadata, in ID order (a dataset that does not exist
 	// has none). It stops at the first error of fn and returns it.
-	Export(ctx context.Context, dataset string, fn func(Vector) error) error
+	Export(ctx context.Context,
+		dataset string,
+		fn func(Vector) error) error
 }

@@ -26,7 +26,9 @@ func TestVersionMatchesChangelog(t *testing.T) {
 		t.Fatal("CHANGELOG.md has no '## [x.y.z] - date' entries")
 	}
 	if versions[0] != v {
-		t.Fatalf("newest CHANGELOG.md entry is %q but VERSION is %q: add or fix the entry", versions[0], v)
+		t.Fatalf("newest CHANGELOG.md entry is %q but VERSION is %q: add or fix the entry",
+			versions[0],
+			v)
 	}
 	seen := map[string]bool{}
 	for _, c := range versions {

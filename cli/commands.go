@@ -38,7 +38,8 @@ Output and exit codes:
 func (c *CLI) addClientCommands(o Options) {
 	cmds := []*cobra.Command{c.rememberCmd(), c.queryCmd(), c.datasetCmd(), c.researchCmd(), c.apiCmd(), c.statusCmd(), c.stopCmd()}
 	for _, cmd := range cmds {
-		cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		cmd.PersistentPreRunE = func(cmd *cobra.Command,
+			args []string) error {
 			// The arguments are parsed by now: an error from here on is not a usage error, so the help is not printed for it.
 			cmd.SilenceUsage = true
 			// The config is loaded by the daemon, not here; the program's own PreRun (e.g. loading its environment) still runs.
@@ -65,9 +66,13 @@ type body struct {
 	m map[string]any
 }
 
-func (b *body) set(key string, v any) { b.m[key] = v }
+func (b *body) set(key string,
+	v any) {
+	b.m[key] = v
+}
 
-func (b *body) default_(key string, v any) {
+func (b *body) default_(key string,
+	v any) {
 	if _, ok := b.m[key]; !ok {
 		b.m[key] = v
 	}
@@ -86,20 +91,39 @@ type commonFlags struct {
 
 func (f *commonFlags) add(cmd *cobra.Command) {
 	fl := cmd.Flags()
-	fl.StringVar(&f.jsonBody, "json", "", `the request body as JSON ('{"..."}', @file, or - for stdin); the flags below override its fields`)
-	fl.StringVarP(&f.dataset, "dataset", "d", "", `dataset (default "main")`)
-	fl.StringVar(&f.session, "session", "", "session_id: connects the calls of one agent session")
-	fl.StringArrayVar(&f.models, "model", nil, "LLM model of a stage, STAGE=MODEL (repeatable)")
-	fl.StringArrayVar(&f.reasoning, "reasoning", nil, "reasoning level of a stage, STAGE=none|low|medium|high (repeatable)")
+	fl.StringVar(&f.jsonBody,
+		"json",
+		"",
+		`the request body as JSON ('{"..."}', @file, or - for stdin); the flags below override its fields`)
+	fl.StringVarP(&f.dataset,
+		"dataset",
+		"d",
+		"",
+		`dataset (default "main")`)
+	fl.StringVar(&f.session,
+		"session",
+		"",
+		"session_id: connects the calls of one agent session")
+	fl.StringArrayVar(&f.models,
+		"model",
+		nil,
+		"LLM model of a stage, STAGE=MODEL (repeatable)")
+	fl.StringArrayVar(&f.reasoning,
+		"reasoning",
+		nil,
+		"reasoning level of a stage, STAGE=none|low|medium|high (repeatable)")
 }
 
 // build starts the request body: the --json fields, the user and the flags that were set.
-func (f *commonFlags) build(cmd *cobra.Command, c *CLI) (*body, error) {
+func (f *commonFlags) build(cmd *cobra.Command,
+	c *CLI) (*body, error) {
 	m, err := bodyFromFlags(cmd, f.jsonBody)
 	if err != nil {
 		return nil, err
 	}
-	b := &body{m: m}
+	b := &body{
+		m: m,
+	}
 	if cmd.Flags().Changed("dataset") {
 		b.set("dataset", f.dataset)
 	}
@@ -149,7 +173,8 @@ The text is the argument, the contents of --file, or stdin if the argument is "-
   gligabao remember --image receipt.png -d finance
   gligabao remember --json '{"text":"...","web_search":true}'`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			b, err := cf.build(cmd, c)
 			if err != nil {
 				return err
@@ -193,7 +218,9 @@ The text is the argument, the contents of --file, or stdin if the argument is "-
 				}
 				var specs []any
 				if err := json.Unmarshal(raw, &specs); err != nil {
-					return usageErr("--series: %s is not a JSON array of series: %v", series, err)
+					return usageErr("--series: %s is not a JSON array of series: %v",
+						series,
+						err)
 				}
 				ts, _ := b.m["timeseries"].(map[string]any)
 				if ts == nil {
@@ -205,17 +232,40 @@ The text is the argument, the contents of --file, or stdin if the argument is "-
 			if _, hasText := b.m["text"]; !hasText && b.m["image"] == nil {
 				return usageErr("nothing to remember: give the text as an argument, with --file or on stdin (-), or an --image")
 			}
-			return c.send(cmd, "POST", "/v1/gb/remember", nil, b.bytes())
+			return c.send(cmd,
+				"POST",
+				"/v1/gb/remember",
+				nil,
+				b.bytes())
 		},
 	}
 	cf.add(cmd)
 	f := cmd.Flags()
-	f.StringVarP(&file, "file", "f", "", "read the text from this file")
-	f.StringVar(&kind, "kind", "", `artifact kind: "knowledge" (default) or "episode" (anchored in time)`)
-	f.StringVar(&at, "at", "", "reference_time (RFC 3339): when the text was written; relative dates in it are resolved against it (default now)")
-	f.StringVar(&image, "image", "", "remember this image file (JPEG, PNG, GIF or WebP) instead of a text")
-	f.StringVar(&series, "series", "", "file with a JSON array of timeseries to store with the text (timeseries.series, see docs/timeseries.md)")
-	f.BoolVar(&webSearch, "web-search", false, "also search the web for the key entities of the text (needs an Anthropic key)")
+	f.StringVarP(&file,
+		"file",
+		"f",
+		"",
+		"read the text from this file")
+	f.StringVar(&kind,
+		"kind",
+		"",
+		`artifact kind: "knowledge" (default) or "episode" (anchored in time)`)
+	f.StringVar(&at,
+		"at",
+		"",
+		"reference_time (RFC 3339): when the text was written; relative dates in it are resolved against it (default now)")
+	f.StringVar(&image,
+		"image",
+		"",
+		"remember this image file (JPEG, PNG, GIF or WebP) instead of a text")
+	f.StringVar(&series,
+		"series",
+		"",
+		"file with a JSON array of timeseries to store with the text (timeseries.series, see docs/timeseries.md)")
+	f.BoolVar(&webSearch,
+		"web-search",
+		false,
+		"also search the web for the key entities of the text (needs an Anthropic key)")
 	return cmd
 }
 
@@ -244,7 +294,8 @@ an answer), for an agent that answers with its own LLM.
   gligabao query "Where does Alice work?" --evidence-only
   gligabao query "Where does Alice work?" --raw      # only the answer, as text`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			b, err := cf.build(cmd, c)
 			if err != nil {
 				return err
@@ -265,13 +316,21 @@ an answer), for an agent that answers with its own LLM.
 				b.set("evidence_only", true)
 			}
 			if !raw {
-				return c.send(cmd, "POST", "/v1/gb/query", nil, b.bytes())
+				return c.send(cmd,
+					"POST",
+					"/v1/gb/query",
+					nil,
+					b.bytes())
 			}
 			cl, err := c.client(cmd)
 			if err != nil {
 				return err
 			}
-			out, err := cl.call(cmd.Context(), "POST", "/v1/gb/query", nil, b.bytes())
+			out, err := cl.call(cmd.Context(),
+				"POST",
+				"/v1/gb/query",
+				nil,
+				b.bytes())
 			if err != nil {
 				return err
 			}
@@ -287,10 +346,22 @@ an answer), for an agent that answers with its own LLM.
 	}
 	cf.add(cmd)
 	f := cmd.Flags()
-	f.BoolVar(&geoNearby, "geo-nearby", false, "also search the geo entities near the places of the question (needs geo on in the config)")
-	f.Float64Var(&geoRadius, "geo-radius", 0, "radius in km of the geo search (turns --geo-nearby on)")
-	f.BoolVar(&evidenceOnly, "evidence-only", false, "retrieve only: no answer is written, the evidence is everything retrieved")
-	f.BoolVar(&raw, "raw", false, "print only the answer, as text")
+	f.BoolVar(&geoNearby,
+		"geo-nearby",
+		false,
+		"also search the geo entities near the places of the question (needs geo on in the config)")
+	f.Float64Var(&geoRadius,
+		"geo-radius",
+		0,
+		"radius in km of the geo search (turns --geo-nearby on)")
+	f.BoolVar(&evidenceOnly,
+		"evidence-only",
+		false,
+		"retrieve only: no answer is written, the evidence is everything retrieved")
+	f.BoolVar(&raw,
+		"raw",
+		false,
+		"print only the answer, as text")
 	return cmd
 }
 
@@ -306,8 +377,13 @@ func (c *CLI) datasetCmd() *cobra.Command {
 		Use:   "ls",
 		Short: "List the datasets of the user (GET /v1/gb/datasets)",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.send(cmd, "GET", "/v1/gb/datasets", nil, nil)
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
+			return c.send(cmd,
+				"GET",
+				"/v1/gb/datasets",
+				nil,
+				nil)
 		},
 	})
 
@@ -317,7 +393,8 @@ func (c *CLI) datasetCmd() *cobra.Command {
 		Use:   "create NAME",
 		Short: "Create a dataset (POST /v1/gb/datasets)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			b := map[string]any{"name": args[0]}
 			if description != "" {
 				b["description"] = description
@@ -326,27 +403,47 @@ func (c *CLI) datasetCmd() *cobra.Command {
 				b["tags"] = tags
 			}
 			out, _ := json.Marshal(b)
-			return c.send(cmd, "POST", "/v1/gb/datasets", nil, out)
+			return c.send(cmd,
+				"POST",
+				"/v1/gb/datasets",
+				nil,
+				out)
 		},
 	}
-	create.Flags().StringVar(&description, "description", "", "what the dataset is for")
-	create.Flags().StringArrayVar(&tags, "tag", nil, "a tag (repeatable)")
+	create.Flags().StringVar(&description,
+		"description",
+		"",
+		"what the dataset is for")
+	create.Flags().StringArrayVar(&tags,
+		"tag",
+		nil,
+		"a tag (repeatable)")
 	cmd.AddCommand(create)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "rm NAME",
 		Short: "Delete a dataset (DELETE /v1/gb/datasets/{name})",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.send(cmd, "DELETE", "/v1/gb/datasets/"+url.PathEscape(args[0]), nil, nil)
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
+			return c.send(cmd,
+				"DELETE",
+				"/v1/gb/datasets/"+url.PathEscape(args[0]),
+				nil,
+				nil)
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:   "graph NAME",
 		Short: "Export the knowledge graph of a dataset (GET /v1/gb/datasets/{name}/graph)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.send(cmd, "GET", "/v1/gb/datasets/"+url.PathEscape(args[0])+"/graph", nil, nil)
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
+			return c.send(cmd,
+				"GET",
+				"/v1/gb/datasets/"+url.PathEscape(args[0])+"/graph",
+				nil,
+				nil)
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
@@ -355,7 +452,8 @@ func (c *CLI) datasetCmd() *cobra.Command {
 		Long: `Write the dataset as a bare git repository into DIR (default NAME.git): one commit per remember call, dated when it was made, with the
 texts, entities and facts as files (docs/git-export.md). Read it with git log, or git clone DIR OUT for a working tree.` + clientHelp,
 		Args: cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			dest := args[0] + ".git"
 			if len(args) == 2 {
 				dest = args[1]
@@ -364,7 +462,11 @@ texts, entities and facts as files (docs/git-export.md). Read it with git log, o
 			if err != nil {
 				return err
 			}
-			archive, err := cl.call(cmd.Context(), "GET", "/v1/gb/datasets/"+url.PathEscape(args[0])+"/git", nil, nil)
+			archive, err := cl.call(cmd.Context(),
+				"GET",
+				"/v1/gb/datasets/"+url.PathEscape(args[0])+"/git",
+				nil,
+				nil)
 			if err != nil {
 				return err
 			}
@@ -382,7 +484,8 @@ texts, entities and facts as files (docs/git-export.md). Read it with git log, o
 
 // extractRepo unpacks the tar.gz of a repository into dest, dropping the top directory of the archive (<name>.git). dest must not
 // exist or must be empty. It returns the number of files written.
-func extractRepo(archive []byte, dest string) (int, error) {
+func extractRepo(archive []byte,
+	dest string) (int, error) {
 	if entries, err := os.ReadDir(dest); err == nil && len(entries) > 0 {
 		return 0, usageErr("%s exists and is not empty", dest)
 	}
@@ -412,7 +515,9 @@ func extractRepo(archive []byte, dest string) (int, error) {
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return n, err
 		}
-		f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		f, err := os.OpenFile(full,
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+			0o644)
 		if err != nil {
 			return n, err
 		}
@@ -439,7 +544,8 @@ stdin. The query string can be part of PATH. The user (--user) is sent in the gb
 		Example: `  gligabao api GET /v1/gb/timeseries
   gligabao api POST /v1/gb/ontologies '{"name":"x","file":"x.owl"}'`,
 		Args: cobra.RangeArgs(2, 3),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			method, path := strings.ToUpper(args[0]), args[1]
 			if !strings.HasPrefix(path, "/") {
 				path = "/" + path
@@ -451,7 +557,11 @@ stdin. The query string can be part of PATH. The user (--user) is sent in the gb
 					return usageErr("body: %v", err)
 				}
 			}
-			return c.send(cmd, method, path, nil, b)
+			return c.send(cmd,
+				method,
+				path,
+				nil,
+				b)
 		},
 	}
 }
@@ -465,7 +575,8 @@ func (c *CLI) statusCmd() *cobra.Command {
 		Long: `Print, as JSON, what the commands use (the --server, or the local daemon with its URL, config, database and log) and whether it
 answers. It never starts the daemon.` + clientHelp,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			out := map[string]any{"user": c.flags.user}
 			var base string
 			if c.flags.server != "" {
@@ -486,8 +597,15 @@ answers. It never starts the daemon.` + clientHelp,
 				out["db"], out["log"] = db, d.logPath()
 				base = d.url()
 			}
-			cl := &apiClient{base: base, user: c.flags.user}
-			status, b, err := cl.do(cmd.Context(), "GET", "/version", nil, nil)
+			cl := &apiClient{
+				base: base,
+				user: c.flags.user,
+			}
+			status, b, err := cl.do(cmd.Context(),
+				"GET",
+				"/version",
+				nil,
+				nil)
 			out["running"] = err == nil && status == 200
 			if out["running"] == true {
 				var v any
@@ -508,7 +626,8 @@ func (c *CLI) stopCmd() *cobra.Command {
 		Short: "Stop the local daemon this CLI started",
 		Long:  "Ask the local daemon to shut down gracefully (it is started again by the next command that needs it)." + clientHelp,
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			d, err := c.localDaemon(cmd)
 			if err != nil {
 				return err
@@ -525,12 +644,20 @@ func (c *CLI) stopCmd() *cobra.Command {
 }
 
 // send calls the API and prints the response.
-func (c *CLI) send(cmd *cobra.Command, method, path string, query url.Values, body []byte) error {
+func (c *CLI) send(cmd *cobra.Command,
+	method,
+	path string,
+	query url.Values,
+	body []byte) error {
 	cl, err := c.client(cmd)
 	if err != nil {
 		return err
 	}
-	out, err := cl.call(cmd.Context(), method, path, query, body)
+	out, err := cl.call(cmd.Context(),
+		method,
+		path,
+		query,
+		body)
 	if err != nil {
 		return err
 	}

@@ -73,7 +73,9 @@ const previewMax = 120
 // time order, so spikes survive. The first and the last point are always kept.
 func preview(points []graph.SeriesPoint) [][2]float64 {
 	pt := func(p graph.SeriesPoint) [2]float64 { return [2]float64{float64(p.TS.UnixMilli()), p.Value} }
-	out := make([][2]float64, 0, previewMax)
+	out := make([][2]float64,
+		0,
+		previewMax)
 	if len(points) <= previewMax {
 		for _, p := range points {
 			out = append(out, pt(p))
@@ -111,7 +113,8 @@ func preview(points []graph.SeriesPoint) [][2]float64 {
 // TimeseriesOf serves GET /admin/api/timeseries?db=<name>[&include_deleted=true] for one of dbs (the first without
 // db): the series of all the datasets of all users, newest update first, with their stats and anchors, no points.
 func TimeseriesOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
@@ -120,27 +123,41 @@ func TimeseriesOf(dbs []Named) http.HandlerFunc {
 			if n.Name != name {
 				continue
 			}
-			list, err := allSeries(r.Context(), n.DB, r.URL.Query().Get("include_deleted") == "true")
+			list, err := allSeries(r.Context(),
+				n.DB,
+				r.URL.Query().Get("include_deleted") == "true")
 			if err != nil {
 				log.WithError(err).Error("admin: list timeseries failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to list timeseries")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to list timeseries")
 				return
 			}
-			httputil.WriteJSON(w, http.StatusOK, map[string]any{"series": list})
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				map[string]any{"series": list})
 			return
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }
 
-func allSeries(ctx context.Context, d *sql.DB, includeDeleted bool) ([]tsSeries, error) {
-	datasets, err := relational.ListAllDatasets(ctx, d, includeDeleted)
+func allSeries(ctx context.Context,
+	d *sql.DB,
+	includeDeleted bool) ([]tsSeries, error) {
+	datasets, err := relational.ListAllDatasets(ctx,
+		d,
+		includeDeleted)
 	if err != nil {
 		return nil, err
 	}
 	out := []tsSeries{}
 	for _, ds := range datasets {
-		list, err := graph.ListSeries(ctx, d, ds.ID)
+		list, err := graph.ListSeries(ctx,
+			d,
+			ds.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -150,21 +167,40 @@ func allSeries(ctx context.Context, d *sql.DB, includeDeleted bool) ([]tsSeries,
 		anchors := make([][]graph.SeriesAnchor, len(list))
 		need := map[string]bool{}
 		for i, s := range list {
-			if anchors[i], err = graph.ListSeriesAnchors(ctx, d, s.ID); err != nil {
+			if anchors[i], err = graph.ListSeriesAnchors(ctx,
+				d,
+				s.ID); err != nil {
 				return nil, err
 			}
 			for _, a := range anchors[i] {
 				need[a.Type] = true
 			}
 		}
-		lk, err := loadLookup(ctx, d, ds.ID, need)
+		lk, err := loadLookup(ctx,
+			d,
+			ds.ID,
+			need)
 		if err != nil {
 			return nil, err
 		}
 		for i, s := range list {
-			v := tsSeries{ID: s.ID, User: ds.UserID, Dataset: ds.Name, Key: s.Key, Field: s.Field, Name: s.Name, Unit: s.Unit,
-				Frequency: s.Frequency, Source: s.Source, Provider: s.Provider, PointCount: s.PointCount, FirstTS: s.FirstTS,
-				LastTS: s.LastTS, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
+			v := tsSeries{
+				ID:         s.ID,
+				User:       ds.UserID,
+				Dataset:    ds.Name,
+				Key:        s.Key,
+				Field:      s.Field,
+				Name:       s.Name,
+				Unit:       s.Unit,
+				Frequency:  s.Frequency,
+				Source:     s.Source,
+				Provider:   s.Provider,
+				PointCount: s.PointCount,
+				FirstTS:    s.FirstTS,
+				LastTS:     s.LastTS,
+				CreatedAt:  s.CreatedAt,
+				UpdatedAt:  s.UpdatedAt,
+			}
 			if s.Stats != "" && json.Valid([]byte(s.Stats)) {
 				v.Stats = json.RawMessage(s.Stats)
 			}
@@ -172,7 +208,12 @@ func allSeries(ctx context.Context, d *sql.DB, includeDeleted bool) ([]tsSeries,
 				v.Definition = json.RawMessage(s.Definition)
 			}
 			v.Anchors, v.Entities = lk.describe(anchors[i])
-			points, err := graph.SeriesPoints(ctx, d, s.ID, nil, nil, 0)
+			points, err := graph.SeriesPoints(ctx,
+				d,
+				s.ID,
+				nil,
+				nil,
+				0)
 			if err != nil {
 				return nil, err
 			}
@@ -180,7 +221,10 @@ func allSeries(ctx context.Context, d *sql.DB, includeDeleted bool) ([]tsSeries,
 			out = append(out, v)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
+	sort.SliceStable(out, func(i,
+		j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
 	return out, nil
 }
 
@@ -193,11 +237,20 @@ type lookup struct {
 	artifactEntities map[int64][]int64
 }
 
-func loadLookup(ctx context.Context, d *sql.DB, dsID int64, need map[string]bool) (*lookup, error) {
-	lk := &lookup{entities: map[int64]graph.EvidenceEntity{}, edges: map[int64]graph.EvidenceEdge{}, artifacts: map[int64]graph.Artifact{},
-		artifactEntities: map[int64][]int64{}}
+func loadLookup(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	need map[string]bool) (*lookup, error) {
+	lk := &lookup{
+		entities:         map[int64]graph.EvidenceEntity{},
+		edges:            map[int64]graph.EvidenceEdge{},
+		artifacts:        map[int64]graph.Artifact{},
+		artifactEntities: map[int64][]int64{},
+	}
 	if need[graph.AnchorEntity] || need[graph.AnchorEdge] || need[graph.AnchorArtifact] {
-		es, err := graph.ListEntities(ctx, d, dsID)
+		es, err := graph.ListEntities(ctx,
+			d,
+			dsID)
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +259,9 @@ func loadLookup(ctx context.Context, d *sql.DB, dsID int64, need map[string]bool
 		}
 	}
 	if need[graph.AnchorEdge] {
-		es, err := graph.ListGraphEdges(ctx, d, dsID)
+		es, err := graph.ListGraphEdges(ctx,
+			d,
+			dsID)
 		if err != nil {
 			return nil, err
 		}
@@ -215,14 +270,18 @@ func loadLookup(ctx context.Context, d *sql.DB, dsID int64, need map[string]bool
 		}
 	}
 	if need[graph.AnchorArtifact] {
-		as, err := graph.ListArtifacts(ctx, d, dsID)
+		as, err := graph.ListArtifacts(ctx,
+			d,
+			dsID)
 		if err != nil {
 			return nil, err
 		}
 		for _, a := range as {
 			lk.artifacts[a.ID] = a
 		}
-		ea, err := graph.ListEntityArtifacts(ctx, d, dsID)
+		ea, err := graph.ListEntityArtifacts(ctx,
+			d,
+			dsID)
 		if err != nil {
 			return nil, err
 		}
@@ -233,7 +292,8 @@ func loadLookup(ctx context.Context, d *sql.DB, dsID int64, need map[string]bool
 	return lk, nil
 }
 
-func shortText(s string, n int) string {
+func shortText(s string,
+	n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if utf8.RuneCountInString(s) <= n {
 		return s
@@ -243,16 +303,24 @@ func shortText(s string, n int) string {
 
 // describe labels the anchors and collects the entities they lead to (each once, the most direct way first).
 func (lk *lookup) describe(anchors []graph.SeriesAnchor) ([]tsAnchor, []tsEntity) {
-	as := make([]tsAnchor, 0, len(anchors))
+	as := make([]tsAnchor,
+		0,
+		len(anchors))
 	es := []tsEntity{}
 	seen := map[int64]bool{}
-	addEntity := func(id int64, via string) {
+	addEntity := func(id int64,
+		via string) {
 		e, ok := lk.entities[id]
 		if !ok || seen[id] {
 			return
 		}
 		seen[id] = true
-		es = append(es, tsEntity{ID: id, Name: e.Name, Type: e.Type, Via: via})
+		es = append(es, tsEntity{
+			ID:   id,
+			Name: e.Name,
+			Type: e.Type,
+			Via:  via,
+		})
 	}
 	// Direct anchors first, then edge endpoints, then the entities of artifacts.
 	for _, via := range []string{graph.AnchorEntity, graph.AnchorEdge, graph.AnchorArtifact} {
@@ -291,7 +359,14 @@ func (lk *lookup) describe(anchors []graph.SeriesAnchor) ([]tsAnchor, []tsEntity
 				label = art.Kind + ": " + shortText(art.Text, anchorTextMax)
 			}
 		}
-		as = append(as, tsAnchor{Type: a.Type, ID: a.TargetID, Label: label, Role: a.Role, WindowStart: a.WindowStart, WindowEnd: a.WindowEnd})
+		as = append(as, tsAnchor{
+			Type:        a.Type,
+			ID:          a.TargetID,
+			Label:       label,
+			Role:        a.Role,
+			WindowStart: a.WindowStart,
+			WindowEnd:   a.WindowEnd,
+		})
 	}
 	return as, es
 }

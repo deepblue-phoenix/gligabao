@@ -15,12 +15,25 @@ import (
 // the thinking levels, as lists (never null).
 func TestQueryOptionsOf(t *testing.T) {
 	h := admin.QueryOptionsOf([]ai.ModelInfo{
-		{Name: "zeta", Kind: ai.KindLLM}, {Name: "emb", Kind: ai.KindEmbedding}, {Name: "alpha", Kind: ai.KindLLM},
+		{
+			Name: "zeta",
+			Kind: ai.KindLLM,
+		}, {
+			Name: "emb",
+			Kind: ai.KindEmbedding,
+		}, {
+			Name: "alpha",
+			Kind: ai.KindLLM,
+		},
 	})
 	rec := httptest.NewRecorder()
-	h(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	h(rec, httptest.NewRequest(http.MethodGet,
+		"/x",
+		nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	var got struct {
 		Models       []string `json:"models"`
@@ -34,10 +47,14 @@ func TestQueryOptionsOf(t *testing.T) {
 		t.Errorf("models %v, want [alpha zeta]", got.Models)
 	}
 	if got.DefaultModel != ai.DefaultModel() || !slices.Equal(got.Reasoning, ai.ReasoningLevels) {
-		t.Errorf("default %q, reasoning %v", got.DefaultModel, got.Reasoning)
+		t.Errorf("default %q, reasoning %v",
+			got.DefaultModel,
+			got.Reasoning)
 	}
 	rec = httptest.NewRecorder()
-	admin.QueryOptionsOf(nil)(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	admin.QueryOptionsOf(nil)(rec, httptest.NewRequest(http.MethodGet,
+		"/x",
+		nil))
 	var empty map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &empty); err != nil || empty["models"] == nil {
 		t.Errorf("no models must be [], got %s", rec.Body)

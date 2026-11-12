@@ -31,13 +31,15 @@ const agentVersion = "0.1"
 
 // Embedder turns texts into embeddings (see ai.Embedder), one per text and in the same order, and reports the usage.
 type Embedder interface {
-	EmbedBatchUsage(ctx context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error)
+	EmbedBatchUsage(ctx context.Context,
+		texts []string) ([][]float32, *ai.EmbedUsage, error)
 }
 
 // Classifier is Jev (see package jev), the system 1 model, as far as the pipelines need it. *jev.Client implements it.
 type Classifier interface {
 	// Classify judges how many entities a text will yield. The jev.Call is valid even when the error is not nil.
-	Classify(ctx context.Context, text string) (*jev.Classification, jev.Call, error)
+	Classify(ctx context.Context,
+		text string) (*jev.Classification, jev.Call, error)
 }
 
 // Option customizes a single Remember, Query or RememberImage call. Without WithEval no trajectory is generated.
@@ -121,7 +123,10 @@ type CallOptions struct {
 
 // NewCallOptions applies opts on top of the defaults.
 func NewCallOptions(opts []Option) CallOptions {
-	o := CallOptions{Dir: TrajectoryDir, Chunking: memory_chunk.DefaultConfig()}
+	o := CallOptions{
+		Dir:      TrajectoryDir,
+		Chunking: memory_chunk.DefaultConfig(),
+	}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -212,11 +217,18 @@ func (t *Trace) Warn(msg string) {
 }
 
 // StartTrace returns nil unless o asks for eval.
-func StartTrace(kind string, o CallOptions) *Trace {
+func StartTrace(kind string,
+	o CallOptions) *Trace {
 	if !o.Eval {
 		return nil
 	}
-	t := &Trace{b: atif.NewBuilder(atif.Agent{Name: "gligabao-" + kind, Version: agentVersion}), dir: o.Dir}
+	t := &Trace{
+		b: atif.NewBuilder(atif.Agent{
+			Name:    "gligabao-" + kind,
+			Version: agentVersion,
+		}),
+		dir: o.Dir,
+	}
 	if o.SessionID != "" { // the trajectories of one session share the session ID
 		t.b.SetSessionID(o.SessionID)
 	}
@@ -228,7 +240,11 @@ func (t *Trace) Wrap(llm LLM) LLM {
 	if t == nil {
 		return llm
 	}
-	return &tracingLLM{LLM: llm, b: t.b, t: t}
+	return &tracingLLM{
+		LLM: llm,
+		b:   t.b,
+		t:   t,
+	}
 }
 
 func (t *Trace) User(message string) {
@@ -239,7 +255,9 @@ func (t *Trace) User(message string) {
 
 func (t *Trace) Agent(message string) {
 	if t != nil {
-		t.b.Agent(atif.Step{Message: message})
+		t.b.Agent(atif.Step{
+			Message: message,
+		})
 	}
 }
 
@@ -274,7 +292,10 @@ func (t *Trace) Finish(callErr error) *atif.Trajectory {
 }
 
 // Tool records a tool step whose arguments and result are summarized from Go values.
-func (t *Trace) Tool(message, name string, args map[string]any, result any) {
+func (t *Trace) Tool(message,
+	name string,
+	args map[string]any,
+	result any) {
 	if t == nil {
 		return
 	}
@@ -283,24 +304,39 @@ func (t *Trace) Tool(message, name string, args map[string]any, result any) {
 		b, _ := json.Marshal(result)
 		res = string(b)
 	}
-	t.b.Tool(message, name, args, res)
+	t.b.Tool(message,
+		name,
+		args,
+		res)
 }
 
 // EmbedStep records an embedding request as a tool step with its tokens and cost, so they count in the
 // trajectory's totals. res gets the usage added.
-func (t *Trace) EmbedStep(message, name string, args, res map[string]any, usage *ai.EmbedUsage) {
+func (t *Trace) EmbedStep(message,
+	name string,
+	args,
+	res map[string]any,
+	usage *ai.EmbedUsage) {
 	if t == nil {
 		return
 	}
-	step := atif.Step{Message: message}
+	step := atif.Step{
+		Message: message,
+	}
 	if usage != nil {
 		step.ModelName = usage.Model
-		step.Metrics = &atif.Metrics{PromptTokens: usage.InputTokens, CostUSD: usage.CostUSD}
+		step.Metrics = &atif.Metrics{
+			PromptTokens: usage.InputTokens,
+			CostUSD:      usage.CostUSD,
+		}
 		step.Extra = map[string]any{"provider": usage.Provider}
 		res["input_tokens"] = usage.InputTokens
 	}
 	b, _ := json.Marshal(res)
-	t.b.ToolStep(step, name, args, string(b))
+	t.b.ToolStep(step,
+		name,
+		args,
+		string(b))
 }
 
 // ToolTiming is what TimedTool records about a step besides its arguments and result: which model ran it, when it
@@ -317,7 +353,11 @@ type ToolTiming struct {
 // TimedTool is Tool for a step that took measurable time (a call to a model other than the LLM client's): the step's
 // timestamp is the start of the call, and its extra holds latency_ms, started_at and the provider, so latency can be
 // compared across runs.
-func (t *Trace) TimedTool(message, name string, args map[string]any, result any, tm ToolTiming) {
+func (t *Trace) TimedTool(message,
+	name string,
+	args map[string]any,
+	result any,
+	tm ToolTiming) {
 	if t == nil {
 		return
 	}
@@ -326,18 +366,29 @@ func (t *Trace) TimedTool(message, name string, args map[string]any, result any,
 		b, _ := json.Marshal(result)
 		res = string(b)
 	}
-	step := atif.Step{Message: message, ModelName: tm.Model, Extra: map[string]any{
-		"provider":   tm.Provider,
-		"latency_ms": float64(tm.Latency.Microseconds()) / 1000,
-	}}
+	step := atif.Step{
+		Message:   message,
+		ModelName: tm.Model,
+		Extra: map[string]any{
+			"provider":   tm.Provider,
+			"latency_ms": float64(tm.Latency.Microseconds()) / 1000,
+		},
+	}
 	if !tm.Started.IsZero() {
 		step.Timestamp = tm.Started.UTC().Format(time.RFC3339Nano)
 		step.Extra["started_at"] = step.Timestamp
 	}
 	if tm.PromptTokens > 0 || tm.CompletionTokens > 0 || tm.CostUSD > 0 {
-		step.Metrics = &atif.Metrics{PromptTokens: tm.PromptTokens, CompletionTokens: tm.CompletionTokens, CostUSD: tm.CostUSD}
+		step.Metrics = &atif.Metrics{
+			PromptTokens:     tm.PromptTokens,
+			CompletionTokens: tm.CompletionTokens,
+			CostUSD:          tm.CostUSD,
+		}
 	}
-	t.b.ToolStep(step, name, args, res)
+	t.b.ToolStep(step,
+		name,
+		args,
+		res)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -346,7 +397,10 @@ func (t *Trace) TimedTool(message, name string, args map[string]any, result any,
 func describeImages(images []ai.Image) string {
 	var sb strings.Builder
 	for _, im := range images {
-		fmt.Fprintf(&sb, "[image: %s, %d bytes]\n", im.MediaType, len(im.Data))
+		fmt.Fprintf(&sb,
+			"[image: %s, %d bytes]\n",
+			im.MediaType,
+			len(im.Data))
 	}
 	return sb.String()
 }
@@ -358,13 +412,16 @@ type tracingLLM struct {
 	t *Trace
 }
 
-func (l *tracingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
+func (l *tracingLLM) Complete(ctx context.Context,
+	req ai.Request) (*ai.Response, error) {
 	if req.System != "" {
 		l.b.System(req.System)
 	}
 	for _, m := range req.Messages {
 		if m.Role == ai.RoleAssistant {
-			l.b.Agent(atif.Step{Message: m.Content})
+			l.b.Agent(atif.Step{
+				Message: m.Content,
+			})
 			continue
 		}
 		l.b.User(describeImages(m.Images) + m.Content)
@@ -381,8 +438,12 @@ func (l *tracingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response
 	l.b.Agent(atif.Step{
 		ModelName: resp.Model,
 		Message:   resp.Text,
-		Metrics:   &atif.Metrics{PromptTokens: resp.InputTokens, CompletionTokens: resp.OutputTokens, CostUSD: resp.CostUSD},
-		Extra:     extra,
+		Metrics: &atif.Metrics{
+			PromptTokens:     resp.InputTokens,
+			CompletionTokens: resp.OutputTokens,
+			CostUSD:          resp.CostUSD,
+		},
+		Extra: extra,
 	})
 	return resp, nil
 }

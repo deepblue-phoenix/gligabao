@@ -191,7 +191,9 @@ func (a *KnowledgeArtifact) UnmarshalJSON(b []byte) error {
 	aux := struct {
 		*plain
 		Text json.RawMessage `json:"text"`
-	}{plain: (*plain)(a)}
+	}{
+		plain: (*plain)(a),
+	}
 	if err := json.Unmarshal(b, &aux); err != nil {
 		return err
 	}

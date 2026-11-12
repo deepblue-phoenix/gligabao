@@ -9,21 +9,37 @@ import (
 
 func TestFeed(t *testing.T) {
 	f := training_audits.NewFeed()
-	f.Answer(core.AuditCaseRun{Idx: 0, Response: "a0"})
-	f.Answer(core.AuditCaseRun{Idx: 1, Status: core.StatusErrored, Error: "model: x"})
+	f.Answer(core.AuditCaseRun{
+		Idx:      0,
+		Response: "a0",
+	})
+	f.Answer(core.AuditCaseRun{
+		Idx:    1,
+		Status: core.StatusErrored,
+		Error:  "model: x",
+	})
 
 	// A watcher that joins midway gets the answers that wait for the judge, and the events from then on.
 	pending, ch := f.Subscribe()
 	if len(pending) != 2 || ch == nil {
 		t.Fatalf("pending %+v", pending)
 	}
-	f.Answer(core.AuditCaseRun{Idx: 2})
+	f.Answer(core.AuditCaseRun{
+		Idx: 2,
+	})
 	if e := <-ch; e.Type != training_audits.EventAnswer || e.CaseRuns[0].Idx != 2 || e.CaseRuns[0].Status != core.StatusRunning {
 		t.Errorf("answer event: %+v", e)
 	}
 
 	// A batch settles its cases: they are not pending any more, and the run in the event has no case runs.
-	f.Batch(core.AuditRun{ID: 1, CaseRuns: []core.AuditCaseRun{{}}}, []core.AuditCaseRun{{Idx: 0}, {Idx: 1}})
+	f.Batch(core.AuditRun{
+		ID:       1,
+		CaseRuns: []core.AuditCaseRun{{}},
+	}, []core.AuditCaseRun{{
+		Idx: 0,
+	}, {
+		Idx: 1,
+	}})
 	if e := <-ch; e.Type != training_audits.EventBatch || len(e.CaseRuns) != 2 || e.Run.ID != 1 || e.Run.CaseRuns != nil {
 		t.Errorf("batch event: %+v", e)
 	}
@@ -32,7 +48,10 @@ func TestFeed(t *testing.T) {
 	}
 
 	// The end closes the channels and the feed.
-	f.End(core.AuditRun{ID: 1, Status: core.StatusCompleted})
+	f.End(core.AuditRun{
+		ID:     1,
+		Status: core.StatusCompleted,
+	})
 	if e := <-ch; e.Type != training_audits.EventEnd || e.Run.Status != core.StatusCompleted {
 		t.Errorf("end event: %+v", e)
 	}
@@ -42,15 +61,19 @@ func TestFeed(t *testing.T) {
 	if p, c := f.Subscribe(); p != nil || c != nil {
 		t.Error("subscribed to a feed that ended")
 	}
-	f.Answer(core.AuditCaseRun{Idx: 9}) // ignored
-	f.Unsubscribe(ch)                   // harmless
+	f.Answer(core.AuditCaseRun{
+		Idx: 9,
+	}) // ignored
+	f.Unsubscribe(ch) // harmless
 }
 
 func TestFeedDropsASlowWatcher(t *testing.T) {
 	f := training_audits.NewFeed()
 	_, ch := f.Subscribe()
 	for i := 0; i < 5000; i++ {
-		f.Answer(core.AuditCaseRun{Idx: i})
+		f.Answer(core.AuditCaseRun{
+			Idx: i,
+		})
 	}
 	n := 0
 	for range ch { // closed once the buffer overflowed

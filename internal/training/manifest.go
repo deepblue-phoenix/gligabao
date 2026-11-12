@@ -90,7 +90,9 @@ func ParseManifest(path string) (*LocalDataset, error) {
 		m.Format = FormatJSONL
 	}
 	if m.Format != FormatJSONL {
-		return nil, fmt.Errorf("unsupported format %q (only %q)", m.Format, FormatJSONL)
+		return nil, fmt.Errorf("unsupported format %q (only %q)",
+			m.Format,
+			FormatJSONL)
 	}
 	if m.File == "" {
 		return nil, errors.New("the manifest has no `file` (the data file, relative to the manifest)")
@@ -98,7 +100,11 @@ func ParseManifest(path string) (*LocalDataset, error) {
 	if !filepath.IsLocal(m.File) || !strings.HasSuffix(m.File, ".jsonl") {
 		return nil, fmt.Errorf("`file` %q must be a relative path inside the dataset's directory, ending in .jsonl", m.File)
 	}
-	return &LocalDataset{Manifest: m, Dir: dir, Path: filepath.Join(dir, filepath.FromSlash(m.File))}, nil
+	return &LocalDataset{
+		Manifest: m,
+		Dir:      dir,
+		Path:     filepath.Join(dir, filepath.FromSlash(m.File)),
+	}, nil
 }
 
 // DiscoverDatasets scans the directories dirs, in order, for the datasets: each direct subdirectory that has a dataset.toml is
@@ -123,7 +129,10 @@ func DiscoverDatasets(dirs ...string) ([]LocalDataset, []DatasetProblem) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
-				problems = append(problems, DatasetProblem{Dir: problemDir("."), Error: err.Error()})
+				problems = append(problems, DatasetProblem{
+					Dir:   problemDir("."),
+					Error: err.Error(),
+				})
 			}
 			continue
 		}
@@ -145,14 +154,21 @@ func DiscoverDatasets(dirs ...string) ([]LocalDataset, []DatasetProblem) {
 				if st, statErr := os.Stat(ds.Path); statErr != nil || !st.Mode().IsRegular() {
 					err = fmt.Errorf("the data file %s is missing", ds.Manifest.File)
 					if ds.Generator != "" {
-						err = fmt.Errorf("%w: run %s in the dataset's directory to create it", err, ds.Generator)
+						err = fmt.Errorf("%w: run %s in the dataset's directory to create it",
+							err,
+							ds.Generator)
 					}
 				} else if other, dup := taken[ds.Name]; dup {
-					err = fmt.Errorf("the name %q is already taken by the dataset in %s", ds.Name, other)
+					err = fmt.Errorf("the name %q is already taken by the dataset in %s",
+						ds.Name,
+						other)
 				}
 			}
 			if err != nil {
-				problems = append(problems, DatasetProblem{Dir: problemDir(e.Name()), Error: err.Error()})
+				problems = append(problems, DatasetProblem{
+					Dir:   problemDir(e.Name()),
+					Error: err.Error(),
+				})
 				continue
 			}
 			taken[ds.Name] = e.Name()
@@ -163,7 +179,10 @@ func DiscoverDatasets(dirs ...string) ([]LocalDataset, []DatasetProblem) {
 			found = append(found, *ds)
 		}
 	}
-	sort.Slice(found, func(i, j int) bool { return found[i].Name < found[j].Name })
+	sort.Slice(found, func(i,
+		j int) bool {
+		return found[i].Name < found[j].Name
+	})
 	return found, problems
 }
 
@@ -186,7 +205,11 @@ func ContentStats(content []byte) (FileStats, error) {
 		return FileStats{}, err
 	}
 	sum := sha256.Sum256(content)
-	return FileStats{Size: int64(len(content)), SHA256: hex.EncodeToString(sum[:]), Records: records}, nil
+	return FileStats{
+		Size:    int64(len(content)),
+		SHA256:  hex.EncodeToString(sum[:]),
+		Records: records,
+	}, nil
 }
 
 // DatasetFileStats returns the stats of the data file at path; an error says why it is not a usable dataset.

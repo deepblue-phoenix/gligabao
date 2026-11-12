@@ -44,13 +44,15 @@ type KnowledgeDataset struct {
 	// Graphs are the graphs of the artifacts that have one, in the order of the artifact IDs.
 	Graphs []ArtifactGraph
 	// TopClassesFunc reads the top classes of the dataset (set by gligabao when it loads the dataset; use TopClasses).
-	TopClassesFunc func(ctx context.Context, n int) ([]graph.ClassCount, error)
+	TopClassesFunc func(ctx context.Context,
+		n int) ([]graph.ClassCount, error)
 }
 
 // TopClasses returns the n classes most given to the artifact graphs of the whole dataset (not only of the graphs in ds, which a hook may
 // have filtered), each with the number of artifacts it was given to, the most frequent first. It is the function behind
 // GET /v1/gb/datasets/{name}/classes, and reads the database, so it only works on a dataset gligabao loaded (else it returns an error).
-func (ds KnowledgeDataset) TopClasses(ctx context.Context, n int) ([]graph.ClassCount, error) {
+func (ds KnowledgeDataset) TopClasses(ctx context.Context,
+	n int) ([]graph.ClassCount, error) {
 	if ds.TopClassesFunc == nil {
 		return nil, errors.New("top classes: the knowledge dataset was not loaded by gligabao")
 	}
@@ -73,14 +75,16 @@ var ErrInvalidTrainingDataset = errors.New("invalid training dataset")
 // classifier of graphs on. It does not have to return all of it: the artifacts and graphs it leaves out are not trained on (a filter, a
 // sample, a split). It can only choose from what it got: it must not add an artifact or a graph, or change them (gligabao checks the IDs,
 // see ValidateTrainingDataset). It must honour ctx, may be called concurrently, and must not modify what it is given.
-type ClassifyingTrainingHook func(ctx context.Context, ds KnowledgeDataset) (TrainingDataset, error)
+type ClassifyingTrainingHook func(ctx context.Context,
+	ds KnowledgeDataset) (TrainingDataset, error)
 
 // ValidateTrainingDataset checks that td, which a hook made from in, is a valid training dataset. It returns an error that wraps
 // ErrInvalidTrainingDataset if:
 //   - td has an artifact or a graph that is not in in (by artifact ID), or the same one twice;
 //   - td has a graph of an artifact that td does not have (a graph needs its artifact);
 //   - a graph of td has no class, or the class is empty (blank), or td has a class for something that is not one of its graphs.
-func ValidateTrainingDataset(in KnowledgeDataset, td TrainingDataset) error {
+func ValidateTrainingDataset(in KnowledgeDataset,
+	td TrainingDataset) error {
 	artifacts := make(map[int64]bool, len(in.Artifacts))
 	for _, a := range in.Artifacts {
 		artifacts[a.ID] = true
@@ -92,10 +96,14 @@ func ValidateTrainingDataset(in KnowledgeDataset, td TrainingDataset) error {
 	kept := make(map[int64]bool, len(td.Artifacts))
 	for _, a := range td.Artifacts {
 		if !artifacts[a.ID] {
-			return fmt.Errorf("%w: artifact %d is not in the dataset", ErrInvalidTrainingDataset, a.ID)
+			return fmt.Errorf("%w: artifact %d is not in the dataset",
+				ErrInvalidTrainingDataset,
+				a.ID)
 		}
 		if kept[a.ID] {
-			return fmt.Errorf("%w: artifact %d is twice in the dataset", ErrInvalidTrainingDataset, a.ID)
+			return fmt.Errorf("%w: artifact %d is twice in the dataset",
+				ErrInvalidTrainingDataset,
+				a.ID)
 		}
 		kept[a.ID] = true
 	}
@@ -103,20 +111,30 @@ func ValidateTrainingDataset(in KnowledgeDataset, td TrainingDataset) error {
 	for _, g := range td.Graphs {
 		switch {
 		case !graphs[g.ArtifactID]:
-			return fmt.Errorf("%w: the graph of artifact %d is not in the dataset", ErrInvalidTrainingDataset, g.ArtifactID)
+			return fmt.Errorf("%w: the graph of artifact %d is not in the dataset",
+				ErrInvalidTrainingDataset,
+				g.ArtifactID)
 		case keptGraphs[g.ArtifactID]:
-			return fmt.Errorf("%w: the graph of artifact %d is twice in the dataset", ErrInvalidTrainingDataset, g.ArtifactID)
+			return fmt.Errorf("%w: the graph of artifact %d is twice in the dataset",
+				ErrInvalidTrainingDataset,
+				g.ArtifactID)
 		case !kept[g.ArtifactID]:
-			return fmt.Errorf("%w: the graph of artifact %d is kept but the artifact is not", ErrInvalidTrainingDataset, g.ArtifactID)
+			return fmt.Errorf("%w: the graph of artifact %d is kept but the artifact is not",
+				ErrInvalidTrainingDataset,
+				g.ArtifactID)
 		}
 		keptGraphs[g.ArtifactID] = true
 		if strings.TrimSpace(td.Classes[g.ArtifactID]) == "" {
-			return fmt.Errorf("%w: the graph of artifact %d has no class", ErrInvalidTrainingDataset, g.ArtifactID)
+			return fmt.Errorf("%w: the graph of artifact %d has no class",
+				ErrInvalidTrainingDataset,
+				g.ArtifactID)
 		}
 	}
 	for id := range td.Classes {
 		if !keptGraphs[id] {
-			return fmt.Errorf("%w: there is a class for artifact %d, which has no graph in the dataset", ErrInvalidTrainingDataset, id)
+			return fmt.Errorf("%w: there is a class for artifact %d, which has no graph in the dataset",
+				ErrInvalidTrainingDataset,
+				id)
 		}
 	}
 	return nil
@@ -125,7 +143,9 @@ func ValidateTrainingDataset(in KnowledgeDataset, td TrainingDataset) error {
 // CallClassifyingTrainingHook runs hook on ds, turning a panic of it into an error, and checks what it returned
 // (ValidateTrainingDataset). Unlike the graph embedder, the hook is not advisory: its error (or panic) is returned, as is the
 // ErrInvalidTrainingDataset of a bad result.
-func CallClassifyingTrainingHook(ctx context.Context, hook ClassifyingTrainingHook, ds KnowledgeDataset) (td TrainingDataset, err error) {
+func CallClassifyingTrainingHook(ctx context.Context,
+	hook ClassifyingTrainingHook,
+	ds KnowledgeDataset) (td TrainingDataset, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			td, err = TrainingDataset{}, fmt.Errorf("training hook panic: %v", rec)

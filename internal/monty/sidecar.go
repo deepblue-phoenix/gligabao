@@ -64,7 +64,13 @@ type Sidecar struct {
 }
 
 // NewSidecar returns a sidecar that has not started anything yet. fns are the functions told to the bridge in the hello message.
-func NewSidecar(cfg Config, fns []FuncDecl) *Sidecar { return &Sidecar{cfg: cfg, hello: fns} }
+func NewSidecar(cfg Config,
+	fns []FuncDecl) *Sidecar {
+	return &Sidecar{
+		cfg:   cfg,
+		hello: fns,
+	}
+}
 
 // Version is the Monty version of the running bridge ("" if it did not start yet).
 func (s *Sidecar) Version() string {
@@ -130,7 +136,9 @@ func (p *proc) dispatch(m inMsg) {
 }
 
 // start launches the bridge and waits for its ready message.
-func start(ctx context.Context, cfg Config, hello []FuncDecl) (*proc, error) {
+func start(ctx context.Context,
+	cfg Config,
+	hello []FuncDecl) (*proc, error) {
 	argv, env := cfg.command()
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = append(cmd.Environ(), env...)
@@ -145,9 +153,16 @@ func start(ctx context.Context, cfg Config, hello []FuncDecl) (*proc, error) {
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("cannot start %s: %w", argv[0], err)
+		return nil, fmt.Errorf("cannot start %s: %w",
+			argv[0],
+			err)
 	}
-	p := &proc{cmd: cmd, stdin: stdin, dead: make(chan struct{}), runs: map[int64]runEntry{}}
+	p := &proc{
+		cmd:   cmd,
+		stdin: stdin,
+		dead:  make(chan struct{}),
+		runs:  map[int64]runEntry{},
+	}
 	ready := make(chan inMsg, 1)
 	go func() {
 		defer func() {
@@ -179,7 +194,9 @@ func start(ctx context.Context, cfg Config, hello []FuncDecl) (*proc, error) {
 			return nil, errors.New(m.Err)
 		case m.Protocol != Protocol:
 			p.stop()
-			return nil, fmt.Errorf("the bridge speaks protocol %d, gligabao protocol %d", m.Protocol, Protocol)
+			return nil, fmt.Errorf("the bridge speaks protocol %d, gligabao protocol %d",
+				m.Protocol,
+				Protocol)
 		}
 		p.version = m.Version
 	case <-p.dead:
@@ -225,13 +242,23 @@ func (s *Sidecar) get(ctx context.Context) (*proc, error) {
 		s.p = nil
 	}
 	if s.failures >= maxFailures {
-		return nil, &Error{Kind: KindUnavailable, Message: fmt.Sprintf("the code sandbox failed %d times in a row (%v); it stays off until gligabao restarts", s.failures, s.lastErr)}
+		return nil, &Error{
+			Kind: KindUnavailable,
+			Message: fmt.Sprintf("the code sandbox failed %d times in a row (%v); it stays off until gligabao restarts",
+				s.failures,
+				s.lastErr),
+		}
 	}
-	p, err := start(ctx, s.cfg, s.hello)
+	p, err := start(ctx,
+		s.cfg,
+		s.hello)
 	if err != nil {
 		s.failures++
 		s.lastErr = err
-		return nil, &Error{Kind: KindUnavailable, Message: err.Error()}
+		return nil, &Error{
+			Kind:    KindUnavailable,
+			Message: err.Error(),
+		}
 	}
 	s.p = p
 	return p, nil
@@ -275,13 +302,18 @@ type runMsg struct {
 
 // Run runs the program. The host functions it calls are answered by host, called on the goroutine of Run, one at a time. A run whose context
 // ends is cancelled in the bridge and returns the context's error.
-func (s *Sidecar) Run(ctx context.Context, req Request, host HostFunc) (Result, error) {
+func (s *Sidecar) Run(ctx context.Context,
+	req Request,
+	host HostFunc) (Result, error) {
 	p, err := s.get(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	id := s.nextID.Add(1)
-	entry := runEntry{ch: make(chan inMsg), quit: make(chan struct{})}
+	entry := runEntry{
+		ch:   make(chan inMsg),
+		quit: make(chan struct{}),
+	}
 	p.mu.Lock()
 	p.runs[id] = entry
 	p.mu.Unlock()
@@ -291,8 +323,20 @@ func (s *Sidecar) Run(ctx context.Context, req Request, host HostFunc) (Result, 
 		delete(p.runs, id)
 		p.mu.Unlock()
 	}()
-	if err := p.send(runMsg{Type: "run", ID: id, Code: req.Code, Inputs: req.Inputs, Limits: req.Limits, Functions: req.Functions, Stubs: req.Stubs, TypeCheck: req.TypeCheck}); err != nil {
-		return Result{}, &Error{Kind: KindCrashed, Message: "the sandbox is not reachable: " + err.Error()}
+	if err := p.send(runMsg{
+		Type:      "run",
+		ID:        id,
+		Code:      req.Code,
+		Inputs:    req.Inputs,
+		Limits:    req.Limits,
+		Functions: req.Functions,
+		Stubs:     req.Stubs,
+		TypeCheck: req.TypeCheck,
+	}); err != nil {
+		return Result{}, &Error{
+			Kind:    KindCrashed,
+			Message: "the sandbox is not reachable: " + err.Error(),
+		}
 	}
 	for {
 		select {
@@ -300,38 +344,62 @@ func (s *Sidecar) Run(ctx context.Context, req Request, host HostFunc) (Result, 
 			_ = p.send(map[string]any{"type": "cancel", "id": id})
 			return Result{}, ctx.Err()
 		case <-p.dead:
-			return Result{}, &Error{Kind: KindCrashed, Message: "the sandbox process ended while the program ran"}
+			return Result{}, &Error{
+				Kind:    KindCrashed,
+				Message: "the sandbox process ended while the program ran",
+			}
 		case m := <-entry.ch:
 			switch m.Type {
 			case "call":
-				ok, val, errText := callHost(ctx, host, m)
+				ok, val, errText := callHost(ctx,
+					host,
+					m)
 				if err := p.send(map[string]any{"type": "result", "id": id, "call_id": m.CallID, "ok": ok, "value": val, "error": errText}); err != nil {
-					return Result{}, &Error{Kind: KindCrashed, Message: "the sandbox is not reachable: " + err.Error()}
+					return Result{}, &Error{
+						Kind:    KindCrashed,
+						Message: "the sandbox is not reachable: " + err.Error(),
+					}
 				}
 			case "done":
 				s.healthy()
-				return Result{Value: m.Value, Stdout: m.Stdout, Stderr: m.Stderr, Stats: m.Stats}, nil
+				return Result{
+					Value:  m.Value,
+					Stdout: m.Stdout,
+					Stderr: m.Stderr,
+					Stats:  m.Stats,
+				}, nil
 			case "failed":
 				if m.Kind != KindCrashed {
 					s.healthy()
 				}
-				return Result{}, &Error{Kind: m.Kind, Message: m.Message, Line: m.Line}
+				return Result{}, &Error{
+					Kind:    m.Kind,
+					Message: m.Message,
+					Line:    m.Line,
+				}
 			}
 		}
 	}
 }
 
 // callHost answers one call of the code; a host function that panics or fails becomes an exception of the sandbox, never a crash.
-func callHost(ctx context.Context, host HostFunc, m inMsg) (ok bool, val any, errText string) {
+func callHost(ctx context.Context,
+	host HostFunc,
+	m inMsg) (ok bool, val any, errText string) {
 	defer func() {
 		if r := recover(); r != nil {
-			ok, val, errText = false, nil, fmt.Sprintf("%s failed: %v", m.Name, r)
+			ok, val, errText = false, nil, fmt.Sprintf("%s failed: %v",
+				m.Name,
+				r)
 		}
 	}()
 	if host == nil {
 		return false, nil, "no host functions are available"
 	}
-	v, err := host(ctx, m.Name, m.Args, m.Kwargs)
+	v, err := host(ctx,
+		m.Name,
+		m.Args,
+		m.Kwargs)
 	if err != nil {
 		return false, nil, err.Error()
 	}

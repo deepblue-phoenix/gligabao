@@ -54,9 +54,15 @@ const (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM)
 	defer stop()
-	os.Exit(run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(run(ctx,
+		os.Args[1:],
+		os.Stdin,
+		os.Stdout,
+		os.Stderr))
 }
 
 // output is what --json prints.
@@ -94,32 +100,75 @@ const trajectoryFile = "trajectory.json"
 
 // run is main without the process: it returns the exit code. The report goes to stdout; everything else (progress, cost, errors) to
 // stderr.
-func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func run(ctx context.Context,
+	args []string,
+	stdin io.Reader,
+	stdout,
+	stderr io.Writer) int {
 	fs := flag.NewFlagSet("gligabao_agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		maxSteps    = fs.Int("max-steps", 0, fmt.Sprintf("most model calls, the last of which writes the report (1 to %d; default: the agent's, 20 for the default agent)", maxStepsLimit))
-		agentName   = fs.String("agent", "", "the agent definition to run (default: \"default\", the built-in research agent; with --agent-bundle, the agent the bundle is for)")
-		defsDir     = fs.String("agent-defs-dir", "", "directory the agent definitions (TOML or JSON files) are loaded from (default: "+agent_defs.DirName+" next to the binary; it need not exist)")
-		bundlePath  = fs.String("agent-bundle", "", "JSON file with the agent definitions to use instead of a directory (what a server sends to an agent that runs where it has no agent_defs directory, e.g. in Modal); not with --agent-defs-dir")
-		maxCost     = fs.Float64("max-cost-usd", 0, "cap on what the whole research may spend in USD, sub-agents included; it lowers the caps of the agent's definition (0: only those apply)")
-		model       = fs.String("model", "", "model to run on; it must support Anthropic's web search tool (default: the built-in default)")
-		timeout     = fs.Duration("timeout", 0, "give up after this long, e.g. 10m (default: no limit)")
-		asJSON      = fs.Bool("json", false, "print the report and the totals as JSON instead of the plain report")
-		withATIF    = fs.Bool("atif", false, "add the ATIF trajectory of the research (the sub-agents' steps merged into it) to the --json output as \"trajectory\"")
-		atifDir     = fs.String("atif-dir", "", "store the ATIF trajectory of the research in this directory as <trajectory_id>.json")
-		exportPath  = fs.String("export", "", "after the research (also if it failed) write what the agent has to this one archive file: the whole SQLite database (knowledge base, runs, states, costs), the embeddings of the Chromem vector store, the images and the ATIF trajectory; a PostgreSQL database or a Pinecone index is not exported, it persists its data itself; the format is described in internal/db/dbexport")
-		verbose     = fs.Bool("verbose", false, "log every step and tool call to stderr")
-		events      = fs.Bool("events", false, "write the progress to stderr as JSON lines ({\"event\":\"state\"|\"usage\",...}), for the program that runs the agent (the Modal runner); not with --verbose")
-		showVersion = fs.Bool("version", false, "print the version and exit")
-		configPath  = fs.String("config", "", "gligabao.toml to read the settings from (API keys, db_backend, postgres_dsn, vector_store, ...); default: the environment only")
-		dbPath      = fs.String("db", "", "SQLite database file (sqlite backend), with the vector store and the images next to it; default: $"+envDB+", else "+db.DefaultSQLitePath)
-		vectorDir   = fs.String("vector-dir", "", "chromem vector store directory (default: next to the database)")
-		user        = fs.String("user", defaultUser, "the user whose knowledge base the agent works with")
-		dataset     = fs.String("dataset", memory_core.DefaultDataset, "the dataset of the user's knowledge base the agent queries and remembers into")
+		maxSteps = fs.Int("max-steps",
+			0,
+			fmt.Sprintf("most model calls, the last of which writes the report (1 to %d; default: the agent's, 20 for the default agent)", maxStepsLimit))
+		agentName = fs.String("agent",
+			"",
+			"the agent definition to run (default: \"default\", the built-in research agent; with --agent-bundle, the agent the bundle is for)")
+		defsDir = fs.String("agent-defs-dir",
+			"",
+			"directory the agent definitions (TOML or JSON files) are loaded from (default: "+agent_defs.DirName+" next to the binary; it need not exist)")
+		bundlePath = fs.String("agent-bundle",
+			"",
+			"JSON file with the agent definitions to use instead of a directory (what a server sends to an agent that runs where it has no agent_defs directory, e.g. in Modal); not with --agent-defs-dir")
+		maxCost = fs.Float64("max-cost-usd",
+			0,
+			"cap on what the whole research may spend in USD, sub-agents included; it lowers the caps of the agent's definition (0: only those apply)")
+		model = fs.String("model",
+			"",
+			"model to run on; it must support Anthropic's web search tool (default: the built-in default)")
+		timeout = fs.Duration("timeout",
+			0,
+			"give up after this long, e.g. 10m (default: no limit)")
+		asJSON = fs.Bool("json",
+			false,
+			"print the report and the totals as JSON instead of the plain report")
+		withATIF = fs.Bool("atif",
+			false,
+			"add the ATIF trajectory of the research (the sub-agents' steps merged into it) to the --json output as \"trajectory\"")
+		atifDir = fs.String("atif-dir",
+			"",
+			"store the ATIF trajectory of the research in this directory as <trajectory_id>.json")
+		exportPath = fs.String("export",
+			"",
+			"after the research (also if it failed) write what the agent has to this one archive file: the whole SQLite database (knowledge base, runs, states, costs), the embeddings of the Chromem vector store, the images and the ATIF trajectory; a PostgreSQL database or a Pinecone index is not exported, it persists its data itself; the format is described in internal/db/dbexport")
+		verbose = fs.Bool("verbose",
+			false,
+			"log every step and tool call to stderr")
+		events = fs.Bool("events",
+			false,
+			"write the progress to stderr as JSON lines ({\"event\":\"state\"|\"usage\",...}), for the program that runs the agent (the Modal runner); not with --verbose")
+		showVersion = fs.Bool("version",
+			false,
+			"print the version and exit")
+		configPath = fs.String("config",
+			"",
+			"gligabao.toml to read the settings from (API keys, db_backend, postgres_dsn, vector_store, ...); default: the environment only")
+		dbPath = fs.String("db",
+			"",
+			"SQLite database file (sqlite backend), with the vector store and the images next to it; default: $"+envDB+", else "+db.DefaultSQLitePath)
+		vectorDir = fs.String("vector-dir",
+			"",
+			"chromem vector store directory (default: next to the database)")
+		user = fs.String("user",
+			defaultUser,
+			"the user whose knowledge base the agent works with")
+		dataset = fs.String("dataset",
+			memory_core.DefaultDataset,
+			"the dataset of the user's knowledge base the agent queries and remembers into")
 	)
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, `Usage: gligabao_agent [flags] TOPIC | -
+		fmt.Fprintf(stderr,
+			`Usage: gligabao_agent [flags] TOPIC | -
 
 Deep-research agent: searches the web, reads pages and prints a report on TOPIC (- reads it from stdin). --agent picks the agent definition
 (prompt, tools, search and knowledge settings, cost caps, loop) from the agent_defs directory next to the binary (see
@@ -135,7 +184,9 @@ the embeddings of the Chromem vector store, the images, the trajectory) to one Z
 can load. A PostgreSQL database or a Pinecone index persists its data itself, so those are left out.
 
 Flags:
-`, config.EnvAnthropicKey, config.EnvOpenAIKey)
+`,
+			config.EnvAnthropicKey,
+			config.EnvOpenAIKey)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -159,11 +210,15 @@ Flags:
 	}
 	topic, err := readTopic(fs.Args(), stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
 	if *maxSteps < 0 || *maxSteps > maxStepsLimit {
-		fmt.Fprintf(stderr, "gligabao_agent: --max-steps must be between 1 and %d\n", maxStepsLimit)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: --max-steps must be between 1 and %d\n",
+			maxStepsLimit)
 		return exitUsage
 	}
 	if *maxCost < 0 {
@@ -172,7 +227,9 @@ Flags:
 	}
 	reg, bundleAgent, err := loadAgents(*bundlePath, *defsDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
 	agentToRun := *agentName
@@ -180,32 +237,47 @@ Flags:
 		agentToRun = bundleAgent
 	}
 	if _, err := reg.Resolve(agentToRun, ""); err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: --agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: --agent: %v\n",
+			err)
 		return exitUsage
 	}
 	userID, err := memory_core.ResolveUserID(*user)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
 	datasetName, err := memory_core.ResolveDatasetName(*dataset)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
 	client, err := ai.New(cfg.AnthropicKey, ai.WithPrices(ai.NewPriceTable(cfg.AIPrices())))
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
-	emb, err := ai.NewEmbedder(cfg.OpenAIKey, ai.WithEmbedPrices(ai.NewPriceTable(cfg.AIPrices())), ai.WithEmbedDimensions(cfg.EmbeddingDimensions))
+	emb, err := ai.NewEmbedder(cfg.OpenAIKey,
+		ai.WithEmbedPrices(ai.NewPriceTable(cfg.AIPrices())),
+		ai.WithEmbedDimensions(cfg.EmbeddingDimensions))
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: embedder: %v (set %s or openai_api_key)\n", err, config.EnvOpenAIKey)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: embedder: %v (set %s or openai_api_key)\n",
+			err,
+			config.EnvOpenAIKey)
 		return exitUsage
 	}
 
@@ -225,14 +297,23 @@ Flags:
 	if path == "" {
 		path = os.Getenv(envDB)
 	}
-	a, err := openApp(ctx, cfg, client, emb, path, *vectorDir)
+	a, err := openApp(ctx,
+		cfg,
+		client,
+		emb,
+		path,
+		*vectorDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
 	defer a.close()
 	if err := a.research.UseAgentDefs(reg); err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitUsage
 	}
 
@@ -248,13 +329,28 @@ Flags:
 	if *withATIF || *atifDir != "" || *exportPath != "" {
 		trajectory = a.captureTrajectory()
 	}
-	out, err := a.runResearch(ctx, userID, agent_research.Options{Topic: topic, MaxSteps: *maxSteps, Model: *model, Dataset: datasetName, Agent: agentToRun, MaxCostUSD: *maxCost}, onState, onUsage)
+	out, err := a.runResearch(ctx,
+		userID,
+		agent_research.Options{
+			Topic:      topic,
+			MaxSteps:   *maxSteps,
+			Model:      *model,
+			Dataset:    datasetName,
+			Agent:      agentToRun,
+			MaxCostUSD: *maxCost,
+		},
+		onState,
+		onUsage)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: %v\n",
+			err)
 		return exitError
 	}
 	if out.DrainErr != nil {
-		fmt.Fprintf(stderr, "gligabao_agent: some text that was queued for the knowledge base was not absorbed: %v\n", out.DrainErr)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: some text that was queued for the knowledge base was not absorbed: %v\n",
+			out.DrainErr)
 	}
 	var traj *atif.Trajectory
 	if trajectory != nil {
@@ -265,9 +361,13 @@ Flags:
 			}
 		} else if *atifDir != "" {
 			if path, err := atif.WriteFile(*atifDir, traj); err != nil {
-				fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+				fmt.Fprintf(stderr,
+					"gligabao_agent: %v\n",
+					err)
 			} else {
-				fmt.Fprintf(stderr, "ATIF trajectory: %s\n", path)
+				fmt.Fprintf(stderr,
+					"ATIF trajectory: %s\n",
+					path)
 			}
 		}
 	}
@@ -275,19 +375,38 @@ Flags:
 	if *exportPath != "" {
 		// Also for a research that failed or was stopped: what it learned until then is worth keeping.
 		var err error
-		if export, err = fullExport(ctx, a, *exportPath, traj, stderr); err != nil {
-			fmt.Fprintf(stderr, "gligabao_agent: export: %v\n", err)
+		if export, err = fullExport(ctx,
+			a,
+			*exportPath,
+			traj,
+			stderr); err != nil {
+			fmt.Fprintf(stderr,
+				"gligabao_agent: export: %v\n",
+				err)
 		}
 	}
 	steps, toolCalls, in, outTokens, cost := out.totals()
-	fmt.Fprintf(stderr, "run %d, sub-agents: %d, steps: %d, tool calls: %d, tokens: %d in / %d out, cost: $%.4f\n", out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost)
+	fmt.Fprintf(stderr,
+		"run %d, sub-agents: %d, steps: %d, tool calls: %d, tokens: %d in / %d out, cost: $%.4f\n",
+		out.Root.ID,
+		len(out.Kids),
+		steps,
+		toolCalls,
+		in,
+		outTokens,
+		cost)
 	exportFailed := *exportPath != "" && export == nil // the archive is what the program that runs this wants: it is a failure without it
 	if out.Root.Status != core.StatusCompleted {
 		reason := out.Root.Error
 		if ctx.Err() != nil {
-			reason = fmt.Sprintf("%s (%v)", reason, context.Cause(ctx))
+			reason = fmt.Sprintf("%s (%v)",
+				reason,
+				context.Cause(ctx))
 		}
-		fmt.Fprintf(stderr, "gligabao_agent: the research %s: %s\n", out.Root.Status, reason)
+		fmt.Fprintf(stderr,
+			"gligabao_agent: the research %s: %s\n",
+			out.Root.Status,
+			reason)
 		return exitError
 	}
 
@@ -295,7 +414,9 @@ Flags:
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(output{out.Root.Report, out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost, trajectoryIf(*withATIF, traj), export}); err != nil {
-			fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+			fmt.Fprintf(stderr,
+				"gligabao_agent: %v\n",
+				err)
 			return exitError
 		}
 	} else {
@@ -308,20 +429,33 @@ Flags:
 }
 
 // fullExport writes the archive of --export (the agent's whole state, with the trajectory if there is one) and says so on stderr.
-func fullExport(ctx context.Context, a *app, path string, traj *atif.Trajectory, stderr io.Writer) (*exportSummary, error) {
+func fullExport(ctx context.Context,
+	a *app,
+	path string,
+	traj *atif.Trajectory,
+	stderr io.Writer) (*exportSummary, error) {
 	var extra []dbexport.Extra
 	if traj != nil {
 		b, err := atif.Marshal(traj)
 		if err != nil {
 			return nil, fmt.Errorf("the trajectory: %w", err)
 		}
-		extra = append(extra, dbexport.Extra{Name: trajectoryFile, Data: b})
+		extra = append(extra, dbexport.Extra{
+			Name: trajectoryFile,
+			Data: b,
+		})
 	}
-	m, err := a.fullExport(ctx, path, extra...)
+	m, err := a.fullExport(ctx,
+		path,
+		extra...)
 	if err != nil {
 		return nil, err
 	}
-	sum := &exportSummary{Path: path, Tables: len(m.Tables), Images: len(m.Images)}
+	sum := &exportSummary{
+		Path:   path,
+		Tables: len(m.Tables),
+		Images: len(m.Images),
+	}
 	for _, t := range m.Tables {
 		sum.Rows += t.Rows
 	}
@@ -330,17 +464,28 @@ func fullExport(ctx context.Context, a *app, path string, traj *atif.Trajectory,
 	}
 	for _, sk := range m.Skipped {
 		sum.Skipped = append(sum.Skipped, sk.What)
-		fmt.Fprintf(stderr, "export: no %s: %s\n", sk.What, sk.Reason)
+		fmt.Fprintf(stderr,
+			"export: no %s: %s\n",
+			sk.What,
+			sk.Reason)
 	}
 	if info, err := os.Stat(path); err == nil {
 		sum.Bytes = info.Size()
 	}
-	fmt.Fprintf(stderr, "export: %s (%d bytes: %d rows in %d tables, %d vectors, %d images)\n", path, sum.Bytes, sum.Rows, sum.Tables, sum.Vectors, sum.Images)
+	fmt.Fprintf(stderr,
+		"export: %s (%d bytes: %d rows in %d tables, %d vectors, %d images)\n",
+		path,
+		sum.Bytes,
+		sum.Rows,
+		sum.Tables,
+		sum.Vectors,
+		sum.Images)
 	return sum, nil
 }
 
 // trajectoryIf is t if on, else nil (left out of the JSON).
-func trajectoryIf(on bool, t *atif.Trajectory) *atif.Trajectory {
+func trajectoryIf(on bool,
+	t *atif.Trajectory) *atif.Trajectory {
 	if on {
 		return t
 	}
@@ -349,7 +494,8 @@ func trajectoryIf(on bool, t *atif.Trajectory) *atif.Trajectory {
 
 // loadAgents loads the agent definitions: from the bundle file, or from the directory (default: next to the binary; a directory that does not
 // exist leaves only the built-in default agent). It returns the registry and the agent the bundle is for ("" without a bundle).
-func loadAgents(bundlePath, dir string) (*agent_defs.Registry, string, error) {
+func loadAgents(bundlePath,
+	dir string) (*agent_defs.Registry, string, error) {
 	switch {
 	case bundlePath != "" && dir != "":
 		return nil, "", errors.New("--agent-bundle and --agent-defs-dir both say where the agent definitions are: use one")
@@ -377,7 +523,8 @@ func loadConfig(path string) (*config.Config, error) {
 }
 
 // readTopic takes the topic from the only argument, or from stdin if it is "-".
-func readTopic(args []string, stdin io.Reader) (string, error) {
+func readTopic(args []string,
+	stdin io.Reader) (string, error) {
 	if len(args) != 1 {
 		return "", errors.New("give exactly one topic as an argument, or - to read it from stdin (see --help)")
 	}
@@ -394,7 +541,9 @@ func readTopic(args []string, stdin io.Reader) (string, error) {
 		return "", errors.New("empty topic")
 	}
 	if n := len([]rune(topic)); n > maxTopicChars {
-		return "", fmt.Errorf("topic too long (%d characters, at most %d)", n, maxTopicChars)
+		return "", fmt.Errorf("topic too long (%d characters, at most %d)",
+			n,
+			maxTopicChars)
 	}
 	return topic, nil
 }

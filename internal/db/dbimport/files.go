@@ -9,7 +9,8 @@ import (
 
 // writeFileAtomic writes content to the file at full (making its directory), so that it appears whole: written to a temporary file in
 // the same directory, then renamed.
-func writeFileAtomic(full string, content io.Reader) error {
+func writeFileAtomic(full string,
+	content io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return err
 	}

@@ -31,7 +31,9 @@ type Options struct {
 	// the flags; it may change both (set App, Hooks, TimeseriesProviders, ... or change a default) and an error aborts
 	// the command. The program's own flags are read from cmd. A non-nil cleanup func it returns is called when Serve returns
 	// (also when it returns an error).
-	ServeOptions func(cmd *cobra.Command, cfg *gligabao.Config, opts *gligabao.ServeOptions) (cleanup func(), err error)
+	ServeOptions func(cmd *cobra.Command,
+		cfg *gligabao.Config,
+		opts *gligabao.ServeOptions) (cleanup func(), err error)
 }
 
 // CLI is the command tree. Add the program's own flags and commands to Root and Serve.
@@ -62,7 +64,8 @@ func New(o Options) *CLI {
 	root := &cobra.Command{
 		Use:   o.Use,
 		Short: o.Short,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command,
+			args []string) error {
 			if o.PreRun != nil {
 				if err := o.PreRun(cmd); err != nil {
 					return err
@@ -90,21 +93,34 @@ func New(o Options) *CLI {
 		root.Version = "-" // cobra only adds --version if Version is set; the template below prints the real one
 	}
 	root.SetVersionTemplate(versionString() + "\n")
-	root.PersistentFlags().StringVar(&c.configPath, "config", gligabao.DefaultConfigPath(), "path to TOML config file")
+	root.PersistentFlags().StringVar(&c.configPath,
+		"config",
+		gligabao.DefaultConfigPath(),
+		"path to TOML config file")
 	defaultUser := os.Getenv(EnvUser)
 	if defaultUser == "" {
 		defaultUser = LocalUser
 	}
-	root.PersistentFlags().StringVar(&c.flags.server, "server", os.Getenv(EnvServer), "URL of the server the remember, query, dataset and api commands use, instead of the local daemon (env "+EnvServer+")")
-	root.PersistentFlags().StringVar(&c.flags.user, "user", defaultUser, "user_id of the client commands (env "+EnvUser+")")
+	root.PersistentFlags().StringVar(&c.flags.server,
+		"server",
+		os.Getenv(EnvServer),
+		"URL of the server the remember, query, dataset and api commands use, instead of the local daemon (env "+EnvServer+")")
+	root.PersistentFlags().StringVar(&c.flags.user,
+		"user",
+		defaultUser,
+		"user_id of the client commands (env "+EnvUser+")")
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version embedded in this binary",
 		Args:  cobra.NoArgs,
 		// The version needs no config file.
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
-		RunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command,
+			args []string) error {
+			return nil
+		},
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			fmt.Fprintln(cmd.OutOrStdout(), versionString())
 			return nil
 		},

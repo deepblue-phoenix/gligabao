@@ -34,25 +34,40 @@ type attachRequest struct {
 //---------------------------------------------------------------------------------------------
 
 // dataset resolves the user and dataset of a request to the dataset's ID, writing the error response if it cannot.
-func dataset(w http.ResponseWriter, r *http.Request, d *sql.DB, userID, name string) (int64, string, bool) {
+func dataset(w http.ResponseWriter,
+	r *http.Request,
+	d *sql.DB,
+	userID,
+	name string) (int64, string, bool) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return 0, "", false
 	}
 	name, err = memory_core.ResolveDatasetName(name)
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return 0, "", false
 	}
-	id, err := memory_core.DatasetID(r.Context(), d, userID, name)
+	id, err := memory_core.DatasetID(r.Context(),
+		d,
+		userID,
+		name)
 	if errors.Is(err, memory_core.ErrDatasetNotFound) {
-		httputil.Error(w, http.StatusNotFound, "dataset not found")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"dataset not found")
 		return 0, "", false
 	}
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{"user_id": userID, "dataset": name}).Error("timeseries: find dataset failed")
-		httputil.Error(w, http.StatusInternalServerError, "failed to find dataset")
+		httputil.Error(w,
+			http.StatusInternalServerError,
+			"failed to find dataset")
 		return 0, "", false
 	}
 	return id, name, true
@@ -61,43 +76,69 @@ func dataset(w http.ResponseWriter, r *http.Request, d *sql.DB, userID, name str
 // Attach serves POST /v1/gb/timeseries: stores series in an existing dataset and anchors them to what it holds, by ID
 // or by selector, in one transaction. A series with the key of a stored one adds its points to it.
 func Attach(d *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		var req attachRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		if err := json.NewDecoder(http.MaxBytesReader(w,
+			r.Body,
+			maxBodyBytes)).Decode(&req); err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body: "+err.Error())
 			return
 		}
 		if len(req.Series) == 0 {
-			httputil.Error(w, http.StatusBadRequest, "series is required")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"series is required")
 			return
 		}
 		series, err := memory_core.ResolveSeries(req.Series, false)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
-		dsID, name, ok := dataset(w, r, d, httputil.UserID(r), req.Dataset)
+		dsID, name, ok := dataset(w,
+			r,
+			d,
+			httputil.UserID(r),
+			req.Dataset)
 		if !ok {
 			return
 		}
 		start := time.Now()
-		res, err := memory_timeseries.Attach(r.Context(), d, dsID, series)
+		res, err := memory_timeseries.Attach(r.Context(),
+			d,
+			dsID,
+			series)
 		switch {
 		case errors.Is(err, memory_timeseries.ErrAnchor):
-			httputil.Error(w, http.StatusUnprocessableEntity, err.Error())
+			httputil.Error(w,
+				http.StatusUnprocessableEntity,
+				err.Error())
 			return
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": name}).Error("attach timeseries failed")
-			monitoring.EmitSystemEvent(r.Context(), "timeseries.failed", monitoring.Event{
-				"user_id": httputil.UserID(r), "dataset": name, "series": len(series), "duration_ms": time.Since(start).Milliseconds(), "error": err.Error(),
-			})
-			httputil.Error(w, http.StatusInternalServerError, "failed to store timeseries")
+			monitoring.EmitSystemEvent(r.Context(),
+				"timeseries.failed",
+				monitoring.Event{
+					"user_id": httputil.UserID(r), "dataset": name, "series": len(series), "duration_ms": time.Since(start).Milliseconds(), "error": err.Error(),
+				})
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to store timeseries")
 			return
 		}
-		monitoring.EmitSystemEvent(r.Context(), "timeseries.completed", monitoring.Event{
-			"user_id": httputil.UserID(r), "dataset": name, "series": len(res), "duration_ms": time.Since(start).Milliseconds(),
-		})
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"user_id": httputil.UserID(r), "dataset": name, "series": res})
+		monitoring.EmitSystemEvent(r.Context(),
+			"timeseries.completed",
+			monitoring.Event{
+				"user_id": httputil.UserID(r), "dataset": name, "series": len(res), "duration_ms": time.Since(start).Milliseconds(),
+			})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"user_id": httputil.UserID(r), "dataset": name, "series": res})
 	}
 }
 
@@ -129,15 +170,35 @@ type anchorView struct {
 	WindowEnd   *time.Time `json:"window_end,omitempty"`
 }
 
-func view(s graph.Series, anchors []graph.SeriesAnchor) seriesView {
-	v := seriesView{ID: s.ID, Key: s.Key, Field: s.Field, Name: s.Name, Unit: s.Unit, Frequency: s.Frequency, Source: s.Source,
-		Provider: s.Provider, PointCount: s.PointCount, FirstTS: s.FirstTS, LastTS: s.LastTS, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
-		Anchors: []anchorView{}}
+func view(s graph.Series,
+	anchors []graph.SeriesAnchor) seriesView {
+	v := seriesView{
+		ID:         s.ID,
+		Key:        s.Key,
+		Field:      s.Field,
+		Name:       s.Name,
+		Unit:       s.Unit,
+		Frequency:  s.Frequency,
+		Source:     s.Source,
+		Provider:   s.Provider,
+		PointCount: s.PointCount,
+		FirstTS:    s.FirstTS,
+		LastTS:     s.LastTS,
+		CreatedAt:  s.CreatedAt,
+		UpdatedAt:  s.UpdatedAt,
+		Anchors:    []anchorView{},
+	}
 	if s.Stats != "" {
 		v.Stats = json.RawMessage(s.Stats)
 	}
 	for _, a := range anchors {
-		v.Anchors = append(v.Anchors, anchorView{Type: a.Type, ID: a.TargetID, Role: a.Role, WindowStart: a.WindowStart, WindowEnd: a.WindowEnd})
+		v.Anchors = append(v.Anchors, anchorView{
+			Type:        a.Type,
+			ID:          a.TargetID,
+			Role:        a.Role,
+			WindowStart: a.WindowStart,
+			WindowEnd:   a.WindowEnd,
+		})
 	}
 	return v
 }
@@ -145,26 +206,41 @@ func view(s graph.Series, anchors []graph.SeriesAnchor) seriesView {
 // List serves GET /v1/gb/timeseries?dataset=...: the series of the dataset, with their stats and anchors
 // but without points.
 func List(d *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
-		dsID, name, ok := dataset(w, r, d, httputil.UserID(r), q.Get("dataset"))
+		dsID, name, ok := dataset(w,
+			r,
+			d,
+			httputil.UserID(r),
+			q.Get("dataset"))
 		if !ok {
 			return
 		}
-		list, err := graph.ListSeries(r.Context(), d, dsID)
-		out := make([]seriesView, 0, len(list))
+		list, err := graph.ListSeries(r.Context(),
+			d,
+			dsID)
+		out := make([]seriesView,
+			0,
+			len(list))
 		for i := 0; err == nil && i < len(list); i++ {
 			var anchors []graph.SeriesAnchor
-			if anchors, err = graph.ListSeriesAnchors(r.Context(), d, list[i].ID); err == nil {
+			if anchors, err = graph.ListSeriesAnchors(r.Context(),
+				d,
+				list[i].ID); err == nil {
 				out = append(out, view(list[i], anchors))
 			}
 		}
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": name}).Error("list timeseries failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to list timeseries")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to list timeseries")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"dataset": name, "series": out})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"dataset": name, "series": out})
 	}
 }
 
@@ -173,11 +249,16 @@ func List(d *sql.DB) http.HandlerFunc {
 // DefaultPointLimit, at most MaxPointLimit; truncated says there were more). With from or to it also has window_stats,
 // the stats of the points in the window.
 func Get(d *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		id, err := strconv.ParseInt(r.PathValue("id"),
+			10,
+			64)
 		if err != nil || id <= 0 {
-			httputil.Error(w, http.StatusNotFound, "timeseries not found")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"timeseries not found")
 			return
 		}
 		var from, to *time.Time
@@ -185,7 +266,9 @@ func Get(d *sql.DB) http.HandlerFunc {
 			if v := q.Get(name); v != "" {
 				t, err := relational.ParseTimeStrict(v)
 				if err != nil {
-					httputil.Error(w, http.StatusBadRequest, name+" must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
+					httputil.Error(w,
+						http.StatusBadRequest,
+						name+" must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
 					return
 				}
 				t = relational.Normalize(t)
@@ -195,30 +278,50 @@ func Get(d *sql.DB) http.HandlerFunc {
 		limit := DefaultPointLimit
 		if v := q.Get("limit"); v != "" {
 			if limit, err = strconv.Atoi(v); err != nil || limit < 1 || limit > MaxPointLimit {
-				httputil.Error(w, http.StatusBadRequest, "limit must be between 1 and "+strconv.Itoa(MaxPointLimit))
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"limit must be between 1 and "+strconv.Itoa(MaxPointLimit))
 				return
 			}
 		}
-		dsID, name, ok := dataset(w, r, d, httputil.UserID(r), q.Get("dataset"))
+		dsID, name, ok := dataset(w,
+			r,
+			d,
+			httputil.UserID(r),
+			q.Get("dataset"))
 		if !ok {
 			return
 		}
-		s, err := graph.GetSeries(r.Context(), d, dsID, id)
+		s, err := graph.GetSeries(r.Context(),
+			d,
+			dsID,
+			id)
 		if errors.Is(err, graph.ErrNotFound) {
-			httputil.Error(w, http.StatusNotFound, "timeseries not found")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"timeseries not found")
 			return
 		}
 		var anchors []graph.SeriesAnchor
 		var pts []graph.SeriesPoint
 		if err == nil {
-			anchors, err = graph.ListSeriesAnchors(r.Context(), d, id)
+			anchors, err = graph.ListSeriesAnchors(r.Context(),
+				d,
+				id)
 		}
 		if err == nil {
-			pts, err = graph.SeriesPoints(r.Context(), d, id, from, to, limit+1) // one more tells whether it was cut
+			pts, err = graph.SeriesPoints(r.Context(),
+				d,
+				id,
+				from,
+				to,
+				limit+1) // one more tells whether it was cut
 		}
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": name, "series_id": id}).Error("get timeseries failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read timeseries")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read timeseries")
 			return
 		}
 		truncated := len(pts) > limit
@@ -231,13 +334,25 @@ func Get(d *sql.DB) http.HandlerFunc {
 			Points      []memory_core.SeriesPoint `json:"points"`
 			Truncated   bool                      `json:"truncated"`
 			WindowStats *memory_timeseries.Stats  `json:"window_stats,omitempty"`
-		}{Dataset: name, seriesView: view(*s, anchors), Points: make([]memory_core.SeriesPoint, 0, len(pts)), Truncated: truncated}
+		}{
+			Dataset:    name,
+			seriesView: view(*s, anchors),
+			Points: make([]memory_core.SeriesPoint,
+				0,
+				len(pts)),
+			Truncated: truncated,
+		}
 		for _, p := range pts {
-			out.Points = append(out.Points, memory_core.SeriesPoint{TS: p.TS, Value: p.Value})
+			out.Points = append(out.Points, memory_core.SeriesPoint{
+				TS:    p.TS,
+				Value: p.Value,
+			})
 		}
 		if (from != nil || to != nil) && !truncated {
 			out.WindowStats = memory_timeseries.Summarize(pts)
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }

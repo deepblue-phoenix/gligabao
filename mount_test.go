@@ -14,19 +14,31 @@ import (
 func TestMount(t *testing.T) {
 	cfg := gligabao.DefaultConfig()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("host root")) })
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("host health")) })
+	mux.HandleFunc("GET /", func(w http.ResponseWriter,
+		r *http.Request) {
+		w.Write([]byte("host root"))
+	})
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter,
+		r *http.Request) {
+		w.Write([]byte("host health"))
+	})
 
 	wrapped := 0
-	release, err := gligabao.Mount(t.Context(), cfg, gligabao.ServeOptions{DBPath: filepath.Join(t.TempDir(), "gb.db")}, gligabao.MountOptions{
-		Mux: mux,
-		Wrap: func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				wrapped++
-				next.ServeHTTP(w, r)
-			})
+	release, err := gligabao.Mount(t.Context(),
+		cfg,
+		gligabao.ServeOptions{
+			DBPath: filepath.Join(t.TempDir(), "gb.db"),
 		},
-	})
+		gligabao.MountOptions{
+			Mux: mux,
+			Wrap: func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter,
+					r *http.Request) {
+					wrapped++
+					next.ServeHTTP(w, r)
+				})
+			},
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +46,9 @@ func TestMount(t *testing.T) {
 
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", path, nil)
+		req := httptest.NewRequest("GET",
+			path,
+			nil)
 		req.Header.Set("gb-user-id", "u1")
 		mux.ServeHTTP(rec, req)
 		return rec
@@ -54,7 +68,9 @@ func TestMount(t *testing.T) {
 		t.Fatalf("a gligabao route is not mounted: %d", rec.Code)
 	}
 	if rec := get("/v1/gb/nope"); rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "404") {
-		t.Fatalf("unknown gligabao route: %d %q", rec.Code, rec.Body)
+		t.Fatalf("unknown gligabao route: %d %q",
+			rec.Code,
+			rec.Body)
 	}
 	if wrapped != 2 {
 		t.Fatalf("wrap ran %d times, want 2", wrapped)
@@ -70,12 +86,24 @@ func TestMount(t *testing.T) {
 // TestMountConflict checks that a host route under /v1/gb/ is an error, not a panic.
 func TestMountConflict(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/gb/", func(w http.ResponseWriter, r *http.Request) {})
-	_, err := gligabao.Mount(t.Context(), nil, gligabao.ServeOptions{DBPath: filepath.Join(t.TempDir(), "gb.db")}, gligabao.MountOptions{Mux: mux})
+	mux.HandleFunc("GET /v1/gb/", func(w http.ResponseWriter,
+		r *http.Request) {
+	})
+	_, err := gligabao.Mount(t.Context(),
+		nil,
+		gligabao.ServeOptions{
+			DBPath: filepath.Join(t.TempDir(), "gb.db"),
+		},
+		gligabao.MountOptions{
+			Mux: mux,
+		})
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if _, err := gligabao.Mount(t.Context(), nil, gligabao.ServeOptions{}, gligabao.MountOptions{}); err == nil {
+	if _, err := gligabao.Mount(t.Context(),
+		nil,
+		gligabao.ServeOptions{},
+		gligabao.MountOptions{}); err == nil {
 		t.Fatal("want an error for a nil mux")
 	}
 }

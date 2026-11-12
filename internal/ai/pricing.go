@@ -34,23 +34,103 @@ func DefaultPrices() map[string]Price {
 	return map[string]Price{
 		// Anthropic
 		// Fable 5.1, Opus 5.5 and Sonnet 5.5: CacheWrite is the 5-minute cache write price (the 1-hour one is not modelled).
-		"claude-fable-5-1":  {Input: 10, Output: 50, CacheWrite: 12.5, CacheRead: 0.25},
-		"claude-opus-5-5":   {Input: 4, Output: 20, CacheWrite: 5, CacheRead: 0.2},
-		"claude-sonnet-5-5": {Input: 2, Output: 10, CacheWrite: 2.5, CacheRead: 0.1},
-		"claude-opus-4-5":   {Input: 5, Output: 25, CacheWrite: 6.25, CacheRead: 0.5},
-		"claude-opus-4-1":   {Input: 15, Output: 75, CacheWrite: 18.75, CacheRead: 1.5},
-		"claude-opus-4":     {Input: 15, Output: 75, CacheWrite: 18.75, CacheRead: 1.5},
-		"claude-sonnet-4-5": {Input: 3, Output: 15, CacheWrite: 3.75, CacheRead: 0.3},
-		"claude-sonnet-4":   {Input: 3, Output: 15, CacheWrite: 3.75, CacheRead: 0.3},
-		"claude-3-7-sonnet": {Input: 3, Output: 15, CacheWrite: 3.75, CacheRead: 0.3},
-		"claude-haiku-5-5":  {Input: 0.1, Output: 0.5, CacheWrite: 0.125, CacheRead: 0.01, LongThreshold: 100_000, LongInput: 0.5, LongOutput: 2.5},
-		"claude-haiku-4-5":  {Input: 1, Output: 5, CacheWrite: 1.25, CacheRead: 0.1},
-		"claude-3-5-haiku":  {Input: 0.8, Output: 4, CacheWrite: 1, CacheRead: 0.08},
-		"claude-3-haiku":    {Input: 0.25, Output: 1.25, CacheWrite: 0.3, CacheRead: 0.03},
+		"claude-fable-5-1": {
+			Input:      10,
+			Output:     50,
+			CacheWrite: 12.5,
+			CacheRead:  0.25,
+		},
+		"claude-opus-5-5": {
+			Input:      4,
+			Output:     20,
+			CacheWrite: 5,
+			CacheRead:  0.2,
+		},
+		"claude-sonnet-5-5": {
+			Input:      2,
+			Output:     10,
+			CacheWrite: 2.5,
+			CacheRead:  0.1,
+		},
+		"claude-opus-4-5": {
+			Input:      5,
+			Output:     25,
+			CacheWrite: 6.25,
+			CacheRead:  0.5,
+		},
+		"claude-opus-4-1": {
+			Input:      15,
+			Output:     75,
+			CacheWrite: 18.75,
+			CacheRead:  1.5,
+		},
+		"claude-opus-4": {
+			Input:      15,
+			Output:     75,
+			CacheWrite: 18.75,
+			CacheRead:  1.5,
+		},
+		"claude-sonnet-4-5": {
+			Input:      3,
+			Output:     15,
+			CacheWrite: 3.75,
+			CacheRead:  0.3,
+		},
+		"claude-sonnet-4": {
+			Input:      3,
+			Output:     15,
+			CacheWrite: 3.75,
+			CacheRead:  0.3,
+		},
+		"claude-3-7-sonnet": {
+			Input:      3,
+			Output:     15,
+			CacheWrite: 3.75,
+			CacheRead:  0.3,
+		},
+		"claude-haiku-5-5": {
+			Input:         0.1,
+			Output:        0.5,
+			CacheWrite:    0.125,
+			CacheRead:     0.01,
+			LongThreshold: 100_000,
+			LongInput:     0.5,
+			LongOutput:    2.5,
+		},
+		"claude-haiku-4-5": {
+			Input:      1,
+			Output:     5,
+			CacheWrite: 1.25,
+			CacheRead:  0.1,
+		},
+		"claude-3-5-haiku": {
+			Input:      0.8,
+			Output:     4,
+			CacheWrite: 1,
+			CacheRead:  0.08,
+		},
+		"claude-3-haiku": {
+			Input:      0.25,
+			Output:     1.25,
+			CacheWrite: 0.3,
+			CacheRead:  0.03,
+		},
 		// OpenAI embeddings
-		"text-embedding-3-small": {Input: 0.02, CacheWrite: 0.02, CacheRead: 0.02},
-		"text-embedding-3-large": {Input: 0.13, CacheWrite: 0.13, CacheRead: 0.13},
-		"text-embedding-ada-002": {Input: 0.10, CacheWrite: 0.10, CacheRead: 0.10},
+		"text-embedding-3-small": {
+			Input:      0.02,
+			CacheWrite: 0.02,
+			CacheRead:  0.02,
+		},
+		"text-embedding-3-large": {
+			Input:      0.13,
+			CacheWrite: 0.13,
+			CacheRead:  0.13,
+		},
+		"text-embedding-ada-002": {
+			Input:      0.10,
+			CacheWrite: 0.10,
+			CacheRead:  0.10,
+		},
 	}
 }
 
@@ -64,7 +144,9 @@ type PriceTable struct {
 // NewPriceTable returns DefaultPrices with overrides merged in (an override replaces the default
 // entry of the same key; other keys are added). Keys are matched case-insensitively.
 func NewPriceTable(overrides map[string]Price) *PriceTable {
-	t := &PriceTable{prices: map[string]Price{}}
+	t := &PriceTable{
+		prices: map[string]Price{},
+	}
 	for k, p := range DefaultPrices() {
 		t.prices[strings.ToLower(k)] = p
 	}
@@ -74,7 +156,8 @@ func NewPriceTable(overrides map[string]Price) *PriceTable {
 	for k := range t.prices {
 		t.keys = append(t.keys, k)
 	}
-	sort.Slice(t.keys, func(i, j int) bool {
+	sort.Slice(t.keys, func(i,
+		j int) bool {
 		if len(t.keys[i]) != len(t.keys[j]) {
 			return len(t.keys[i]) > len(t.keys[j])
 		}
@@ -92,7 +175,8 @@ type Usage struct {
 }
 
 // Cost returns the USD cost of usage on model. ok is false if the model has no known price (cost is then 0).
-func (t *PriceTable) Cost(model string, u Usage) (cost float64, ok bool) {
+func (t *PriceTable) Cost(model string,
+	u Usage) (cost float64, ok bool) {
 	p, ok := t.lookup(model)
 	if !ok {
 		return 0, false
@@ -160,14 +244,26 @@ func SupportedModels(t *PriceTable) []ModelInfo {
 	if t == nil {
 		t = NewPriceTable(nil)
 	}
-	names := map[string]bool{defaultModel: true, EmbeddingModel: true}
+	names := map[string]bool{
+		defaultModel:   true,
+		EmbeddingModel: true,
+	}
 	for _, k := range t.keys {
 		names[k] = true
 	}
-	out := make([]ModelInfo, 0, len(names))
+	out := make([]ModelInfo,
+		0,
+		len(names))
 	for n := range names {
-		out = append(out, ModelInfo{Name: n, Provider: ProviderOf(n), Kind: KindOf(n)})
+		out = append(out, ModelInfo{
+			Name:     n,
+			Provider: ProviderOf(n),
+			Kind:     KindOf(n),
+		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i,
+		j int) bool {
+		return out[i].Name < out[j].Name
+	})
 	return out
 }

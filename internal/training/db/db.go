@@ -81,7 +81,8 @@ func unsupported() error { return fmt.Errorf("unknown training db backend %q", b
 // Open prepares the training store of the given backend (config.DBBackendSQLite or config.DBBackendPostgres; empty means
 // sqlite) and makes it the backend all other functions of this package route to. The backends keep the training tables in
 // the database d they were opened with, so call it with the *sql.DB returned by relational.Open, using the same backend name.
-func Open(backendName string, d *sql.DB) error {
+func Open(backendName string,
+	d *sql.DB) error {
 	if backendName == "" {
 		backendName = config.DBBackendSQLite
 	}

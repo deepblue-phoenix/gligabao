@@ -22,7 +22,10 @@ type GraphExport struct {
 
 // ExportGraph returns the full graph of userID's live dataset called name (empty means the default dataset).
 // It returns ErrDatasetNotFound if there is no such dataset.
-func ExportGraph(ctx context.Context, d *sql.DB, userID, name string) (*GraphExport, error) {
+func ExportGraph(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (*GraphExport, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -31,25 +34,43 @@ func ExportGraph(ctx context.Context, d *sql.DB, userID, name string) (*GraphExp
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := memory_core.DatasetID(ctx, d, userID, name)
+	dsID, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		name)
 	if err != nil {
 		return nil, err
 	}
-	return exportGraph(ctx, d, dsID, name)
+	return exportGraph(ctx,
+		d,
+		dsID,
+		name)
 }
 
 // ExportDatasetGraph returns the full graph of the dataset with the given ID and name, which may be a deleted one
 // (its rows are kept). It is meant for admin tooling that follows a stored dataset ID, such as an eval run's.
-func ExportDatasetGraph(ctx context.Context, d *sql.DB, ds *relational.Dataset) (*GraphExport, error) {
-	return exportGraph(ctx, d, ds.ID, ds.Name)
+func ExportDatasetGraph(ctx context.Context,
+	d *sql.DB,
+	ds *relational.Dataset) (*GraphExport, error) {
+	return exportGraph(ctx,
+		d,
+		ds.ID,
+		ds.Name)
 }
 
-func exportGraph(ctx context.Context, d *sql.DB, dsID int64, name string) (*GraphExport, error) {
-	entities, err := graph.ListEntities(ctx, d, dsID)
+func exportGraph(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	name string) (*GraphExport, error) {
+	entities, err := graph.ListEntities(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
-	edges, err := graph.ListGraphEdges(ctx, d, dsID)
+	edges, err := graph.ListGraphEdges(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,15 +80,27 @@ func exportGraph(ctx context.Context, d *sql.DB, dsID int64, name string) (*Grap
 	if edges == nil {
 		edges = []graph.EvidenceEdge{}
 	}
-	models, err := referencedModels(ctx, d, entities, edges)
+	models, err := referencedModels(ctx,
+		d,
+		entities,
+		edges)
 	if err != nil {
 		return nil, err
 	}
-	return &GraphExport{Dataset: name, Entities: entities, Edges: edges, Models: models, DatasetID: dsID}, nil
+	return &GraphExport{
+		Dataset:   name,
+		Entities:  entities,
+		Edges:     edges,
+		Models:    models,
+		DatasetID: dsID,
+	}, nil
 }
 
 // referencedModels returns the stored models that the entities and edges refer to, by name.
-func referencedModels(ctx context.Context, d *sql.DB, entities []graph.EvidenceEntity, edges []graph.EvidenceEdge) ([]relational.Model, error) {
+func referencedModels(ctx context.Context,
+	d *sql.DB,
+	entities []graph.EvidenceEntity,
+	edges []graph.EvidenceEdge) ([]relational.Model, error) {
 	used := map[string]bool{}
 	for _, e := range entities {
 		used[e.ModelID] = true
@@ -91,7 +124,11 @@ func referencedModels(ctx context.Context, d *sql.DB, entities []graph.EvidenceE
 // TopClasses returns the n classes most given to the artifact graphs (the subgraphs deduced from an artifact) of userID's live
 // dataset called name (empty means the default dataset), each with the number of artifacts it was given to, the most frequent first.
 // It returns ErrDatasetNotFound if there is no such dataset.
-func TopClasses(ctx context.Context, d *sql.DB, userID, name string, n int) ([]graph.ClassCount, error) {
+func TopClasses(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string,
+	n int) ([]graph.ClassCount, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -100,9 +137,15 @@ func TopClasses(ctx context.Context, d *sql.DB, userID, name string, n int) ([]g
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := memory_core.DatasetID(ctx, d, userID, name)
+	dsID, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		name)
 	if err != nil {
 		return nil, err
 	}
-	return graph.TopArtifactClasses(ctx, d, dsID, n)
+	return graph.TopArtifactClasses(ctx,
+		d,
+		dsID,
+		n)
 }

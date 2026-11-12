@@ -42,23 +42,42 @@ func ParseCron(expr string) (*Cron, error) {
 	}
 	f := strings.Fields(text)
 	if len(f) != 5 {
-		return nil, fmt.Errorf("%q has %d fields: it needs 5 (minute hour day-of-month month day-of-week)", orig, len(f))
+		return nil, fmt.Errorf("%q has %d fields: it needs 5 (minute hour day-of-month month day-of-week)",
+			orig,
+			len(f))
 	}
-	c := &Cron{expr: orig}
+	c := &Cron{
+		expr: orig,
+	}
 	var err error
-	if c.minute, _, err = parseCronField(f[0], 0, 59, nil); err != nil {
+	if c.minute, _, err = parseCronField(f[0],
+		0,
+		59,
+		nil); err != nil {
 		return nil, fmt.Errorf("minute: %w", err)
 	}
-	if c.hour, _, err = parseCronField(f[1], 0, 23, nil); err != nil {
+	if c.hour, _, err = parseCronField(f[1],
+		0,
+		23,
+		nil); err != nil {
 		return nil, fmt.Errorf("hour: %w", err)
 	}
-	if c.dom, c.domStar, err = parseCronField(f[2], 1, 31, nil); err != nil {
+	if c.dom, c.domStar, err = parseCronField(f[2],
+		1,
+		31,
+		nil); err != nil {
 		return nil, fmt.Errorf("day of month: %w", err)
 	}
-	if c.month, _, err = parseCronField(f[3], 1, 12, monthNames); err != nil {
+	if c.month, _, err = parseCronField(f[3],
+		1,
+		12,
+		monthNames); err != nil {
 		return nil, fmt.Errorf("month: %w", err)
 	}
-	if c.dow, c.dowStar, err = parseCronField(f[4], 0, 7, dayNames); err != nil {
+	if c.dow, c.dowStar, err = parseCronField(f[4],
+		0,
+		7,
+		dayNames); err != nil {
 		return nil, fmt.Errorf("day of week: %w", err)
 	}
 	if c.dow&(1<<7) != 0 { // 7 is Sunday too
@@ -68,7 +87,10 @@ func ParseCron(expr string) (*Cron, error) {
 }
 
 // parseCronField returns the bit set of a field; star says it started with `*` (or `?`).
-func parseCronField(field string, lo, hi int, names map[string]int) (set uint64, star bool, err error) {
+func parseCronField(field string,
+	lo,
+	hi int,
+	names map[string]int) (set uint64, star bool, err error) {
 	if field == "" {
 		return 0, false, fmt.Errorf("empty")
 	}
@@ -90,13 +112,23 @@ func parseCronField(field string, lo, hi int, names map[string]int) (set uint64,
 			}
 		default:
 			a, b, isRange := strings.Cut(rng, "-")
-			if from, err = cronValue(a, lo, hi, names); err != nil {
-				return 0, false, fmt.Errorf("%q: %w", part, err)
+			if from, err = cronValue(a,
+				lo,
+				hi,
+				names); err != nil {
+				return 0, false, fmt.Errorf("%q: %w",
+					part,
+					err)
 			}
 			to = from
 			if isRange {
-				if to, err = cronValue(b, lo, hi, names); err != nil {
-					return 0, false, fmt.Errorf("%q: %w", part, err)
+				if to, err = cronValue(b,
+					lo,
+					hi,
+					names); err != nil {
+					return 0, false, fmt.Errorf("%q: %w",
+						part,
+						err)
 				}
 			} else if hasStep {
 				to = hi // "5/10" runs from 5 to the end
@@ -112,7 +144,10 @@ func parseCronField(field string, lo, hi int, names map[string]int) (set uint64,
 	return set, star, nil
 }
 
-func cronValue(s string, lo, hi int, names map[string]int) (int, error) {
+func cronValue(s string,
+	lo,
+	hi int,
+	names map[string]int) (int, error) {
 	if v, ok := names[strings.ToLower(s)]; ok {
 		return v, nil
 	}
@@ -121,7 +156,10 @@ func cronValue(s string, lo, hi int, names map[string]int) (int, error) {
 		return 0, fmt.Errorf("%q is not a number or a name", s)
 	}
 	if v < lo || v > hi {
-		return 0, fmt.Errorf("%d is out of range (%d to %d)", v, lo, hi)
+		return 0, fmt.Errorf("%d is out of range (%d to %d)",
+			v,
+			lo,
+			hi)
 	}
 	return v, nil
 }
@@ -134,7 +172,9 @@ func (c *Cron) String() string { return c.expr }
 func (c *Cron) Next(t time.Time) time.Time {
 	t = t.Truncate(time.Minute).Add(time.Minute)
 	loc := t.Location()
-	limit := t.AddDate(8, 0, 0)
+	limit := t.AddDate(8,
+		0,
+		0)
 	// forward moves to the start of a later unit; a daylight saving gap can make time.Date answer a time that is not later, so it
 	// is never allowed to go back.
 	forward := func(next time.Time) {
@@ -146,11 +186,32 @@ func (c *Cron) Next(t time.Time) time.Time {
 	for t.Before(limit) {
 		switch {
 		case c.month&(1<<uint(t.Month())) == 0:
-			forward(time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc))
+			forward(time.Date(t.Year(),
+				t.Month()+1,
+				1,
+				0,
+				0,
+				0,
+				0,
+				loc))
 		case !c.dayMatches(t):
-			forward(time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, loc))
+			forward(time.Date(t.Year(),
+				t.Month(),
+				t.Day()+1,
+				0,
+				0,
+				0,
+				0,
+				loc))
 		case c.hour&(1<<uint(t.Hour())) == 0:
-			forward(time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, loc))
+			forward(time.Date(t.Year(),
+				t.Month(),
+				t.Day(),
+				t.Hour()+1,
+				0,
+				0,
+				0,
+				loc))
 		case c.minute&(1<<uint(t.Minute())) == 0:
 			t = t.Add(time.Minute)
 		default:

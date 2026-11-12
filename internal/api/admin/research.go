@@ -59,19 +59,26 @@ type ResearchAgent struct {
 	HasReport bool `json:"has_report"`
 }
 
-func researchAgentOf(r core.Run, children int, now time.Time) ResearchAgent {
+func researchAgentOf(r core.Run,
+	children int,
+	now time.Time) ResearchAgent {
 	end := now
 	if r.FinishedAt != nil {
 		end = *r.FinishedAt
 	}
 	return ResearchAgent{
-		Run: r, Children: children, DurationMS: max(end.Sub(r.CreatedAt).Milliseconds(), 0), AgeMS: max(now.Sub(r.CreatedAt).Milliseconds(), 0),
-		HasReport: r.Report != "",
+		Run:        r,
+		Children:   children,
+		DurationMS: max(end.Sub(r.CreatedAt).Milliseconds(), 0),
+		AgeMS:      max(now.Sub(r.CreatedAt).Milliseconds(), 0),
+		HasReport:  r.Report != "",
 	}
 }
 
 // researchAgents turns runs into ResearchAgents, counting the sub-agents of each, without their reports.
-func researchAgents(ctx context.Context, m *agent_research.Manager, runs []core.Run) ([]ResearchAgent, error) {
+func researchAgents(ctx context.Context,
+	m *agent_research.Manager,
+	runs []core.Run) ([]ResearchAgent, error) {
 	ids := make([]int64, len(runs))
 	for i, r := range runs {
 		ids[i] = r.ID
@@ -83,18 +90,24 @@ func researchAgents(ctx context.Context, m *agent_research.Manager, runs []core.
 	now := time.Now().UTC()
 	out := make([]ResearchAgent, len(runs))
 	for i, r := range runs {
-		out[i] = researchAgentOf(r, kids[r.ID], now)
+		out[i] = researchAgentOf(r,
+			kids[r.ID],
+			now)
 		out[i].Report = ""
 	}
 	return out, nil
 }
 
 // researchFail answers with the status of the Kind of err (500 for any other error).
-func researchFail(w http.ResponseWriter, err error, what string) {
+func researchFail(w http.ResponseWriter,
+	err error,
+	what string) {
 	var e *agent_research.Error
 	if !errors.As(err, &e) {
 		log.WithError(err).Errorf("admin: %s failed", what)
-		httputil.Error(w, http.StatusInternalServerError, "failed to "+what)
+		httputil.Error(w,
+			http.StatusInternalServerError,
+			"failed to "+what)
 		return
 	}
 	status := http.StatusInternalServerError
@@ -111,7 +124,9 @@ func researchFail(w http.ResponseWriter, err error, what string) {
 	if status == http.StatusInternalServerError {
 		log.WithError(err).Errorf("admin: %s failed", what)
 	}
-	httputil.Error(w, status, e.Msg)
+	httputil.Error(w,
+		status,
+		e.Msg)
 }
 
 type researchListResponse struct {
@@ -128,18 +143,23 @@ type researchListResponse struct {
 // long it has worked and how long ago it started. The reports are left out (see ResearchGetOf). m is the manager of the research
 // agents of the standard database.
 func ResearchListOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		limit := researchDefaultLimit
 		if v := q.Get("limit"); v != "" {
 			l, err := strconv.Atoi(v)
 			if err != nil || l < 1 {
-				httputil.Error(w, http.StatusBadRequest, "invalid limit")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"invalid limit")
 				return
 			}
 			limit = min(l, researchMaxLimit)
 		}
-		opts := agent_research.ListOptions{Limit: limit}
+		opts := agent_research.ListOptions{
+			Limit: limit,
+		}
 		switch s := q.Get("status"); s {
 		case "":
 		case "finished":
@@ -150,7 +170,9 @@ func ResearchListOf(m *agent_research.Manager) http.HandlerFunc {
 		if v := q.Get("roots_only"); v != "" {
 			b, err := strconv.ParseBool(v)
 			if err != nil {
-				httputil.Error(w, http.StatusBadRequest, "roots_only must be true or false")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"roots_only must be true or false")
 				return
 			}
 			opts.RootsOnly = b
@@ -158,29 +180,54 @@ func ResearchListOf(m *agent_research.Manager) http.HandlerFunc {
 		ctx := r.Context()
 		counts, err := m.Counts(ctx, "")
 		if err != nil {
-			researchFail(w, err, "count the research agents")
+			researchFail(w,
+				err,
+				"count the research agents")
 			return
 		}
-		runs, err := m.List(ctx, q.Get("user_id"), opts)
+		runs, err := m.List(ctx,
+			q.Get("user_id"),
+			opts)
 		if err != nil {
-			researchFail(w, err, "list the research agents")
+			researchFail(w,
+				err,
+				"list the research agents")
 			return
 		}
-		out := researchListResponse{Limit: limit}
-		out.Counts = ResearchCounts{Running: counts[core.StatusRunning], Completed: counts[core.StatusCompleted], Failed: counts[core.StatusFailed], Stopped: counts[core.StatusStopped]}
+		out := researchListResponse{
+			Limit: limit,
+		}
+		out.Counts = ResearchCounts{
+			Running:   counts[core.StatusRunning],
+			Completed: counts[core.StatusCompleted],
+			Failed:    counts[core.StatusFailed],
+			Stopped:   counts[core.StatusStopped],
+		}
 		out.Counts.Total = out.Counts.Running + out.Counts.Completed + out.Counts.Failed + out.Counts.Stopped
-		if out.Runs, err = researchAgents(ctx, m, runs); err != nil {
-			researchFail(w, err, "list the research agents")
+		if out.Runs, err = researchAgents(ctx,
+			m,
+			runs); err != nil {
+			researchFail(w,
+				err,
+				"list the research agents")
 			return
 		}
-		out.Total = researchTotal(counts, opts, q.Get("user_id"), len(out.Runs))
-		httputil.WriteJSON(w, http.StatusOK, out)
+		out.Total = researchTotal(counts,
+			opts,
+			q.Get("user_id"),
+			len(out.Runs))
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // researchTotal is how many agents match the filter of a list: read from the counts of all the agents when the filter is on the status
 // only, else (a user or the researches only) the number of agents listed, which the limit may have cut.
-func researchTotal(counts map[core.Status]int, opts agent_research.ListOptions, userID string, listed int) int {
+func researchTotal(counts map[core.Status]int,
+	opts agent_research.ListOptions,
+	userID string,
+	listed int) int {
 	if userID != "" || opts.RootsOnly {
 		return listed
 	}
@@ -204,38 +251,61 @@ type researchGetResponse struct {
 // ResearchGetOf serves GET /admin/api/research/{id}: one agent with its report, its states (in the order it entered them), its parent
 // and its sub-agents (without their reports and states).
 func ResearchGetOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		ctx := r.Context()
-		run, err := m.Get(ctx, "", id)
+		run, err := m.Get(ctx,
+			"",
+			id)
 		if err != nil {
-			researchFail(w, err, "read the research agent")
+			researchFail(w,
+				err,
+				"read the research agent")
 			return
 		}
-		kids, err := m.List(ctx, "", agent_research.ListOptions{ParentID: id, Limit: agent_research.MaxListLimit})
+		kids, err := m.List(ctx,
+			"",
+			agent_research.ListOptions{
+				ParentID: id,
+				Limit:    agent_research.MaxListLimit,
+			})
 		if err != nil {
-			researchFail(w, err, "read the research agent")
+			researchFail(w,
+				err,
+				"read the research agent")
 			return
 		}
 		runs := append([]core.Run{*run}, kids...)
 		var parent *core.Run
 		if run.ParentID != nil {
-			if parent, err = m.Get(ctx, "", *run.ParentID); err != nil {
-				researchFail(w, err, "read the research agent")
+			if parent, err = m.Get(ctx,
+				"",
+				*run.ParentID); err != nil {
+				researchFail(w,
+					err,
+					"read the research agent")
 				return
 			}
 			parent.States = nil
 			runs = append(runs, *parent)
 		}
-		agents, err := researchAgents(ctx, m, runs)
+		agents, err := researchAgents(ctx,
+			m,
+			runs)
 		if err != nil {
-			researchFail(w, err, "read the research agent")
+			researchFail(w,
+				err,
+				"read the research agent")
 			return
 		}
-		out := researchGetResponse{ResearchAgent: agents[0], Subagents: []ResearchAgent{}}
+		out := researchGetResponse{
+			ResearchAgent: agents[0],
+			Subagents:     []ResearchAgent{},
+		}
 		out.Report, out.HasReport, out.States = run.Report, run.Report != "", run.States
 		n := 1 + len(kids)
 		// The sub-agents are listed newest first; show them in the order they were spawned.
@@ -245,7 +315,9 @@ func ResearchGetOf(m *agent_research.Manager) http.HandlerFunc {
 		if parent != nil {
 			out.Parent = &agents[n]
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -258,10 +330,15 @@ func ResearchStartOf(m *agent_research.Manager) http.HandlerFunc {
 		UserID string `json:"user_id"`
 		agent_research.Options
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		var req request
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, researchStartMaxBody)).Decode(&req); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		if err := json.NewDecoder(http.MaxBytesReader(w,
+			r.Body,
+			researchStartMaxBody)).Decode(&req); err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body: "+err.Error())
 			return
 		}
 		if strings.TrimSpace(req.UserID) == "" {
@@ -269,42 +346,66 @@ func ResearchStartOf(m *agent_research.Manager) http.HandlerFunc {
 		}
 		userID, err := memory_core.ResolveUserID(req.UserID)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 			return
 		}
-		run, err := m.Start(r.Context(), userID, req.Options)
+		run, err := m.Start(r.Context(),
+			userID,
+			req.Options)
 		if err != nil {
-			researchFail(w, err, "start the research agent")
+			researchFail(w,
+				err,
+				"start the research agent")
 			return
 		}
-		agents, err := researchAgents(r.Context(), m, []core.Run{*run})
+		agents, err := researchAgents(r.Context(),
+			m,
+			[]core.Run{*run})
 		if err != nil {
-			researchFail(w, err, "start the research agent")
+			researchFail(w,
+				err,
+				"start the research agent")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusAccepted, agents[0])
+		httputil.WriteJSON(w,
+			http.StatusAccepted,
+			agents[0])
 	}
 }
 
 // ResearchStopOf serves POST /admin/api/research/{id}/stop: stops an active agent (and its sub-agents), see agent_research.Manager.Stop,
 // and answers with the agent as it is then (status "stopped"). 404 for an unknown agent, 409 if it has ended already.
 func ResearchStopOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := m.Stop(r.Context(), "", id, researchStoppedBy)
+		run, err := m.Stop(r.Context(),
+			"",
+			id,
+			researchStoppedBy)
 		if err != nil {
-			researchFail(w, err, "stop the research agent")
+			researchFail(w,
+				err,
+				"stop the research agent")
 			return
 		}
-		agents, err := researchAgents(r.Context(), m, []core.Run{*run})
+		agents, err := researchAgents(r.Context(),
+			m,
+			[]core.Run{*run})
 		if err != nil {
-			researchFail(w, err, "stop the research agent")
+			researchFail(w,
+				err,
+				"stop the research agent")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, agents[0])
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			agents[0])
 	}
 }
 
@@ -385,7 +486,9 @@ func researchRunOfSession(session string) int64 {
 	if !ok {
 		return 0
 	}
-	id, err := strconv.ParseInt(rest, 10, 64)
+	id, err := strconv.ParseInt(rest,
+		10,
+		64)
 	if err != nil {
 		return 0
 	}
@@ -394,19 +497,37 @@ func researchRunOfSession(session string) int64 {
 
 // researchAgentSessions returns the agent with the session it stores under, and with includeSubagents its sub-agents too (all
 // generations, breadth first: the tree is at most 10 agents). An unknown agent is an error of Kind KindNotFound.
-func researchAgentSessions(ctx context.Context, m *agent_research.Manager, id int64, includeSubagents bool) ([]ProvenanceAgent, error) {
-	run, err := m.Get(ctx, "", id)
+func researchAgentSessions(ctx context.Context,
+	m *agent_research.Manager,
+	id int64,
+	includeSubagents bool) ([]ProvenanceAgent, error) {
+	run, err := m.Get(ctx,
+		"",
+		id)
 	if err != nil {
 		return nil, err
 	}
-	agents := []ProvenanceAgent{{RunID: id, Name: run.Name, SessionID: agent_research.SessionID(id)}}
+	agents := []ProvenanceAgent{{
+		RunID:     id,
+		Name:      run.Name,
+		SessionID: agent_research.SessionID(id),
+	}}
 	for i := 0; includeSubagents && i < len(agents); i++ {
-		kids, err := m.List(ctx, "", agent_research.ListOptions{ParentID: agents[i].RunID, Limit: agent_research.MaxListLimit})
+		kids, err := m.List(ctx,
+			"",
+			agent_research.ListOptions{
+				ParentID: agents[i].RunID,
+				Limit:    agent_research.MaxListLimit,
+			})
 		if err != nil {
 			return nil, err
 		}
 		for j := len(kids) - 1; j >= 0; j-- {
-			agents = append(agents, ProvenanceAgent{RunID: kids[j].ID, Name: kids[j].Name, SessionID: agent_research.SessionID(kids[j].ID)})
+			agents = append(agents, ProvenanceAgent{
+				RunID:     kids[j].ID,
+				Name:      kids[j].Name,
+				SessionID: agent_research.SessionID(kids[j].ID),
+			})
 		}
 	}
 	return agents, nil
@@ -418,24 +539,39 @@ func researchAgentSessions(ctx context.Context, m *agent_research.Manager, id in
 // are included too, and each item says which run (RunIDs) it comes from. The datasets that hold it are listed with counts, so that
 // the UI can open them. Every item is of the dataset it has (DatasetID).
 func ResearchProvenanceOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		out := researchProvenanceResponse{RunID: id, Agents: []ProvenanceAgent{}, Datasets: []ProvenanceDataset{}, Artifacts: []ProvenanceArtifact{}, Entities: []ProvenanceEntity{}, Edges: []ProvenanceEdge{}}
+		out := researchProvenanceResponse{
+			RunID:     id,
+			Agents:    []ProvenanceAgent{},
+			Datasets:  []ProvenanceDataset{},
+			Artifacts: []ProvenanceArtifact{},
+			Entities:  []ProvenanceEntity{},
+			Edges:     []ProvenanceEdge{},
+		}
 		if v := r.URL.Query().Get("include_subagents"); v != "" {
 			b, err := strconv.ParseBool(v)
 			if err != nil {
-				httputil.Error(w, http.StatusBadRequest, "include_subagents must be true or false")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"include_subagents must be true or false")
 				return
 			}
 			out.IncludeSubagents = b
 		}
 		ctx := r.Context()
-		agents, err := researchAgentSessions(ctx, m, id, out.IncludeSubagents)
+		agents, err := researchAgentSessions(ctx,
+			m,
+			id,
+			out.IncludeSubagents)
 		if err != nil {
-			researchFail(w, err, "read the research agent")
+			researchFail(w,
+				err,
+				"read the research agent")
 			return
 		}
 		out.Agents = agents
@@ -445,19 +581,27 @@ func ResearchProvenanceOf(m *agent_research.Manager) http.HandlerFunc {
 		}
 		fail := func(err error) {
 			log.WithError(err).WithField("run_id", id).Error("admin: research provenance failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the provenance")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the provenance")
 		}
-		arts, err := graph.ListArtifactsBySessions(ctx, m.DB, sessions)
+		arts, err := graph.ListArtifactsBySessions(ctx,
+			m.DB,
+			sessions)
 		if err != nil {
 			fail(err)
 			return
 		}
-		ents, err := graph.ListEntitiesBySessions(ctx, m.DB, sessions)
+		ents, err := graph.ListEntitiesBySessions(ctx,
+			m.DB,
+			sessions)
 		if err != nil {
 			fail(err)
 			return
 		}
-		edges, err := graph.ListEdgesBySessions(ctx, m.DB, sessions)
+		edges, err := graph.ListEdgesBySessions(ctx,
+			m.DB,
+			sessions)
 		if err != nil {
 			fail(err)
 			return
@@ -467,7 +611,9 @@ func ResearchProvenanceOf(m *agent_research.Manager) http.HandlerFunc {
 			if d := datasets[id]; d != nil {
 				return d
 			}
-			d := &ProvenanceDataset{ID: id}
+			d := &ProvenanceDataset{
+				ID: id,
+			}
 			datasets[id] = d
 			return d
 		}
@@ -475,25 +621,51 @@ func ResearchProvenanceOf(m *agent_research.Manager) http.HandlerFunc {
 		for _, a := range arts {
 			inSession[a.ID] = true
 			out.Artifacts = append(out.Artifacts, ProvenanceArtifact{
-				ID: a.ID, DatasetID: a.DatasetID, Kind: a.Kind, Text: shorten(a.Text, provenanceTextRunes), Query: a.Query, ParentID: a.ParentID,
-				RunID: researchRunOfSession(a.SessionID), CreatedAt: a.CreatedAt,
+				ID:        a.ID,
+				DatasetID: a.DatasetID,
+				Kind:      a.Kind,
+				Text:      shorten(a.Text, provenanceTextRunes),
+				Query:     a.Query,
+				ParentID:  a.ParentID,
+				RunID:     researchRunOfSession(a.SessionID),
+				CreatedAt: a.CreatedAt,
 			})
 			dataset(a.DatasetID).Artifacts++
 		}
 		for _, e := range ents {
-			out.Entities = append(out.Entities, ProvenanceEntity{ID: e.ID, DatasetID: e.DatasetID, Name: e.Name, Type: e.Type, Description: e.Description, RunIDs: runsOfSessions(e.Sessions)})
+			out.Entities = append(out.Entities, ProvenanceEntity{
+				ID:          e.ID,
+				DatasetID:   e.DatasetID,
+				Name:        e.Name,
+				Type:        e.Type,
+				Description: e.Description,
+				RunIDs:      runsOfSessions(e.Sessions),
+			})
 			dataset(e.DatasetID).Entities++
 		}
 		for _, e := range edges {
 			created := e.ArtifactID != nil && inSession[*e.ArtifactID]
 			out.Edges = append(out.Edges, ProvenanceEdge{
-				ID: e.ID, DatasetID: e.DatasetID, SourceID: e.SourceID, TargetID: e.TargetID, Source: e.Source, Target: e.Target, Relation: e.Relation, Description: e.Description,
-				ValidAt: e.ValidAt, InvalidAt: e.InvalidAt, ExpiredAt: e.ExpiredAt, Created: created, RunIDs: runsOfSessions(e.Sessions),
+				ID:          e.ID,
+				DatasetID:   e.DatasetID,
+				SourceID:    e.SourceID,
+				TargetID:    e.TargetID,
+				Source:      e.Source,
+				Target:      e.Target,
+				Relation:    e.Relation,
+				Description: e.Description,
+				ValidAt:     e.ValidAt,
+				InvalidAt:   e.InvalidAt,
+				ExpiredAt:   e.ExpiredAt,
+				Created:     created,
+				RunIDs:      runsOfSessions(e.Sessions),
 			})
 			dataset(e.DatasetID).Edges++
 		}
 		if len(datasets) > 0 {
-			all, err := relational.ListAllDatasets(ctx, m.DB, true)
+			all, err := relational.ListAllDatasets(ctx,
+				m.DB,
+				true)
 			if err != nil {
 				fail(err)
 				return
@@ -509,12 +681,16 @@ func ResearchProvenanceOf(m *agent_research.Manager) http.HandlerFunc {
 				}
 			}
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 func runsOfSessions(sessions []string) []int64 {
-	out := make([]int64, 0, len(sessions))
+	out := make([]int64,
+		0,
+		len(sessions))
 	for _, s := range sessions {
 		if id := researchRunOfSession(s); id != 0 {
 			out = append(out, id)
@@ -538,24 +714,36 @@ type researchTemporalResponse struct {
 // are in) and of their chunks and enrichments, with the reference times of the texts. With include_subagents the sessions of its
 // sub-agents are included too. An unknown agent is 404.
 func ResearchTemporalOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		out := researchTemporalResponse{RunID: id, Artifacts: []rememberRunTemporalArtifact{}, Events: []graph.EdgeEvent{}}
+		out := researchTemporalResponse{
+			RunID:     id,
+			Artifacts: []rememberRunTemporalArtifact{},
+			Events:    []graph.EdgeEvent{},
+		}
 		if v := r.URL.Query().Get("include_subagents"); v != "" {
 			b, err := strconv.ParseBool(v)
 			if err != nil {
-				httputil.Error(w, http.StatusBadRequest, "include_subagents must be true or false")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"include_subagents must be true or false")
 				return
 			}
 			out.IncludeSubagents = b
 		}
 		ctx := r.Context()
-		agents, err := researchAgentSessions(ctx, m, id, out.IncludeSubagents)
+		agents, err := researchAgentSessions(ctx,
+			m,
+			id,
+			out.IncludeSubagents)
 		if err != nil {
-			researchFail(w, err, "read the research agent")
+			researchFail(w,
+				err,
+				"read the research agent")
 			return
 		}
 		sessions := make([]string, len(agents))
@@ -564,9 +752,13 @@ func ResearchTemporalOf(m *agent_research.Manager) http.HandlerFunc {
 		}
 		fail := func(err error) {
 			log.WithError(err).WithField("run_id", id).Error("admin: research temporal failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the temporal events")
 		}
-		arts, err := graph.ListArtifactsBySessions(ctx, m.DB, sessions)
+		arts, err := graph.ListArtifactsBySessions(ctx,
+			m.DB,
+			sessions)
 		if err != nil {
 			fail(err)
 			return
@@ -581,36 +773,54 @@ func ResearchTemporalOf(m *agent_research.Manager) http.HandlerFunc {
 			if a.ParentID != 0 && inSession[a.ParentID] {
 				continue
 			}
-			events, err := graph.ListEdgeEvents(ctx, m.DB, a.ID)
+			events, err := graph.ListEdgeEvents(ctx,
+				m.DB,
+				a.ID)
 			if err != nil {
 				fail(err)
 				return
 			}
 			out.Events = append(out.Events, events...)
 		}
-		slices.SortFunc(out.Events, func(a, b graph.EdgeEvent) int { return cmp.Compare(a.ID, b.ID) })
-		out.Events = slices.CompactFunc(out.Events, func(a, b graph.EdgeEvent) bool { return a.ID == b.ID })
-		if out.Artifacts, err = temporalArtifacts(ctx, m.DB, out.Events); err != nil {
+		slices.SortFunc(out.Events, func(a,
+			b graph.EdgeEvent) int {
+			return cmp.Compare(a.ID, b.ID)
+		})
+		out.Events = slices.CompactFunc(out.Events, func(a,
+			b graph.EdgeEvent) bool {
+			return a.ID == b.ID
+		})
+		if out.Artifacts, err = temporalArtifacts(ctx,
+			m.DB,
+			out.Events); err != nil {
 			fail(err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // ResearchAgentsOf serves GET /admin/api/research/agents: {"agents": [...]}, the agent definitions a research can run (with their loop),
 // for the start dialog of the admin UI.
 func ResearchAgentsOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"agents": m.Agents()})
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"agents": m.Agents()})
 	}
 }
 
 // ResearchAgentDefsOf serves GET /admin/api/research/agent-defs: {"definitions": [...]}, every loaded agent definition in full (prompt,
 // tools, skills, limits, loop settings, schedule), for the definitions modal of the admin UI.
 func ResearchAgentDefsOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"definitions": m.Definitions()})
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"definitions": m.Definitions()})
 	}
 }
 
@@ -660,38 +870,72 @@ type researchInvestigationResponse struct {
 // stop reason, the frontier of questions (in creation order; the tree is given by parent_id), the challenges and the latest notes. A run of
 // the simple loop answers with empty lists.
 func ResearchInvestigationOf(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		ctx := r.Context()
-		run, err := m.Get(ctx, "", id)
+		run, err := m.Get(ctx,
+			"",
+			id)
 		if err != nil {
-			researchFail(w, err, "read the research agent")
+			researchFail(w,
+				err,
+				"read the research agent")
 			return
 		}
-		out := researchInvestigationResponse{RunID: id, Phase: run.Phase, StopReason: run.StopReason, Questions: []InvestigationQuestion{}, Challenges: []InvestigationChallenge{}}
+		out := researchInvestigationResponse{
+			RunID:      id,
+			Phase:      run.Phase,
+			StopReason: run.StopReason,
+			Questions:  []InvestigationQuestion{},
+			Challenges: []InvestigationChallenge{},
+		}
 		loaded, err := m.Ops.Investigate(m.DB).Load(ctx, id)
 		if err != nil {
 			log.WithError(err).WithField("run_id", id).Error("admin: research investigation failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the investigation")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the investigation")
 			return
 		}
 		out.Notes = loaded.NotesText
 		for _, q := range loaded.Frontier.Questions {
 			out.Questions = append(out.Questions, InvestigationQuestion{
-				ID: q.ID, ParentID: q.ParentID, Depth: q.Depth, Kind: string(q.Kind), Question: q.Question, Rationale: q.Rationale,
-				Priority: q.Priority, Status: string(q.Status), Answer: q.Answer, DependsOn: append([]string{}, q.DependsOn...), Attempts: q.AttemptCount(),
+				ID:        q.ID,
+				ParentID:  q.ParentID,
+				Depth:     q.Depth,
+				Kind:      string(q.Kind),
+				Question:  q.Question,
+				Rationale: q.Rationale,
+				Priority:  q.Priority,
+				Status:    string(q.Status),
+				Answer:    q.Answer,
+				DependsOn: append([]string{}, q.DependsOn...),
+				Attempts:  q.AttemptCount(),
 			})
 		}
 		for _, c := range loaded.Challenges {
 			out.Challenges = append(out.Challenges, InvestigationChallenge{
-				ID: c.ID, QuestionID: c.QuestionID, TargetType: string(c.TargetType), TargetID: c.TargetID, Negation: c.Negation,
-				Strategy: string(c.Strategy), ExpectedIfFalse: c.ExpectedIfFalse, Query: c.Query, Status: string(c.Status),
-				Outcome: string(c.Outcome), Evidence: c.Evidence, SourceIDs: append([]string{}, c.SourceIDs...), ResultClaimID: c.ResultClaimID,
+				ID:              c.ID,
+				QuestionID:      c.QuestionID,
+				TargetType:      string(c.TargetType),
+				TargetID:        c.TargetID,
+				Negation:        c.Negation,
+				Strategy:        string(c.Strategy),
+				ExpectedIfFalse: c.ExpectedIfFalse,
+				Query:           c.Query,
+				Status:          string(c.Status),
+				Outcome:         string(c.Outcome),
+				Evidence:        c.Evidence,
+				SourceIDs:       append([]string{}, c.SourceIDs...),
+				ResultClaimID:   c.ResultClaimID,
 			})
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }

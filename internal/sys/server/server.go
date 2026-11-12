@@ -217,12 +217,20 @@ func sidecarBackends(ctx context.Context) ([]sidecar.BackendStatus, error) {
 
 // sidecarOpen sends a request to the sidecar and returns its raw answer (nil function if there is no client: the proxy
 // then answers 503), for the backends' actions in the admin UI.
-func sidecarOpen(ctx context.Context, method, path, rawQuery string, body io.Reader) (*http.Response, error) {
+func sidecarOpen(ctx context.Context,
+	method,
+	path,
+	rawQuery string,
+	body io.Reader) (*http.Response, error) {
 	c := sidecarClient.Load()
 	if c == nil {
 		return nil, errors.New("sidecar not configured")
 	}
-	return c.Open(ctx, method, path, rawQuery, body)
+	return c.Open(ctx,
+		method,
+		path,
+		rawQuery,
+		body)
 }
 
 // sidecarPingTimeout bounds the sidecar health check on startup.
@@ -230,7 +238,8 @@ const sidecarPingTimeout = 5 * time.Second
 
 // connectSidecar pings the sidecar at url (default if empty). It returns the client and true if the sidecar is operating
 // correctly; otherwise it logs a warning and returns a nil client (a true nil interface, so callers can check == nil) and false.
-func connectSidecar(ctx context.Context, url string) (coretraining.Sidecar, bool) {
+func connectSidecar(ctx context.Context,
+	url string) (coretraining.Sidecar, bool) {
 	c := sidecar.New(url)
 	sidecarClient.Store(c)
 	pingCtx, cancel := context.WithTimeout(ctx, sidecarPingTimeout)
@@ -274,21 +283,91 @@ const EvalDBName = "eval"
 // providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model deployers (with none a deployment request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, geoResolver memory_geo.Resolver, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, nil, geoResolver, 0, nil, nil, false, newResearch(ctx, d, llm), d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, nil, extraAdminDBs...)
+func NewHandler(ctx context.Context,
+	d *db.DB,
+	llm memory_core.LLM,
+	emb memory_core.Embedder,
+	jv memory_core.Classifier,
+	ws memory_core.WebSearcher,
+	geoResolver memory_geo.Resolver,
+	providers []memory_core.SeriesProvider,
+	hooks coretraining.Hooks,
+	dirs coretraining.Dirs,
+	ontologyDirs []string,
+	sc coretraining.Sidecar,
+	eval,
+	trainingMode,
+	adminUI bool,
+	adminExts []admin.Extension,
+	extraAdminDBs ...admin.Named) http.Handler {
+	return newMux(ctx,
+		true,
+		nil,
+		geoResolver,
+		0,
+		nil,
+		nil,
+		false,
+		newResearch(ctx,
+			d,
+			llm),
+		d,
+		llm,
+		emb,
+		jv,
+		ws,
+		providers,
+		hooks,
+		dirs,
+		ontologyDirs,
+		sc,
+		eval,
+		trainingMode,
+		adminUI,
+		adminExts,
+		nil,
+		extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, graphEmbedder memory_core.GraphEmbedder, trainingHook memory_core.ClassifyingTrainingHook, mcpEnable bool, research *agent_research.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, prices *ai.PriceTable, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context,
+	standalone bool,
+	auth httputil.Authenticator,
+	geoResolver memory_geo.Resolver,
+	geoRadiusKm float64,
+	graphEmbedder memory_core.GraphEmbedder,
+	trainingHook memory_core.ClassifyingTrainingHook,
+	mcpEnable bool,
+	research *agent_research.Manager,
+	d *db.DB,
+	llm memory_core.LLM,
+	emb memory_core.Embedder,
+	jv memory_core.Classifier,
+	ws memory_core.WebSearcher,
+	providers []memory_core.SeriesProvider,
+	hooks coretraining.Hooks,
+	dirs coretraining.Dirs,
+	ontologyDirs []string,
+	sc coretraining.Sidecar,
+	eval,
+	trainingMode,
+	adminUI bool,
+	adminExts []admin.Extension,
+	prices *ai.PriceTable,
+	extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
-		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("GET /", func(w http.ResponseWriter,
+			r *http.Request) {
 			fmt.Fprintln(w, "gligabao is running")
 		})
-		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("GET /health", func(w http.ResponseWriter,
+			r *http.Request) {
 			if err := d.Ping(r.Context()); err != nil {
-				http.Error(w, "db unavailable", http.StatusServiceUnavailable)
+				http.Error(w,
+					"db unavailable",
+					http.StatusServiceUnavailable)
 				return
 			}
 			fmt.Fprintln(w, "ok")
@@ -297,20 +376,83 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 	}
 	mux.HandleFunc("GET /v1/gb/status", statusHandler(d, sc != nil))
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
-	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
-	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder), api.WithClassifyingTrainingHook(trainingHook), api.WithResearch(research))
+	mgr := memory_remember.NewManager(ctx,
+		d.Relational,
+		llm)
+	api.Register(mux,
+		mgr,
+		d,
+		llm,
+		emb,
+		jv,
+		ws,
+		providers,
+		api.WithOntologyDirs(ontologyDirs),
+		api.WithAuth(auth),
+		api.WithGeoResolver(geoResolver),
+		api.WithGeoRadius(geoRadiusKm),
+		api.WithGraphEmbedder(graphEmbedder),
+		api.WithClassifyingTrainingHook(trainingHook),
+		api.WithResearch(research))
 	if mcpEnable {
-		api.RegisterMCP(mux, mgr, d, llm, emb, jv, ws, providers, buildinfo.Library().Version, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder), api.WithResearch(research))
+		api.RegisterMCP(mux,
+			mgr,
+			d,
+			llm,
+			emb,
+			jv,
+			ws,
+			providers,
+			buildinfo.Library().Version,
+			api.WithGeoResolver(geoResolver),
+			api.WithGeoRadius(geoRadiusKm),
+			api.WithGraphEmbedder(graphEmbedder),
+			api.WithResearch(research))
 	}
 	if eval {
-		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder))
+		api.RegisterEval(mux,
+			mgr,
+			d,
+			llm,
+			emb,
+			jv,
+			ws,
+			providers,
+			api.WithGeoResolver(geoResolver),
+			api.WithGeoRadius(geoRadiusKm),
+			api.WithGraphEmbedder(graphEmbedder))
 	}
-	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
+	dbs := append([]admin.Named{{
+		Name:     "standard",
+		DB:       d.Relational,
+		Vectors:  d.Vector,
+		ImageDir: d.ImageDir,
+	}}, extraAdminDBs...)
 	if trainingMode {
-		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, hooks, sc, llm)
+		registerTraining(ctx,
+			mux,
+			d.Backend,
+			d.Relational,
+			dirs,
+			hooks,
+			sc,
+			llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm, research, api.QueryHandler(d, llm, emb, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder)), prices)
+		registerAdminUI(mux,
+			dbs,
+			geoRadiusKm,
+			sc,
+			adminExts,
+			llm,
+			research,
+			api.QueryHandler(d,
+				llm,
+				emb,
+				api.WithGeoResolver(geoResolver),
+				api.WithGeoRadius(geoRadiusKm),
+				api.WithGraphEmbedder(graphEmbedder)),
+			prices)
 	}
 	return mux
 }
@@ -318,13 +460,18 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 // newResearch makes the manager of the research agents (POST /v1/gb/research), which runs them until ctx is done. They need the Anthropic
 // client: with any other llm (or none) starting a research answers 503 (but for one with the modal runner, which runs with the keys of the
 // Modal app and needs the sidecar).
-func newResearch(ctx context.Context, d *db.DB, llm memory_core.LLM) *agent_research.Manager {
+func newResearch(ctx context.Context,
+	d *db.DB,
+	llm memory_core.LLM) *agent_research.Manager {
 	ops, err := agent_research.OpsFor(d.Backend)
 	if err != nil {
 		log.WithError(err).Fatal("agent research")
 	}
 	client, _ := llm.(*ai.Client)
-	m := agent_research.NewManager(ctx, d.Relational, ops, client)
+	m := agent_research.NewManager(ctx,
+		d.Relational,
+		ops,
+		client)
 	m.UseRemote(sidecarRemote{}) // researches started with runner "modal" run in Modal, through the sidecar
 	m.UseImporter(dbImporter{d}) // and what their agents learned there is loaded into the databases of the server when they end
 	return m
@@ -333,8 +480,10 @@ func newResearch(ctx context.Context, d *db.DB, llm memory_core.LLM) *agent_rese
 // statusHandler serves GET /v1/gb/status: the version of gligabao, whether the database answers ("db") and the sidecar's
 // state (a live check, like the admin UI's, and whether it was active on startup). It answers 503 when the database does not
 // answer; a sidecar that is down is only reported, it does not change the status.
-func statusHandler(d *db.DB, sidecarConfigured bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func statusHandler(d *db.DB,
+	sidecarConfigured bool) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		out := map[string]any{"gligabao": buildinfo.Library(), "commit": buildinfo.Revision(), "status": "ok", "db": "ok"}
 		code := http.StatusOK
 		if err := d.Ping(r.Context()); err != nil {
@@ -345,12 +494,15 @@ func statusHandler(d *db.DB, sidecarConfigured bool) http.HandlerFunc {
 		defer cancel()
 		out["sidecar_up"] = sidecarPing(ctx) == nil
 		out["sidecar_active"] = sidecarConfigured
-		httputil.WriteJSON(w, code, out)
+		httputil.WriteJSON(w,
+			code,
+			out)
 	}
 }
 
 // versionHandler reports the version (and git commit) of gligabao and, if registered, of the embedding program.
-func versionHandler(w http.ResponseWriter, r *http.Request) {
+func versionHandler(w http.ResponseWriter,
+	r *http.Request) {
 	out := map[string]any{"gligabao": buildinfo.Library()}
 	if app, ok := buildinfo.App(); ok {
 		out["app"] = app
@@ -363,8 +515,17 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the deployed models). The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503). Trained models are deployed through hooks.Deployers, after their files are fetched to dirs.ModelDeploy.
-func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, dirs coretraining.Dirs, hooks coretraining.Hooks, sc coretraining.Sidecar, llm memory_core.LLM) {
-	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
+func registerTraining(ctx context.Context,
+	mux *http.ServeMux,
+	backend string,
+	trainingDB *sql.DB,
+	dirs coretraining.Dirs,
+	hooks coretraining.Hooks,
+	sc coretraining.Sidecar,
+	llm memory_core.LLM) {
+	mon := coretraining.NewMonitor(ctx,
+		trainingDB,
+		sc)
 	// The evals and the training data audits are those of internal/evals and internal/training_audits (their own tables).
 	evalStore, err := evals.StoreFor(backend)
 	if err != nil {
@@ -374,7 +535,12 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	if sc != nil {
 		evalInf = sc
 	}
-	evals := evalstraining.NewManager(ctx, trainingDB, evalStore, dirs.Evals, evalInf, llm)
+	evals := evalstraining.NewManager(ctx,
+		trainingDB,
+		evalStore,
+		dirs.Evals,
+		evalInf,
+		llm)
 	var auditInf training_audits.Inferer // likewise nil without a sidecar
 	if sc != nil {
 		auditInf = sc
@@ -383,8 +549,16 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	if err != nil {
 		log.WithError(err).Fatal("training audits")
 	}
-	audits := training_audits.NewManager(ctx, trainingDB, auditOps, dirs.Datasets, auditInf, llm)
-	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB, dirs.Datasets, sc, mon))
+	audits := training_audits.NewManager(ctx,
+		trainingDB,
+		auditOps,
+		dirs.Datasets,
+		auditInf,
+		llm)
+	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB,
+		dirs.Datasets,
+		sc,
+		mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
@@ -400,7 +574,10 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	if f, ok := sc.(coretraining.ModelFileFetcher); ok {
 		fetcher = f
 	}
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/deployments", training.DeployOf(trainingDB, fetcher, hooks.Deployers, dirs.ModelDeploy))
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/deployments", training.DeployOf(trainingDB,
+		fetcher,
+		hooks.Deployers,
+		dirs.ModelDeploy))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/deployments", training.ListDeploymentsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/deployers", training.ListDeployersOf(hooks.Deployers))
 	evalsapi.New(evals).Register(mux, "/v1/gb/training") // the evals, their definitions and the training experiments
@@ -413,7 +590,15 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension, llm memory_core.LLM, research *agent_research.Manager, query http.HandlerFunc, prices *ai.PriceTable) {
+func registerAdminUI(mux *http.ServeMux,
+	dbs []admin.Named,
+	geoRadiusKm float64,
+	sc coretraining.Sidecar,
+	exts []admin.Extension,
+	llm memory_core.LLM,
+	research *agent_research.Manager,
+	query http.HandlerFunc,
+	prices *ai.PriceTable) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -479,20 +664,37 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}/history", admin.EvalCaseHistory(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB, *e.EvalStore))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB, *e.EvalStore, e.TrajectoryDir))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB,
+			*e.EvalStore,
+			e.TrajectoryDir))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e.DB, *e.EvalStore))
 		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request with llm; nil: none can be made).
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB, *e.EvalStore, e.TrajectoryDir, llm, e.EvalRerunner))
-		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e.DB, *e.EvalStore, e.TrajectoryDir, llm))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB,
+			*e.EvalStore,
+			e.TrajectoryDir,
+			llm,
+			e.EvalRerunner))
+		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e.DB,
+			*e.EvalStore,
+			e.TrajectoryDir,
+			llm))
 		// The rerun of a case with other models, recorded in the experiment run of the case run (e.EvalRerunner nil: the server cannot).
-		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/rerun", admin.EvalCaseRunRerun(e.DB, *e.EvalStore, e.EvalRerunner))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, *e.EvalStore, e.TrajectoryDir))
+		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/rerun", admin.EvalCaseRunRerun(e.DB,
+			*e.EvalStore,
+			e.EvalRerunner))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB,
+			*e.EvalStore,
+			e.TrajectoryDir))
 		break
 	}
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
-	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/v1/gb/admin/", http.StatusMovedPermanently)
+	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter,
+		r *http.Request) {
+		http.Redirect(w,
+			r,
+			"/v1/gb/admin/",
+			http.StatusMovedPermanently)
 	})
 }
 
@@ -523,28 +725,44 @@ func openAdminDB(path string) (*sql.DB, error) {
 
 // Run opens the database, starts the server and blocks until ctx is
 // cancelled or SIGINT/SIGTERM is received, then shuts down gracefully.
-func Run(ctx context.Context, opts Options) error {
+func Run(ctx context.Context,
+	opts Options) error {
 	fmt.Fprint(os.Stderr, banner)
 	yellow, reset := "", ""
 	if st, err := os.Stderr.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 && os.Getenv("NO_COLOR") == "" {
 		yellow, reset = "\033[33m", "\033[0m"
 	}
-	fmt.Fprintf(os.Stderr, "\nServer: %s%s%s\n", yellow, serverURL(opts.Addr), reset)
+	fmt.Fprintf(os.Stderr,
+		"\nServer: %s%s%s\n",
+		yellow,
+		serverURL(opts.Addr),
+		reset)
 	if opts.AdminUIenable && adminui.Available() {
-		fmt.Fprintf(os.Stderr, "Admin UI: %s%s%s\n", yellow, adminURL(opts.Addr), reset)
+		fmt.Fprintf(os.Stderr,
+			"Admin UI: %s%s%s\n",
+			yellow,
+			adminURL(opts.Addr),
+			reset)
 	}
 	fmt.Fprintln(os.Stderr)
 
-	handler, closeAll, err := prepare(ctx, opts, true)
+	handler, closeAll, err := prepare(ctx,
+		opts,
+		true)
 	if err != nil {
 		return err
 	}
 	// The remember manager stops, and the databases close, only when Run returns, i.e. after the graceful shutdown has given the
 	// runs in progress their time.
 	defer closeAll()
-	srv := &http.Server{Addr: opts.Addr, Handler: handler}
+	srv := &http.Server{
+		Addr:    opts.Addr,
+		Handler: handler,
+	}
 
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(ctx,
+		syscall.SIGINT,
+		syscall.SIGTERM)
 	defer stop()
 
 	errCh := make(chan error, 1)
@@ -593,19 +811,27 @@ var mountMethods = []string{http.MethodGet, http.MethodPost, http.MethodPut, htt
 // gligabao's own "/", "/health" and "/version" routes are not registered, they belong to the host. wrap, if not nil, wraps the
 // handler (e.g. with the host's authentication) before it is registered. The Addr option is not used. Mount returns an error,
 // not a panic, if the host already has a conflicting route under "/v1/gb/".
-func Mount(ctx context.Context, opts Options, mux *http.ServeMux, wrap func(http.Handler) http.Handler) (release func(), err error) {
+func Mount(ctx context.Context,
+	opts Options,
+	mux *http.ServeMux,
+	wrap func(http.Handler) http.Handler) (release func(), err error) {
 	if mux == nil {
 		return nil, errors.New("gligabao: mount: mux is nil")
 	}
-	handler, closeAll, err := prepare(ctx, opts, false)
+	handler, closeAll, err := prepare(ctx,
+		opts,
+		false)
 	if err != nil {
 		return nil, err
 	}
 	var released atomic.Bool
 	inner := handler
-	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler = http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if released.Load() {
-			http.Error(w, "gligabao is shut down", http.StatusServiceUnavailable)
+			http.Error(w,
+				"gligabao is shut down",
+				http.StatusServiceUnavailable)
 			return
 		}
 		inner.ServeHTTP(w, r)
@@ -621,7 +847,9 @@ func Mount(ctx context.Context, opts Options, mux *http.ServeMux, wrap func(http
 		})
 	}
 	for _, m := range mountMethods {
-		if err := register(mux, m+" "+MountPrefix, handler); err != nil {
+		if err := register(mux,
+			m+" "+MountPrefix,
+			handler); err != nil {
 			release() // routes registered before the conflict stay on the mux, and answer 503
 			return nil, err
 		}
@@ -635,10 +863,14 @@ func Mount(ctx context.Context, opts Options, mux *http.ServeMux, wrap func(http
 }
 
 // register registers handler on mux under pattern; ServeMux panics on a conflicting route, which becomes an error here.
-func register(mux *http.ServeMux, pattern string, handler http.Handler) (err error) {
+func register(mux *http.ServeMux,
+	pattern string,
+	handler http.Handler) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("gligabao: mount: cannot register %q on the mux: %v", pattern, r)
+			err = fmt.Errorf("gligabao: mount: cannot register %q on the mux: %v",
+				pattern,
+				r)
 		}
 	}()
 	mux.Handle(pattern, handler)
@@ -650,7 +882,9 @@ func register(mux *http.ServeMux, pattern string, handler http.Handler) (err err
 // prepare opens the databases, builds everything the server needs and returns its handler (the routes of NewHandler) and
 // a function that releases it all (the remember manager, then the databases), which the caller must call when done. Nothing is
 // listened on. On an error everything already set up is released.
-func prepare(ctx context.Context, opts Options, standalone bool) (handler http.Handler, closeAll func(), err error) {
+func prepare(ctx context.Context,
+	opts Options,
+	standalone bool) (handler http.Handler, closeAll func(), err error) {
 	var cleanups []func() // run in reverse order
 	release := func() {
 		for i := len(cleanups) - 1; i >= 0; i-- {
@@ -769,7 +1003,10 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	for _, h := range inferenceHooks {
 		log.WithFields(log.Fields{"hook": h.Name, "model": h.Model}).Info("trained model inference hook registered: prompts of the model bypass the sidecar and run on it")
 	}
-	hooks := coretraining.Hooks{Deployers: deployers, Inference: inferenceHooks}
+	hooks := coretraining.Hooks{
+		Deployers: deployers,
+		Inference: inferenceHooks,
+	}
 
 	adminExts, err := admin.ResolveExtensions(opts.AdminExtensions)
 	if err != nil {
@@ -795,7 +1032,9 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	}
 
 	// The embedder is required: remember embeds what it stores with it and query embeds the question (similarity retrieval).
-	emb, err := ai.NewEmbedder(opts.OpenAIKey, ai.WithEmbedPrices(ai.NewPriceTable(opts.Prices)), ai.WithEmbedDimensions(database.EmbeddingDimensions))
+	emb, err := ai.NewEmbedder(opts.OpenAIKey,
+		ai.WithEmbedPrices(ai.NewPriceTable(opts.Prices)),
+		ai.WithEmbedDimensions(database.EmbeddingDimensions))
 	if err != nil {
 		return nil, nil, fmt.Errorf("embedder: %w (set openai_api_key or OPENAI_API_KEY)", err)
 	}
@@ -857,7 +1096,9 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	// The research agents are stopped with it, and given the time to write the end of their runs before the databases close.
-	research := newResearch(mgrCtx, database, llm)
+	research := newResearch(mgrCtx,
+		database,
+		llm)
 	research.MaxCostUSD = opts.ResearchMaxCostUSD
 	research.NotesDir = opts.ResearchNotesDir
 	research.InitSandbox(opts.Monty)
@@ -884,7 +1125,15 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 			if extra[i].Name != EvalDBName || extra[i].EvalStore == nil {
 				continue
 			}
-			rr := opts.EvalRerunner(EvalRerunEnv{Ctx: mgrCtx, DBPath: opts.EvalDBPath, LLM: llm, Embedder: emb, WebSearch: ws, Geo: geoResolver, Prices: ai.NewPriceTable(opts.Prices)})
+			rr := opts.EvalRerunner(EvalRerunEnv{
+				Ctx:       mgrCtx,
+				DBPath:    opts.EvalDBPath,
+				LLM:       llm,
+				Embedder:  emb,
+				WebSearch: ws,
+				Geo:       geoResolver,
+				Prices:    ai.NewPriceTable(opts.Prices),
+			})
 			if rr == nil {
 				break
 			}
@@ -901,7 +1150,31 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 			reruns.Wait()
 		}
 	})
-	mux := newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.GraphEmbedder, opts.ClassifyingTrainingHook, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, ai.NewPriceTable(opts.Prices), extra...)
+	mux := newMux(mgrCtx,
+		standalone,
+		opts.Auth,
+		geoResolver,
+		opts.GeoRadiusKm,
+		opts.GraphEmbedder,
+		opts.ClassifyingTrainingHook,
+		opts.MCPEnable,
+		research,
+		database,
+		llm,
+		emb,
+		jv,
+		ws,
+		providers,
+		hooks,
+		dirs,
+		opts.OntologyDirs,
+		sc,
+		opts.EvalModeEnable,
+		opts.TrainingModeEnable,
+		opts.AdminUIenable,
+		adminExts,
+		ai.NewPriceTable(opts.Prices),
+		extra...)
 	// The agents that have a schedule start running by it now that their knowledge base is set up (by newMux). They stop with mgrCtx.
 	if n := research.RunSchedules(); n > 0 {
 		log.Infof("agent research: %d agent(s) run on a schedule", n)
@@ -911,7 +1184,9 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 
 // newJev builds the Jev client from the options.
 func newJev(opts Options) (*jev.Client, error) {
-	return jev.New(opts.JevKey, jev.WithBaseURL(opts.JevBaseURL), jev.WithModel(opts.JevModel))
+	return jev.New(opts.JevKey,
+		jev.WithBaseURL(opts.JevBaseURL),
+		jev.WithModel(opts.JevModel))
 }
 
 func jevModel(opts Options) string {

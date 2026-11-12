@@ -64,11 +64,27 @@ type QueryRun struct {
 }
 
 // NewQueryRun returns a run that has just started, all of whose stages are not started.
-func NewQueryRun(userID, dataset, question, sessionID string, params map[string]any, startedAt time.Time) QueryRun {
-	r := QueryRun{UserID: userID, Dataset: dataset, Question: question, SessionID: sessionID, Params: params, Status: RememberStarted,
-		StartedAt: startedAt, Stages: make(map[string]QueryStage, len(QueryStages))}
+func NewQueryRun(userID,
+	dataset,
+	question,
+	sessionID string,
+	params map[string]any,
+	startedAt time.Time) QueryRun {
+	r := QueryRun{
+		UserID:    userID,
+		Dataset:   dataset,
+		Question:  question,
+		SessionID: sessionID,
+		Params:    params,
+		Status:    RememberStarted,
+		StartedAt: startedAt,
+		Stages:    make(map[string]QueryStage, len(QueryStages)),
+	}
 	for _, s := range QueryStages {
-		r.Stages[s.Name] = QueryStage{Status: RememberNotStarted, InferenceIDs: []int64{}}
+		r.Stages[s.Name] = QueryStage{
+			Status:       RememberNotStarted,
+			InferenceIDs: []int64{},
+		}
 	}
 	return r
 }

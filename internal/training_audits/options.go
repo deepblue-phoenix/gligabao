@@ -49,7 +49,10 @@ func (p RunParams) Params() core.Params {
 
 // Resolve checks the options and returns the engine's config and the params to store. The error is safe to show.
 func (o Options) Resolve() (Config, RunParams, error) {
-	cfg, err := Config{BatchSize: o.BatchSize, JudgeModel: o.JudgeModel}.Normalize()
+	cfg, err := Config{
+		BatchSize:  o.BatchSize,
+		JudgeModel: o.JudgeModel,
+	}.Normalize()
 	switch {
 	case err != nil:
 		return cfg, RunParams{}, err
@@ -60,7 +63,13 @@ func (o Options) Resolve() (Config, RunParams, error) {
 	case o.Temperature != nil && (*o.Temperature <= 0 || *o.Temperature > 2):
 		return cfg, RunParams{}, errors.New("temperature must be above 0 and at most 2")
 	}
-	p := RunParams{BatchSize: cfg.BatchSize, MaxTokens: o.MaxTokens, Temperature: defaultTemperature, Limit: o.Limit, JudgeModel: cfg.JudgeModel}
+	p := RunParams{
+		BatchSize:   cfg.BatchSize,
+		MaxTokens:   o.MaxTokens,
+		Temperature: defaultTemperature,
+		Limit:       o.Limit,
+		JudgeModel:  cfg.JudgeModel,
+	}
 	if p.MaxTokens == 0 {
 		p.MaxTokens = defaultMaxTokens
 	}

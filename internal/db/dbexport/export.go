@@ -65,52 +65,84 @@ type Options struct {
 // images are not part of that transaction.
 //
 // On an error the archive is incomplete: use WriteFile to get it written only when it is whole.
-func Write(ctx context.Context, w io.Writer, src Source, opts Options) (*Manifest, error) {
+func Write(ctx context.Context,
+	w io.Writer,
+	src Source,
+	opts Options) (*Manifest, error) {
 	if src.Backend == config.DBBackendSQLite && src.Relational == nil {
 		return nil, errors.New("dbexport: the source has no relational database")
 	}
 	for _, e := range opts.Extra {
 		if err := checkRelative(e.Name); err != nil {
-			return nil, fmt.Errorf("dbexport: extra file %q: %w", e.Name, err)
+			return nil, fmt.Errorf("dbexport: extra file %q: %w",
+				e.Name,
+				err)
 		}
 	}
 
 	m := &Manifest{
-		Format: Format, FormatVersion: FormatVersion, Source: opts.Source, Version: opts.Version, CreatedAt: time.Now().UTC().Truncate(time.Second),
-		Backend: src.Backend, VectorStore: src.VectorStore, EmbeddingDimensions: src.EmbeddingDimensions,
-		Tables: []Table{}, Vectors: []VectorDataset{}, Images: []ImageFile{}, Skipped: []Skipped{}, Extra: []string{},
+		Format:              Format,
+		FormatVersion:       FormatVersion,
+		Source:              opts.Source,
+		Version:             opts.Version,
+		CreatedAt:           time.Now().UTC().Truncate(time.Second),
+		Backend:             src.Backend,
+		VectorStore:         src.VectorStore,
+		EmbeddingDimensions: src.EmbeddingDimensions,
+		Tables:              []Table{},
+		Vectors:             []VectorDataset{},
+		Images:              []ImageFile{},
+		Skipped:             []Skipped{},
+		Extra:               []string{},
 	}
 	zw := zip.NewWriter(w)
 
 	if src.Backend == config.DBBackendSQLite {
-		if err := writeTables(ctx, zw, src.Relational, m); err != nil {
+		if err := writeTables(ctx,
+			zw,
+			src.Relational,
+			m); err != nil {
 			return nil, err
 		}
 	} else {
 		m.Skipped = append(m.Skipped, Skipped{"tables", fmt.Sprintf("the relational database is %s, a remote one: its data is persisted there", src.Backend)})
 	}
 	if exporter, ok := src.Vector.(vector.Exporter); ok {
-		if err := writeVectors(ctx, zw, exporter, m); err != nil {
+		if err := writeVectors(ctx,
+			zw,
+			exporter,
+			m); err != nil {
 			return nil, err
 		}
 	} else {
 		m.Skipped = append(m.Skipped, Skipped{"vectors", fmt.Sprintf("the vector store is %s, a remote one: its data is persisted there", src.VectorStore)})
 	}
-	if err := writeImages(ctx, zw, src.ImageDir, m); err != nil {
+	if err := writeImages(ctx,
+		zw,
+		src.ImageDir,
+		m); err != nil {
 		return nil, err
 	}
 	for _, e := range opts.Extra {
-		if err := addFile(zw, extraDir+e.Name, zip.Deflate, e.Data); err != nil {
+		if err := addFile(zw,
+			extraDir+e.Name,
+			zip.Deflate,
+			e.Data); err != nil {
 			return nil, err
 		}
 		m.Extra = append(m.Extra, e.Name)
 	}
 
-	body, err := json.MarshalIndent(m, "", "  ")
+	body, err := json.MarshalIndent(m,
+		"",
+		"  ")
 	if err != nil {
 		return nil, fmt.Errorf("dbexport: manifest: %w", err)
 	}
-	if err := addFile(zw, ManifestFile, zip.Deflate, append(body, '\n')); err != nil {
+	if err := addFile(zw,
+		ManifestFile,
+		zip.Deflate,
+		append(body, '\n')); err != nil {
 		return nil, err
 	}
 	if err := zw.Close(); err != nil {
@@ -121,7 +153,10 @@ func Write(ctx context.Context, w io.Writer, src Source, opts Options) (*Manifes
 
 // WriteFile is Write into the file at path: it is written to a temporary file next to it that replaces it only when the archive is
 // whole, so a failed export leaves nothing behind.
-func WriteFile(ctx context.Context, path string, src Source, opts Options) (*Manifest, error) {
+func WriteFile(ctx context.Context,
+	path string,
+	src Source,
+	opts Options) (*Manifest, error) {
 	if dir := filepath.Dir(path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("dbexport: %w", err)
@@ -133,7 +168,10 @@ func WriteFile(ctx context.Context, path string, src Source, opts Options) (*Man
 	}
 	defer os.Remove(tmp.Name()) // no-op after the rename
 	bw := bufio.NewWriterSize(tmp, 1<<20)
-	m, err := Write(ctx, bw, src, opts)
+	m, err := Write(ctx,
+		bw,
+		src,
+		opts)
 	if err == nil {
 		err = bw.Flush()
 	}
@@ -162,22 +200,41 @@ func checkRelative(name string) error {
 }
 
 // addFile adds an entry with the given content.
-func addFile(zw *zip.Writer, name string, method uint16, data []byte) error {
-	w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: method, Modified: time.Now().UTC()})
+func addFile(zw *zip.Writer,
+	name string,
+	method uint16,
+	data []byte) error {
+	w, err := zw.CreateHeader(&zip.FileHeader{
+		Name:     name,
+		Method:   method,
+		Modified: time.Now().UTC(),
+	})
 	if err != nil {
-		return fmt.Errorf("dbexport: add %s: %w", name, err)
+		return fmt.Errorf("dbexport: add %s: %w",
+			name,
+			err)
 	}
 	if _, err := w.Write(data); err != nil {
-		return fmt.Errorf("dbexport: add %s: %w", name, err)
+		return fmt.Errorf("dbexport: add %s: %w",
+			name,
+			err)
 	}
 	return nil
 }
 
 // streamFile starts an entry (compressed) and returns a buffered writer to it; call the returned flush when done.
-func streamFile(zw *zip.Writer, name string, method uint16) (*bufio.Writer, error) {
-	w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: method, Modified: time.Now().UTC()})
+func streamFile(zw *zip.Writer,
+	name string,
+	method uint16) (*bufio.Writer, error) {
+	w, err := zw.CreateHeader(&zip.FileHeader{
+		Name:     name,
+		Method:   method,
+		Modified: time.Now().UTC(),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("dbexport: add %s: %w", name, err)
+		return nil, fmt.Errorf("dbexport: add %s: %w",
+			name,
+			err)
 	}
 	return bufio.NewWriterSize(w, 256<<10), nil
 }
@@ -185,7 +242,10 @@ func streamFile(zw *zip.Writer, name string, method uint16) (*bufio.Writer, erro
 //---------------------------------------------------------------------------------------------
 // Tables
 
-func writeTables(ctx context.Context, zw *zip.Writer, rel *sql.DB, m *Manifest) error {
+func writeTables(ctx context.Context,
+	zw *zip.Writer,
+	rel *sql.DB,
+	m *Manifest) error {
 	tx, err := rel.BeginTx(ctx, nil) // one transaction for all the tables
 	if err != nil {
 		return fmt.Errorf("dbexport: begin: %w", err)
@@ -207,15 +267,24 @@ func writeTables(ctx context.Context, zw *zip.Writer, rel *sql.DB, m *Manifest) 
 		if t.ForeignKeys == nil {
 			t.ForeignKeys = []ForeignKey{}
 		}
-		w, err := streamFile(zw, t.File, zip.Deflate)
+		w, err := streamFile(zw,
+			t.File,
+			zip.Deflate)
 		if err != nil {
 			return err
 		}
-		if t.Rows, err = dumpTable(ctx, tx, t, w); err != nil {
-			return fmt.Errorf("dbexport: table %s: %w", t.Name, err)
+		if t.Rows, err = dumpTable(ctx,
+			tx,
+			t,
+			w); err != nil {
+			return fmt.Errorf("dbexport: table %s: %w",
+				t.Name,
+				err)
 		}
 		if err := w.Flush(); err != nil {
-			return fmt.Errorf("dbexport: table %s: %w", t.Name, err)
+			return fmt.Errorf("dbexport: table %s: %w",
+				t.Name,
+				err)
 		}
 		m.Tables = append(m.Tables, t)
 	}
@@ -223,7 +292,10 @@ func writeTables(ctx context.Context, zw *zip.Writer, rel *sql.DB, m *Manifest) 
 }
 
 // dumpTable writes the rows of the table to w as JSON lines, in primary-key order, and returns how many there are.
-func dumpTable(ctx context.Context, tx *sql.Tx, t Table, w io.Writer) (int64, error) {
+func dumpTable(ctx context.Context,
+	tx *sql.Tx,
+	t Table,
+	w io.Writer) (int64, error) {
 	if len(t.Columns) == 0 {
 		return 0, nil
 	}
@@ -257,7 +329,9 @@ func dumpTable(ctx context.Context, tx *sql.Tx, t Table, w io.Writer) (int64, er
 		ptrs[i] = &vals[i]
 	}
 	var n int64
-	line := make([]byte, 0, 1024)
+	line := make([]byte,
+		0,
+		1024)
 	for rows.Next() {
 		if err := rows.Scan(ptrs...); err != nil {
 			return n, err
@@ -269,11 +343,15 @@ func dumpTable(ctx context.Context, tx *sql.Tx, t Table, w io.Writer) (int64, er
 			}
 			enc, err := encodeValue(v)
 			if err != nil {
-				return n, fmt.Errorf("column %s: %w", t.Columns[i].Name, err)
+				return n, fmt.Errorf("column %s: %w",
+					t.Columns[i].Name,
+					err)
 			}
 			line = append(append(line, names[i]...), enc...)
 		}
-		line = append(line, '}', '\n')
+		line = append(line,
+			'}',
+			'\n')
 		if _, err := w.Write(line); err != nil {
 			return n, err
 		}
@@ -304,7 +382,9 @@ func encodeValue(v any) ([]byte, error) {
 		}
 		return json.Marshal(x)
 	case int64:
-		return strconv.AppendInt(nil, x, 10), nil
+		return strconv.AppendInt(nil,
+			x,
+			10), nil
 	default:
 		return json.Marshal(v)
 	}
@@ -320,7 +400,10 @@ type vectorLine struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-func writeVectors(ctx context.Context, zw *zip.Writer, e vector.Exporter, m *Manifest) error {
+func writeVectors(ctx context.Context,
+	zw *zip.Writer,
+	e vector.Exporter,
+	m *Manifest) error {
 	datasets, err := e.Datasets(ctx)
 	if err != nil {
 		return fmt.Errorf("dbexport: list the vector datasets: %w", err)
@@ -328,24 +411,38 @@ func writeVectors(ctx context.Context, zw *zip.Writer, e vector.Exporter, m *Man
 	used := map[string]bool{}
 	for _, name := range datasets {
 		file := vectorsDir + uniqueName(vectorFileName(name), used) + ".jsonl"
-		w, err := streamFile(zw, file, zip.Deflate)
+		w, err := streamFile(zw,
+			file,
+			zip.Deflate)
 		if err != nil {
 			return err
 		}
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
 		var count int64
-		err = e.Export(ctx, name, func(v vector.Vector) error {
-			count++
-			return enc.Encode(vectorLine{ID: v.ID, Values: v.Values, Metadata: v.Metadata})
-		})
+		err = e.Export(ctx,
+			name,
+			func(v vector.Vector) error {
+				count++
+				return enc.Encode(vectorLine{
+					ID:       v.ID,
+					Values:   v.Values,
+					Metadata: v.Metadata,
+				})
+			})
 		if err == nil {
 			err = w.Flush()
 		}
 		if err != nil {
-			return fmt.Errorf("dbexport: vector dataset %q: %w", name, err)
+			return fmt.Errorf("dbexport: vector dataset %q: %w",
+				name,
+				err)
 		}
-		vd := VectorDataset{Name: name, File: file, Count: count}
+		vd := VectorDataset{
+			Name:  name,
+			File:  file,
+			Count: count,
+		}
 		if id, idx, ok := memory_dataset.ParseVectorDataset(name); ok {
 			vd.DatasetID, vd.Index = &id, string(idx)
 		}
@@ -363,7 +460,8 @@ func vectorFileName(dataset string) string {
 }
 
 // uniqueName is name, or name-2, name-3, ... if it is used already; it marks the one it returns as used.
-func uniqueName(name string, used map[string]bool) string {
+func uniqueName(name string,
+	used map[string]bool) string {
 	n := name
 	for i := 2; used[n]; i++ {
 		n = name + "-" + strconv.Itoa(i)
@@ -375,7 +473,10 @@ func uniqueName(name string, used map[string]bool) string {
 //---------------------------------------------------------------------------------------------
 // Images
 
-func writeImages(ctx context.Context, zw *zip.Writer, dir string, m *Manifest) error {
+func writeImages(ctx context.Context,
+	zw *zip.Writer,
+	dir string,
+	m *Manifest) error {
 	if dir == "" {
 		return nil
 	}
@@ -383,7 +484,9 @@ func writeImages(ctx context.Context, zw *zip.Writer, dir string, m *Manifest) e
 		return nil // nothing was ever stored: the directory is created with the first image
 	}
 	var files []string
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(p string,
+		d fs.DirEntry,
+		err error) error {
 		if err != nil {
 			return err
 		}
@@ -405,23 +508,37 @@ func writeImages(ctx context.Context, zw *zip.Writer, dir string, m *Manifest) e
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		size, err := copyImage(zw, imagesDir+rel, filepath.Join(dir, filepath.FromSlash(rel)))
+		size, err := copyImage(zw,
+			imagesDir+rel,
+			filepath.Join(dir, filepath.FromSlash(rel)))
 		if err != nil {
-			return fmt.Errorf("dbexport: image %s: %w", rel, err)
+			return fmt.Errorf("dbexport: image %s: %w",
+				rel,
+				err)
 		}
-		m.Images = append(m.Images, ImageFile{Path: rel, Size: size, File: imagesDir + rel})
+		m.Images = append(m.Images, ImageFile{
+			Path: rel,
+			Size: size,
+			File: imagesDir + rel,
+		})
 	}
 	return nil
 }
 
 // copyImage adds the file at src as the entry name, stored as it is (images are compressed already).
-func copyImage(zw *zip.Writer, name, src string) (int64, error) {
+func copyImage(zw *zip.Writer,
+	name,
+	src string) (int64, error) {
 	f, err := os.Open(src)
 	if err != nil {
 		return 0, err
 	}
 	defer f.Close()
-	w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store, Modified: time.Now().UTC()})
+	w, err := zw.CreateHeader(&zip.FileHeader{
+		Name:     name,
+		Method:   zip.Store,
+		Modified: time.Now().UTC(),
+	})
 	if err != nil {
 		return 0, err
 	}

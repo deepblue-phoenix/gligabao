@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-func decodeSeries(t *testing.T, js string) []SeriesSpec {
+func decodeSeries(t *testing.T,
+	js string) []SeriesSpec {
 	t.Helper()
 	var s []SeriesSpec
 	if err := json.Unmarshal([]byte(js), &s); err != nil {
@@ -34,15 +35,22 @@ func TestResolveSeries(t *testing.T) {
 	a := s.Anchors
 	if a[0].Entity.Name != "Apple" || a[0].Entity.Type != "organization" || a[0].OnUnmatched != "create" ||
 		a[1].Edge.Relation != "works_at" || a[1].OnUnmatched != "ignore" || a[2].OnUnmatched != "error" {
-		t.Errorf("anchors: %+v %+v %+v", a[0], a[1], a[2])
+		t.Errorf("anchors: %+v %+v %+v",
+			a[0],
+			a[1],
+			a[2])
 	}
 	// Resolving a resolved series changes nothing.
 	again, err := ResolveSeries(out, true)
 	if err != nil || len(again[0].Points) != 2 || again[0].Anchors[0].OnUnmatched != "create" {
-		t.Errorf("idempotence: %+v %v", again, err)
+		t.Errorf("idempotence: %+v %v",
+			again,
+			err)
 	}
 	if out, err := ResolveSeries(nil, true); out != nil || err != nil {
-		t.Errorf("nil: %v %v", out, err)
+		t.Errorf("nil: %v %v",
+			out,
+			err)
 	}
 }
 
@@ -80,7 +88,9 @@ func TestResolveSeriesInvalid(t *testing.T) {
 		"one-time window": `[{"key":"k",` + pt + `,"anchors":[{"entity":{"name":"a"},"window":["2025-01-01T00:00:00Z"]}]}]`,
 	} {
 		if _, err := ResolveSeries(decodeSeries(t, js), true); !errors.Is(err, ErrInvalidSeries) {
-			t.Errorf("%s: err = %v", name, err)
+			t.Errorf("%s: err = %v",
+				name,
+				err)
 		}
 	}
 	// "artifact" needs an artifact to anchor to.

@@ -16,16 +16,22 @@ func TestLoadDataset(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := "{\"instruction\":\"q0\",\"output\":\"a0\"}\n\n{\"instruction\":\"q1\",\"input\":\"ctx\",\"output\":\"a1\"}\n"
-	if err := os.WriteFile(filepath.Join(sub, "data.jsonl"), []byte(data), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sub, "data.jsonl"),
+		[]byte(data),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sub, "dataset.toml"), []byte("name = \"mine\"\nfile = \"data.jsonl\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sub, "dataset.toml"),
+		[]byte("name = \"mine\"\nfile = \"data.jsonl\"\n"),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	ds, err := training_audits.LoadDataset([]string{dir}, "mine.jsonl")
 	if err != nil || ds.Name != "mine" || len(ds.SHA256) != 64 || len(ds.Examples) != 2 {
-		t.Fatalf("%+v %v", ds, err)
+		t.Fatalf("%+v %v",
+			ds,
+			err)
 	}
 	if got := ds.Examples[1].Prompt(); got != "q1\n\nctx" {
 		t.Errorf("prompt %q", got)
@@ -35,7 +41,10 @@ func TestLoadDataset(t *testing.T) {
 		{"deleted.jsonl", "not in the training datasets directory"},
 	} {
 		if _, err := training_audits.LoadDataset([]string{dir}, tc.dataset); err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("dataset %q: %v, want %q", tc.dataset, err, tc.want)
+			t.Errorf("dataset %q: %v, want %q",
+				tc.dataset,
+				err,
+				tc.want)
 		}
 	}
 }
@@ -48,7 +57,10 @@ func TestParseExamples(t *testing.T) {
 		{"{\"instruction\":\"\xff\"}", "UTF-8"},
 	} {
 		if _, err := training_audits.ParseExamples([]byte(tc.in)); err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("%q: %v, want %q", tc.in, err, tc.want)
+			t.Errorf("%q: %v, want %q",
+				tc.in,
+				err,
+				tc.want)
 		}
 	}
 }

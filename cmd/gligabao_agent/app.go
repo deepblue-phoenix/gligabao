@@ -37,8 +37,16 @@ type app struct {
 
 // openApp opens the databases described by cfg (the SQLite file at sqlitePath, or its default) and builds the app over them. llm
 // runs the agents and the knowledge base's own model calls; emb embeds. Call close when done (after the research ended).
-func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory_core.Embedder, sqlitePath, vectorDir string) (*app, error) {
-	dbCfg := db.ConfigFrom(cfg, sqlitePath, vectorDir, "")
+func openApp(ctx context.Context,
+	cfg *config.Config,
+	llm *ai.Client,
+	emb memory_core.Embedder,
+	sqlitePath,
+	vectorDir string) (*app, error) {
+	dbCfg := db.ConfigFrom(cfg,
+		sqlitePath,
+		vectorDir,
+		"")
 	dbCfg.Geo = cfg.Geo
 	dbCfg.Models = ai.SupportedModels(ai.NewPriceTable(cfg.AIPrices()))
 	// Not dbfull: the tables of training and evals are not created here, only those of the research runs next to the knowledge base.
@@ -64,11 +72,27 @@ func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory
 	queryOpts := []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithGeoResolver(geo), memory_core.WithGeoRadius(cfg.GeoRadiusKm)}
 
 	mgrCtx, stop := context.WithCancel(ctx)
-	a := &app{database: database, stop: stop}
-	a.remember = memory_remember.NewManager(mgrCtx, database.Relational, llm)
-	a.mem = &agent_memory.Memory{Remember: a.remember, DB: database.Relational, LLM: llm, RememberOpts: rememberOpts, QueryOpts: queryOpts, ErrSink: ops.ErrSink(database.Relational)}
+	a := &app{
+		database: database,
+		stop:     stop,
+	}
+	a.remember = memory_remember.NewManager(mgrCtx,
+		database.Relational,
+		llm)
+	a.mem = &agent_memory.Memory{
+		Remember:     a.remember,
+		DB:           database.Relational,
+		LLM:          llm,
+		RememberOpts: rememberOpts,
+		QueryOpts:    queryOpts,
+		ErrSink:      ops.ErrSink(database.Relational),
+	}
 	// KeepActiveRuns: the runs that are running in this database belong to other processes (a server, other runs of this binary).
-	a.research = agent_research.NewManager(mgrCtx, database.Relational, ops, llm, agent_research.KeepActiveRuns())
+	a.research = agent_research.NewManager(mgrCtx,
+		database.Relational,
+		ops,
+		llm,
+		agent_research.KeepActiveRuns())
 	a.research.InitSandbox(monty.Config{}) // env: GLIGABAO_MONTY_PYTHON, MONTY_BIN
 	a.research.UseMemory(a.mem)
 	return a, nil
@@ -90,19 +114,28 @@ func (a *app) close() {
 // PostgreSQL database or a Pinecone index is remote and persists its data itself: it is left out (the manifest says so). extra
 // are more files for the archive (the ATIF trajectory). Call it when the agents are over (it waits for them and for the remember calls
 // that were queued anyway); the export does not need the context to be alive, so that a research that was stopped can be exported too.
-func (a *app) fullExport(ctx context.Context, path string, extra ...dbexport.Extra) (*dbexport.Manifest, error) {
+func (a *app) fullExport(ctx context.Context,
+	path string,
+	extra ...dbexport.Extra) (*dbexport.Manifest, error) {
 	a.research.Wait()
 	if err := a.mem.Drain(ctx); err != nil {
 		log.WithError(err).Warn("export: some text that was queued for the knowledge base was not absorbed")
 	}
-	return dbexport.WriteFile(context.WithoutCancel(ctx), path, dbexport.Source{
-		Relational:          a.database.Relational,
-		Backend:             a.database.Backend,
-		Vector:              a.database.Vector,
-		VectorStore:         a.database.VectorStore,
-		EmbeddingDimensions: a.database.EmbeddingDimensions,
-		ImageDir:            a.database.ImageDir,
-	}, dbexport.Options{Source: "gligabao_agent", Version: version, Extra: extra})
+	return dbexport.WriteFile(context.WithoutCancel(ctx),
+		path,
+		dbexport.Source{
+			Relational:          a.database.Relational,
+			Backend:             a.database.Backend,
+			Vector:              a.database.Vector,
+			VectorStore:         a.database.VectorStore,
+			EmbeddingDimensions: a.database.EmbeddingDimensions,
+			ImageDir:            a.database.ImageDir,
+		},
+		dbexport.Options{
+			Source:  "gligabao_agent",
+			Version: version,
+			Extra:   extra,
+		})
 }
 
 // captureTrajectory makes the agents of the researches started from now on record ATIF trajectories (the ones of the sub-agents merged
@@ -110,7 +143,8 @@ func (a *app) fullExport(ctx context.Context, path string, extra ...dbexport.Ext
 func (a *app) captureTrajectory() func() *atif.Trajectory {
 	var mu sync.Mutex
 	var got *atif.Trajectory
-	a.research.UseTrajectories(func(_ int64, t *atif.Trajectory) {
+	a.research.UseTrajectories(func(_ int64,
+		t *atif.Trajectory) {
 		mu.Lock()
 		got = t
 		mu.Unlock()
@@ -146,40 +180,63 @@ func (o outcome) totals() (steps, toolCalls, in, out int, cost float64) {
 // runResearch starts an agent on opts.Topic and returns when it, its sub-agents and the remember calls it made without waiting are over
 // (or ctx is done, which fails the agents). With state or usage set, they are called as the agents go (see followStates). The error
 // is one of starting the research; how it went is in the Root run (Status, Report, Error).
-func (a *app) runResearch(ctx context.Context, userID string, opts agent_research.Options, state func(stateEvent), usage func(totals)) (*outcome, error) {
-	root, err := a.research.Start(ctx, userID, opts)
+func (a *app) runResearch(ctx context.Context,
+	userID string,
+	opts agent_research.Options,
+	state func(stateEvent),
+	usage func(totals)) (*outcome, error) {
+	root, err := a.research.Start(ctx,
+		userID,
+		opts)
 	if err != nil {
 		return nil, err
 	}
 	var stopProgress func()
 	if state != nil || usage != nil {
-		stopProgress = a.followStates(ctx, userID, root.ID, state, usage)
+		stopProgress = a.followStates(ctx,
+			userID,
+			root.ID,
+			state,
+			usage)
 	}
 	a.research.Wait()
-	out := &outcome{DrainErr: a.mem.Drain(ctx)}
+	out := &outcome{
+		DrainErr: a.mem.Drain(ctx),
+	}
 	if stopProgress != nil {
 		stopProgress()
 	}
 	dbCtx := context.WithoutCancel(ctx) // the runs are ended and recorded even if ctx is done
-	run, err := a.research.Get(dbCtx, userID, root.ID)
+	run, err := a.research.Get(dbCtx,
+		userID,
+		root.ID)
 	if err != nil {
 		return nil, err
 	}
 	out.Root = *run
-	if out.Kids, err = a.subagents(dbCtx, userID, root.ID); err != nil {
+	if out.Kids, err = a.subagents(dbCtx,
+		userID,
+		root.ID); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
 // subagents returns the runs of the sub-agents of run id, and theirs, at every depth.
-func (a *app) subagents(ctx context.Context, userID string, id int64) ([]core.Run, error) {
+func (a *app) subagents(ctx context.Context,
+	userID string,
+	id int64) ([]core.Run, error) {
 	var all []core.Run
 	queue := []int64{id}
 	for len(queue) > 0 {
 		parent := queue[0]
 		queue = queue[1:]
-		kids, err := a.research.List(ctx, userID, agent_research.ListOptions{ParentID: parent, Limit: agent_research.MaxListLimit})
+		kids, err := a.research.List(ctx,
+			userID,
+			agent_research.ListOptions{
+				ParentID: parent,
+				Limit:    agent_research.MaxListLimit,
+			})
 		if err != nil {
 			return nil, err
 		}
@@ -206,23 +263,33 @@ type stateEvent struct {
 // followStates calls state with the states the agents of the research enter, and usage with the totals of the whole tree of agents each
 // time they change (either may be nil), from the records in the database, polled; until the returned function is called, which does
 // the last poll.
-func (a *app) followStates(ctx context.Context, userID string, rootID int64, state func(stateEvent), usage func(totals)) (stop func()) {
+func (a *app) followStates(ctx context.Context,
+	userID string,
+	rootID int64,
+	state func(stateEvent),
+	usage func(totals)) (stop func()) {
 	seen := map[int64]int{}         // the last state of each run reported
 	reported := map[[2]int64]bool{} // the states reported with their error: (run, seq)
 	var last totals
 	poll := func(ctx context.Context) {
-		runs, err := a.subagents(ctx, userID, rootID)
+		runs, err := a.subagents(ctx,
+			userID,
+			rootID)
 		if err != nil {
 			return
 		}
-		root, err := a.research.Get(ctx, userID, rootID)
+		root, err := a.research.Get(ctx,
+			userID,
+			rootID)
 		if err != nil {
 			return
 		}
 		runs = append([]core.Run{*root}, runs...)
 		var sum totals
 		for _, r := range runs {
-			full, err := a.research.Get(ctx, userID, r.ID)
+			full, err := a.research.Get(ctx,
+				userID,
+				r.ID)
 			if err != nil {
 				continue
 			}
@@ -233,7 +300,14 @@ func (a *app) followStates(ctx context.Context, userID string, rootID int64, sta
 			}
 			for _, s := range full.States {
 				key := [2]int64{r.ID, int64(s.Seq)}
-				ev := stateEvent{Agent: who, Seq: s.Seq, State: s.State, Step: s.Step, Detail: s.Detail, Error: s.Error}
+				ev := stateEvent{
+					Agent:  who,
+					Seq:    s.Seq,
+					State:  s.State,
+					Step:   s.Step,
+					Detail: s.Detail,
+					Error:  s.Error,
+				}
 				switch {
 				case s.Seq > seen[r.ID]:
 					seen[r.ID] = s.Seq
@@ -299,7 +373,9 @@ func textProgress(w io.Writer) func(stateEvent) {
 		if ev.Agent != "main" {
 			who = "sub-agent " + ev.Agent
 		}
-		line := fmt.Sprintf("[%s] %s", who, ev.State)
+		line := fmt.Sprintf("[%s] %s",
+			who,
+			ev.State)
 		if ev.Detail != "" {
 			line += ": " + ev.Detail
 		}
@@ -322,7 +398,9 @@ func jsonEvents(w io.Writer) (state func(stateEvent), usage func(totals)) {
 		}
 		mu.Lock()
 		defer mu.Unlock()
-		fmt.Fprintf(w, "%s\n", b)
+		fmt.Fprintf(w,
+			"%s\n",
+			b)
 	}
 	state = func(ev stateEvent) {
 		write(map[string]any{"event": "state", "agent": ev.Agent, "state_seq": ev.Seq, "state": ev.State, "step": ev.Step, "detail": ev.Detail, "error": ev.Error})

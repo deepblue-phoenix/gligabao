@@ -15,20 +15,37 @@ import (
 
 func TestLLMCallsRecorded(t *testing.T) { dbtest.Run(t, testLLMCallsRecorded) }
 
-func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
-	llm := &costLLM{outs: []string{
-		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
-		`{"answer":"Alice.","entities":[1],"edges":[]}`,
-	}}
+func testLLMCallsRecorded(t *testing.T,
+	d *sql.DB) {
+	llm := &costLLM{
+		outs: []string{
+			`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
+			`{"answer":"Alice.","entities":[1],"edges":[]}`,
+		},
+	}
 	mux := http.NewServeMux()
 	database := withVectors(t, d)
-	Register(mux, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
+	Register(mux,
+		mgrFor(t,
+			database,
+			llm),
+		database,
+		llm,
+		fakeEmbedder{},
+		nil,
+		nil,
+		nil)
 	for _, c := range [][2]string{{"/v1/gb/remember", `{"user_id":"u1","text":"Alice","classify_graph":false}`}, {"/v1/gb/query", `{"user_id":"u1","query":"Alice?"}`}} { // order matters: query needs the graph
 		path, body := c[0], c[1]
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq("POST",
+			path,
+			strings.NewReader(body)))
 		if rec.Code != 200 {
-			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+			t.Fatalf("%s: %d %s",
+				path,
+				rec.Code,
+				rec.Body)
 		}
 	}
 	got, err := relational.InferenceStats(context.Background(), d)
@@ -37,7 +54,12 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 	}
 	// remember makes 1 LLM call when there is nothing stored to compare against, query makes 1; each also makes an embedding
 	// request (of no tokens and no cost here).
-	want := relational.InferenceStat{Inferences: 2, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}
+	want := relational.InferenceStat{
+		Inferences:   2,
+		InputTokens:  10,
+		OutputTokens: 5,
+		CostUSD:      0.01,
+	}
 	if len(got) != 2 || got["remember"] != want || got["query"] != want {
 		t.Fatalf("got %v", got)
 	}
@@ -45,8 +67,17 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 
 type costLLM struct{ outs []string }
 
-func (f *costLLM) Complete(_ context.Context, _ ai.Request) (*ai.Response, error) {
+func (f *costLLM) Complete(_ context.Context,
+	_ ai.Request) (*ai.Response, error) {
 	out := f.outs[0]
 	f.outs = f.outs[1:]
-	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}, nil
+	return &ai.Response{
+		Text:         out,
+		StopReason:   "end_turn",
+		Provider:     ai.ProviderAnthropic,
+		Model:        "m",
+		InputTokens:  10,
+		OutputTokens: 5,
+		CostUSD:      0.01,
+	}, nil
 }

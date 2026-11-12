@@ -17,9 +17,12 @@ type Knowledge interface {
 	// Remember adds text to the knowledge base. With wait it blocks until the text is absorbed (the graph is updated, so that a
 	// query can find it) and returns what was stored. Without it, it only queues the text and returns at once, with how to find
 	// the run; if the run fails later nobody is told (it is in the logs and the run log of the remember pipeline).
-	Remember(ctx context.Context, text string, wait bool) (string, error)
+	Remember(ctx context.Context,
+		text string,
+		wait bool) (string, error)
 	// Query answers the question from the knowledge base and returns the answer with the facts it is based on.
-	Query(ctx context.Context, question string) (string, error)
+	Query(ctx context.Context,
+		question string) (string, error)
 }
 
 // rememberTool is the tool that submits a snippet to the knowledge base.
@@ -39,7 +42,8 @@ func rememberTool(kb Knowledge) Tool {
 			},
 			"required": []string{"text"},
 		},
-		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
+		Run: func(ctx context.Context,
+			input json.RawMessage) (string, error) {
 			var in struct {
 				Text   string `json:"text"`
 				Source string `json:"source"`
@@ -58,7 +62,9 @@ func rememberTool(kb Knowledge) Tool {
 			if src := strings.TrimSpace(in.Source); src != "" {
 				text = "Source: " + src + "\n\n" + text
 			}
-			return kb.Remember(ctx, text, in.Sync)
+			return kb.Remember(ctx,
+				text,
+				in.Sync)
 		},
 	}
 }
@@ -71,7 +77,8 @@ func queryTool(kb Knowledge) Tool {
 			"an answer from it and the facts it is based on. Use it besides web_search and fetch_url, before searching for something that " +
 			"may be known already and to check what you found. Text queued with remember (sync=false) may not be there yet.",
 		Schema: objectSchema("question", "What to ask, as a question or a few keywords."),
-		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
+		Run: func(ctx context.Context,
+			input json.RawMessage) (string, error) {
 			q, err := stringArg(input, "question")
 			if err != nil {
 				return "", err

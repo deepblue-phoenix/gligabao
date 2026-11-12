@@ -16,32 +16,63 @@ import (
 
 func TestTrajectories(t *testing.T) { dbtest.Run(t, testTrajectories) }
 
-func testTrajectories(t *testing.T, d *sql.DB) {
+func testTrajectories(t *testing.T,
+	d *sql.DB) {
 	ex := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`
-	llm := &recordingLLM{outs: []string{ex, `{"answer":"Acme.","entities":[1],"edges":[1]}`, ex}}
+	llm := &recordingLLM{
+		outs: []string{ex, `{"answer":"Acme.","entities":[1],"edges":[1]}`, ex},
+	}
 	dir := t.TempDir()
 	ctx := context.Background()
 
 	// Without eval nothing is generated or stored.
-	rem, err := memory_remember.Remember(ctx, d, llm, "u1", "", "", "Alice works at Acme", time.Time{}, memory_core.WithTrajectoryDir(dir))
+	rem, err := memory_remember.Remember(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"Alice works at Acme",
+		time.Time{},
+		memory_core.WithTrajectoryDir(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rem.TrajectoryID != "" || rem.Trajectory != nil {
-		t.Fatalf("without eval: id=%q traj=%v", rem.TrajectoryID, rem.Trajectory)
+		t.Fatalf("without eval: id=%q traj=%v",
+			rem.TrajectoryID,
+			rem.Trajectory)
 	}
 	if files, _ := os.ReadDir(dir); len(files) != 0 {
 		t.Fatalf("without eval: %d files stored", len(files))
 	}
 	llm.outs = append([]string{ex}, llm.outs...) // the eval Remember below needs its own extraction
-	rem, err = memory_remember.Remember(ctx, d, llm, "u1", "", "", "Alice works at Acme", time.Time{}, withVectors(t), memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
+	rem, err = memory_remember.Remember(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"Alice works at Acme",
+		time.Time{},
+		withVectors(t),
+		memory_core.WithTrajectoryDir(dir),
+		memory_core.WithEval())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rem.Trajectory == nil || rem.TrajectoryID != rem.Trajectory.TrajectoryID {
 		t.Fatalf("with eval: %+v", rem)
 	}
-	rec, err := memory_query.Query(ctx, d, llm, "u1", "", "Where does Alice work?", withVectors(t), memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
+	rec, err := memory_query.Query(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"Where does Alice work?",
+		withVectors(t),
+		memory_core.WithTrajectoryDir(dir),
+		memory_core.WithEval())
 	if err != nil {
 		t.Fatal(err)
 	}

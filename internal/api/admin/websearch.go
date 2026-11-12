@@ -154,7 +154,12 @@ func totalsOf(list []WebSearch) WebSearchTotals {
 		for _, v := range lat {
 			sum += v
 		}
-		t.Latency = Latency{Count: len(lat), AvgMS: sum / float64(len(lat)), MedianMS: lat[len(lat)/2], MaxMS: lat[len(lat)-1]}
+		t.Latency = Latency{
+			Count:    len(lat),
+			AvgMS:    sum / float64(len(lat)),
+			MedianMS: lat[len(lat)/2],
+			MaxMS:    lat[len(lat)-1],
+		}
 		if len(lat)%2 == 0 {
 			t.Latency.MedianMS = (lat[len(lat)/2-1] + lat[len(lat)/2]) / 2
 		}
@@ -175,9 +180,12 @@ func webSearchesOf(t *atif.Trajectory) []WebSearch {
 			continue
 		}
 		w := WebSearch{
-			Entity: str(call.Arguments["entity"]), EntityType: str(call.Arguments["type"]), Query: str(call.Arguments["query"]),
+			Entity:           str(call.Arguments["entity"]),
+			EntityType:       str(call.Arguments["type"]),
+			Query:            str(call.Arguments["query"]),
 			ParentArtifactID: int64(num(call.Arguments["parent_artifact_id"])),
-			Model:            st.ModelName, TrajectoryID: t.TrajectoryID,
+			Model:            st.ModelName,
+			TrajectoryID:     t.TrajectoryID,
 		}
 		w.StartedAt, _ = st.Extra["started_at"].(string)
 		if w.StartedAt == "" {
@@ -218,10 +226,20 @@ func webSearchesOf(t *atif.Trajectory) []WebSearch {
 			if json.Unmarshal([]byte(observed(later, sc)), &stored) == nil {
 				w.ArtifactID, w.InvalidatedEdges = stored.ArtifactID, stored.InvalidatedEdges
 				for _, e := range stored.Entities {
-					w.Entities = append(w.Entities, WebEntity{Name: e.Name, Type: e.Type, Description: e.Description})
+					w.Entities = append(w.Entities, WebEntity{
+						Name:        e.Name,
+						Type:        e.Type,
+						Description: e.Description,
+					})
 				}
 				for _, e := range stored.Edges {
-					w.Edges = append(w.Edges, WebEdge{ID: e.ID, Source: e.Source, Target: e.Target, Relation: e.Relation, Description: e.Description})
+					w.Edges = append(w.Edges, WebEdge{
+						ID:          e.ID,
+						Source:      e.Source,
+						Target:      e.Target,
+						Relation:    e.Relation,
+						Description: e.Description,
+					})
 				}
 			}
 			break
@@ -232,7 +250,8 @@ func webSearchesOf(t *atif.Trajectory) []WebSearch {
 }
 
 // toolCall returns the call of the named tool that step st made, or nil.
-func toolCall(st atif.Step, name string) *atif.ToolCall {
+func toolCall(st atif.Step,
+	name string) *atif.ToolCall {
 	for i := range st.ToolCalls {
 		if st.ToolCalls[i].FunctionName == name {
 			return &st.ToolCalls[i]
@@ -242,7 +261,8 @@ func toolCall(st atif.Step, name string) *atif.ToolCall {
 }
 
 // observed is the result the step recorded for call.
-func observed(st atif.Step, call *atif.ToolCall) string {
+func observed(st atif.Step,
+	call *atif.ToolCall) string {
 	if st.Observation == nil {
 		return ""
 	}
@@ -266,11 +286,14 @@ const trajectoryRemember = "remember"
 var trajectorySearches = struct {
 	sync.Mutex
 	m map[string][]WebSearch
-}{m: map[string][]WebSearch{}}
+}{
+	m: map[string][]WebSearch{},
+}
 
 // searchesOfRecorded returns the web searches of the recorded remember trajectory ref (nil if it has none, or if its
 // file cannot be read: that is not an error, a trajectory directory may be gone).
-func searchesOfRecorded(ref *core.KnowledgeTrajectory, dir string) []WebSearch {
+func searchesOfRecorded(ref *core.KnowledgeTrajectory,
+	dir string) []WebSearch {
 	if ref.Kind != trajectoryRemember {
 		return nil
 	}
@@ -308,25 +331,39 @@ type caseRunWebSearches struct {
 
 // EvalRunWebSearches serves GET /admin/api/evals/runs/{id}/web-searches: the web searches that the remember calls of the
 // run's cases made, per result (only the results that made any), read from their trajectories in dir (see EvalTrajectory).
-func EvalRunWebSearches(d *sql.DB, s evalsdb.Store, dir string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalRunWebSearches(d *sql.DB,
+	s evalsdb.Store,
+	dir string) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := s.GetExperimentRun(r.Context(), d, core.ExperimentRunID(id))
+		run, err := s.GetExperimentRun(r.Context(),
+			d,
+			core.ExperimentRunID(id))
 		if err != nil {
-			evalFail(w, err, "run")
+			evalFail(w,
+				err,
+				"run")
 			return
 		}
-		cases, err := knowledgeCaseRuns(r.Context(), d, s, run.ID)
+		cases, err := knowledgeCaseRuns(r.Context(),
+			d,
+			s,
+			run.ID)
 		if err != nil {
-			evalFail(w, err, "run")
+			evalFail(w,
+				err,
+				"run")
 			return
 		}
 		out := struct {
 			CaseRuns []caseRunWebSearches `json:"case_runs"`
-		}{CaseRuns: []caseRunWebSearches{}}
+		}{
+			CaseRuns: []caseRunWebSearches{},
+		}
 		for _, e := range cases {
 			m := knowledgeMeta(&e.Run)
 			var list []WebSearch
@@ -334,26 +371,42 @@ func EvalRunWebSearches(d *sql.DB, s evalsdb.Store, dir string) http.HandlerFunc
 				list = append(list, searchesOfRecorded(&m.Trajectories[i], dir)...)
 			}
 			if len(list) > 0 {
-				out.CaseRuns = append(out.CaseRuns, caseRunWebSearches{CaseRunID: int64(e.Run.ID), Totals: totalsOf(list), Searches: list})
+				out.CaseRuns = append(out.CaseRuns, caseRunWebSearches{
+					CaseRunID: int64(e.Run.ID),
+					Totals:    totalsOf(list),
+					Searches:  list,
+				})
 			}
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // allRecordedSearches returns the web searches of every recorded remember trajectory of the experiments in d.
-func allRecordedSearches(ctx context.Context, d *sql.DB, s evalsdb.Store, dir string) (list []WebSearch, calls int, err error) {
-	exps, err := knowledgeExperiments(ctx, d, s)
+func allRecordedSearches(ctx context.Context,
+	d *sql.DB,
+	s evalsdb.Store,
+	dir string) (list []WebSearch, calls int, err error) {
+	exps, err := knowledgeExperiments(ctx,
+		d,
+		s)
 	if err != nil {
 		return nil, 0, err
 	}
 	for _, e := range exps {
-		runs, err := s.ListExperimentRuns(ctx, d, e.ID)
+		runs, err := s.ListExperimentRuns(ctx,
+			d,
+			e.ID)
 		if err != nil {
 			return nil, 0, err
 		}
 		for _, r := range runs {
-			cases, err := knowledgeCaseRuns(ctx, d, s, r.ID)
+			cases, err := knowledgeCaseRuns(ctx,
+				d,
+				s,
+				r.ID)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -396,7 +449,10 @@ func splitWebArtifactText(text string) (string, []ai.WebSource) {
 		if line == "" || open < 0 || end < open {
 			continue
 		}
-		s := ai.WebSource{URL: line[open+1 : end], Title: strings.TrimSpace(line[:open])}
+		s := ai.WebSource{
+			URL:   line[open+1 : end],
+			Title: strings.TrimSpace(line[:open]),
+		}
 		if age := strings.TrimSpace(line[end+1:]); strings.HasPrefix(age, "(") && strings.HasSuffix(age, ")") {
 			s.PageAge = age[1 : len(age)-1]
 		}
@@ -405,7 +461,8 @@ func splitWebArtifactText(text string) (string, []ai.WebSource) {
 	return strings.TrimSpace(briefing), sources
 }
 
-func shorten(s string, max int) string {
+func shorten(s string,
+	max int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if utf8.RuneCountInString(s) <= max {
 		return s
@@ -430,9 +487,13 @@ type DatasetWebSummary struct {
 }
 
 // datasetWebSearches reads the web_search artifacts of dataset dsID with their parents, entities and edges. nil if it has none.
-func datasetWebSearches(ctx context.Context, d *sql.DB, dsID int64) ([]WebSearch, DatasetWebSummary, error) {
+func datasetWebSearches(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]WebSearch, DatasetWebSummary, error) {
 	var sum DatasetWebSummary
-	arts, err := graph.ListArtifacts(ctx, d, dsID)
+	arts, err := graph.ListArtifacts(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return nil, sum, err
 	}
@@ -447,19 +508,27 @@ func datasetWebSearches(ctx context.Context, d *sql.DB, dsID int64) ([]WebSearch
 	if len(webs) == 0 {
 		return nil, sum, nil
 	}
-	links, err := graph.ListEntityArtifacts(ctx, d, dsID)
+	links, err := graph.ListEntityArtifacts(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return nil, sum, err
 	}
-	ents, err := graph.ListEntities(ctx, d, dsID)
+	ents, err := graph.ListEntities(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return nil, sum, err
 	}
-	edges, err := graph.ListGraphEdges(ctx, d, dsID)
+	edges, err := graph.ListGraphEdges(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return nil, sum, err
 	}
-	edgeLinks, err := graph.ListEdgeArtifacts(ctx, d, dsID)
+	edgeLinks, err := graph.ListEdgeArtifacts(ctx,
+		d,
+		dsID)
 	if err != nil {
 		return nil, sum, err
 	}
@@ -497,12 +566,19 @@ func datasetWebSearches(ctx context.Context, d *sql.DB, dsID int64) ([]WebSearch
 	}
 
 	parents := map[int64]bool{}
-	out := make([]WebSearch, 0, len(webs))
+	out := make([]WebSearch,
+		0,
+		len(webs))
 	for _, a := range webs {
 		briefing, sources := splitWebArtifactText(a.Text)
 		w := WebSearch{
-			Query: a.Query, ParentArtifactID: a.ParentID, ArtifactID: a.ID, Found: true, Briefing: briefing, Sources: sources,
-			StartedAt: a.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+			Query:            a.Query,
+			ParentArtifactID: a.ParentID,
+			ArtifactID:       a.ID,
+			Found:            true,
+			Briefing:         briefing,
+			Sources:          sources,
+			StartedAt:        a.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		}
 		if m := webQueryRE.FindStringSubmatch(a.Query); m != nil {
 			w.Entity, w.EntityType = m[1], m[2]
@@ -512,7 +588,13 @@ func datasetWebSearches(ctx context.Context, d *sql.DB, dsID int64) ([]WebSearch
 		}
 		for _, id := range entsOf[a.ID] {
 			if e, ok := entByID[id]; ok {
-				w.Entities = append(w.Entities, WebEntity{ID: e.ID, Name: e.Name, Type: e.Type, Description: e.Description, OnlyWeb: onlyWeb[id]})
+				w.Entities = append(w.Entities, WebEntity{
+					ID:          e.ID,
+					Name:        e.Name,
+					Type:        e.Type,
+					Description: e.Description,
+					OnlyWeb:     onlyWeb[id],
+				})
 			}
 		}
 		for _, id := range edgesOf[a.ID] {
@@ -521,7 +603,14 @@ func datasetWebSearches(ctx context.Context, d *sql.DB, dsID int64) ([]WebSearch
 				if created {
 					createdEdges[id] = true
 				}
-				w.Edges = append(w.Edges, WebEdge{ID: e.ID, Source: e.Source, Target: e.Target, Relation: e.Relation, Description: e.Description, Created: created})
+				w.Edges = append(w.Edges, WebEdge{
+					ID:          e.ID,
+					Source:      e.Source,
+					Target:      e.Target,
+					Relation:    e.Relation,
+					Description: e.Description,
+					Created:     created,
+				})
 			}
 		}
 		parents[a.ParentID] = true
@@ -568,31 +657,50 @@ type webSearchStats struct {
 // and in total) and, for the eval database, the totals of the web searches its trajectories recorded (searches made,
 // latency, cost).
 func WebSearchStatsOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		n, ok := pick(dbs, r.URL.Query().Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
 		ctx := r.Context()
-		list, err := relational.ListAllDatasets(ctx, n.DB, r.URL.Query().Get("include_deleted") == "true")
+		list, err := relational.ListAllDatasets(ctx,
+			n.DB,
+			r.URL.Query().Get("include_deleted") == "true")
 		if err != nil {
 			log.WithError(err).Error("admin: web search stats: list datasets failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to list datasets")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to list datasets")
 			return
 		}
-		out := webSearchStats{Datasets: []webDataset{}}
+		out := webSearchStats{
+			Datasets: []webDataset{},
+		}
 		for _, ds := range list {
-			_, sum, err := datasetWebSearches(ctx, n.DB, ds.ID)
+			_, sum, err := datasetWebSearches(ctx,
+				n.DB,
+				ds.ID)
 			if err != nil {
 				log.WithError(err).WithField("dataset_id", ds.ID).Error("admin: web search stats failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read web searches")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read web searches")
 				return
 			}
 			if sum.Artifacts == 0 {
 				continue
 			}
-			out.Datasets = append(out.Datasets, webDataset{ID: ds.ID, UserID: ds.UserID, Name: ds.Name, Deleted: ds.Deleted, DatasetWebSummary: sum})
+			out.Datasets = append(out.Datasets, webDataset{
+				ID:                ds.ID,
+				UserID:            ds.UserID,
+				Name:              ds.Name,
+				Deleted:           ds.Deleted,
+				DatasetWebSummary: sum,
+			})
 			t := &out.Database
 			t.Datasets++
 			t.Artifacts += sum.Artifacts
@@ -604,10 +712,15 @@ func WebSearchStatsOf(dbs []Named) http.HandlerFunc {
 			t.SupportedEdges += sum.SupportedEdges
 		}
 		if n.TrajectoryDir != "" && n.EvalStore != nil {
-			searches, calls, err := allRecordedSearches(ctx, n.DB, *n.EvalStore, n.TrajectoryDir)
+			searches, calls, err := allRecordedSearches(ctx,
+				n.DB,
+				*n.EvalStore,
+				n.TrajectoryDir)
 			if err != nil {
 				log.WithError(err).Error("admin: web search stats: read trajectories failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read recorded web searches")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read recorded web searches")
 				return
 			}
 			out.Trajectories = &struct {
@@ -615,29 +728,42 @@ func WebSearchStatsOf(dbs []Named) http.HandlerFunc {
 				WebSearchTotals
 			}{calls, totalsOf(searches)}
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // WebSearchDatasetOf serves GET /admin/api/web-searches/dataset?db=<name>&dataset_id=<id> for one of dbs (the first
 // without db): the web searches stored in a dataset (deleted or not), read from its web_search artifacts.
 func WebSearchDatasetOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		n, ok := pick(dbs, r.URL.Query().Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
-		dsID, err := strconv.ParseInt(r.URL.Query().Get("dataset_id"), 10, 64)
+		dsID, err := strconv.ParseInt(r.URL.Query().Get("dataset_id"),
+			10,
+			64)
 		if err != nil || dsID <= 0 {
-			httputil.Error(w, http.StatusBadRequest, "invalid dataset_id")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid dataset_id")
 			return
 		}
 		ctx := r.Context()
-		all, err := relational.ListAllDatasets(ctx, n.DB, true)
+		all, err := relational.ListAllDatasets(ctx,
+			n.DB,
+			true)
 		if err != nil {
 			log.WithError(err).Error("admin: web searches: list datasets failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to list datasets")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to list datasets")
 			return
 		}
 		var ds *relational.Dataset
@@ -647,29 +773,38 @@ func WebSearchDatasetOf(dbs []Named) http.HandlerFunc {
 			}
 		}
 		if ds == nil {
-			httputil.Error(w, http.StatusNotFound, "dataset not found")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"dataset not found")
 			return
 		}
-		list, sum, err := datasetWebSearches(ctx, n.DB, ds.ID)
+		list, sum, err := datasetWebSearches(ctx,
+			n.DB,
+			ds.ID)
 		if err != nil {
 			log.WithError(err).WithField("dataset_id", ds.ID).Error("admin: web searches failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read web searches")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read web searches")
 			return
 		}
 		if list == nil {
 			list = []WebSearch{}
 		}
-		httputil.WriteJSON(w, http.StatusOK, struct {
-			UserID   string            `json:"user_id"`
-			Dataset  string            `json:"dataset"`
-			Summary  DatasetWebSummary `json:"summary"`
-			Searches []WebSearch       `json:"searches"`
-		}{ds.UserID, ds.Name, sum, list})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			struct {
+				UserID   string            `json:"user_id"`
+				Dataset  string            `json:"dataset"`
+				Summary  DatasetWebSummary `json:"summary"`
+				Searches []WebSearch       `json:"searches"`
+			}{ds.UserID, ds.Name, sum, list})
 	}
 }
 
 // pick returns the database called name (the first one if name is empty).
-func pick(dbs []Named, name string) (Named, bool) {
+func pick(dbs []Named,
+	name string) (Named, bool) {
 	if name == "" && len(dbs) > 0 {
 		return dbs[0], true
 	}

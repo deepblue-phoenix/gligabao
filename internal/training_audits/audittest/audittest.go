@@ -37,15 +37,24 @@ var counter atomic.Int64
 // Run calls fn as a subtest once per backend ("sqlite", and "postgres" if POSTGRES_TEST_DSN is set), each time with a fresh, empty
 // database that has the audit tables, and the Ops of the backend. The subtests run one after the other, because the training
 // database package routes to the backend of the last Open.
-func Run(t *testing.T, fn func(t *testing.T, d *sql.DB, ops training_audits.Ops)) {
+func Run(t *testing.T,
+	fn func(t *testing.T,
+		d *sql.DB,
+		ops training_audits.Ops)) {
 	t.Helper()
-	t.Run(config.DBBackendSQLite, func(t *testing.T) { fn(t, OpenSQLite(t), training_audits.SQLiteOps) })
+	t.Run(config.DBBackendSQLite, func(t *testing.T) {
+		fn(t,
+			OpenSQLite(t),
+			training_audits.SQLiteOps)
+	})
 	t.Run(config.DBBackendPostgres, func(t *testing.T) {
 		dsn := os.Getenv(EnvPostgresDSN)
 		if dsn == "" {
 			t.Skipf("%s not set", EnvPostgresDSN)
 		}
-		fn(t, OpenPostgres(t, dsn), training_audits.PostgresOps)
+		fn(t,
+			OpenPostgres(t, dsn),
+			training_audits.PostgresOps)
 	})
 }
 
@@ -69,13 +78,16 @@ func OpenSQLite(t *testing.T) *sql.DB {
 }
 
 // OpenPostgres opens an empty PostgreSQL database: a new schema in the database at dsn, dropped when the test ends.
-func OpenPostgres(t *testing.T, dsn string) *sql.DB {
+func OpenPostgres(t *testing.T,
+	dsn string) *sql.DB {
 	t.Helper()
 	admin, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema := fmt.Sprintf("gbaudittest_%d_%d", time.Now().UnixNano(), counter.Add(1))
+	schema := fmt.Sprintf("gbaudittest_%d_%d",
+		time.Now().UnixNano(),
+		counter.Add(1))
 	if _, err := admin.Exec(`CREATE SCHEMA ` + schema); err != nil {
 		admin.Close()
 		t.Fatal(err)
@@ -102,7 +114,8 @@ func OpenPostgres(t *testing.T, dsn string) *sql.DB {
 	return d
 }
 
-func withSearchPath(dsn, schema string) string {
+func withSearchPath(dsn,
+	schema string) string {
 	if strings.Contains(dsn, "://") {
 		if u, err := url.Parse(dsn); err == nil {
 			q := u.Query()
@@ -115,10 +128,20 @@ func withSearchPath(dsn, schema string) string {
 }
 
 // RecordModel stores a trained model trained on dataset (a file name) and returns its ID.
-func RecordModel(t *testing.T, d *sql.DB, jobID, dataset string) int64 {
+func RecordModel(t *testing.T,
+	d *sql.DB,
+	jobID,
+	dataset string) int64 {
 	t.Helper()
-	id, _, err := trainingdb.RecordTrainedModel(context.Background(), d, trainingdb.TrainedModel{
-		JobID: jobID, ModelSize: "12b", Dataset: dataset, NumTrainSteps: 5, Path: "trained/" + jobID})
+	id, _, err := trainingdb.RecordTrainedModel(context.Background(),
+		d,
+		trainingdb.TrainedModel{
+			JobID:         jobID,
+			ModelSize:     "12b",
+			Dataset:       dataset,
+			NumTrainSteps: 5,
+			Path:          "trained/" + jobID,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +149,8 @@ func RecordModel(t *testing.T, d *sql.DB, jobID, dataset string) int64 {
 }
 
 // DatasetDir makes a training datasets directory with the dataset "mine" of n examples: question "q<i>", answer "a<i>".
-func DatasetDir(t *testing.T, n int) string {
+func DatasetDir(t *testing.T,
+	n int) string {
 	t.Helper()
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "mine")
@@ -135,12 +159,19 @@ func DatasetDir(t *testing.T, n int) string {
 	}
 	var data strings.Builder
 	for i := 0; i < n; i++ {
-		fmt.Fprintf(&data, "{\"instruction\":\"q%d\",\"output\":\"a%d\"}\n", i, i)
+		fmt.Fprintf(&data,
+			"{\"instruction\":\"q%d\",\"output\":\"a%d\"}\n",
+			i,
+			i)
 	}
-	if err := os.WriteFile(filepath.Join(sub, "data.jsonl"), []byte(data.String()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sub, "data.jsonl"),
+		[]byte(data.String()),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sub, "dataset.toml"), []byte("name = \"mine\"\nfile = \"data.jsonl\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sub, "dataset.toml"),
+		[]byte("name = \"mine\"\nfile = \"data.jsonl\"\n"),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -165,7 +196,8 @@ func (s *Sidecar) Requests() []sidecar.InferRequest {
 }
 
 // Infer answers a prompt.
-func (s *Sidecar) Infer(ctx context.Context, req sidecar.InferRequest) (sidecar.InferResponse, error) {
+func (s *Sidecar) Infer(ctx context.Context,
+	req sidecar.InferRequest) (sidecar.InferResponse, error) {
 	s.mu.Lock()
 	s.reqs = append(s.reqs, req)
 	s.mu.Unlock()
@@ -184,11 +216,21 @@ func (s *Sidecar) Infer(ctx context.Context, req sidecar.InferRequest) (sidecar.
 	}
 	switch {
 	case s.Fail[req.Prompt]:
-		return sidecar.InferResponse{}, &sidecar.InferError{Message: "out of memory"}
+		return sidecar.InferResponse{}, &sidecar.InferError{
+			Message: "out of memory",
+		}
 	case s.Wrong[req.Prompt]:
-		return sidecar.InferResponse{Response: "wrong", InputTokens: 4, OutputTokens: 1}, nil
+		return sidecar.InferResponse{
+			Response:     "wrong",
+			InputTokens:  4,
+			OutputTokens: 1,
+		}, nil
 	}
-	return sidecar.InferResponse{Response: "a" + strings.TrimPrefix(req.Prompt, "q"), InputTokens: 4, OutputTokens: 2}, nil
+	return sidecar.InferResponse{
+		Response:     "a" + strings.TrimPrefix(req.Prompt, "q"),
+		InputTokens:  4,
+		OutputTokens: 2,
+	}, nil
 }
 
 // Judge is a fake judge: it scores 5 when the answer is the reference and 1 otherwise, and counts its calls.
@@ -206,7 +248,8 @@ func (j *Judge) Calls() int {
 }
 
 // Complete grades the cases of a request.
-func (j *Judge) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+func (j *Judge) Complete(_ context.Context,
+	req ai.Request) (*ai.Response, error) {
 	content := req.Messages[0].Content
 	var cases []struct {
 		ID        int    `json:"id"`
@@ -229,5 +272,12 @@ func (j *Judge) Complete(_ context.Context, req ai.Request) (*ai.Response, error
 		out = append(out, map[string]any{"id": it.ID, "score": score, "reason": "because"})
 	}
 	b, _ := json.Marshal(out)
-	return &ai.Response{Text: string(b), Model: "judge-model", Provider: "test", InputTokens: 50, OutputTokens: 20, CostUSD: 0.5}, nil
+	return &ai.Response{
+		Text:         string(b),
+		Model:        "judge-model",
+		Provider:     "test",
+		InputTokens:  50,
+		OutputTokens: 20,
+		CostUSD:      0.5,
+	}, nil
 }

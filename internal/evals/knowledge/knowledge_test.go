@@ -38,7 +38,8 @@ type scriptedLLM struct {
 	models []string // the Model of each request, in order
 }
 
-func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+func (l *scriptedLLM) Complete(_ context.Context,
+	req ai.Request) (*ai.Response, error) {
 	l.mu.Lock()
 	l.levels = append(l.levels, req.Reasoning)
 	l.models = append(l.models, req.Model)
@@ -47,26 +48,39 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 	if len(req.Messages) > 0 && strings.Contains(req.Messages[len(req.Messages)-1].Content, "<graph>") {
 		out = `{"answer":"` + l.answer + `","entities":[1],"edges":[]}`
 	}
-	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}, nil
+	return &ai.Response{
+		Text:         out,
+		StopReason:   "end_turn",
+		Provider:     ai.ProviderAnthropic,
+		Model:        "m",
+		InputTokens:  10,
+		OutputTokens: 5,
+		CostUSD:      0.01,
+	}, nil
 }
 
 // fakeEmbedder embeds every text as the first unit vector of dims dimensions (the size of the vector store of the database), with
 // no tokens and no cost. The server of a case needs an embedder: remember embeds what it stores and query the question.
 type fakeEmbedder struct{ dims int }
 
-func (f fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error) {
+func (f fakeEmbedder) EmbedBatchUsage(_ context.Context,
+	texts []string) ([][]float32, *ai.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = make([]float32, f.dims)
 		out[i][0] = 1
 	}
-	return out, &ai.EmbedUsage{Provider: ai.ProviderOpenAI, Model: "test-embed"}, nil
+	return out, &ai.EmbedUsage{
+		Provider: ai.ProviderOpenAI,
+		Model:    "test-embed",
+	}, nil
 }
 
 // geoLLM is scriptedLLM for a text about Alice living in Paris: it extracts both and says that Paris is a city.
 type geoLLM struct{ scriptedLLM }
 
-func (l *geoLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
+func (l *geoLLM) Complete(ctx context.Context,
+	req ai.Request) (*ai.Response, error) {
 	var out string
 	switch {
 	case strings.Contains(req.System, "geographic places"): // remember: which entities are places
@@ -80,7 +94,15 @@ func (l *geoLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, er
 	if out == "" {
 		return l.scriptedLLM.Complete(ctx, req)
 	}
-	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}, nil
+	return &ai.Response{
+		Text:         out,
+		StopReason:   "end_turn",
+		Provider:     ai.ProviderAnthropic,
+		Model:        "m",
+		InputTokens:  10,
+		OutputTokens: 5,
+		CostUSD:      0.01,
+	}, nil
 }
 
 // env is an eval database with a runner on it, and the executor over it.
@@ -94,12 +116,15 @@ type env struct {
 	output strings.Builder
 }
 
-func newEnv(t *testing.T, answer string) *env {
+func newEnv(t *testing.T,
+	answer string) *env {
 	t.Helper()
 	dir := t.TempDir()
 	atif := filepath.Join(dir, "atif")
 	memory_core.TrajectoryDir = atif
-	database, err := dbfull.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	database, err := dbfull.Open(db.Config{
+		SQLitePath: filepath.Join(dir, "eval.db"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,8 +133,24 @@ func newEnv(t *testing.T, answer string) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, db: database, r: runner.New(database.Relational, store), atif: atif, llm: &scriptedLLM{answer: answer}}
-	e.x = &knowledge.Executor{DB: database, LLM: e.llm, Embedder: fakeEmbedder{dims: database.EmbeddingDimensions}, TrajectoryDir: atif, Out: &e.output}
+	e := &env{
+		t:    t,
+		db:   database,
+		r:    runner.New(database.Relational, store),
+		atif: atif,
+		llm: &scriptedLLM{
+			answer: answer,
+		},
+	}
+	e.x = &knowledge.Executor{
+		DB:  database,
+		LLM: e.llm,
+		Embedder: fakeEmbedder{
+			dims: database.EmbeddingDimensions,
+		},
+		TrajectoryDir: atif,
+		Out:           &e.output,
+	}
 	return e
 }
 
@@ -121,24 +162,41 @@ func (e *env) run(ev knowledge.Eval) (*core.EvalRun, *core.EvalDef) {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	run, err := e.r.RunEval(ctx, def, e.x, runner.EvalOptions{Meta: &core.KnowledgeEvalRunMeta{}})
+	run, err := e.r.RunEval(ctx,
+		def,
+		e.x,
+		runner.EvalOptions{
+			Meta: &core.KnowledgeEvalRunMeta{},
+		})
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	return run, def
 }
 
-func kcase(name, text, query string, contains ...string) core.KnowledgeCase {
-	c := core.KnowledgeCase{Name: name}
-	c.Remember = []core.KnowledgeArtifact{{Text: text}}
+func kcase(name,
+	text,
+	query string,
+	contains ...string) core.KnowledgeCase {
+	c := core.KnowledgeCase{
+		Name: name,
+	}
+	c.Remember = []core.KnowledgeArtifact{{
+		Text: text,
+	}}
 	c.Query, c.ExpectContains = query, contains
 	return c
 }
 
-func count(t *testing.T, d *sql.DB, query string, args ...any) (n int) {
+func count(t *testing.T,
+	d *sql.DB,
+	query string,
+	args ...any) (n int) {
 	t.Helper()
 	if err := d.QueryRow(query, args...).Scan(&n); err != nil {
-		t.Fatalf("%s: %v", query, err)
+		t.Fatalf("%s: %v",
+			query,
+			err)
 	}
 	return n
 }
@@ -146,11 +204,27 @@ func count(t *testing.T, d *sql.DB, query string, args ...any) (n int) {
 // TestExecutor runs two cases, one passing and one failing its expected answer, and checks what the eval run holds.
 func TestExecutor(t *testing.T) {
 	e := newEnv(t, "Alice.")
-	bad := kcase("bad", "Alice is here.", "Who?", "Bob")
-	bad.Remember = append(bad.Remember, core.KnowledgeArtifact{Text: "Alice again."})
-	run, def := e.run(knowledge.Eval{Name: "s", Cases: []core.KnowledgeCase{kcase("good", "Alice is here.", "Who?", "alice"), bad}})
+	bad := kcase("bad",
+		"Alice is here.",
+		"Who?",
+		"Bob")
+	bad.Remember = append(bad.Remember, core.KnowledgeArtifact{
+		Text: "Alice again.",
+	})
+	run, def := e.run(knowledge.Eval{
+		Name: "s",
+		Cases: []core.KnowledgeCase{kcase("good",
+			"Alice is here.",
+			"Who?",
+			"alice"), bad},
+	})
 
-	if want := (core.Counts{Total: 2, Completed: 2, Passed: 1, Failed: 1}); run.Counts != want || run.Status != core.StatusCompleted {
+	if want := (core.Counts{
+		Total:     2,
+		Completed: 2,
+		Passed:    1,
+		Failed:    1,
+	}); run.Counts != want || run.Status != core.StatusCompleted {
 		t.Fatalf("eval run: %+v", run)
 	}
 	if run.CostUSD <= 0 {
@@ -158,24 +232,41 @@ func TestExecutor(t *testing.T) {
 	}
 	d := e.db.Relational
 	var runID = run.ID
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_case_runs c JOIN gb_case_defs cd ON cd.id = c.def_id
-		WHERE c.eval_run_id = ? AND ((cd.name = 'good' AND c.verdict = 'pass') OR (cd.name = 'bad' AND c.verdict = 'fail')) AND c.status = 'completed' AND c.finished_at IS NOT NULL`, runID); n != 2 {
+	if n := count(t,
+		d,
+		`SELECT COUNT(*) FROM gb_case_runs c JOIN gb_case_defs cd ON cd.id = c.def_id
+		WHERE c.eval_run_id = ? AND ((cd.name = 'good' AND c.verdict = 'pass') OR (cd.name = 'bad' AND c.verdict = 'fail')) AND c.status = 'completed' AND c.finished_at IS NOT NULL`,
+		runID); n != 2 {
 		t.Errorf("case runs with their verdicts: %d", n)
 	}
 	// good: 2 trajectories (remember, query), 1 check passed; bad: 3 trajectories, 1 problem.
 	for name, want := range map[string][3]int{"good": {2, 1, 0}, "bad": {3, 0, 1}} {
 		var id int64
-		if err := d.QueryRow(`SELECT c.id FROM gb_case_runs c JOIN gb_case_defs cd ON cd.id = c.def_id WHERE c.eval_run_id = ? AND cd.name = ?`, runID, name).Scan(&id); err != nil {
+		if err := d.QueryRow(`SELECT c.id FROM gb_case_runs c JOIN gb_case_defs cd ON cd.id = c.def_id WHERE c.eval_run_id = ? AND cd.name = ?`,
+			runID,
+			name).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		var passed, problems, answer string
 		var steps int
-		if err := d.QueryRow(`SELECT passed_checks, problems, answer, steps FROM gb_case_runs_meta_knowledge WHERE case_run_id = ?`, id).Scan(&passed, &problems, &answer, &steps); err != nil {
+		if err := d.QueryRow(`SELECT passed_checks, problems, answer, steps FROM gb_case_runs_meta_knowledge WHERE case_run_id = ?`, id).Scan(&passed,
+			&problems,
+			&answer,
+			&steps); err != nil {
 			t.Fatal(err)
 		}
-		trajectories := count(t, d, `SELECT COUNT(*) FROM gb_case_runs_meta_knowledge_trajectories WHERE case_run_id = ?`, id)
+		trajectories := count(t,
+			d,
+			`SELECT COUNT(*) FROM gb_case_runs_meta_knowledge_trajectories WHERE case_run_id = ?`,
+			id)
 		if trajectories != want[0] || strings.Count(passed, `","`)+btoi(passed != "[]") != want[1] || strings.Count(problems, `","`)+btoi(problems != "[]") != want[2] || answer != "Alice." || steps == 0 {
-			t.Errorf("%s: trajectories %d, passed %s, problems %s, answer %q, steps %d", name, trajectories, passed, problems, answer, steps)
+			t.Errorf("%s: trajectories %d, passed %s, problems %s, answer %q, steps %d",
+				name,
+				trajectories,
+				passed,
+				problems,
+				answer,
+				steps)
 		}
 	}
 	// The trajectories are files, the first of a case is the remember and the last the query.
@@ -187,15 +278,24 @@ func TestExecutor(t *testing.T) {
 	for rows.Next() {
 		var path, kind string
 		var seq int
-		if err := rows.Scan(&path, &kind, &seq); err != nil {
+		if err := rows.Scan(&path,
+			&kind,
+			&seq); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(path); err != nil || (kind != "remember" && kind != "query") {
-			t.Errorf("trajectory %s %s %d: %v", path, kind, seq, err)
+			t.Errorf("trajectory %s %s %d: %v",
+				path,
+				kind,
+				seq,
+				err)
 		}
 	}
 	// The eval run's metadata sums the cases.
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_eval_runs_meta_knowledge WHERE eval_run_id = ? AND remember_calls = 3 AND query_calls = 2 AND checks_passed = 1 AND checks_failed = 1 AND steps > 0 AND remember_cost_usd > 0 AND query_cost_usd > 0`, runID); n != 1 {
+	if n := count(t,
+		d,
+		`SELECT COUNT(*) FROM gb_eval_runs_meta_knowledge WHERE eval_run_id = ? AND remember_calls = 3 AND query_calls = 2 AND checks_passed = 1 AND checks_failed = 1 AND steps > 0 AND remember_cost_usd > 0 AND query_cost_usd > 0`,
+		runID); n != 1 {
 		t.Errorf("eval run meta: %d", n)
 	}
 	// The graph of a case is in its dataset.
@@ -204,7 +304,9 @@ func TestExecutor(t *testing.T) {
 		JOIN gb_case_defs cd ON cd.id = c.def_id WHERE cd.name = 'good' AND c.eval_run_id = ?`, runID).Scan(&datasetID); err != nil {
 		t.Fatal(err)
 	}
-	all, err := relational.ListAllDatasets(context.Background(), d, false)
+	all, err := relational.ListAllDatasets(context.Background(),
+		d,
+		false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,10 +317,16 @@ func TestExecutor(t *testing.T) {
 		}
 	}
 	if ds == nil || ds.Name != knowledge.DatasetName("good", run.ID) {
-		t.Fatalf("dataset %d: %+v", datasetID, ds)
+		t.Fatalf("dataset %d: %+v",
+			datasetID,
+			ds)
 	}
-	if g, err := memory.ExportDatasetGraph(context.Background(), d, ds); err != nil || len(g.Entities) == 0 {
-		t.Fatalf("graph: %+v %v", g, err)
+	if g, err := memory.ExportDatasetGraph(context.Background(),
+		d,
+		ds); err != nil || len(g.Entities) == 0 {
+		t.Fatalf("graph: %+v %v",
+			g,
+			err)
 	}
 	if out := e.output.String(); !strings.Contains(out, "PASS good") || !strings.Contains(out, "FAIL bad") || !strings.Contains(out, `answer does not contain "Bob"`) {
 		t.Errorf("output: %s", out)
@@ -237,20 +345,36 @@ func btoi(b bool) int {
 // datasets, and each run works in datasets of its own.
 func TestRunsAreIsolatedAndKept(t *testing.T) {
 	e := newEnv(t, "Alice.")
-	ev := knowledge.Eval{Name: "s", Cases: []core.KnowledgeCase{kcase("c", "Alice is here.", "Who?", "alice")}}
+	ev := knowledge.Eval{
+		Name: "s",
+		Cases: []core.KnowledgeCase{kcase("c",
+			"Alice is here.",
+			"Who?",
+			"alice")},
+	}
 	r1, _ := e.run(ev)
 	r2, _ := e.run(ev)
 	if r1.ID == r2.ID || r1.Counts.Passed != 1 || r2.Counts.Passed != 1 {
-		t.Fatalf("runs: %+v %+v", r1, r2)
+		t.Fatalf("runs: %+v %+v",
+			r1,
+			r2)
 	}
 	for _, id := range []core.EvalRunID{r1.ID, r2.ID} {
 		name := knowledge.DatasetName("c", id)
-		if _, err := relational.DatasetID(context.Background(), e.db.Relational, knowledge.EvalUser, name); err != nil {
-			t.Fatalf("dataset %q of run %d: %v", name, id, err)
+		if _, err := relational.DatasetID(context.Background(),
+			e.db.Relational,
+			knowledge.EvalUser,
+			name); err != nil {
+			t.Fatalf("dataset %q of run %d: %v",
+				name,
+				id,
+				err)
 		}
 	}
 	// The def is the same one for both runs.
-	if n := count(t, e.db.Relational, `SELECT COUNT(DISTINCT def_id) FROM gb_case_runs`); n != 1 {
+	if n := count(t,
+		e.db.Relational,
+		`SELECT COUNT(DISTINCT def_id) FROM gb_case_runs`); n != 1 {
 		t.Errorf("case defs run: %d", n)
 	}
 }
@@ -258,26 +382,60 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 // TestExpectGeo runs a case with expect_geo against an executor with a geo resolver: the places the LLM finds are stored with the
 // resolver's coordinates, and the check passes or fails on them. Without a resolver the case errors.
 func TestExpectGeo(t *testing.T) {
-	paris := func(lat, lon float64) memory_geo.Resolver {
-		return memory_geo.Func{ResolverName: "fake", Fn: func(_ context.Context, q memory_geo.Query) (*memory_geo.Place, error) {
-			return &memory_geo.Place{Latitude: lat, Longitude: lon, Kind: memory_geo.KindCity, DisplayName: "Paris, France", Country: "France", CountryCode: "fr", Provider: "fake"}, nil
-		}}
+	paris := func(lat,
+		lon float64) memory_geo.Resolver {
+		return memory_geo.Func{
+			ResolverName: "fake",
+			Fn: func(_ context.Context,
+				q memory_geo.Query) (*memory_geo.Place, error) {
+				return &memory_geo.Place{
+					Latitude:    lat,
+					Longitude:   lon,
+					Kind:        memory_geo.KindCity,
+					DisplayName: "Paris, France",
+					Country:     "France",
+					CountryCode: "fr",
+					Provider:    "fake",
+				}, nil
+			},
+		}
 	}
 	f := func(v float64) *float64 { return &v }
-	c := kcase("where", "Alice lives in Paris.", "Where does Alice live?", "Paris")
+	c := kcase("where",
+		"Alice lives in Paris.",
+		"Where does Alice live?",
+		"Paris")
 	c.ExpectGeo = []core.KnowledgeExpectGeo{
-		{Entity: "paris", Kind: "city", CountryCode: "FR", Latitude: f(48.86), Longitude: f(2.35), RadiusKm: 30},
-		{Entity: "Alice"}, // a person: not stored as a place
+		{
+			Entity:      "paris",
+			Kind:        "city",
+			CountryCode: "FR",
+			Latitude:    f(48.86),
+			Longitude:   f(2.35),
+			RadiusKm:    30,
+		},
+		{
+			Entity: "Alice",
+		}, // a person: not stored as a place
 	}
 	run := func(r memory_geo.Resolver) (*core.EvalRun, *env) {
 		e := newEnv(t, "Paris.")
-		e.x.LLM, e.x.Geo = &geoLLM{scriptedLLM{answer: "Paris."}}, r
-		run, _ := e.run(knowledge.Eval{Name: "g", Cases: []core.KnowledgeCase{c}})
+		e.x.LLM, e.x.Geo = &geoLLM{scriptedLLM{
+			answer: "Paris.",
+		}}, r
+		run, _ := e.run(knowledge.Eval{
+			Name:  "g",
+			Cases: []core.KnowledgeCase{c},
+		})
 		return run, e
 	}
 
 	run1, e := run(paris(48.8566, 2.3522))
-	if want := (core.Counts{Total: 1, Completed: 1, Failed: 1}); run1.Counts != want {
+	if want := (core.Counts{
+		Total:     1,
+		Completed: 1,
+		Failed:    1,
+	}); run1.Counts != want {
 		t.Fatalf("counts: %+v", run1.Counts)
 	}
 	var passed, problems string
@@ -286,7 +444,9 @@ func TestExpectGeo(t *testing.T) {
 	}
 	for _, want := range []string{"place paris: stored as a place", "place paris: kind = city", "place paris: country = FR"} {
 		if !strings.Contains(passed, want) {
-			t.Errorf("passed checks lack %q: %s", want, passed)
+			t.Errorf("passed checks lack %q: %s",
+				want,
+				passed)
 		}
 	}
 	if !strings.Contains(problems, "place Alice: not stored as a place") || strings.Contains(problems, "place paris") {
@@ -318,7 +478,10 @@ func TestDatasetName(t *testing.T) {
 	} {
 		got := knowledge.DatasetName(name, 7)
 		if got != want || len(got) > 64 {
-			t.Errorf("DatasetName(%q) = %q, want %q", name, got, want)
+			t.Errorf("DatasetName(%q) = %q, want %q",
+				name,
+				got,
+				want)
 		}
 	}
 }
@@ -335,31 +498,57 @@ func TestCaseReasoning(t *testing.T) {
 		}
 	}
 	if m, err := knowledge.ParseReasoning(""); m != nil || err != nil {
-		t.Errorf("empty: %v, %v", m, err)
+		t.Errorf("empty: %v, %v",
+			m,
+			err)
 	}
 
 	e := newEnv(t, "Alice.")
-	levels := func(c core.KnowledgeCase, reasoning map[string]string) (got []string, run *core.EvalRun) {
+	levels := func(c core.KnowledgeCase,
+		reasoning map[string]string) (got []string, run *core.EvalRun) {
 		e.llm.levels, e.x.Reasoning = nil, reasoning
-		run, _ = e.run(knowledge.Eval{Name: "s", Cases: []core.KnowledgeCase{c}})
+		run, _ = e.run(knowledge.Eval{
+			Name:  "s",
+			Cases: []core.KnowledgeCase{c},
+		})
 		return e.llm.levels, run
 	}
-	base := kcase("r1", "Alice is here.", "Who?", "alice")
+	base := kcase("r1",
+		"Alice is here.",
+		"Who?",
+		"alice")
 	if got, run := levels(base, defaults); run.Counts.Passed != 1 || fmt.Sprint(got) != "[low high]" { // extract, then answer
-		t.Errorf("run levels: %v %+v", got, run.Counts)
+		t.Errorf("run levels: %v %+v",
+			got,
+			run.Counts)
 	}
-	over := kcase("r2", "Alice is here.", "Who?", "alice")
+	over := kcase("r2",
+		"Alice is here.",
+		"Who?",
+		"alice")
 	over.Reasoning = map[string]string{"extract_graph": "none", "query": "medium"}
 	if got, run := levels(over, defaults); run.Counts.Passed != 1 || fmt.Sprint(got) != "[none medium]" {
-		t.Errorf("case levels: %v %+v", got, run.Counts)
+		t.Errorf("case levels: %v %+v",
+			got,
+			run.Counts)
 	}
-	part := kcase("r3", "Alice is here.", "Who?", "alice")
+	part := kcase("r3",
+		"Alice is here.",
+		"Who?",
+		"alice")
 	part.Reasoning = map[string]string{"extract_graph": "medium"}
 	if got, run := levels(part, defaults); run.Counts.Passed != 1 || fmt.Sprint(got) != "[medium high]" {
-		t.Errorf("partial case levels: %v %+v", got, run.Counts)
+		t.Errorf("partial case levels: %v %+v",
+			got,
+			run.Counts)
 	}
-	if got, run := levels(kcase("r4", "Alice is here.", "Who?", "alice"), nil); run.Counts.Passed != 1 || fmt.Sprint(got) != "[none none]" {
-		t.Errorf("default levels: %v %+v", got, run.Counts)
+	if got, run := levels(kcase("r4",
+		"Alice is here.",
+		"Who?",
+		"alice"), nil); run.Counts.Passed != 1 || fmt.Sprint(got) != "[none none]" {
+		t.Errorf("default levels: %v %+v",
+			got,
+			run.Counts)
 	}
 }
 
@@ -368,7 +557,9 @@ func TestCaseReasoning(t *testing.T) {
 func TestCaseModels(t *testing.T) {
 	defaults, err := knowledge.ParseModels("extract_graph=ex, query=ans")
 	if err != nil || defaults["extract_graph"] != "ex" || defaults["query"] != "ans" {
-		t.Fatalf("%v, %v", defaults, err)
+		t.Fatalf("%v, %v",
+			defaults,
+			err)
 	}
 	for _, bad := range []string{"bogus=x", "extract_graph", "query=a b"} {
 		if _, err := knowledge.ParseModels(bad); err == nil {
@@ -376,29 +567,48 @@ func TestCaseModels(t *testing.T) {
 		}
 	}
 	if m, err := knowledge.ParseModels("detect_geo=g, web_search=w"); err != nil || len(m) != 2 { // a stage of both pipelines, and a remember one
-		t.Errorf("%v, %v", m, err)
+		t.Errorf("%v, %v",
+			m,
+			err)
 	}
 	if m, err := knowledge.ParseModels(""); m != nil || err != nil {
-		t.Errorf("empty: %v, %v", m, err)
+		t.Errorf("empty: %v, %v",
+			m,
+			err)
 	}
 
 	e := newEnv(t, "Alice.")
-	models := func(c core.KnowledgeCase, m map[string]string) []string {
+	models := func(c core.KnowledgeCase,
+		m map[string]string) []string {
 		e.llm.models, e.x.Models = nil, m
-		if run, _ := e.run(knowledge.Eval{Name: "m", Cases: []core.KnowledgeCase{c}}); run.Counts.Passed != 1 {
-			t.Fatalf("%s: %+v", c.Name, run.Counts)
+		if run, _ := e.run(knowledge.Eval{
+			Name:  "m",
+			Cases: []core.KnowledgeCase{c},
+		}); run.Counts.Passed != 1 {
+			t.Fatalf("%s: %+v",
+				c.Name,
+				run.Counts)
 		}
 		return e.llm.models
 	}
-	if got := models(kcase("m1", "Alice is here.", "Who?", "alice"), defaults); fmt.Sprint(got) != "[ex ans]" { // extract, then answer
+	if got := models(kcase("m1",
+		"Alice is here.",
+		"Who?",
+		"alice"), defaults); fmt.Sprint(got) != "[ex ans]" { // extract, then answer
 		t.Errorf("run models: %v", got)
 	}
-	over := kcase("m2", "Alice is here.", "Who?", "alice")
+	over := kcase("m2",
+		"Alice is here.",
+		"Who?",
+		"alice")
 	over.Models = map[string]string{"query": "mine"}
 	if got := models(over, defaults); fmt.Sprint(got) != "[ex mine]" {
 		t.Errorf("case models: %v", got)
 	}
-	if got := models(kcase("m3", "Alice is here.", "Who?", "alice"), nil); fmt.Sprint(got) != "[ ]" {
+	if got := models(kcase("m3",
+		"Alice is here.",
+		"Who?",
+		"alice"), nil); fmt.Sprint(got) != "[ ]" {
 		t.Errorf("default models: %q", got)
 	}
 }
@@ -406,15 +616,37 @@ func TestCaseModels(t *testing.T) {
 // TestErroredCase checks that a case that cannot run is an errored case run with the reason, and the next case still runs.
 func TestErroredCase(t *testing.T) {
 	e := newEnv(t, "Alice.")
-	bad := kcase("bad", "Alice is here.", "Who?", "alice")
+	bad := kcase("bad",
+		"Alice is here.",
+		"Who?",
+		"alice")
 	bad.Reasoning = map[string]string{"nope": "low"}
-	missing := kcase("missing", "", "Who?", "alice")
-	missing.Remember = []core.KnowledgeArtifact{{TextFile: "no-such-file.txt"}}
-	run, _ := e.run(knowledge.Eval{Name: "s", Cases: []core.KnowledgeCase{bad, missing, kcase("ok", "Alice is here.", "Who?", "alice")}})
-	if want := (core.Counts{Total: 3, Completed: 1, Errored: 2, Passed: 1}); run.Counts != want || run.Status != core.StatusCompleted {
+	missing := kcase("missing",
+		"",
+		"Who?",
+		"alice")
+	missing.Remember = []core.KnowledgeArtifact{{
+		TextFile: "no-such-file.txt",
+	}}
+	run, _ := e.run(knowledge.Eval{
+		Name: "s",
+		Cases: []core.KnowledgeCase{bad, missing, kcase("ok",
+			"Alice is here.",
+			"Who?",
+			"alice")},
+	})
+	if want := (core.Counts{
+		Total:     3,
+		Completed: 1,
+		Errored:   2,
+		Passed:    1,
+	}); run.Counts != want || run.Status != core.StatusCompleted {
 		t.Fatalf("eval run: %+v", run)
 	}
-	if n := count(t, e.db.Relational, `SELECT COUNT(*) FROM gb_case_runs WHERE eval_run_id = ? AND status = 'errored' AND verdict = '' AND error <> ''`, run.ID); n != 2 {
+	if n := count(t,
+		e.db.Relational,
+		`SELECT COUNT(*) FROM gb_case_runs WHERE eval_run_id = ? AND status = 'errored' AND verdict = '' AND error <> ''`,
+		run.ID); n != 2 {
 		t.Errorf("errored case runs: %d", n)
 	}
 	if out := e.output.String(); !strings.Contains(out, "FAIL bad: reasoning") || !strings.Contains(out, "FAIL missing") {
@@ -428,7 +660,8 @@ type cancelOnCall struct {
 	cancel context.CancelFunc
 }
 
-func (c cancelOnCall) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
+func (c cancelOnCall) Complete(ctx context.Context,
+	req ai.Request) (*ai.Response, error) {
 	c.cancel()
 	return c.LLM.Complete(ctx, req)
 }
@@ -439,17 +672,39 @@ func TestCancelled(t *testing.T) {
 	e := newEnv(t, "Alice.")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	e.x.LLM = cancelOnCall{LLM: e.llm, cancel: cancel}
-	ev := knowledge.Eval{Name: "s", Cases: []core.KnowledgeCase{kcase("a", "Alice is here.", "Who?", "alice"), kcase("b", "Alice is here.", "Who?", "alice")}}
+	e.x.LLM = cancelOnCall{
+		LLM:    e.llm,
+		cancel: cancel,
+	}
+	ev := knowledge.Eval{
+		Name: "s",
+		Cases: []core.KnowledgeCase{kcase("a",
+			"Alice is here.",
+			"Who?",
+			"alice"), kcase("b",
+			"Alice is here.",
+			"Who?",
+			"alice")},
+	}
 	def, err := e.r.SyncEval(ctx, knowledge.Spec(ev))
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := e.r.RunEval(ctx, def, e.x, runner.EvalOptions{Meta: &core.KnowledgeEvalRunMeta{}})
+	run, err := e.r.RunEval(ctx,
+		def,
+		e.x,
+		runner.EvalOptions{
+			Meta: &core.KnowledgeEvalRunMeta{},
+		})
 	if err == nil || run == nil || run.Status != core.StatusCancelled || run.Counts.Cancelled != 1 || run.Counts.Pending != 1 || run.FinishedAt == nil {
-		t.Errorf("cancelled run: %+v %v", run, err)
+		t.Errorf("cancelled run: %+v %v",
+			run,
+			err)
 	}
-	if n := count(t, e.db.Relational, `SELECT COUNT(*) FROM gb_case_runs WHERE eval_run_id = ? AND status = 'cancelled'`, run.ID); n != 1 {
+	if n := count(t,
+		e.db.Relational,
+		`SELECT COUNT(*) FROM gb_case_runs WHERE eval_run_id = ? AND status = 'cancelled'`,
+		run.ID); n != 1 {
 		t.Errorf("cancelled case runs: %d", n)
 	}
 }
@@ -457,7 +712,9 @@ func TestCancelled(t *testing.T) {
 func TestLoadEvals(t *testing.T) {
 	evals, err := knowledge.LoadEvals(testEvalsDir)
 	if err != nil || len(evals) == 0 {
-		t.Fatalf("%v, %v", evals, err)
+		t.Fatalf("%v, %v",
+			evals,
+			err)
 	}
 	// Every case of the evals sets the reasoning of every stage, and of the query, explicitly to none, so a run does not depend
 	// on the server's defaults and is the baseline for comparing levels.
@@ -468,26 +725,38 @@ func TestLoadEvals(t *testing.T) {
 		for _, c := range ev.Cases {
 			for _, stage := range knowledge.ReasoningStages() {
 				if c.Reasoning[stage] != "none" {
-					t.Errorf("%s/%s: reasoning[%s] = %q, want none", ev.Name, c.Name, stage, c.Reasoning[stage])
+					t.Errorf("%s/%s: reasoning[%s] = %q, want none",
+						ev.Name,
+						c.Name,
+						stage,
+						c.Reasoning[stage])
 				}
 			}
 		}
 		// The spec can be put in a database.
 		if spec := knowledge.Spec(ev); len(spec.Cases) != len(ev.Cases) || spec.Type != core.TypeKnowledge {
-			t.Errorf("spec of %s: %+v", ev.Name, spec)
+			t.Errorf("spec of %s: %+v",
+				ev.Name,
+				spec)
 		}
 	}
 	// A selection of one eval and one case.
-	sel, err := knowledge.SelectEvals(evals, evals[0].Name, []string{evals[0].Cases[0].Name})
+	sel, err := knowledge.SelectEvals(evals,
+		evals[0].Name,
+		[]string{evals[0].Cases[0].Name})
 	if err != nil || len(sel) != 1 || len(sel[0].Cases) != 1 {
-		t.Errorf("SelectEvals: %+v %v", sel, err)
+		t.Errorf("SelectEvals: %+v %v",
+			sel,
+			err)
 	}
 }
 
 func TestTextFileErrors(t *testing.T) {
 	dir := t.TempDir()
 	write := func(body string) {
-		if err := os.WriteFile(filepath.Join(dir, "s.json"), []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "s.json"),
+			[]byte(body),
+			0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -511,7 +780,9 @@ func TestTextAsList(t *testing.T) {
 	dir := t.TempDir()
 	load := func(text string) ([]knowledge.Eval, error) {
 		body := `{"name":"s","cases":[{"name":"a","remember":[{"text":` + text + `,"reference_time":"2024-01-01T00:00:00Z"}]}]}`
-		if err := os.WriteFile(filepath.Join(dir, "s.json"), []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "s.json"),
+			[]byte(body),
+			0o644); err != nil {
 			t.Fatal(err)
 		}
 		return knowledge.LoadEvals(dir)
@@ -519,11 +790,16 @@ func TestTextAsList(t *testing.T) {
 	for text, want := range map[string]string{`"one two"`: "one two", `["one", "two", "three"]`: "one two three", `[]`: "", `["only"]`: "only"} {
 		evals, err := load(text)
 		if err != nil {
-			t.Fatalf("%s: %v", text, err)
+			t.Fatalf("%s: %v",
+				text,
+				err)
 		}
 		m := evals[0].Cases[0].Remember[0]
 		if m.Text != want || m.ReferenceTime != "2024-01-01T00:00:00Z" {
-			t.Errorf("%s: got %+v, want text %q", text, m, want)
+			t.Errorf("%s: got %+v, want text %q",
+				text,
+				m,
+				want)
 		}
 	}
 	for _, text := range []string{`5`, `[1]`, `{"a":1}`} {
@@ -539,28 +815,50 @@ type commentaryLLM struct {
 	reqs []ai.Request
 }
 
-func (l *commentaryLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+func (l *commentaryLLM) Complete(_ context.Context,
+	req ai.Request) (*ai.Response, error) {
 	l.mu.Lock()
 	l.reqs = append(l.reqs, req)
 	l.mu.Unlock()
-	return &ai.Response{Text: "Cause: the extractor missed Bob.", Model: req.Model, InputTokens: 1000, OutputTokens: 200, CostUSD: 0.002}, nil
+	return &ai.Response{
+		Text:         "Cause: the extractor missed Bob.",
+		Model:        req.Model,
+		InputTokens:  1000,
+		OutputTokens: 200,
+		CostUSD:      0.002,
+	}, nil
 }
 
 // TestCommentary checks the eval commentary: it is offered only for a case that fails, nothing is sent to the LLM unless the
 // person says yes, and the commentary (made of the failure and the trajectories) is printed under the failure log before the
 // person's confirmation is waited for.
 func TestCommentary(t *testing.T) {
-	failing := kcase("fails", "Alice is here.", "Who?", "bob")
-	passing := kcase("passes", "Alice is here.", "Who?", "alice")
-	errored := kcase("errors", "Alice is here.", "Who?", "alice")
+	failing := kcase("fails",
+		"Alice is here.",
+		"Who?",
+		"bob")
+	passing := kcase("passes",
+		"Alice is here.",
+		"Who?",
+		"alice")
+	errored := kcase("errors",
+		"Alice is here.",
+		"Who?",
+		"alice")
 	errored.Reasoning = map[string]string{"nope": "low"}
-	ev := knowledge.Eval{Name: "s", Cases: []core.KnowledgeCase{passing, failing, errored}}
+	ev := knowledge.Eval{
+		Name:  "s",
+		Cases: []core.KnowledgeCase{passing, failing, errored},
+	}
 
 	t.Run("yes", func(t *testing.T) {
 		e := newEnv(t, "Alice")
 		cl := &commentaryLLM{}
 		// Failing case: y, then Enter after the commentary; the errored case: "x" (not an answer), n.
-		e.x.Commentary = &knowledge.Commentary{LLM: cl, In: strings.NewReader("y\n\nx\nn\n")}
+		e.x.Commentary = &knowledge.Commentary{
+			LLM: cl,
+			In:  strings.NewReader("y\n\nx\nn\n"),
+		}
 		e.run(ev)
 		if len(cl.reqs) != 1 {
 			t.Fatalf("LLM calls: %d, want 1 (only the failing case, answered y)", len(cl.reqs))
@@ -572,7 +870,9 @@ func TestCommentary(t *testing.T) {
 		prompt := req.Messages[0].Content
 		for _, want := range []string{"Eval case: fails", `answer does not contain "bob"`, "ATIF trajectory 2 of 2", "gligabao-query", "Alice is here."} {
 			if !strings.Contains(prompt, want) {
-				t.Errorf("prompt lacks %q:\n%s", want, prompt)
+				t.Errorf("prompt lacks %q:\n%s",
+					want,
+					prompt)
 			}
 		}
 		out := e.output.String()
@@ -581,13 +881,22 @@ func TestCommentary(t *testing.T) {
 		text := strings.Index(out, "Cause: the extractor missed Bob.")
 		enter := strings.Index(out, "Press Enter to continue")
 		if !(fail >= 0 && fail < prompted && prompted < text && text < enter) {
-			t.Errorf("order in output (fail, prompt, text, enter) = %d, %d, %d, %d:\n%s", fail, prompted, text, enter, out)
+			t.Errorf("order in output (fail, prompt, text, enter) = %d, %d, %d, %d:\n%s",
+				fail,
+				prompted,
+				text,
+				enter,
+				out)
 		}
 		if want := "tokens: 1000 in, 200 out; cost $0.002000; commentary total this run: $0.002000 (1)"; !strings.Contains(out, want) {
-			t.Errorf("no cost line %q in: %s", want, out)
+			t.Errorf("no cost line %q in: %s",
+				want,
+				out)
 		}
 		if n, usd := e.x.Commentary.Total(); n != 1 || usd != 0.002 {
-			t.Errorf("total: %d, %v", n, usd)
+			t.Errorf("total: %d, %v",
+				n,
+				usd)
 		}
 		if strings.Count(out, "Run commentary on this failure?") != 3 || !strings.Contains(out, "please answer y or n") {
 			t.Errorf("prompts: %s", out)
@@ -600,10 +909,15 @@ func TestCommentary(t *testing.T) {
 	t.Run("no", func(t *testing.T) {
 		e := newEnv(t, "Alice")
 		cl := &commentaryLLM{}
-		e.x.Commentary = &knowledge.Commentary{LLM: cl, In: strings.NewReader("n\n\n")}
+		e.x.Commentary = &knowledge.Commentary{
+			LLM: cl,
+			In:  strings.NewReader("n\n\n"),
+		}
 		e.run(ev)
 		if len(cl.reqs) != 0 || strings.Contains(e.output.String(), "Press Enter") {
-			t.Errorf("declined: %d LLM calls, output: %s", len(cl.reqs), e.output.String())
+			t.Errorf("declined: %d LLM calls, output: %s",
+				len(cl.reqs),
+				e.output.String())
 		}
 	})
 
@@ -618,7 +932,10 @@ func TestCommentary(t *testing.T) {
 	t.Run("input ends", func(t *testing.T) {
 		e := newEnv(t, "Alice")
 		cl := &commentaryLLM{}
-		e.x.Commentary = &knowledge.Commentary{LLM: cl, In: strings.NewReader("")}
+		e.x.Commentary = &knowledge.Commentary{
+			LLM: cl,
+			In:  strings.NewReader(""),
+		}
 		e.run(ev) // EOF counts as no, and the run goes on
 		if len(cl.reqs) != 0 {
 			t.Errorf("LLM calls: %d", len(cl.reqs))
@@ -632,14 +949,23 @@ func TestPipelineModels(t *testing.T) {
 	rem, q, err := knowledge.PipelineModels("big", "")
 	if err != nil || len(q) != 0 || rem["extract_graph"] != "big" || rem["resolve_edges"] != "big" || rem["detect_geo"] != "big" || rem["web_search"] != "big" ||
 		rem["extract_image"] != "" || rem["query"] != "" {
-		t.Errorf("remember only: %v, %v, %v", rem, q, err)
+		t.Errorf("remember only: %v, %v, %v",
+			rem,
+			q,
+			err)
 	}
 	rem, q, err = knowledge.PipelineModels("", " other ")
 	if err != nil || len(rem) != 0 || q["query"] != "other" || q["detect_geo"] != "other" || len(q) != 2 {
-		t.Errorf("query only: %v, %v, %v", rem, q, err)
+		t.Errorf("query only: %v, %v, %v",
+			rem,
+			q,
+			err)
 	}
 	if rem, q, err = knowledge.PipelineModels("", ""); rem != nil || q != nil || err != nil {
-		t.Errorf("none: %v, %v, %v", rem, q, err)
+		t.Errorf("none: %v, %v, %v",
+			rem,
+			q,
+			err)
 	}
 	if _, _, err = knowledge.PipelineModels("a b", ""); err == nil {
 		t.Error("a model name with a space was accepted")
@@ -652,14 +978,23 @@ func TestPipelineReasoning(t *testing.T) {
 	rem, q, err := knowledge.PipelineReasoning("high", "")
 	if err != nil || len(q) != 0 || rem["extract_graph"] != "high" || rem["resolve_edges"] != "high" || rem["detect_geo"] != "high" ||
 		rem["extract_image"] != "" || rem["query"] != "" {
-		t.Errorf("remember only: %v, %v, %v", rem, q, err)
+		t.Errorf("remember only: %v, %v, %v",
+			rem,
+			q,
+			err)
 	}
 	rem, q, err = knowledge.PipelineReasoning("", " None ")
 	if err != nil || len(rem) != 0 || q["query"] != "none" || q["detect_geo"] != "none" || len(q) != 2 {
-		t.Errorf("query only: %v, %v, %v", rem, q, err)
+		t.Errorf("query only: %v, %v, %v",
+			rem,
+			q,
+			err)
 	}
 	if rem, q, err = knowledge.PipelineReasoning("", ""); rem != nil || q != nil || err != nil {
-		t.Errorf("none: %v, %v, %v", rem, q, err)
+		t.Errorf("none: %v, %v, %v",
+			rem,
+			q,
+			err)
 	}
 	if _, _, err = knowledge.PipelineReasoning("extreme", ""); !errors.Is(err, memory_core.ErrInvalidReasoning) {
 		t.Errorf("an unknown level: %v", err)
@@ -673,40 +1008,79 @@ func TestRerunner(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, "Alice.") // the original run answers Alice, so "bob" is not in the answer
 	e.x.Models = map[string]string{"extract_graph": "base-extract"}
-	ev := knowledge.Eval{Name: "rr", Cases: []core.KnowledgeCase{kcase("c1", "Alice is here.", "Who?", "bob")}}
+	ev := knowledge.Eval{
+		Name: "rr",
+		Cases: []core.KnowledgeCase{kcase("c1",
+			"Alice is here.",
+			"Who?",
+			"bob")},
+	}
 	def, err := e.r.SyncEval(ctx, knowledge.Spec(ev))
 	if err != nil {
 		t.Fatal(err)
 	}
-	xdef, err := e.r.EnsureExperiment(ctx, "rerun-exp", "", []core.EvalDefID{def.ID})
+	xdef, err := e.r.EnsureExperiment(ctx,
+		"rerun-exp",
+		"",
+		[]core.EvalDefID{def.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	xr, err := e.r.StartExperimentRun(ctx, xdef, core.Params{"models": map[string]string{"extract_graph": "base-extract"}})
+	xr, err := e.r.StartExperimentRun(ctx,
+		xdef,
+		core.Params{"models": map[string]string{"extract_graph": "base-extract"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := e.r.RunEval(ctx, def, e.x, runner.EvalOptions{ExperimentRunID: &xr.Run().ID, Params: core.Params{"models": map[string]string{"extract_graph": "base-extract"}}, Meta: &core.KnowledgeEvalRunMeta{}})
+	run, err := e.r.RunEval(ctx,
+		def,
+		e.x,
+		runner.EvalOptions{
+			ExperimentRunID: &xr.Run().ID,
+			Params:          core.Params{"models": map[string]string{"extract_graph": "base-extract"}},
+			Meta:            &core.KnowledgeEvalRunMeta{},
+		})
 	if err != nil || run.Counts.Failed != 1 {
-		t.Fatalf("the original run: %v %+v", err, run)
+		t.Fatalf("the original run: %v %+v",
+			err,
+			run)
 	}
-	cases, err := e.r.Store.ListCaseRuns(ctx, e.r.DB, run.ID)
+	cases, err := e.r.Store.ListCaseRuns(ctx,
+		e.r.DB,
+		run.ID)
 	if err != nil || len(cases) != 1 {
-		t.Fatalf("case runs: %v %v", cases, err)
+		t.Fatalf("case runs: %v %v",
+			cases,
+			err)
 	}
 	orig := cases[0]
 	newRerunner := func(llm memory_core.LLM) admin.EvalRerunner {
 		return knowledge.NewRerunner(server.EvalRerunEnv{
-			Ctx: ctx, DBPath: e.db.SQLitePath, LLM: llm, Embedder: fakeEmbedder{dims: e.db.EmbeddingDimensions}, Prices: ai.NewPriceTable(nil),
+			Ctx:    ctx,
+			DBPath: e.db.SQLitePath,
+			LLM:    llm,
+			Embedder: fakeEmbedder{
+				dims: e.db.EmbeddingDimensions,
+			},
+			Prices: ai.NewPriceTable(nil),
 		})
 	}
-	if knowledge.NewRerunner(server.EvalRerunEnv{Ctx: ctx, DBPath: e.db.SQLitePath}) != nil {
+	if knowledge.NewRerunner(server.EvalRerunEnv{
+		Ctx:    ctx,
+		DBPath: e.db.SQLitePath,
+	}) != nil {
 		t.Error("a rerunner without an LLM")
 	}
 
 	// While the experiment run is going, nothing is added to it.
-	rr := newRerunner(&scriptedLLM{answer: "Bob."})
-	if _, err := rr.Rerun(ctx, orig.ID, core.RerunOptions{RememberModel: "claude-opus-5-5"}); !errors.Is(err, core.ErrRerunRefused) {
+	rr := newRerunner(&scriptedLLM{
+		answer: "Bob.",
+	})
+	if _, err := rr.Rerun(ctx,
+		orig.ID,
+		core.RerunOptions{
+			RememberModel: "claude-opus-5-5",
+		}); !errors.Is(err, core.ErrRerunRefused) {
 		t.Errorf("rerun in a running experiment run: %v", err)
 	}
 	if err := xr.Add(ctx, run); err != nil {
@@ -721,24 +1095,45 @@ func TestRerunner(t *testing.T) {
 		want error
 	}{
 		{999999, core.RerunOptions{}, evalsdb.ErrNotFound},
-		{orig.ID, core.RerunOptions{RememberModel: "a b"}, memory_core.ErrInvalidModels},
-		{orig.ID, core.RerunOptions{QueryReasoning: "extreme"}, memory_core.ErrInvalidReasoning},
+		{orig.ID, core.RerunOptions{
+			RememberModel: "a b",
+		}, memory_core.ErrInvalidModels},
+		{orig.ID, core.RerunOptions{
+			QueryReasoning: "extreme",
+		}, memory_core.ErrInvalidReasoning},
 	} {
-		if _, err := rr.Rerun(ctx, bad.id, bad.opts); !errors.Is(err, bad.want) {
-			t.Errorf("rerun %+v: %v, want %v", bad, err, bad.want)
+		if _, err := rr.Rerun(ctx,
+			bad.id,
+			bad.opts); !errors.Is(err, bad.want) {
+			t.Errorf("rerun %+v: %v, want %v",
+				bad,
+				err,
+				bad.want)
 		}
 	}
 
-	llm := &scriptedLLM{answer: "Bob."}
+	llm := &scriptedLLM{
+		answer: "Bob.",
+	}
 	rr = newRerunner(llm)
-	id, err := rr.Rerun(ctx, orig.ID, core.RerunOptions{
-		RememberModel: "claude-opus-5-5", QueryModel: "claude-sonnet-5-5", RememberReasoning: "High", QueryReasoning: "low"})
+	id, err := rr.Rerun(ctx,
+		orig.ID,
+		core.RerunOptions{
+			RememberModel:     "claude-opus-5-5",
+			QueryModel:        "claude-sonnet-5-5",
+			RememberReasoning: "High",
+			QueryReasoning:    "low",
+		})
 	if err != nil || id == 0 || id == orig.ID {
-		t.Fatalf("rerun: %v, %v", id, err)
+		t.Fatalf("rerun: %v, %v",
+			id,
+			err)
 	}
 	rr.(interface{ Wait() }).Wait()
 
-	re, err := e.r.Store.GetCaseRun(ctx, e.r.DB, id)
+	re, err := e.r.Store.GetCaseRun(ctx,
+		e.r.DB,
+		id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -748,7 +1143,9 @@ func TestRerunner(t *testing.T) {
 	if m, ok := re.Meta.(*core.KnowledgeCaseRunMeta); !ok || m.Answer != "Bob." || len(m.Trajectories) != 2 || m.DatasetID == nil {
 		t.Errorf("the rerun's meta: %+v", re.Meta)
 	}
-	rer, err := e.r.Store.GetEvalRun(ctx, e.r.DB, re.EvalRunID)
+	rer, err := e.r.Store.GetEvalRun(ctx,
+		e.r.DB,
+		re.EvalRunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -767,25 +1164,39 @@ func TestRerunner(t *testing.T) {
 	if fmt.Sprint(llm.levels) != "[high low low]" {
 		t.Errorf("reasoning levels of the rerun's calls: %v", llm.levels)
 	}
-	xrun, err := e.r.Store.GetExperimentRun(ctx, e.r.DB, xr.Run().ID)
+	xrun, err := e.r.Store.GetExperimentRun(ctx,
+		e.r.DB,
+		xr.Run().ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if xrun.Counts.Total != 2 || xrun.Counts.Passed != 1 || xrun.Counts.Failed != 1 || xrun.CostUSD <= run.CostUSD || xrun.Status != core.StatusCompleted {
 		t.Errorf("the experiment run after the rerun: %+v", xrun)
 	}
-	evalRuns, err := e.r.Store.ListEvalRunsOfExperimentRun(ctx, e.r.DB, xr.Run().ID)
+	evalRuns, err := e.r.Store.ListEvalRunsOfExperimentRun(ctx,
+		e.r.DB,
+		xr.Run().ID)
 	if err != nil || len(evalRuns) != 2 {
-		t.Errorf("eval runs of the experiment run: %d, %v", len(evalRuns), err)
+		t.Errorf("eval runs of the experiment run: %d, %v",
+			len(evalRuns),
+			err)
 	}
-	if o, err := e.r.Store.GetCaseRun(ctx, e.r.DB, orig.ID); err != nil || o.Verdict != core.VerdictFail {
-		t.Errorf("the original case run changed: %+v, %v", o, err)
+	if o, err := e.r.Store.GetCaseRun(ctx,
+		e.r.DB,
+		orig.ID); err != nil || o.Verdict != core.VerdictFail {
+		t.Errorf("the original case run changed: %+v, %v",
+			o,
+			err)
 	}
 
 	// With neither model given the stages keep the models of the run; and a rerun of a rerun repeats the same case.
-	llm2 := &scriptedLLM{answer: "Bob."}
+	llm2 := &scriptedLLM{
+		answer: "Bob.",
+	}
 	rr = newRerunner(llm2)
-	id2, err := rr.Rerun(ctx, id, core.RerunOptions{})
+	id2, err := rr.Rerun(ctx,
+		id,
+		core.RerunOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -793,7 +1204,11 @@ func TestRerunner(t *testing.T) {
 	if fmt.Sprint(llm2.models) != "[base-extract  ]" {
 		t.Errorf("models of the second rerun: %v", llm2.models)
 	}
-	if re2, err := e.r.Store.GetCaseRun(ctx, e.r.DB, id2); err != nil || re2.Verdict != core.VerdictPass || re2.DefID != orig.DefID {
-		t.Errorf("rerun of a rerun: %+v, %v", re2, err)
+	if re2, err := e.r.Store.GetCaseRun(ctx,
+		e.r.DB,
+		id2); err != nil || re2.Verdict != core.VerdictPass || re2.DefID != orig.DefID {
+		t.Errorf("rerun of a rerun: %+v, %v",
+			re2,
+			err)
 	}
 }

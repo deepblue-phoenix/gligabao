@@ -44,26 +44,44 @@ type Extension struct {
 // malformed) and returns them sorted by name.
 func ResolveExtensions(list []Extension) ([]Extension, error) {
 	if len(list) > MaxExtensions {
-		return nil, fmt.Errorf("%w: at most %d extensions may be registered, got %d", ErrInvalidExtension, MaxExtensions, len(list))
+		return nil, fmt.Errorf("%w: at most %d extensions may be registered, got %d",
+			ErrInvalidExtension,
+			MaxExtensions,
+			len(list))
 	}
 	seen := map[string]bool{}
-	out := make([]Extension, 0, len(list))
+	out := make([]Extension,
+		0,
+		len(list))
 	for i, e := range list {
 		switch {
 		case e.Name == "" || len(e.Name) > MaxExtensionNameLen || !extensionNameRE.MatchString(e.Name):
-			return nil, fmt.Errorf("%w: extension %d: name %q must be 1-%d lowercase letters, digits, '_' or '-', starting with a letter", ErrInvalidExtension, i, e.Name, MaxExtensionNameLen)
+			return nil, fmt.Errorf("%w: extension %d: name %q must be 1-%d lowercase letters, digits, '_' or '-', starting with a letter",
+				ErrInvalidExtension,
+				i,
+				e.Name,
+				MaxExtensionNameLen)
 		case seen[e.Name]:
-			return nil, fmt.Errorf("%w: duplicate extension name %q", ErrInvalidExtension, e.Name)
+			return nil, fmt.Errorf("%w: duplicate extension name %q",
+				ErrInvalidExtension,
+				e.Name)
 		case e.Assets == nil:
-			return nil, fmt.Errorf("%w: extension %q has no Assets", ErrInvalidExtension, e.Name)
+			return nil, fmt.Errorf("%w: extension %q has no Assets",
+				ErrInvalidExtension,
+				e.Name)
 		}
 		if st, err := fs.Stat(e.Assets, "index.js"); err != nil || st.IsDir() {
-			return nil, fmt.Errorf("%w: extension %q: Assets has no index.js (it must be rooted at the extension's own directory)", ErrInvalidExtension, e.Name)
+			return nil, fmt.Errorf("%w: extension %q: Assets has no index.js (it must be rooted at the extension's own directory)",
+				ErrInvalidExtension,
+				e.Name)
 		}
 		seen[e.Name] = true
 		out = append(out, e)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i,
+		j int) bool {
+		return out[i].Name < out[j].Name
+	})
 	return out, nil
 }
 
@@ -76,16 +94,23 @@ type extensionInfo struct {
 
 // RegisterExtensions mounts the (validated) extensions on mux: GET /v1/gb/admin/api/extensions lists them and everything
 // under /v1/gb/admin/ext/<name>/ is served by the extension: its Handler under api/ (any method), its Assets otherwise (GET).
-func RegisterExtensions(mux *http.ServeMux, exts []Extension) {
-	infos := make([]extensionInfo, 0, len(exts))
+func RegisterExtensions(mux *http.ServeMux,
+	exts []Extension) {
+	infos := make([]extensionInfo,
+		0,
+		len(exts))
 	for _, e := range exts {
-		info := extensionInfo{Name: e.Name, Script: "ext/" + e.Name + "/index.js"}
+		info := extensionInfo{
+			Name:   e.Name,
+			Script: "ext/" + e.Name + "/index.js",
+		}
 		if st, err := fs.Stat(e.Assets, "style.css"); err == nil && !st.IsDir() {
 			info.Style = "ext/" + e.Name + "/style.css"
 		}
 		infos = append(infos, info)
 	}
-	mux.HandleFunc("GET /v1/gb/admin/api/extensions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/gb/admin/api/extensions", func(w http.ResponseWriter,
+		r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(struct {
 			APIVersion int             `json:"api_version"`
@@ -103,13 +128,15 @@ func RegisterExtensions(mux *http.ServeMux, exts []Extension) {
 	}
 }
 
-func extensionHandler(prefix string, e Extension) http.Handler {
+func extensionHandler(prefix string,
+	e Extension) http.Handler {
 	files := http.StripPrefix(prefix, http.FileServerFS(e.Assets))
 	var api http.Handler
 	if e.Handler != nil {
 		api = http.StripPrefix(strings.TrimSuffix(prefix, "/")+"/api", e.Handler)
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, prefix)
 		if strings.HasPrefix(rest, "api/") {
 			if api == nil {
@@ -120,7 +147,9 @@ func extensionHandler(prefix string, e Extension) http.Handler {
 			return
 		}
 		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			http.Error(w,
+				"method not allowed",
+				http.StatusMethodNotAllowed)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-cache") // an updated extension is picked up by a reload

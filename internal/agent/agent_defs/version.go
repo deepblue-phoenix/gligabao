@@ -79,7 +79,9 @@ func parseConstraint(c string) ([]term, error) {
 		}
 		v, err := parseSemver(strings.TrimSpace(strings.TrimPrefix(part, op)))
 		if err != nil {
-			return nil, fmt.Errorf("version constraint %q: %w", c, err)
+			return nil, fmt.Errorf("version constraint %q: %w",
+				c,
+				err)
 		}
 		if op == "==" {
 			op = "="
@@ -90,7 +92,8 @@ func parseConstraint(c string) ([]term, error) {
 }
 
 // satisfies reports whether the version v meets the constraint c ("" is always met).
-func satisfies(version, c string) (bool, error) {
+func satisfies(version,
+	c string) (bool, error) {
 	if strings.TrimSpace(c) == "" {
 		return true, nil
 	}
@@ -114,7 +117,10 @@ func satisfies(version, c string) (bool, error) {
 		case "<":
 			ok = v.cmp(t.v) < 0
 		case "^":
-			upper := semver{n: [3]int{t.v.n[0] + 1, 0, 0}, parts: 3}
+			upper := semver{
+				n:     [3]int{t.v.n[0] + 1, 0, 0},
+				parts: 3,
+			}
 			ok = v.cmp(t.v) >= 0 && v.cmp(upper) < 0
 		default: // "" and "=": the parts that were named
 			ok = true

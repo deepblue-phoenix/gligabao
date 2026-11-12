@@ -104,17 +104,30 @@ type ContentBlock struct {
 
 // TextBlock returns a "text" block.
 func TextBlock(text string) ContentBlock {
-	return ContentBlock{Type: BlockText, Text: text}
+	return ContentBlock{
+		Type: BlockText,
+		Text: text,
+	}
 }
 
 // ToolResultBlock returns a "tool_result" block answering the tool_use block with the given id.
-func ToolResultBlock(toolUseID, content string, isError bool) ContentBlock {
-	return ContentBlock{Type: BlockToolResult, ToolUseID: toolUseID, Content: content, IsError: isError}
+func ToolResultBlock(toolUseID,
+	content string,
+	isError bool) ContentBlock {
+	return ContentBlock{
+		Type:      BlockToolResult,
+		ToolUseID: toolUseID,
+		Content:   content,
+		IsError:   isError,
+	}
 }
 
 // UserText returns a user message with one text block.
 func UserText(text string) Message {
-	return Message{Role: RoleUser, Content: []ContentBlock{TextBlock(text)}}
+	return Message{
+		Role:    RoleUser,
+		Content: []ContentBlock{TextBlock(text)},
+	}
 }
 
 // MarshalJSON writes only the fields that belong to the block's type (the schema forbids any other property).
@@ -155,7 +168,9 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &head); err != nil {
 		return fmt.Errorf("sargo: content block: %w", err)
 	}
-	*b = ContentBlock{Type: head.Type}
+	*b = ContentBlock{
+		Type: head.Type,
+	}
 	switch head.Type {
 	case BlockText:
 		var v struct {
@@ -244,7 +259,10 @@ func (r *Response) ToolUses() []ContentBlock {
 // AssistantMessage returns the answer as an assistant message, unchanged: the first message to append to the conversation when
 // the model asked for tools (StopReason == StopToolUse). Follow it with a user message holding one tool_result block per tool_use.
 func (r *Response) AssistantMessage() Message {
-	return Message{Role: RoleAssistant, Content: r.Content}
+	return Message{
+		Role:    RoleAssistant,
+		Content: r.Content,
+	}
 }
 
 // ErrorResponse is the body of every error reply (ErrorResponse in the schema).

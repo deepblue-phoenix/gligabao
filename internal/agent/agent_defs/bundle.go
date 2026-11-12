@@ -24,7 +24,10 @@ func (r *Registry) Bundle(name string) (*Bundle, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown agent %q", name)
 	}
-	b := &Bundle{Agent: name, Defs: []*Def{root}}
+	b := &Bundle{
+		Agent: name,
+		Defs:  []*Def{root},
+	}
 	if _, err := b.JSON(); err != nil {
 		return nil, err
 	}
@@ -38,7 +41,10 @@ func (b *Bundle) JSON() ([]byte, error) {
 		return nil, err
 	}
 	if len(out) > MaxBundleBytes {
-		return nil, fmt.Errorf("the bundle of agent %q is %d bytes, more than the %d allowed: shorten the prompts or the skills", b.Agent, len(out), MaxBundleBytes)
+		return nil, fmt.Errorf("the bundle of agent %q is %d bytes, more than the %d allowed: shorten the prompts or the skills",
+			b.Agent,
+			len(out),
+			MaxBundleBytes)
 	}
 	return out, nil
 }
@@ -47,7 +53,9 @@ func (b *Bundle) JSON() ([]byte, error) {
 // content). It returns the registry and the name of the agent the bundle is for.
 func ParseBundle(data []byte) (*Registry, string, error) {
 	if len(data) > MaxBundleBytes {
-		return nil, "", fmt.Errorf("agent bundle: %d bytes, more than the %d allowed", len(data), MaxBundleBytes)
+		return nil, "", fmt.Errorf("agent bundle: %d bytes, more than the %d allowed",
+			len(data),
+			MaxBundleBytes)
 	}
 	var b Bundle
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -68,7 +76,9 @@ func ParseBundle(data []byte) (*Registry, string, error) {
 		want := d.Hash
 		normalize(d)
 		for _, p := range check(d) {
-			errs = append(errs, fmt.Errorf("agent bundle: %s: %s", d.Name, p))
+			errs = append(errs, fmt.Errorf("agent bundle: %s: %s",
+				d.Name,
+				p))
 		}
 		if got := hashOf(d); got != want {
 			errs = append(errs, fmt.Errorf("agent bundle: %s: the hash does not match the content", d.Name))

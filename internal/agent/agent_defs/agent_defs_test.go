@@ -53,7 +53,8 @@ max_steps = 12
 `
 
 // dir makes an agent_defs directory with the files (path -> content).
-func dir(t *testing.T, files map[string]string) string {
+func dir(t *testing.T,
+	files map[string]string) string {
 	t.Helper()
 	d := t.TempDir()
 	for name, content := range files {
@@ -61,7 +62,9 @@ func dir(t *testing.T, files map[string]string) string {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(p,
+			[]byte(content),
+			0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -106,10 +109,14 @@ func TestLoadReadsTomlAndResolvesEverything(t *testing.T) {
 		t.Errorf("search: %+v", d.Search)
 	}
 	if d.Knowledge.Access != AccessReadOnly || d.Knowledge.Dataset != "news" || !d.Knowledge.QueryFirst || d.Limits.MaxCostUSD != 1.5 || d.Limits.MaxTreeCostUSD != 5 {
-		t.Errorf("knowledge and limits: %+v %+v", d.Knowledge, d.Limits)
+		t.Errorf("knowledge and limits: %+v %+v",
+			d.Knowledge,
+			d.Limits)
 	}
 	if len(d.Hash) != 64 || d.Source == "" {
-		t.Errorf("hash and source: %q %q", d.Hash, d.Source)
+		t.Errorf("hash and source: %q %q",
+			d.Hash,
+			d.Source)
 	}
 }
 
@@ -199,7 +206,9 @@ func TestInvalidDefinitionsAreAllReported(t *testing.T) {
 		_, err := Load(d)
 		if len(c.want) == 0 {
 			if err != nil {
-				t.Errorf("%s: %v", name, err)
+				t.Errorf("%s: %v",
+					name,
+					err)
 			}
 			continue
 		}
@@ -209,7 +218,10 @@ func TestInvalidDefinitionsAreAllReported(t *testing.T) {
 		}
 		for _, w := range c.want {
 			if !strings.Contains(err.Error(), w) {
-				t.Errorf("%s: the error lacks %q:\n%v", name, w, err)
+				t.Errorf("%s: the error lacks %q:\n%v",
+					name,
+					w,
+					err)
 			}
 		}
 	}
@@ -217,14 +229,18 @@ func TestInvalidDefinitionsAreAllReported(t *testing.T) {
 
 func TestSkillAndPromptSymlinksCannotLeaveTheDirectory(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "secret.md")
-	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+	if err := os.WriteFile(outside,
+		[]byte("secret"),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
 	d := dir(t, map[string]string{"x.toml": "name = \"x\"\nversion = \"1.0.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\nrequired_skills = [\"leak\"]\n"})
 	if err := os.MkdirAll(filepath.Join(d, "skills"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(d, "skills", "leak.md")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(d,
+		"skills",
+		"leak.md")); err != nil {
 		t.Skip("no symlinks")
 	}
 	if _, err := Load(d); err == nil || !strings.Contains(err.Error(), "outside the definitions directory") {
@@ -242,7 +258,9 @@ func TestBundleRoundTripAndTamper(t *testing.T) {
 		t.Fatal(err)
 	}
 	if b.Agent != "news_scanner" || len(b.Defs) != 1 {
-		t.Fatalf("bundle: %s %d", b.Agent, len(b.Defs))
+		t.Fatalf("bundle: %s %d",
+			b.Agent,
+			len(b.Defs))
 	}
 	data, err := b.JSON()
 	if err != nil {
@@ -250,17 +268,25 @@ func TestBundleRoundTripAndTamper(t *testing.T) {
 	}
 	reg2, name, err := ParseBundle(data)
 	if err != nil || name != "news_scanner" {
-		t.Fatalf("parse: %q %v", name, err)
+		t.Fatalf("parse: %q %v",
+			name,
+			err)
 	}
 	for _, n := range []string{"news_scanner"} {
 		a, _ := reg.Get(n)
 		c, _ := reg2.Get(n)
 		if c == nil || a.Hash != c.Hash || a.SystemPrompt != c.SystemPrompt || len(a.Skills) != len(c.Skills) {
-			t.Errorf("%s did not survive the bundle: %+v vs %+v", n, a, c)
+			t.Errorf("%s did not survive the bundle: %+v vs %+v",
+				n,
+				a,
+				c)
 		}
 	}
 	// A changed prompt no longer matches its hash.
-	tampered := strings.Replace(string(data), "You are a news scanner.", "You are evil.", 1)
+	tampered := strings.Replace(string(data),
+		"You are a news scanner.",
+		"You are evil.",
+		1)
 	if _, _, err := ParseBundle([]byte(tampered)); err == nil || !strings.Contains(err.Error(), "hash does not match") {
 		t.Errorf("tampered bundle: %v", err)
 	}
@@ -277,14 +303,19 @@ func TestBundleRoundTripAndTamper(t *testing.T) {
 	// A bundle of the built-in agent alone is what a plain research sends to a container.
 	bb, err := BuiltinRegistry().Bundle(DefaultName)
 	if err != nil || len(bb.Defs) != 1 {
-		t.Fatalf("builtin bundle: %+v %v", bb, err)
+		t.Fatalf("builtin bundle: %+v %v",
+			bb,
+			err)
 	}
 	if _, name, err := ParseBundle(mustJSON(t, bb)); err != nil || name != DefaultName {
-		t.Errorf("builtin bundle parse: %q %v", name, err)
+		t.Errorf("builtin bundle parse: %q %v",
+			name,
+			err)
 	}
 }
 
-func mustJSON(t *testing.T, b *Bundle) []byte {
+func mustJSON(t *testing.T,
+	b *Bundle) []byte {
 	t.Helper()
 	data, err := b.JSON()
 	if err != nil {
@@ -296,7 +327,10 @@ func mustJSON(t *testing.T, b *Bundle) []byte {
 func TestBundleSizeIsCapped(t *testing.T) {
 	d := Builtin()
 	d.SystemPrompt = strings.Repeat("x", MaxBundleBytes)
-	if _, err := (&Bundle{Agent: d.Name, Defs: []*Def{d}}).JSON(); err == nil {
+	if _, err := (&Bundle{
+		Agent: d.Name,
+		Defs:  []*Def{d},
+	}).JSON(); err == nil {
 		t.Error("an oversized bundle was made")
 	}
 }
@@ -322,7 +356,9 @@ func TestResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 	if d, err := reg.Resolve("", ""); err != nil || d.Name != DefaultName {
-		t.Errorf("empty name: %v %v", d, err)
+		t.Errorf("empty name: %v %v",
+			d,
+			err)
 	}
 	for _, bad := range [][2]string{{"ghost", ""}, {"regional_scout", ">=2.0"}, {"regional_scout", "1.0.4"}, {"regional_scout", "x"}} {
 		if _, err := reg.Resolve(bad[0], bad[1]); err == nil {
@@ -345,7 +381,11 @@ func TestSatisfies(t *testing.T) {
 	} {
 		got, err := satisfies(c.version, c.constraint)
 		if err != nil || got != c.want {
-			t.Errorf("%s %q: %v %v", c.version, c.constraint, got, err)
+			t.Errorf("%s %q: %v %v",
+				c.version,
+				c.constraint,
+				got,
+				err)
 		}
 	}
 	for _, bad := range []string{"x", ">=", "1..2", "1.2.3.4", ">=1,", "01.2"} {
@@ -359,7 +399,10 @@ func TestScheduleIsLoadedWithDefaultsAndIsNotInTheHash(t *testing.T) {
 	const base = "name = \"x\"\nversion = \"1.0.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n"
 	reg, err := Load(dir(t, map[string]string{
 		"x.toml": base + "[schedule]\ncron = \" 30 7 * * mon-fri \"\ntopic = \"News of {{.Date}}\"\n",
-		"y.toml": strings.Replace(base, `"x"`, `"y"`, 1),
+		"y.toml": strings.Replace(base,
+			`"x"`,
+			`"y"`,
+			1),
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -374,12 +417,30 @@ func TestScheduleIsLoadedWithDefaultsAndIsNotInTheHash(t *testing.T) {
 		t.Error("y has a schedule")
 	}
 	// Friday 2030-01-04 08:00 UTC: the next run is Monday the 7th at 7:30.
-	next := sc.Next(time.Date(2030, 1, 4, 8, 0, 0, 0, time.UTC))
-	if want := time.Date(2030, 1, 7, 7, 30, 0, 0, time.UTC); !next.Equal(want) {
-		t.Errorf("next = %v, want %v", next, want)
+	next := sc.Next(time.Date(2030,
+		1,
+		4,
+		8,
+		0,
+		0,
+		0,
+		time.UTC))
+	if want := time.Date(2030,
+		1,
+		7,
+		7,
+		30,
+		0,
+		0,
+		time.UTC); !next.Equal(want) {
+		t.Errorf("next = %v, want %v",
+			next,
+			want)
 	}
 	if topic, err := sc.TopicAt(next); err != nil || topic != "News of 2030-01-07" {
-		t.Errorf("topic = %q, %v", topic, err)
+		t.Errorf("topic = %q, %v",
+			topic,
+			err)
 	}
 	hashed := *x
 	hashed.Schedule = nil
@@ -408,7 +469,8 @@ description = "Investigates."
 system_prompt = "You investigate."
 `
 
-func loadLoop(t *testing.T, extra string) (*Registry, error) {
+func loadLoop(t *testing.T,
+	extra string) (*Registry, error) {
 	t.Helper()
 	return Load(dir(t, map[string]string{"deep.toml": loopTOML + extra}))
 }
@@ -452,15 +514,29 @@ func TestLoopDefaultsToSimpleAndKnobsNeedTheInvestigativeLoop(t *testing.T) {
 		"unknown knob":                 {"loop = \"investigative\"\n[investigate]\nmax_chaos = 2\n", "unknown key"},
 	} {
 		if _, err := loadLoop(t, c.extra); err == nil || !strings.Contains(err.Error(), c.want) {
-			t.Errorf("%s: %v", name, err)
+			t.Errorf("%s: %v",
+				name,
+				err)
 		}
 	}
 }
 
 func TestInvestigateMerge(t *testing.T) {
-	base := Investigate{MaxIterations: 30, MinSources: 3, GatePriority: 0.4}
-	got := base.Merge(Investigate{MinSources: 7, SynthesisReserve: 0.2})
-	want := Investigate{MaxIterations: 30, MinSources: 7, GatePriority: 0.4, SynthesisReserve: 0.2}
+	base := Investigate{
+		MaxIterations: 30,
+		MinSources:    3,
+		GatePriority:  0.4,
+	}
+	got := base.Merge(Investigate{
+		MinSources:       7,
+		SynthesisReserve: 0.2,
+	})
+	want := Investigate{
+		MaxIterations:    30,
+		MinSources:       7,
+		GatePriority:     0.4,
+		SynthesisReserve: 0.2,
+	}
 	if got != want {
 		t.Errorf("%+v", got)
 	}
@@ -495,7 +571,9 @@ func TestCodeTable(t *testing.T) {
 		"unknown key":  {"loop = \"investigative\"\n[code]\nenabled = true\nsudo = true\n", "unknown key"},
 	} {
 		if _, err := loadLoop(t, c.extra); err == nil || !strings.Contains(err.Error(), c.want) {
-			t.Errorf("%s: %v", name, err)
+			t.Errorf("%s: %v",
+				name,
+				err)
 		}
 	}
 }

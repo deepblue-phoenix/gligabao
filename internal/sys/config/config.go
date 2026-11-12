@@ -263,7 +263,10 @@ func Default() *Config {
 
 // Chunking returns the chunking settings (chunk_size, chunk_overlap_percent).
 func (c *Config) Chunking() memory_chunk.Config {
-	return memory_chunk.Config{Size: c.ChunkSize, OverlapPercent: c.ChunkOverlapPercent}
+	return memory_chunk.Config{
+		Size:           c.ChunkSize,
+		OverlapPercent: c.ChunkOverlapPercent,
+	}
 }
 
 // Addr returns the HTTP listen address derived from the host and the port (e.g. ":7878", or "127.0.0.1:7878" with a host).
@@ -280,25 +283,38 @@ func (c *Config) Validate() error {
 	case DBBackendSQLite:
 	case DBBackendPostgres:
 		if strings.TrimSpace(c.PostgresDSN) == "" {
-			return fmt.Errorf("config: postgres_dsn (or %s) is required when db_backend is %q", EnvPostgresDSN, DBBackendPostgres)
+			return fmt.Errorf("config: postgres_dsn (or %s) is required when db_backend is %q",
+				EnvPostgresDSN,
+				DBBackendPostgres)
 		}
 	default:
-		return fmt.Errorf("config: db_backend %q must be %q or %q", c.DBBackend, DBBackendSQLite, DBBackendPostgres)
+		return fmt.Errorf("config: db_backend %q must be %q or %q",
+			c.DBBackend,
+			DBBackendSQLite,
+			DBBackendPostgres)
 	}
 	switch c.VectorStore {
 	case VectorStoreChromem, VectorStorePinecone:
 	case VectorStoreS3Vectors:
 		if strings.TrimSpace(c.S3VectorsBucket) == "" {
-			return fmt.Errorf("config: s3_vectors_bucket (or %s) is required when vector_store is %q", EnvS3VectorsBucket, VectorStoreS3Vectors)
+			return fmt.Errorf("config: s3_vectors_bucket (or %s) is required when vector_store is %q",
+				EnvS3VectorsBucket,
+				VectorStoreS3Vectors)
 		}
 	default:
-		return fmt.Errorf("config: vector_store %q must be %q, %q or %q", c.VectorStore, VectorStoreChromem, VectorStorePinecone, VectorStoreS3Vectors)
+		return fmt.Errorf("config: vector_store %q must be %q, %q or %q",
+			c.VectorStore,
+			VectorStoreChromem,
+			VectorStorePinecone,
+			VectorStoreS3Vectors)
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)
 	}
 	if c.GeoRadiusKm != 0 && (math.IsNaN(c.GeoRadiusKm) || c.GeoRadiusKm < 0 || c.GeoRadiusKm > memory_geo.MaxDistanceKm) {
-		return fmt.Errorf("config: geo_radius_km %v must be greater than 0 and at most %v", c.GeoRadiusKm, memory_geo.MaxDistanceKm)
+		return fmt.Errorf("config: geo_radius_km %v must be greater than 0 and at most %v",
+			c.GeoRadiusKm,
+			memory_geo.MaxDistanceKm)
 	}
 	if c.ResearchMaxCostUSD < 0 || math.IsNaN(c.ResearchMaxCostUSD) || math.IsInf(c.ResearchMaxCostUSD, 0) {
 		return fmt.Errorf("config: research_max_cost_usd %v must be 0 (no cap) or a positive number of USD", c.ResearchMaxCostUSD)
@@ -346,13 +362,19 @@ func Load(path string) (*Config, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("config: %w", err)
 		}
-		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+		return nil, fmt.Errorf("config: parse %s: %w",
+			path,
+			err)
 	}
 	if undec := md.Undecoded(); len(undec) > 0 {
-		return nil, fmt.Errorf("config: %s: unknown key %q", path, undec[0].String())
+		return nil, fmt.Errorf("config: %s: unknown key %q",
+			path,
+			undec[0].String())
 	}
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w",
+			path,
+			err)
 	}
 	cfg.resolveDirs(filepath.Dir(path))
 	return cfg, nil

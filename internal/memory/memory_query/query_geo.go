@@ -56,7 +56,8 @@ Rules:
 // parseQueryPlaces decodes the LLM's answer and keeps the valid, distinct places, in the order given: those whose text is in
 // the question (an LLM that makes one up is ignored). A kind that is not one of geo.Kinds becomes "place"; an empty or too long
 // query becomes the text.
-func parseQueryPlaces(out, question string) ([]QueryPlace, error) {
+func parseQueryPlaces(out,
+	question string) ([]QueryPlace, error) {
 	js, err := memory_core.JSONObject(out)
 	if err != nil {
 		return nil, err
@@ -89,7 +90,11 @@ func parseQueryPlaces(out, question string) ([]QueryPlace, error) {
 		if query == "" || len(query) > maxQueryPlaceLen {
 			query = text
 		}
-		res = append(res, QueryPlace{Text: text, Kind: kind, Query: query})
+		res = append(res, QueryPlace{
+			Text:  text,
+			Kind:  kind,
+			Query: query,
+		})
 		if len(res) == maxQueryPlaces {
 			break
 		}
@@ -99,10 +104,15 @@ func parseQueryPlaces(out, question string) ([]QueryPlace, error) {
 
 // detectPlaces asks the LLM which places the question mentions. llm is already the one of the detect_geo stage. It returns the
 // places (nil if there are none) and the error, if the call or its output failed; the caller only records it.
-func detectPlaces(ctx context.Context, llm memory_core.LLM, question string) ([]QueryPlace, error) {
+func detectPlaces(ctx context.Context,
+	llm memory_core.LLM,
+	question string) ([]QueryPlace, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:    detectQueryGeoSystemPrompt,
-		Messages:  []ai.Message{{Role: ai.RoleUser, Content: "<question>\n" + question + "\n</question>"}},
+		System: detectQueryGeoSystemPrompt,
+		Messages: []ai.Message{{
+			Role:    ai.RoleUser,
+			Content: "<question>\n" + question + "\n</question>",
+		}},
 		MaxTokens: 1024,
 	})
 	if err != nil {

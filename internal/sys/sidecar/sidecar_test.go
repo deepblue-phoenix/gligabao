@@ -8,7 +8,8 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.URL.Path != "/health" {
 			http.NotFound(w, r)
 			return
@@ -23,8 +24,11 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHealthUnhealthy(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "boom", http.StatusInternalServerError)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
+		http.Error(w,
+			"boom",
+			http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 

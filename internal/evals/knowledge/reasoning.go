@@ -41,7 +41,8 @@ func splitReasoning(m map[string]string) (remember, query memory_core.Reasoning,
 // mergeReasoning combines the runner's -reasoning with a case's reasoning levels, stage by stage (the case wins, like its
 // models: a case controls its own parameters), validates them and splits them into what the remember requests and the
 // query request carry.
-func mergeReasoning(flag, caseLevels map[string]string) (remember, query memory_core.Reasoning, err error) {
+func mergeReasoning(flag,
+	caseLevels map[string]string) (remember, query memory_core.Reasoning, err error) {
 	merged := map[string]string{}
 	for _, m := range []map[string]string{flag, caseLevels} {
 		for stage, level := range m {
@@ -56,7 +57,8 @@ func mergeReasoning(flag, caseLevels map[string]string) (remember, query memory_
 // stages are memory_core.ReasoningStages but extract_image (which the cases never run) and the query's are
 // memory_core.QueryReasoningStages. "none" is a level of its own (no thinking, whatever the case or the run asked for). The levels are
 // validated like those of ResolveReasoning.
-func PipelineReasoning(rememberLevel, queryLevel string) (remember, query memory_core.Reasoning, err error) {
+func PipelineReasoning(rememberLevel,
+	queryLevel string) (remember, query memory_core.Reasoning, err error) {
 	rem, q := map[string]string{}, map[string]string{}
 	if rememberLevel = strings.TrimSpace(rememberLevel); rememberLevel != "" {
 		for _, stage := range memory_core.ReasoningStages {

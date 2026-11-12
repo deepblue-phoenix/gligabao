@@ -31,18 +31,23 @@ type queryRunsResponse struct {
 // QueryRunsOf serves GET /admin/api/query-runs[?db=<name>][&status=..][&dataset=..][&user_id=..][&limit=..][&offset=..] for one of
 // dbs (the first without db): the counts of all the runs by status (never filtered) and the runs that match the filters.
 func QueryRunsOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
 		limit, offset := rememberRunsDefaultLimit, 0
 		if v := q.Get("limit"); v != "" {
 			l, err := strconv.Atoi(v)
 			if err != nil || l < 1 {
-				httputil.Error(w, http.StatusBadRequest, "invalid limit")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"invalid limit")
 				return
 			}
 			limit = min(l, rememberRunsMaxLimit)
@@ -50,22 +55,32 @@ func QueryRunsOf(dbs []Named) http.HandlerFunc {
 		if v := q.Get("offset"); v != "" {
 			o, err := strconv.Atoi(v)
 			if err != nil || o < 0 {
-				httputil.Error(w, http.StatusBadRequest, "invalid offset")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"invalid offset")
 				return
 			}
 			offset = o
 		}
 		status := q.Get("status")
 		if status != "" && status != relational.RememberStarted && status != relational.RememberSucceeded && status != relational.RememberFailed {
-			httputil.Error(w, http.StatusBadRequest, "invalid status")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid status")
 			return
 		}
 		ctx := r.Context()
 		fail := func(err error) {
 			log.WithError(err).Error("admin: query runs failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read query runs")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read query runs")
 		}
-		out := queryRunsResponse{Stages: make([]string, 0, len(relational.QueryStages))}
+		out := queryRunsResponse{
+			Stages: make([]string,
+				0,
+				len(relational.QueryStages)),
+		}
 		for _, s := range relational.QueryStages {
 			out.Stages = append(out.Stages, s.Name)
 		}
@@ -74,21 +89,37 @@ func QueryRunsOf(dbs []Named) http.HandlerFunc {
 			into   *int
 		}{{"", &out.Counts.Total}, {relational.RememberStarted, &out.Counts.Started},
 			{relational.RememberSucceeded, &out.Counts.Succeeded}, {relational.RememberFailed, &out.Counts.Failed}} {
-			_, total, err := relational.ListQueryRuns(ctx, n.DB, relational.QueryRunFilter{Status: c.status}, 1, 0)
+			_, total, err := relational.ListQueryRuns(ctx,
+				n.DB,
+				relational.QueryRunFilter{
+					Status: c.status,
+				},
+				1,
+				0)
 			if err != nil {
 				fail(err)
 				return
 			}
 			*c.into = total
 		}
-		f := relational.QueryRunFilter{UserID: q.Get("user_id"), Dataset: q.Get("dataset"), Status: status}
-		runs, total, err := relational.ListQueryRuns(ctx, n.DB, f, limit, offset)
+		f := relational.QueryRunFilter{
+			UserID:  q.Get("user_id"),
+			Dataset: q.Get("dataset"),
+			Status:  status,
+		}
+		runs, total, err := relational.ListQueryRuns(ctx,
+			n.DB,
+			f,
+			limit,
+			offset)
 		if err != nil {
 			fail(err)
 			return
 		}
 		out.Runs, out.Total, out.Limit, out.Offset = runs, total, limit, offset
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -102,32 +133,52 @@ type queryRunResponse struct {
 // of the list of QueryRunsOf, with the stage names in order. The admin UI opens a bookmarked run with it, whatever page of the list
 // the run is on. An unknown run is 404.
 func QueryRunOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
-		id, err := strconv.ParseInt(q.Get("run_id"), 10, 64)
+		id, err := strconv.ParseInt(q.Get("run_id"),
+			10,
+			64)
 		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "invalid run_id")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid run_id")
 			return
 		}
-		run, err := relational.GetQueryRun(r.Context(), n.DB, id)
+		run, err := relational.GetQueryRun(r.Context(),
+			n.DB,
+			id)
 		if errors.Is(err, relational.ErrNotFound) {
-			httputil.Error(w, http.StatusNotFound, "unknown query run")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown query run")
 			return
 		}
 		if err != nil {
 			log.WithError(err).Error("admin: query run failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the query run")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the query run")
 			return
 		}
-		out := queryRunResponse{Stages: make([]string, 0, len(relational.QueryStages)), Run: *run}
+		out := queryRunResponse{
+			Stages: make([]string,
+				0,
+				len(relational.QueryStages)),
+			Run: *run,
+		}
 		for _, s := range relational.QueryStages {
 			out.Stages = append(out.Stages, s.Name)
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }

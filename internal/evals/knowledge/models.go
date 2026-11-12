@@ -39,7 +39,8 @@ func splitModels(m map[string]string) (remember, query memory_core.Models, err e
 
 // mergeModels combines the runner's -models with a case's models, stage by stage (the case wins, a case controls its own
 // parameters), validates them and splits them into what the remember requests and the query request carry.
-func mergeModels(flag, caseModels map[string]string) (remember, query memory_core.Models, err error) {
+func mergeModels(flag,
+	caseModels map[string]string) (remember, query memory_core.Models, err error) {
 	merged := map[string]string{}
 	for _, m := range []map[string]string{flag, caseModels} {
 		for stage, model := range m {
@@ -54,7 +55,8 @@ func mergeModels(flag, caseModels map[string]string) (remember, query memory_cor
 // stages are memory_core.Stages (all but extract_image, which the cases never run); the query's are memory_core.QueryStages (the
 // call that answers and the detection of the places of the question). detect_geo is in both, and each pipeline gets its own model
 // for it. The names are validated like those of ResolveModels.
-func PipelineModels(rememberModel, queryModel string) (remember, query memory_core.Models, err error) {
+func PipelineModels(rememberModel,
+	queryModel string) (remember, query memory_core.Models, err error) {
 	rem, q := map[string]string{}, map[string]string{}
 	if rememberModel = strings.TrimSpace(rememberModel); rememberModel != "" {
 		for _, stage := range memory_core.Stages {

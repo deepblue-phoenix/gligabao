@@ -42,7 +42,9 @@ func status(s core.Status) core.Status {
 
 // CreateAuditRun inserts r into gb_training_audit_runs, with its AuditStats, and sets its ID, Status and CreatedAt. Its
 // CaseRuns are not stored: they are added with CreateAuditCaseRun.
-func CreateAuditRun(ctx context.Context, q db.Execer, r *core.AuditRun) error {
+func CreateAuditRun(ctx context.Context,
+	q db.Execer,
+	r *core.AuditRun) error {
 	params, err := db.JSON(r.Params, "{}")
 	if err != nil {
 		return err
@@ -50,18 +52,44 @@ func CreateAuditRun(ctx context.Context, q db.Execer, r *core.AuditRun) error {
 	r.Status = status(r.Status)
 	r.CreatedAt = fill(r.CreatedAt)
 	var id int64
-	if err := q.QueryRowContext(ctx, `
+	if err := q.QueryRowContext(ctx,
+		`
 		INSERT INTO gb_training_audit_runs (trained_model_id, dataset, dataset_sha256, status, error, params,
 			counts_total, counts_pending, counts_running, counts_completed, counts_errored, counts_cancelled, cost_usd,
 			judge_model, num_answered, num_judged, num_correct, num_partial, num_incorrect, score_sum, num_batches, judge_calls,
 			judge_input_tokens, judge_output_tokens, created_at, started_at, finished_at)
 		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 		RETURNING id`,
-		r.TrainedModelID, r.Dataset, r.DatasetSHA256, string(r.Status), r.Error, params,
-		r.Counts.Total, r.Counts.Pending, r.Counts.Running, r.Counts.Completed, r.Counts.Errored, r.Counts.Cancelled, r.CostUSD,
-		r.JudgeModel, r.NumAnswered, r.NumJudged, r.NumCorrect, r.NumPartial, r.NumIncorrect, r.ScoreSum, r.NumBatches, r.JudgeCalls,
-		r.JudgeInputTokens, r.JudgeOutputTokens, r.CreatedAt, ptr(r.StartedAt), ptr(r.FinishedAt)).Scan(&id); err != nil {
-		return fmt.Errorf("create training audit run of trained model %d: %w", r.TrainedModelID, err)
+		r.TrainedModelID,
+		r.Dataset,
+		r.DatasetSHA256,
+		string(r.Status),
+		r.Error,
+		params,
+		r.Counts.Total,
+		r.Counts.Pending,
+		r.Counts.Running,
+		r.Counts.Completed,
+		r.Counts.Errored,
+		r.Counts.Cancelled,
+		r.CostUSD,
+		r.JudgeModel,
+		r.NumAnswered,
+		r.NumJudged,
+		r.NumCorrect,
+		r.NumPartial,
+		r.NumIncorrect,
+		r.ScoreSum,
+		r.NumBatches,
+		r.JudgeCalls,
+		r.JudgeInputTokens,
+		r.JudgeOutputTokens,
+		r.CreatedAt,
+		ptr(r.StartedAt),
+		ptr(r.FinishedAt)).Scan(&id); err != nil {
+		return fmt.Errorf("create training audit run of trained model %d: %w",
+			r.TrainedModelID,
+			err)
 	}
 	r.ID = core.AuditRunID(id)
 	return nil
@@ -69,18 +97,37 @@ func CreateAuditRun(ctx context.Context, q db.Execer, r *core.AuditRun) error {
 
 // CreateAuditCaseRun inserts c into gb_training_audit_case_runs, as an example of the audit run c.RunID, and sets its ID,
 // Status and CreatedAt.
-func CreateAuditCaseRun(ctx context.Context, q db.Execer, c *core.AuditCaseRun) error {
+func CreateAuditCaseRun(ctx context.Context,
+	q db.Execer,
+	c *core.AuditCaseRun) error {
 	c.Status = status(c.Status)
 	c.CreatedAt = fill(c.CreatedAt)
 	var id int64
-	if err := q.QueryRowContext(ctx, `
+	if err := q.QueryRowContext(ctx,
+		`
 		INSERT INTO gb_training_audit_case_runs (run_id, idx, status, error, instruction, input, reference, response, batch,
 			judge_score, judge_reason, input_tokens, output_tokens, duration_ms, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id`,
-		int64(c.RunID), c.Idx, string(c.Status), c.Error, c.Instruction, c.Input, c.Reference, c.Response, c.Batch,
-		c.JudgeScore, c.JudgeReason, c.InputTokens, c.OutputTokens, c.DurationMS, c.CreatedAt).Scan(&id); err != nil {
-		return fmt.Errorf("create training audit case run %d of audit run %d: %w", c.Idx, c.RunID, err)
+		int64(c.RunID),
+		c.Idx,
+		string(c.Status),
+		c.Error,
+		c.Instruction,
+		c.Input,
+		c.Reference,
+		c.Response,
+		c.Batch,
+		c.JudgeScore,
+		c.JudgeReason,
+		c.InputTokens,
+		c.OutputTokens,
+		c.DurationMS,
+		c.CreatedAt).Scan(&id); err != nil {
+		return fmt.Errorf("create training audit case run %d of audit run %d: %w",
+			c.Idx,
+			c.RunID,
+			err)
 	}
 	c.ID = core.AuditCaseRunID(id)
 	return nil

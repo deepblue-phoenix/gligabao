@@ -30,7 +30,11 @@ type StatusError struct {
 }
 
 func (e *StatusError) Error() string {
-	return fmt.Sprintf("sidecar %s %s: status %d: %s", e.Method, e.Path, e.Code, e.Body)
+	return fmt.Sprintf("sidecar %s %s: status %d: %s",
+		e.Method,
+		e.Path,
+		e.Code,
+		e.Body)
 }
 
 // Message is the sidecar's error message: the "error" field of its JSON body, or the body itself.
@@ -51,8 +55,10 @@ func New(baseURL string) *Client {
 	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{Timeout: 30 * time.Second},
-		stream:  &http.Client{},
+		http: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		stream: &http.Client{},
 	}
 }
 
@@ -64,7 +70,9 @@ type HealthResponse struct {
 // Health checks that the sidecar is up and healthy.
 func (c *Client) Health(ctx context.Context) (HealthResponse, error) {
 	var out HealthResponse
-	if err := c.get(ctx, "/health", &out); err != nil {
+	if err := c.get(ctx,
+		"/health",
+		&out); err != nil {
 		return out, err
 	}
 	if out.Status != "ok" {
@@ -82,7 +90,9 @@ func (c *Client) Backends(ctx context.Context) ([]BackendStatus, error) {
 	var out struct {
 		Backends []BackendStatus `json:"backends"`
 	}
-	if err := c.get(ctx, "/backends", &out); err != nil {
+	if err := c.get(ctx,
+		"/backends",
+		&out); err != nil {
 		return nil, err
 	}
 	return out.Backends, nil
@@ -90,39 +100,63 @@ func (c *Client) Backends(ctx context.Context) ([]BackendStatus, error) {
 
 // Open sends `method path?rawQuery` to the sidecar and returns the response as it is, whatever its status; the caller closes
 // the body. It is for passing an answer on (including a long-lived SSE stream, so there is no overall timeout: ctx ends it).
-func (c *Client) Open(ctx context.Context, method, path, rawQuery string, body io.Reader) (*http.Response, error) {
+func (c *Client) Open(ctx context.Context,
+	method,
+	path,
+	rawQuery string,
+	body io.Reader) (*http.Response, error) {
 	u := c.baseURL + path
 	if rawQuery != "" {
 		u += "?" + rawQuery
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, body)
+	req, err := http.NewRequestWithContext(ctx,
+		method,
+		u,
+		body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	resp, err := c.stream.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("sidecar %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("sidecar %s %s: %w",
+			method,
+			path,
+			err)
 	}
 	return resp, nil
 }
 
-func (c *Client) get(ctx context.Context, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+func (c *Client) get(ctx context.Context,
+	path string,
+	out any) error {
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodGet,
+		c.baseURL+path,
+		nil)
 	if err != nil {
 		return err
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("sidecar GET %s: %w", path, err)
+		return fmt.Errorf("sidecar GET %s: %w",
+			path,
+			err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return &StatusError{Method: http.MethodGet, Path: path, Code: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return &StatusError{
+			Method: http.MethodGet,
+			Path:   path,
+			Code:   resp.StatusCode,
+			Body:   strings.TrimSpace(string(body)),
+		}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("sidecar GET %s: decode: %w", path, err)
+		return fmt.Errorf("sidecar GET %s: decode: %w",
+			path,
+			err)
 	}
 	return nil
 }

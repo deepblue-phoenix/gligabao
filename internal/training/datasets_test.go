@@ -11,7 +11,9 @@ const goodDataset = "{\"instruction\":\"a\",\"input\":\"\",\"output\":\"b\"}\n\n
 
 func TestValidateTrainingDataset(t *testing.T) {
 	if n, err := training.ValidateDataset([]byte(goodDataset)); err != nil || n != 2 {
-		t.Fatalf("good: %d, %v", n, err)
+		t.Fatalf("good: %d, %v",
+			n,
+			err)
 	}
 	for in, want := range map[string]string{
 		"":           "no records",
@@ -24,7 +26,10 @@ func TestValidateTrainingDataset(t *testing.T) {
 		"\xff\xfe\n": "UTF-8",
 	} {
 		if _, err := training.ValidateDataset([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%q: got %v, want %q", in, err, want)
+			t.Errorf("%q: got %v, want %q",
+				in,
+				err,
+				want)
 		}
 	}
 }

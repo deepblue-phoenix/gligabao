@@ -31,8 +31,14 @@ type vecLLM struct {
 
 var passageRe = regexp.MustCompile(`\[passage (\d+)\]`)
 
-func (l *vecLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
-	text := func(s string) (*ai.Response, error) { return &ai.Response{Text: s, StopReason: "end_turn"}, nil }
+func (l *vecLLM) Complete(_ context.Context,
+	req ai.Request) (*ai.Response, error) {
+	text := func(s string) (*ai.Response, error) {
+		return &ai.Response{
+			Text:       s,
+			StopReason: "end_turn",
+		}, nil
+	}
 	switch {
 	case strings.Contains(req.System, "extract a temporal knowledge graph"):
 		if l.extraction != "" {
@@ -79,16 +85,33 @@ const vecExtraction = `{"entities":[{"name":"Alice","type":"person","description
 // although no word of the question is in them, and that what is not close is left out.
 func TestQueryVectorSeeds(t *testing.T) { dbtest.Run(t, testQueryVectorSeeds) }
 
-func testQueryVectorSeeds(t *testing.T, d *sql.DB) {
+func testQueryVectorSeeds(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	llm := &vecLLM{extraction: vecExtraction}
+	llm := &vecLLM{
+		extraction: vecExtraction,
+	}
 	vec := withVectors(t)
-	if _, err := memory_remember.Remember(ctx, d, llm, "u1", "", "", "x", time.Time{}, vec); err != nil {
+	if _, err := memory_remember.Remember(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"x",
+		time.Time{},
+		vec); err != nil {
 		t.Fatal(err)
 	}
 
 	// "employer" is the topic of "Alice works at Acme.", but no entity has it in its name or description.
-	if _, err := memory_query.Query(ctx, d, llm, "u1", "", "Which employer does the person have?", vec); err != nil {
+	if _, err := memory_query.Query(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"Which employer does the person have?",
+		vec); err != nil {
 		t.Fatal(err)
 	}
 	p := llm.lastPrompt()
@@ -100,7 +123,13 @@ func testQueryVectorSeeds(t *testing.T, d *sql.DB) {
 	}
 
 	// "profession" is the topic of the description of Alice: she is a seed, so her facts come with her.
-	if _, err := memory_query.Query(ctx, d, llm, "u1", "", "Tell me about the profession", vec); err != nil {
+	if _, err := memory_query.Query(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"Tell me about the profession",
+		vec); err != nil {
 		t.Fatal(err)
 	}
 	p = llm.lastPrompt()
@@ -109,7 +138,13 @@ func testQueryVectorSeeds(t *testing.T, d *sql.DB) {
 	}
 
 	// The keyword retrieval still works next to it: Bob is named, and the unrelated embedding adds nothing else.
-	if _, err := memory_query.Query(ctx, d, llm, "u1", "", "Where is Bob?", vec); err != nil {
+	if _, err := memory_query.Query(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"Where is Bob?",
+		vec); err != nil {
 		t.Fatal(err)
 	}
 	if p = llm.lastPrompt(); !strings.Contains(p, "lives_in") || strings.Contains(p, "works_at") {
@@ -119,7 +154,9 @@ func testQueryVectorSeeds(t *testing.T, d *sql.DB) {
 	// The embedding of the question is an inference of the query.
 	var n int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM gb_inferences WHERE type = 'query' AND stage = 'embed'`).Scan(&n); err != nil || n != 3 {
-		t.Errorf("embedding inferences of query = %d, %v; want 3", n, err)
+		t.Errorf("embedding inferences of query = %d, %v; want 3",
+			n,
+			err)
 	}
 }
 
@@ -127,16 +164,30 @@ func testQueryVectorSeeds(t *testing.T, d *sql.DB) {
 // LLM, the best ones with the text of the chunk, and that the passages the answer cites are in the evidence.
 func TestQueryPassages(t *testing.T) { dbtest.Run(t, testQueryPassages) }
 
-func testQueryPassages(t *testing.T, d *sql.DB) {
+func testQueryPassages(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	llm := &vecLLM{summary: "Summary: outdoor life."}
+	llm := &vecLLM{
+		summary: "Summary: outdoor life.",
+	}
 	vec := withVectors(t)
 	var ps []string
 	for i := 0; i < 12; i++ {
 		ps = append(ps, fmt.Sprintf("Person%d works at Acme and enjoys long walks in the park on weekends.", i))
 	}
-	res, err := memory_remember.Remember(ctx, d, llm, "u1", "", "", strings.Join(ps, "\n\n"), time.Time{}, vec,
-		memory_core.WithChunking(memory_chunk.Config{Size: 64, OverlapPercent: 40}))
+	res, err := memory_remember.Remember(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		strings.Join(ps, "\n\n"),
+		time.Time{},
+		vec,
+		memory_core.WithChunking(memory_chunk.Config{
+			Size:           64,
+			OverlapPercent: 40,
+		}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +200,13 @@ func testQueryPassages(t *testing.T, d *sql.DB) {
 	}
 
 	// Chunks and summaries are both about outdoor activities, the question is too (by topic, not by words).
-	got, err := memory_query.Query(ctx, d, llm, "u1", "", "What do they do outdoors?", vec)
+	got, err := memory_query.Query(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"What do they do outdoors?",
+		vec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +217,10 @@ func testQueryPassages(t *testing.T, d *sql.DB) {
 	n := strings.Count(p, "[passage ")
 	withText := strings.Count(p, "\ntext: ")
 	if n < 3 || n > 8 || withText != 3 {
-		t.Errorf("%d passages, %d with text; want 3 with text among 3 to 8:\n%s", n, withText, p)
+		t.Errorf("%d passages, %d with text; want 3 with text among 3 to 8:\n%s",
+			n,
+			withText,
+			p)
 	}
 	if !strings.Contains(p, "summary: Summary: outdoor life.") {
 		t.Errorf("no summary in the passages:\n%s", p)
@@ -173,14 +233,26 @@ func testQueryPassages(t *testing.T, d *sql.DB) {
 	ev := got.Evidence.Passages[0]
 	idx, ok := chunkIDs[ev.ArtifactID]
 	if !ok || ev.ParentID != res.ArtifactID || ev.Index != idx || ev.Text == "" || ev.Summary != "Summary: outdoor life." {
-		t.Errorf("evidence passage = %+v (chunk %d of %v, parent %d)", ev, idx, ok, res.ArtifactID)
+		t.Errorf("evidence passage = %+v (chunk %d of %v, parent %d)",
+			ev,
+			idx,
+			ok,
+			res.ArtifactID)
 	}
 	if first := passageRe.FindStringSubmatch(p); first == nil || first[1] != strconv.FormatInt(ev.ArtifactID, 10) {
-		t.Errorf("the evidence is not the cited passage: %v vs %+v", first, ev)
+		t.Errorf("the evidence is not the cited passage: %v vs %+v",
+			first,
+			ev)
 	}
 
 	// A question about nothing the memory has gets no passages, and no section for them.
-	if _, err := memory_query.Query(ctx, d, llm, "u1", "", "Anything else?", vec); err != nil {
+	if _, err := memory_query.Query(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"Anything else?",
+		vec); err != nil {
 		t.Fatal(err)
 	}
 	if p = llm.lastPrompt(); strings.Contains(p, "<passages>") {
@@ -192,11 +264,22 @@ func testQueryPassages(t *testing.T, d *sql.DB) {
 // found by its entities or by its embedding, which outlives the validity of the edge.
 func TestQueryLiveFactsOnly(t *testing.T) { dbtest.Run(t, testQueryLiveFactsOnly) }
 
-func testQueryLiveFactsOnly(t *testing.T, d *sql.DB) {
+func testQueryLiveFactsOnly(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	llm := &vecLLM{extraction: vecExtraction}
+	llm := &vecLLM{
+		extraction: vecExtraction,
+	}
 	vec := withVectors(t)
-	if _, err := memory_remember.Remember(ctx, d, llm, "u1", "", "", "x", time.Time{}, vec); err != nil {
+	if _, err := memory_remember.Remember(ctx,
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"x",
+		time.Time{},
+		vec); err != nil {
 		t.Fatal(err)
 	}
 	// Both facts are superseded: edge 1 (Alice works at Acme) and edge 2 (Bob lives in Rome).
@@ -208,11 +291,19 @@ func testQueryLiveFactsOnly(t *testing.T, d *sql.DB) {
 		"Where does Alice work?",               // finds Alice by her name
 		"Where is Bob?",
 	} {
-		if _, err := memory_query.Query(ctx, d, llm, "u1", "", q, vec); err != nil {
+		if _, err := memory_query.Query(ctx,
+			d,
+			llm,
+			"u1",
+			"",
+			q,
+			vec); err != nil {
 			t.Fatal(err)
 		}
 		if p := llm.lastPrompt(); strings.Contains(p, "works_at") || strings.Contains(p, "lives_in") || strings.Contains(p, "[edge ") {
-			t.Errorf("%q: an expired fact is in the context:\n%s", q, p)
+			t.Errorf("%q: an expired fact is in the context:\n%s",
+				q,
+				p)
 		}
 	}
 }

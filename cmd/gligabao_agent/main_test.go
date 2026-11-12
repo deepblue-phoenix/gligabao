@@ -30,14 +30,22 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func runArgs(t *testing.T, stdin string, args ...string) (code int, stdout, stderr string) {
+func runArgs(t *testing.T,
+	stdin string,
+	args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	code = run(context.Background(), args, strings.NewReader(stdin), &out, &errb)
+	code = run(context.Background(),
+		args,
+		strings.NewReader(stdin),
+		&out,
+		&errb)
 	return code, out.String(), errb.String()
 }
 
-func setKeys(t *testing.T, anthropic, openai string) {
+func setKeys(t *testing.T,
+	anthropic,
+	openai string) {
 	t.Helper()
 	t.Setenv(config.EnvAnthropicKey, anthropic)
 	t.Setenv(config.EnvOpenAIKey, openai)
@@ -51,49 +59,134 @@ func TestUsageErrors(t *testing.T) {
 		args      []string
 		want      string
 	}{
-		"no topic":           {anthropic: "k", args: nil, want: "exactly one topic"},
-		"two topics":         {anthropic: "k", args: []string{"a", "b"}, want: "exactly one topic"},
-		"empty stdin":        {anthropic: "k", args: []string{"-"}, stdin: "  \n", want: "empty topic"},
-		"topic too long":     {anthropic: "k", args: []string{strings.Repeat("x", maxTopicChars+1)}, want: "too long"},
-		"steps too small":    {anthropic: "k", args: []string{"--max-steps", "-1", "t"}, want: "--max-steps"},
-		"negative cost cap":  {anthropic: "k", args: []string{"--max-cost-usd", "-1", "t"}, want: "--max-cost-usd"},
-		"bundle and dir":     {anthropic: "k", args: []string{"--agent-bundle", "b.json", "--agent-defs-dir", "d", "t"}, want: "use one"},
-		"unknown agent":      {anthropic: "k", args: []string{"--agent", "nope", "--agent-defs-dir", t.TempDir(), "t"}, want: "unknown agent"},
-		"steps too big":      {anthropic: "k", args: []string{"--max-steps", "41", "t"}, want: "--max-steps"},
-		"bad user":           {anthropic: "k", args: []string{"--user", " ", "t"}, want: "user_id"},
-		"bad dataset":        {anthropic: "k", args: []string{"--dataset", "a b", "t"}, want: "dataset"},
-		"no anthropic key":   {args: []string{"t"}, want: config.EnvAnthropicKey},
-		"no openai key":      {anthropic: "k", args: []string{"t"}, want: config.EnvOpenAIKey},
-		"atif without json":  {anthropic: "k", args: []string{"--atif", "t"}, want: "--json"},
-		"events and verbose": {anthropic: "k", args: []string{"--events", "--verbose", "t"}, want: "use one"},
-		"bad flag":           {anthropic: "k", args: []string{"--nope", "t"}, want: "not defined"},
-		"missing config":     {anthropic: "k", args: []string{"--config", "/nonexistent/gligabao.toml", "t"}, want: "nonexistent"},
+		"no topic": {
+			anthropic: "k",
+			args:      nil,
+			want:      "exactly one topic",
+		},
+		"two topics": {
+			anthropic: "k",
+			args:      []string{"a", "b"},
+			want:      "exactly one topic",
+		},
+		"empty stdin": {
+			anthropic: "k",
+			args:      []string{"-"},
+			stdin:     "  \n",
+			want:      "empty topic",
+		},
+		"topic too long": {
+			anthropic: "k",
+			args:      []string{strings.Repeat("x", maxTopicChars+1)},
+			want:      "too long",
+		},
+		"steps too small": {
+			anthropic: "k",
+			args:      []string{"--max-steps", "-1", "t"},
+			want:      "--max-steps",
+		},
+		"negative cost cap": {
+			anthropic: "k",
+			args:      []string{"--max-cost-usd", "-1", "t"},
+			want:      "--max-cost-usd",
+		},
+		"bundle and dir": {
+			anthropic: "k",
+			args:      []string{"--agent-bundle", "b.json", "--agent-defs-dir", "d", "t"},
+			want:      "use one",
+		},
+		"unknown agent": {
+			anthropic: "k",
+			args:      []string{"--agent", "nope", "--agent-defs-dir", t.TempDir(), "t"},
+			want:      "unknown agent",
+		},
+		"steps too big": {
+			anthropic: "k",
+			args:      []string{"--max-steps", "41", "t"},
+			want:      "--max-steps",
+		},
+		"bad user": {
+			anthropic: "k",
+			args:      []string{"--user", " ", "t"},
+			want:      "user_id",
+		},
+		"bad dataset": {
+			anthropic: "k",
+			args:      []string{"--dataset", "a b", "t"},
+			want:      "dataset",
+		},
+		"no anthropic key": {
+			args: []string{"t"},
+			want: config.EnvAnthropicKey,
+		},
+		"no openai key": {
+			anthropic: "k",
+			args:      []string{"t"},
+			want:      config.EnvOpenAIKey,
+		},
+		"atif without json": {
+			anthropic: "k",
+			args:      []string{"--atif", "t"},
+			want:      "--json",
+		},
+		"events and verbose": {
+			anthropic: "k",
+			args:      []string{"--events", "--verbose", "t"},
+			want:      "use one",
+		},
+		"bad flag": {
+			anthropic: "k",
+			args:      []string{"--nope", "t"},
+			want:      "not defined",
+		},
+		"missing config": {
+			anthropic: "k",
+			args:      []string{"--config", "/nonexistent/gligabao.toml", "t"},
+			want:      "nonexistent",
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			setKeys(t, tc.anthropic, tc.openai)
+			setKeys(t,
+				tc.anthropic,
+				tc.openai)
 			t.Chdir(t.TempDir()) // the default database must not be created in the source tree
-			code, stdout, stderr := runArgs(t, tc.stdin, tc.args...)
+			code, stdout, stderr := runArgs(t,
+				tc.stdin,
+				tc.args...)
 			if code != exitUsage {
-				t.Errorf("exit code %d, want %d (stderr: %s)", code, exitUsage, stderr)
+				t.Errorf("exit code %d, want %d (stderr: %s)",
+					code,
+					exitUsage,
+					stderr)
 			}
 			if stdout != "" {
 				t.Errorf("stdout should be empty, got %q", stdout)
 			}
 			if !strings.Contains(stderr, tc.want) {
-				t.Errorf("stderr %q does not contain %q", stderr, tc.want)
+				t.Errorf("stderr %q does not contain %q",
+					stderr,
+					tc.want)
 			}
 		})
 	}
 }
 
 func TestVersionAndHelp(t *testing.T) {
-	code, stdout, _ := runArgs(t, "", "--version")
+	code, stdout, _ := runArgs(t,
+		"",
+		"--version")
 	if code != exitOK || !strings.HasPrefix(stdout, "gligabao_agent ") {
-		t.Errorf("--version: code %d, stdout %q", code, stdout)
+		t.Errorf("--version: code %d, stdout %q",
+			code,
+			stdout)
 	}
-	code, _, stderr := runArgs(t, "", "--help")
+	code, _, stderr := runArgs(t,
+		"",
+		"--help")
 	if code != exitOK || !strings.Contains(stderr, config.EnvAnthropicKey) || !strings.Contains(stderr, "knowledge base") {
-		t.Errorf("--help: code %d, stderr %q", code, stderr)
+		t.Errorf("--help: code %d, stderr %q",
+			code,
+			stderr)
 	}
 }
 
@@ -105,7 +198,8 @@ func fakeAnthropic(t *testing.T) *ai.Client {
 		toolUse = `{"model":"m","stop_reason":"tool_use","content":[%s],"usage":{"input_tokens":10,"output_tokens":5}}`
 		text    = `{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"%s"}],"usage":{"input_tokens":20,"output_tokens":9}}`
 	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		body := string(b)
 		switch {
@@ -130,12 +224,16 @@ func fakeAnthropic(t *testing.T) *ai.Client {
 
 type fakeEmbedder struct{}
 
-func (fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error) {
+func (fakeEmbedder) EmbedBatchUsage(_ context.Context,
+	texts []string) ([][]float32, *ai.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = []float32{1, 0}
 	}
-	return out, &ai.EmbedUsage{Provider: ai.ProviderOpenAI, Model: "test-embed"}, nil
+	return out, &ai.EmbedUsage{
+		Provider: ai.ProviderOpenAI,
+		Model:    "test-embed",
+	}, nil
 }
 
 // The whole app over a SQLite file and a chromem directory: the research manager runs the agent, which remembers into the knowledge
@@ -146,7 +244,12 @@ func TestResearchWithKnowledgeBase(t *testing.T) {
 	dbFile := filepath.Join(dir, "agent.db")
 	cfg := config.Default()
 	cfg.EmbeddingDimensions = 2
-	a, err := openApp(ctx, cfg, fakeAnthropic(t), fakeEmbedder{}, dbFile, "")
+	a, err := openApp(ctx,
+		cfg,
+		fakeAnthropic(t),
+		fakeEmbedder{},
+		dbFile,
+		"")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +257,14 @@ func TestResearchWithKnowledgeBase(t *testing.T) {
 	trajectory := a.captureTrajectory()
 	text := textProgress(&progress)
 	jsonState, jsonUsage := jsonEvents(&events)
-	out, err := a.runResearch(ctx, "u1", agent_research.Options{Topic: "ROOT TOPIC", MaxSteps: 6},
-		func(ev stateEvent) { text(ev); jsonState(ev) }, jsonUsage)
+	out, err := a.runResearch(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:    "ROOT TOPIC",
+			MaxSteps: 6,
+		},
+		func(ev stateEvent) { text(ev); jsonState(ev) },
+		jsonUsage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,11 +272,16 @@ func TestResearchWithKnowledgeBase(t *testing.T) {
 		t.Errorf("drain: %v", out.DrainErr)
 	}
 	if out.Root.Status != core.StatusCompleted || out.Root.Report != "ROOT REPORT" {
-		t.Errorf("root: %s %q (%s)", out.Root.Status, out.Root.Report, out.Root.Error)
+		t.Errorf("root: %s %q (%s)",
+			out.Root.Status,
+			out.Root.Report,
+			out.Root.Error)
 	}
 	for _, want := range []string{"[agent] remembering"} {
 		if !strings.Contains(progress.String(), want) {
-			t.Errorf("progress lacks %q:\n%s", want, progress.String())
+			t.Errorf("progress lacks %q:\n%s",
+				want,
+				progress.String())
 		}
 	}
 	// The same progress as JSON lines (--events), which the Modal runner reads: the states of both agents, then the totals of the tree.
@@ -190,11 +304,17 @@ func TestResearchWithKnowledgeBase(t *testing.T) {
 		}
 	}
 	if states == 0 || usages == 0 || lastUsage["subagents"] != float64(0) || lastUsage["steps"] != float64(out.Root.Steps) {
-		t.Errorf("events: %d states, %d usages, last usage %v\n%s", states, usages, lastUsage, events.String())
+		t.Errorf("events: %d states, %d usages, last usage %v\n%s",
+			states,
+			usages,
+			lastUsage,
+			events.String())
 	}
 	for _, want := range []string{`"agent":"main"`, `"state":"remembering"`} {
 		if !strings.Contains(events.String(), want) {
-			t.Errorf("events lack %s:\n%s", want, events.String())
+			t.Errorf("events lack %s:\n%s",
+				want,
+				events.String())
 		}
 	}
 	// The trajectory of the research.
@@ -211,18 +331,37 @@ func TestResearchWithKnowledgeBase(t *testing.T) {
 		t.Errorf("steps per agent: %v", perAgent)
 	}
 	// The remember run that did not wait has ended (not left started), and was done in the user's dataset.
-	runs, total, err := relational.ListRememberRuns(ctx, a.database.Relational, relational.RememberRunFilter{}, 10, 0)
+	runs, total, err := relational.ListRememberRuns(ctx,
+		a.database.Relational,
+		relational.RememberRunFilter{},
+		10,
+		0)
 	if err != nil || total != 1 || len(runs) != 1 || runs[0].Status != relational.RememberSucceeded {
-		t.Errorf("remember runs: %+v, %v", runs, err)
+		t.Errorf("remember runs: %+v, %v",
+			runs,
+			err)
 	}
 
 	// The full export has all of it: the knowledge base, the runs of both agents with their states, the vectors and the trajectory.
-	if err := a.database.Vector.Upsert(ctx, "dataset-1-entities", []vector.Vector{{ID: "entity:1", Values: []float32{1, 0}, Metadata: map[string]any{"kind": "entity"}}}); err != nil {
+	if err := a.database.Vector.Upsert(ctx,
+		"dataset-1-entities",
+		[]vector.Vector{{
+			ID:       "entity:1",
+			Values:   []float32{1, 0},
+			Metadata: map[string]any{"kind": "entity"},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 	trajJSON, _ := atif.Marshal(traj)
-	archive := filepath.Join(dir, "out", "agent-export.zip")
-	m, err := a.fullExport(ctx, archive, dbexport.Extra{Name: trajectoryFile, Data: trajJSON})
+	archive := filepath.Join(dir,
+		"out",
+		"agent-export.zip")
+	m, err := a.fullExport(ctx,
+		archive,
+		dbexport.Extra{
+			Name: trajectoryFile,
+			Data: trajJSON,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,16 +395,22 @@ func TestResearchWithKnowledgeBase(t *testing.T) {
 	var vecs int
 	r.Vectors("dataset-1-entities", func(vector.Vector) error { vecs++; return nil })
 	if vecs != 1 || m.EmbeddingDimensions != 2 || m.Backend != "sqlite" || m.Source != "gligabao_agent" {
-		t.Errorf("vectors %d, manifest %+v", vecs, m)
+		t.Errorf("vectors %d, manifest %+v",
+			vecs,
+			m)
 	}
 	if b, err := r.Extra(trajectoryFile); err != nil || !strings.Contains(string(b), "ROOT TOPIC") {
-		t.Errorf("trajectory: %q, %v", b, err)
+		t.Errorf("trajectory: %q, %v",
+			b,
+			err)
 	}
 	a.close()
 
 	for _, p := range []string{dbFile, filepath.Join(dir, "agent.vectors")} {
 		if _, err := os.Stat(p); err != nil {
-			t.Errorf("expected %s to exist: %v", p, err)
+			t.Errorf("expected %s to exist: %v",
+				p,
+				err)
 		}
 	}
 }
@@ -275,20 +420,34 @@ func TestResearchInterrupted(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := config.Default()
 	cfg.EmbeddingDimensions = 2
-	a, err := openApp(ctx, cfg, fakeAnthropic(t), fakeEmbedder{}, filepath.Join(t.TempDir(), "agent.db"), "")
+	a, err := openApp(ctx,
+		cfg,
+		fakeAnthropic(t),
+		fakeEmbedder{},
+		filepath.Join(t.TempDir(), "agent.db"),
+		"")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.close()
 	cancel()
-	if _, err := a.runResearch(ctx, "u1", agent_research.Options{Topic: "ROOT TOPIC"}, nil, nil); err == nil {
+	if _, err := a.runResearch(ctx,
+		"u1",
+		agent_research.Options{
+			Topic: "ROOT TOPIC",
+		},
+		nil,
+		nil); err == nil {
 		t.Error("starting a research with a done context should fail")
 	}
 }
 
 // The point of this binary is to be small: it has the knowledge base but must not link the server, the HTTP API, training or evals.
 func TestMinimalDependencies(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", ".").Output()
+	out, err := exec.Command("go",
+		"list",
+		"-deps",
+		".").Output()
 	if err != nil {
 		t.Skipf("go list: %v", err)
 	}

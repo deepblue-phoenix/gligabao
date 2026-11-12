@@ -51,7 +51,9 @@ type rdfParser struct {
 
 // parseRDFXML reads an RDF/XML document into triples, in document order.
 func parseRDFXML(r io.Reader) ([]triple, error) {
-	p := &rdfParser{dec: xml.NewDecoder(r)}
+	p := &rdfParser{
+		dec: xml.NewDecoder(r),
+	}
 	for {
 		tok, err := p.dec.Token()
 		if errors.Is(err, io.EOF) {
@@ -77,7 +79,11 @@ func parseRDFXML(r io.Reader) ([]triple, error) {
 	}
 }
 
-func (p *rdfParser) emit(s, pred string, o term) { p.triples = append(p.triples, triple{s, pred, o}) }
+func (p *rdfParser) emit(s,
+	pred string,
+	o term) {
+	p.triples = append(p.triples, triple{s, pred, o})
+}
 
 func (p *rdfParser) blank() string {
 	p.nBlank++
@@ -131,7 +137,8 @@ func (p *rdfParser) allText() (string, error) {
 }
 
 // node parses a node element and returns its subject.
-func (p *rdfParser) node(el xml.StartElement, base string) (string, error) {
+func (p *rdfParser) node(el xml.StartElement,
+	base string) (string, error) {
 	base = baseOf(el, base)
 	subj := ""
 	for _, a := range el.Attr {
@@ -151,23 +158,42 @@ func (p *rdfParser) node(el xml.StartElement, base string) (string, error) {
 		subj = p.blank()
 	}
 	if !(el.Name.Space == nsRDF && el.Name.Local == "Description") {
-		p.emit(subj, rdfType, term{v: el.Name.Space + el.Name.Local})
+		p.emit(subj,
+			rdfType,
+			term{
+				v: el.Name.Space + el.Name.Local,
+			})
 	}
 	for _, a := range el.Attr { // property attributes
 		switch {
 		case a.Name.Space == nsRDF && a.Name.Local == "type":
-			p.emit(subj, rdfType, term{v: resolve(base, a.Value)})
+			p.emit(subj,
+				rdfType,
+				term{
+					v: resolve(base, a.Value),
+				})
 		case a.Name.Space == nsRDF, a.Name.Space == nsXML, a.Name.Space == nsXMLNS, a.Name.Space == "" && a.Name.Local == "xmlns":
 		case a.Name.Space != "":
-			p.emit(subj, a.Name.Space+a.Name.Local, term{v: a.Value, lit: true})
+			p.emit(subj,
+				a.Name.Space+a.Name.Local,
+				term{
+					v:   a.Value,
+					lit: true,
+				})
 		}
 	}
-	_, err := p.readChildren(func(c xml.StartElement) error { return p.property(subj, c, base) })
+	_, err := p.readChildren(func(c xml.StartElement) error {
+		return p.property(subj,
+			c,
+			base)
+	})
 	return subj, err
 }
 
 // property parses a property element of subject subj.
-func (p *rdfParser) property(subj string, el xml.StartElement, base string) error {
+func (p *rdfParser) property(subj string,
+	el xml.StartElement,
+	base string) error {
 	base = baseOf(el, base)
 	pred := el.Name.Space + el.Name.Local
 	var resource, nodeID, parseType string
@@ -187,8 +213,16 @@ func (p *rdfParser) property(subj string, el xml.StartElement, base string) erro
 	switch {
 	case parseType == "Resource":
 		obj := p.blank()
-		p.emit(subj, pred, term{v: obj})
-		_, err := p.readChildren(func(c xml.StartElement) error { return p.property(obj, c, base) })
+		p.emit(subj,
+			pred,
+			term{
+				v: obj,
+			})
+		_, err := p.readChildren(func(c xml.StartElement) error {
+			return p.property(obj,
+				c,
+				base)
+		})
 		return err
 	case parseType == "Collection":
 		var items []string
@@ -202,22 +236,43 @@ func (p *rdfParser) property(subj string, el xml.StartElement, base string) erro
 		head := rdfNil
 		for i := len(items) - 1; i >= 0; i-- {
 			b := p.blank()
-			p.emit(b, rdfFirst, term{v: items[i]})
-			p.emit(b, rdfRest, term{v: head})
+			p.emit(b,
+				rdfFirst,
+				term{
+					v: items[i],
+				})
+			p.emit(b,
+				rdfRest,
+				term{
+					v: head,
+				})
 			head = b
 		}
-		p.emit(subj, pred, term{v: head})
+		p.emit(subj,
+			pred,
+			term{
+				v: head,
+			})
 		return nil
 	case parseType == "Literal":
 		text, err := p.allText()
-		p.emit(subj, pred, term{v: text, lit: true})
+		p.emit(subj,
+			pred,
+			term{
+				v:   text,
+				lit: true,
+			})
 		return err
 	case resource != "" || nodeID != "":
 		obj := resolve(base, resource)
 		if nodeID != "" {
 			obj = "_:n_" + nodeID
 		}
-		p.emit(subj, pred, term{v: obj})
+		p.emit(subj,
+			pred,
+			term{
+				v: obj,
+			})
 		_, err := p.readChildren(func(xml.StartElement) error { return p.dec.Skip() })
 		return err
 	}
@@ -231,15 +286,25 @@ func (p *rdfParser) property(subj string, el xml.StartElement, base string) erro
 		return err
 	}
 	if obj != "" {
-		p.emit(subj, pred, term{v: obj})
+		p.emit(subj,
+			pred,
+			term{
+				v: obj,
+			})
 	} else {
-		p.emit(subj, pred, term{v: text, lit: true})
+		p.emit(subj,
+			pred,
+			term{
+				v:   text,
+				lit: true,
+			})
 	}
 	return nil
 }
 
 // baseOf returns the base IRI in effect inside el.
-func baseOf(el xml.StartElement, base string) string {
+func baseOf(el xml.StartElement,
+	base string) string {
 	for _, a := range el.Attr {
 		if a.Name.Space == nsXML && a.Name.Local == "base" {
 			return resolve(base, a.Value)
@@ -249,7 +314,8 @@ func baseOf(el xml.StartElement, base string) string {
 }
 
 // resolve resolves ref against base (RFC 3986). Without a base, ref is returned as is.
-func resolve(base, ref string) string {
+func resolve(base,
+	ref string) string {
 	if base == "" {
 		return ref
 	}

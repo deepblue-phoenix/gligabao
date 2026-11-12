@@ -8,4 +8,8 @@ import (
 )
 
 // TestReads writes defs and runs of both types through the Store and reads them back.
-func TestReads(t *testing.T) { readstest.Run(t, open(t), sqlite.Store) }
+func TestReads(t *testing.T) {
+	readstest.Run(t,
+		open(t),
+		sqlite.Store)
+}

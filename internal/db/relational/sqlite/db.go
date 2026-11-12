@@ -47,7 +47,14 @@ func scanDataset(r scanner) (*model.Dataset, error) {
 	var tags, created string
 	var deleted int
 	var deletedAt sql.NullString
-	if err := r.Scan(&ds.ID, &ds.UserID, &ds.Name, &ds.Description, &tags, &created, &deleted, &deletedAt); err != nil {
+	if err := r.Scan(&ds.ID,
+		&ds.UserID,
+		&ds.Name,
+		&ds.Description,
+		&tags,
+		&created,
+		&deleted,
+		&deletedAt); err != nil {
 		return nil, err
 	}
 	ds.Tags = []string{}
@@ -64,9 +71,15 @@ func scanDataset(r scanner) (*model.Dataset, error) {
 
 // CreateDataset creates a dataset owned by userID. It returns model.ErrExists if a live dataset with that name
 // exists for the user.
-func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description string, tags []string) (*model.Dataset, error) {
+func CreateDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name,
+	description string,
+	tags []string) (*model.Dataset, error) {
 	tagsJSON, _ := json.Marshal(tags)
-	res, err := d.ExecContext(ctx, `
+	res, err := d.ExecContext(ctx,
+		`
 		INSERT INTO gb_datasets (user_id, name, description, tags, created_at)
 		SELECT ?, ?, ?, ?, ?
 		WHERE NOT EXISTS (
@@ -74,7 +87,13 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 			FROM gb_datasets
 			WHERE user_id = ? AND name = ? AND deleted = 0
 		)`,
-		userID, name, description, string(tagsJSON), FormatTime(Now()), userID, name)
+		userID,
+		name,
+		description,
+		string(tagsJSON),
+		FormatTime(Now()),
+		userID,
+		name)
 	if err != nil {
 		return nil, fmt.Errorf("create dataset: %w", err)
 	}
@@ -85,20 +104,27 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 	if err != nil {
 		return nil, err
 	}
-	return scanDataset(d.QueryRowContext(ctx, datasetSelect+`
-		WHERE id = ?`, id))
+	return scanDataset(d.QueryRowContext(ctx,
+		datasetSelect+`
+		WHERE id = ?`,
+		id))
 }
 
 // ListDatasets returns userID's datasets oldest first; deleted ones only if includeDeleted.
-func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted bool) ([]model.Dataset, error) {
+func ListDatasets(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	includeDeleted bool) ([]model.Dataset, error) {
 	q := datasetSelect + `
 		WHERE user_id = ?`
 	if !includeDeleted {
 		q += `
 		AND deleted = 0`
 	}
-	rows, err := d.QueryContext(ctx, q+`
-		ORDER BY id`, userID)
+	rows, err := d.QueryContext(ctx,
+		q+`
+		ORDER BY id`,
+		userID)
 	if err != nil {
 		return nil, fmt.Errorf("list datasets: %w", err)
 	}
@@ -115,7 +141,9 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 }
 
 // ListAllDatasets returns the datasets of all users, oldest first; deleted ones only if includeDeleted.
-func ListAllDatasets(ctx context.Context, d *sql.DB, includeDeleted bool) ([]model.Dataset, error) {
+func ListAllDatasets(ctx context.Context,
+	d *sql.DB,
+	includeDeleted bool) ([]model.Dataset, error) {
 	q := datasetSelect
 	if !includeDeleted {
 		q += `
@@ -139,12 +167,18 @@ func ListAllDatasets(ctx context.Context, d *sql.DB, includeDeleted bool) ([]mod
 }
 
 // DeleteDataset soft-deletes userID's live dataset called name. It returns model.ErrNotFound if there is none.
-func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
-	res, err := d.ExecContext(ctx, `
+func DeleteDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) error {
+	res, err := d.ExecContext(ctx,
+		`
 		UPDATE gb_datasets
 		SET deleted = 1, deleted_at = ?
 		WHERE user_id = ? AND name = ? AND deleted = 0`,
-		FormatTime(Now()), userID, name)
+		FormatTime(Now()),
+		userID,
+		name)
 	if err != nil {
 		return fmt.Errorf("delete dataset: %w", err)
 	}
@@ -155,15 +189,23 @@ func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
 }
 
 type queryer interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context,
+		query string,
+		args ...any) *sql.Row
 }
 
-func datasetID(ctx context.Context, q queryer, userID, name string) (int64, error) {
+func datasetID(ctx context.Context,
+	q queryer,
+	userID,
+	name string) (int64, error) {
 	var id int64
-	err := q.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx,
+		`
 		SELECT id
 		FROM gb_datasets
-		WHERE user_id = ? AND name = ? AND deleted = 0`, userID, name).Scan(&id)
+		WHERE user_id = ? AND name = ? AND deleted = 0`,
+		userID,
+		name).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, model.ErrNotFound
 	}
@@ -171,13 +213,23 @@ func datasetID(ctx context.Context, q queryer, userID, name string) (int64, erro
 }
 
 // DatasetID returns the ID of userID's live dataset called name, or model.ErrNotFound.
-func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
-	return datasetID(ctx, d, userID, name)
+func DatasetID(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (int64, error) {
+	return datasetID(ctx,
+		d,
+		userID,
+		name)
 }
 
 // EnsureDataset returns the ID of userID's live dataset called name, creating it first if needed.
-func EnsureDataset(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
-	if _, err := d.ExecContext(ctx, `
+func EnsureDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (int64, error) {
+	if _, err := d.ExecContext(ctx,
+		`
 		INSERT INTO gb_datasets (user_id, name, created_at)
 		SELECT ?, ?, ?
 		WHERE NOT EXISTS (
@@ -185,10 +237,17 @@ func EnsureDataset(ctx context.Context, d *sql.DB, userID, name string) (int64, 
 			FROM gb_datasets
 			WHERE user_id = ? AND name = ? AND deleted = 0
 		)`,
-		userID, name, FormatTime(Now()), userID, name); err != nil {
+		userID,
+		name,
+		FormatTime(Now()),
+		userID,
+		name); err != nil {
 		return 0, fmt.Errorf("create dataset: %w", err)
 	}
-	return datasetID(ctx, d, userID, name)
+	return datasetID(ctx,
+		d,
+		userID,
+		name)
 }
 
 // DatasetSelect is the SELECT of the columns ScanDataset reads (add a WHERE clause), for the packages that join to datasets.

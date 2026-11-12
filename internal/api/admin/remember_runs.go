@@ -47,18 +47,23 @@ type rememberRunsResponse struct {
 // for one of dbs (the first without db): the counts of all the runs by status (never filtered) and the runs that match
 // the filters.
 func RememberRunsOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
 		limit, offset := rememberRunsDefaultLimit, 0
 		if v := q.Get("limit"); v != "" {
 			l, err := strconv.Atoi(v)
 			if err != nil || l < 1 {
-				httputil.Error(w, http.StatusBadRequest, "invalid limit")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"invalid limit")
 				return
 			}
 			limit = min(l, rememberRunsMaxLimit)
@@ -66,22 +71,32 @@ func RememberRunsOf(dbs []Named) http.HandlerFunc {
 		if v := q.Get("offset"); v != "" {
 			o, err := strconv.Atoi(v)
 			if err != nil || o < 0 {
-				httputil.Error(w, http.StatusBadRequest, "invalid offset")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"invalid offset")
 				return
 			}
 			offset = o
 		}
 		status := q.Get("status")
 		if status != "" && status != relational.RememberStarted && status != relational.RememberSucceeded && status != relational.RememberFailed {
-			httputil.Error(w, http.StatusBadRequest, "invalid status")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid status")
 			return
 		}
 		ctx := r.Context()
 		fail := func(err error) {
 			log.WithError(err).Error("admin: remember runs failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read remember runs")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read remember runs")
 		}
-		out := rememberRunsResponse{Stages: make([]string, 0, len(relational.RememberStages))}
+		out := rememberRunsResponse{
+			Stages: make([]string,
+				0,
+				len(relational.RememberStages)),
+		}
 		for _, s := range relational.RememberStages {
 			out.Stages = append(out.Stages, s.Name)
 		}
@@ -90,21 +105,37 @@ func RememberRunsOf(dbs []Named) http.HandlerFunc {
 			into   *int
 		}{{"", &out.Counts.Total}, {relational.RememberStarted, &out.Counts.Started},
 			{relational.RememberSucceeded, &out.Counts.Succeeded}, {relational.RememberFailed, &out.Counts.Failed}} {
-			_, total, err := relational.ListRememberRuns(ctx, n.DB, relational.RememberRunFilter{Status: c.status}, 1, 0)
+			_, total, err := relational.ListRememberRuns(ctx,
+				n.DB,
+				relational.RememberRunFilter{
+					Status: c.status,
+				},
+				1,
+				0)
 			if err != nil {
 				fail(err)
 				return
 			}
 			*c.into = total
 		}
-		f := relational.RememberRunFilter{UserID: q.Get("user_id"), Dataset: q.Get("dataset"), Status: status}
-		runs, total, err := relational.ListRememberRuns(ctx, n.DB, f, limit, offset)
+		f := relational.RememberRunFilter{
+			UserID:  q.Get("user_id"),
+			Dataset: q.Get("dataset"),
+			Status:  status,
+		}
+		runs, total, err := relational.ListRememberRuns(ctx,
+			n.DB,
+			f,
+			limit,
+			offset)
 		if err != nil {
 			fail(err)
 			return
 		}
 		out.Runs, out.Total, out.Limit, out.Offset = runs, total, limit, offset
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -118,33 +149,53 @@ type rememberRunResponse struct {
 // as an item of the list of RememberRunsOf, with the stage names in order. The admin UI opens a bookmarked run with it, whatever
 // page of the list the run is on. An unknown run is 404.
 func RememberRunOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
-		id, err := strconv.ParseInt(q.Get("run_id"), 10, 64)
+		id, err := strconv.ParseInt(q.Get("run_id"),
+			10,
+			64)
 		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "invalid run_id")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid run_id")
 			return
 		}
-		run, err := relational.GetRememberRun(r.Context(), n.DB, id)
+		run, err := relational.GetRememberRun(r.Context(),
+			n.DB,
+			id)
 		if errors.Is(err, relational.ErrNotFound) {
-			httputil.Error(w, http.StatusNotFound, "unknown remember run")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown remember run")
 			return
 		}
 		if err != nil {
 			log.WithError(err).Error("admin: remember run failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the remember run")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the remember run")
 			return
 		}
-		out := rememberRunResponse{Stages: make([]string, 0, len(relational.RememberStages)), Run: *run}
+		out := rememberRunResponse{
+			Stages: make([]string,
+				0,
+				len(relational.RememberStages)),
+			Run: *run,
+		}
 		for _, s := range relational.RememberStages {
 			out.Stages = append(out.Stages, s.Name)
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -162,40 +213,66 @@ type rememberRunOutputsResponse struct {
 // the user opens them. An unknown run is 404; a run that has none (the
 // outputs were cleared, say) has an empty list.
 func RememberRunOutputsOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
-		id, err := strconv.ParseInt(q.Get("run_id"), 10, 64)
+		id, err := strconv.ParseInt(q.Get("run_id"),
+			10,
+			64)
 		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "invalid run_id")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid run_id")
 			return
 		}
 		stage := q.Get("stage")
 		if _, ok := relational.RememberStageDefOf(stage); stage != "" && !ok {
-			httputil.Error(w, http.StatusBadRequest, "invalid stage")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid stage")
 			return
 		}
 		ctx := r.Context()
-		if _, err := relational.GetRememberRun(ctx, n.DB, id); err != nil {
+		if _, err := relational.GetRememberRun(ctx,
+			n.DB,
+			id); err != nil {
 			if errors.Is(err, relational.ErrNotFound) {
-				httputil.Error(w, http.StatusNotFound, "unknown remember run")
+				httputil.Error(w,
+					http.StatusNotFound,
+					"unknown remember run")
 				return
 			}
 			log.WithError(err).Error("admin: remember run failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the remember run")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the remember run")
 			return
 		}
-		outputs, err := relational.ListRememberStageOutputs(ctx, n.DB, id, stage)
+		outputs, err := relational.ListRememberStageOutputs(ctx,
+			n.DB,
+			id,
+			stage)
 		if err != nil {
 			log.WithError(err).Error("admin: remember run outputs failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the stage outputs")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the stage outputs")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, rememberRunOutputsResponse{RunID: id, Stage: stage, Outputs: outputs})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			rememberRunOutputsResponse{
+				RunID:   id,
+				Stage:   stage,
+				Outputs: outputs,
+			})
 	}
 }
 
@@ -225,50 +302,79 @@ type rememberRunTemporalResponse struct {
 // superseded), for the chunks of a long text and the enrichment artifacts too, plus the artifacts the events belong to (their
 // reference time). An unknown run is 404.
 func RememberRunTemporalOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
-		id, err := strconv.ParseInt(q.Get("run_id"), 10, 64)
+		id, err := strconv.ParseInt(q.Get("run_id"),
+			10,
+			64)
 		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "invalid run_id")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid run_id")
 			return
 		}
 		ctx := r.Context()
-		run, err := relational.GetRememberRun(ctx, n.DB, id)
+		run, err := relational.GetRememberRun(ctx,
+			n.DB,
+			id)
 		if err != nil {
 			if errors.Is(err, relational.ErrNotFound) {
-				httputil.Error(w, http.StatusNotFound, "unknown remember run")
+				httputil.Error(w,
+					http.StatusNotFound,
+					"unknown remember run")
 				return
 			}
 			log.WithError(err).Error("admin: remember run failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the remember run")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the remember run")
 			return
 		}
-		out := rememberRunTemporalResponse{RunID: id, Artifacts: []rememberRunTemporalArtifact{}, Events: []graph.EdgeEvent{}}
+		out := rememberRunTemporalResponse{
+			RunID:     id,
+			Artifacts: []rememberRunTemporalArtifact{},
+			Events:    []graph.EdgeEvent{},
+		}
 		if run.ArtifactID != nil {
 			out.ArtifactID = *run.ArtifactID
-			if out.Events, err = graph.ListEdgeEvents(ctx, n.DB, out.ArtifactID); err != nil {
+			if out.Events, err = graph.ListEdgeEvents(ctx,
+				n.DB,
+				out.ArtifactID); err != nil {
 				log.WithError(err).Error("admin: remember run temporal events failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read the temporal events")
 				return
 			}
 		}
-		if out.Artifacts, err = temporalArtifacts(ctx, n.DB, out.Events); err != nil {
+		if out.Artifacts, err = temporalArtifacts(ctx,
+			n.DB,
+			out.Events); err != nil {
 			log.WithError(err).Error("admin: remember run temporal artifacts failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to read the temporal events")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // temporalArtifacts returns the artifacts the events belong to, by ID (each in the dataset of its events, which may be several: a
 // research agent remembers into any); empty for no events.
-func temporalArtifacts(ctx context.Context, d *sql.DB, events []graph.EdgeEvent) ([]rememberRunTemporalArtifact, error) {
+func temporalArtifacts(ctx context.Context,
+	d *sql.DB,
+	events []graph.EdgeEvent) ([]rememberRunTemporalArtifact, error) {
 	out := []rememberRunTemporalArtifact{}
 	var datasets []int64
 	ids := map[int64][]int64{}
@@ -284,12 +390,21 @@ func temporalArtifacts(ctx context.Context, d *sql.DB, events []graph.EdgeEvent)
 		ids[e.DatasetID] = append(ids[e.DatasetID], e.ArtifactID)
 	}
 	for _, ds := range datasets {
-		arts, err := graph.ArtifactsByID(ctx, d, ds, ids[ds])
+		arts, err := graph.ArtifactsByID(ctx,
+			d,
+			ds,
+			ids[ds])
 		if err != nil {
 			return nil, err
 		}
 		for _, a := range arts {
-			out = append(out, rememberRunTemporalArtifact{ID: a.ID, ParentID: a.ParentID, Kind: a.Kind, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+			out = append(out, rememberRunTemporalArtifact{
+				ID:        a.ID,
+				ParentID:  a.ParentID,
+				Kind:      a.Kind,
+				ValidAt:   a.ValidAt,
+				CreatedAt: a.CreatedAt,
+			})
 		}
 	}
 	return out, nil

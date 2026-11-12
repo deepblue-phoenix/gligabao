@@ -16,10 +16,13 @@ import (
 )
 
 // writeErr answers with the status that goes with err: the Kind of a core.Error, 500 for any other error.
-func writeErr(w http.ResponseWriter, err error) {
+func writeErr(w http.ResponseWriter,
+	err error) {
 	var e *core.Error
 	if !errors.As(err, &e) {
-		httputil.Error(w, http.StatusInternalServerError, "internal error")
+		httputil.Error(w,
+			http.StatusInternalServerError,
+			"internal error")
 		return
 	}
 	status := http.StatusInternalServerError
@@ -33,28 +36,40 @@ func writeErr(w http.ResponseWriter, err error) {
 	case core.KindUpstream:
 		status = http.StatusBadGateway
 	}
-	httputil.Error(w, status, e.Msg)
+	httputil.Error(w,
+		status,
+		e.Msg)
 }
 
 // pathID reads the {id} of the path, answering 400 itself if it is not a positive integer.
-func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+func pathID(w http.ResponseWriter,
+	r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"),
+		10,
+		64)
 	if err != nil || id < 1 {
-		httputil.Error(w, http.StatusBadRequest, "id must be a positive integer")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"id must be a positive integer")
 		return 0, false
 	}
 	return id, true
 }
 
 // limitParam reads the ?limit= parameter: def if there is none, at most max; answers 400 itself if it is not a positive integer.
-func limitParam(w http.ResponseWriter, r *http.Request, def, max int) (int, bool) {
+func limitParam(w http.ResponseWriter,
+	r *http.Request,
+	def,
+	max int) (int, bool) {
 	s := r.URL.Query().Get("limit")
 	if s == "" {
 		return def, true
 	}
 	v, err := strconv.Atoi(s)
 	if err != nil || v < 1 {
-		httputil.Error(w, http.StatusBadRequest, "limit must be a positive integer")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"limit must be a positive integer")
 		return 0, false
 	}
 	return min(v, max), true

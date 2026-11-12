@@ -43,7 +43,12 @@ func normTags(tags []string) []string {
 
 // CreateDataset creates a dataset owned by userID. The name is required (no default is applied). It returns
 // ErrDatasetExists if a live dataset with that name exists for the user.
-func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description string, tags []string) (*Dataset, error) {
+func CreateDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name,
+	description string,
+	tags []string) (*Dataset, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -55,7 +60,12 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 	if err != nil {
 		return nil, err
 	}
-	ds, err := relational.CreateDataset(ctx, d, userID, name, strings.TrimSpace(description), normTags(tags))
+	ds, err := relational.CreateDataset(ctx,
+		d,
+		userID,
+		name,
+		strings.TrimSpace(description),
+		normTags(tags))
 	if errors.Is(err, relational.ErrExists) {
 		return nil, ErrDatasetExists
 	}
@@ -63,12 +73,18 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 }
 
 // ListDatasets returns userID's datasets oldest first; deleted ones only if includeDeleted.
-func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted bool) ([]Dataset, error) {
+func ListDatasets(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	includeDeleted bool) ([]Dataset, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	return relational.ListDatasets(ctx, d, userID, includeDeleted)
+	return relational.ListDatasets(ctx,
+		d,
+		userID,
+		includeDeleted)
 }
 
 // VectorIndex is the purpose of a set of vectors of a dataset: what they are embeddings of. Each index of a
@@ -95,7 +111,8 @@ var VectorIndexes = []VectorIndex{IndexEntities, IndexEdges, IndexChunks, IndexS
 // dataset: a chromem collection, a Pinecone namespace. A gligabao dataset has one per purpose, and the name says
 // which one it is. It is keyed by the gligabao dataset's ID (not its name), so datasets never share vectors, and a
 // name reused after a soft delete starts with empty ones.
-func VectorDataset(datasetID int64, index VectorIndex) string {
+func VectorDataset(datasetID int64,
+	index VectorIndex) string {
 	return "dataset-" + strconv.FormatInt(datasetID, 10) + "-" + string(index)
 }
 
@@ -110,7 +127,9 @@ func ParseVectorDataset(name string) (datasetID int64, index VectorIndex, ok boo
 	if !found {
 		return 0, "", false
 	}
-	id, err := strconv.ParseInt(idText, 10, 64)
+	id, err := strconv.ParseInt(idText,
+		10,
+		64)
 	if err != nil || id < 0 || strconv.FormatInt(id, 10) != idText {
 		return 0, "", false
 	}
@@ -141,7 +160,11 @@ func SummaryDataset(datasetID int64) string { return VectorDataset(datasetID, In
 //
 // A failure to remove the vectors does not fail the call (the dataset is deleted either way and the vector datasets are
 // unreachable); it is logged.
-func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID, name string) error {
+func DeleteDataset(ctx context.Context,
+	d *sql.DB,
+	vectors vector.Store,
+	userID,
+	name string) error {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return err
@@ -150,11 +173,17 @@ func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID,
 	if err != nil {
 		return err
 	}
-	id, err := memory_core.DatasetID(ctx, d, userID, name)
+	id, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		name)
 	if err != nil {
 		return err
 	}
-	if err := relational.DeleteDataset(ctx, d, userID, name); errors.Is(err, relational.ErrNotFound) {
+	if err := relational.DeleteDataset(ctx,
+		d,
+		userID,
+		name); errors.Is(err, relational.ErrNotFound) {
 		return memory_core.ErrDatasetNotFound
 	} else if err != nil {
 		return err

@@ -103,61 +103,99 @@ type options struct {
 
 // WithResearch adds the tools of the research agents: research_start, research_list and research_get run the handlers of
 // POST /v1/gb/research, GET /v1/gb/research and GET /v1/gb/research/{id} (without any authentication wrapper).
-func WithResearch(start, list, get http.Handler) Option {
+func WithResearch(start,
+	list,
+	get http.Handler) Option {
 	return func(o *options) { o.researchStart, o.researchList, o.researchGet = start, list, get }
 }
 
 // New returns the handler of the MCP endpoint. rememberH and queryH are the handlers of POST /v1/gb/remember and
 // POST /v1/gb/query (without any authentication wrapper); version is reported to clients as the server's version.
-func New(rememberH, queryH http.Handler, version string, opts ...Option) http.Handler {
+func New(rememberH,
+	queryH http.Handler,
+	version string,
+	opts ...Option) http.Handler {
 	var o options
 	for _, opt := range opts {
 		opt(&o)
 	}
-	s := sdk.NewServer(&sdk.Implementation{Name: "gligabao", Title: "gligabao memory", Version: version}, &sdk.ServerOptions{
+	s := sdk.NewServer(&sdk.Implementation{
+		Name:    "gligabao",
+		Title:   "gligabao memory",
+		Version: version,
+	}, &sdk.ServerOptions{
 		Instructions: "gligabao is a temporal knowledge graph memory. Use remember to store a text in it (facts are extracted and stored with the time they became true) and query to answer a question from what was remembered.",
 	})
-	sdk.AddTool(s, &sdk.Tool{
-		Name:        ToolRemember,
-		Description: "Store a text in memory: entities and facts are extracted from it into a knowledge graph. Returns the artifact, the entities and the facts (edges) it yielded.",
-		Annotations: &sdk.ToolAnnotations{Title: "Remember", DestructiveHint: boolPtr(false), OpenWorldHint: boolPtr(false)},
-	}, forward[RememberInput](rememberH))
-	sdk.AddTool(s, &sdk.Tool{
-		Name:        ToolQuery,
-		Description: "Answer a question from what was remembered. Returns the answer and the evidence (entities and facts) it was based on.",
-		Annotations: &sdk.ToolAnnotations{Title: "Query", ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
-	}, forward[QueryInput](queryH))
+	sdk.AddTool(s,
+		&sdk.Tool{
+			Name:        ToolRemember,
+			Description: "Store a text in memory: entities and facts are extracted from it into a knowledge graph. Returns the artifact, the entities and the facts (edges) it yielded.",
+			Annotations: &sdk.ToolAnnotations{
+				Title:           "Remember",
+				DestructiveHint: boolPtr(false),
+				OpenWorldHint:   boolPtr(false),
+			},
+		},
+		forward[RememberInput](rememberH))
+	sdk.AddTool(s,
+		&sdk.Tool{
+			Name:        ToolQuery,
+			Description: "Answer a question from what was remembered. Returns the answer and the evidence (entities and facts) it was based on.",
+			Annotations: &sdk.ToolAnnotations{
+				Title:         "Query",
+				ReadOnlyHint:  true,
+				OpenWorldHint: boolPtr(false),
+			},
+		},
+		forward[QueryInput](queryH))
 	if o.researchStart != nil && o.researchList != nil && o.researchGet != nil {
-		sdk.AddTool(s, &sdk.Tool{
-			Name: ToolResearchStart,
-			Description: "Start a deep-research agent on a topic. It searches the web and reads pages over many steps, in the background, and ends with a report. " +
-				"Returns the run right away (an id and status running); follow it with research_get, which gives its state and, when it is completed, the report. The run costs money (model calls and web searches).",
-			Annotations: &sdk.ToolAnnotations{Title: "Start a research agent", DestructiveHint: boolPtr(false)},
-		}, forward[ResearchStartInput](o.researchStart))
-		sdk.AddTool(s, &sdk.Tool{
-			Name:        ToolResearchList,
-			Description: "List the research agents of a user, newest first: their status, current state, steps and cost. With active set, only the ones that are working now.",
-			Annotations: &sdk.ToolAnnotations{Title: "List research agents", ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
-		}, forwardGet(o.researchList, func(in ResearchListInput) (url.Values, map[string]string) {
-			q := url.Values{}
-			if in.Active != nil {
-				q.Set("active", strconv.FormatBool(*in.Active))
-			}
-			if in.Status != "" {
-				q.Set("status", in.Status)
-			}
-			if in.Limit != 0 {
-				q.Set("limit", strconv.Itoa(in.Limit))
-			}
-			return q, nil
-		}))
-		sdk.AddTool(s, &sdk.Tool{
-			Name:        ToolResearchGet,
-			Description: "Read a research agent: its status, current state, cost and, in order, every state it went through (searching, reading, thinking, ...) with what each was about (the query, the URL). The report is in it once the status is completed.",
-			Annotations: &sdk.ToolAnnotations{Title: "Get a research agent", ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
-		}, forwardGet(o.researchGet, func(in ResearchGetInput) (url.Values, map[string]string) {
-			return url.Values{}, map[string]string{"id": strconv.FormatInt(in.ID, 10)}
-		}))
+		sdk.AddTool(s,
+			&sdk.Tool{
+				Name: ToolResearchStart,
+				Description: "Start a deep-research agent on a topic. It searches the web and reads pages over many steps, in the background, and ends with a report. " +
+					"Returns the run right away (an id and status running); follow it with research_get, which gives its state and, when it is completed, the report. The run costs money (model calls and web searches).",
+				Annotations: &sdk.ToolAnnotations{
+					Title:           "Start a research agent",
+					DestructiveHint: boolPtr(false),
+				},
+			},
+			forward[ResearchStartInput](o.researchStart))
+		sdk.AddTool(s,
+			&sdk.Tool{
+				Name:        ToolResearchList,
+				Description: "List the research agents of a user, newest first: their status, current state, steps and cost. With active set, only the ones that are working now.",
+				Annotations: &sdk.ToolAnnotations{
+					Title:         "List research agents",
+					ReadOnlyHint:  true,
+					OpenWorldHint: boolPtr(false),
+				},
+			},
+			forwardGet(o.researchList, func(in ResearchListInput) (url.Values, map[string]string) {
+				q := url.Values{}
+				if in.Active != nil {
+					q.Set("active", strconv.FormatBool(*in.Active))
+				}
+				if in.Status != "" {
+					q.Set("status", in.Status)
+				}
+				if in.Limit != 0 {
+					q.Set("limit", strconv.Itoa(in.Limit))
+				}
+				return q, nil
+			}))
+		sdk.AddTool(s,
+			&sdk.Tool{
+				Name:        ToolResearchGet,
+				Description: "Read a research agent: its status, current state, cost and, in order, every state it went through (searching, reading, thinking, ...) with what each was about (the query, the URL). The report is in it once the status is completed.",
+				Annotations: &sdk.ToolAnnotations{
+					Title:         "Get a research agent",
+					ReadOnlyHint:  true,
+					OpenWorldHint: boolPtr(false),
+				},
+			},
+			forwardGet(o.researchGet, func(in ResearchGetInput) (url.Values, map[string]string) {
+				return url.Values{}, map[string]string{"id": strconv.FormatInt(in.ID, 10)}
+			}))
 	}
 
 	// Stateless: the tools are plain request/response calls, so no session is kept between them.
@@ -168,8 +206,15 @@ func New(rememberH, queryH http.Handler, version string, opts ...Option) http.Ha
 }
 
 // Register registers the MCP endpoint on mux (one route per method, so that it does not conflict with a "GET /" of the mux).
-func Register(mux *http.ServeMux, rememberH, queryH http.Handler, version string, opts ...Option) {
-	h := New(rememberH, queryH, version, opts...)
+func Register(mux *http.ServeMux,
+	rememberH,
+	queryH http.Handler,
+	version string,
+	opts ...Option) {
+	h := New(rememberH,
+		queryH,
+		version,
+		opts...)
 	for _, m := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
 		mux.Handle(m+" "+Path, h)
 	}
@@ -180,12 +225,17 @@ func boolPtr(b bool) *bool { return &b }
 // forward makes the tool handler that sends its input as the JSON body of a POST to h and returns h's answer: the JSON response as
 // the structured content (and as text), or, for a status of 400 and over, a tool error with the message of the response.
 func forward[In userOf](h http.Handler) sdk.ToolHandlerFor[In, any] {
-	return func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
+	return func(ctx context.Context,
+		_ *sdk.CallToolRequest,
+		in In) (*sdk.CallToolResult, any, error) {
 		body, err := json.Marshal(in)
 		if err != nil {
 			return nil, nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/", bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx,
+			http.MethodPost,
+			"/",
+			bytes.NewReader(body))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -197,10 +247,16 @@ func forward[In userOf](h http.Handler) sdk.ToolHandlerFor[In, any] {
 
 // forwardGet makes the tool handler that sends a GET to h, with the query string and the path values (the {name}s of the route) that
 // params makes of its input, and returns h's answer like forward.
-func forwardGet[In userOf](h http.Handler, params func(In) (query url.Values, path map[string]string)) sdk.ToolHandlerFor[In, any] {
-	return func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
+func forwardGet[In userOf](h http.Handler,
+	params func(In) (query url.Values, path map[string]string)) sdk.ToolHandlerFor[In, any] {
+	return func(ctx context.Context,
+		_ *sdk.CallToolRequest,
+		in In) (*sdk.CallToolResult, any, error) {
 		query, path := params(in)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/?"+query.Encode(), nil)
+		req, err := http.NewRequestWithContext(ctx,
+			http.MethodGet,
+			"/?"+query.Encode(),
+			nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -213,13 +269,21 @@ func forwardGet[In userOf](h http.Handler, params func(In) (query url.Values, pa
 }
 
 // serve runs h on req in process and turns its response into the result of a tool.
-func serve(h http.Handler, req *http.Request) *sdk.CallToolResult {
-	rec := &recorder{header: http.Header{}, status: http.StatusOK}
+func serve(h http.Handler,
+	req *http.Request) *sdk.CallToolResult {
+	rec := &recorder{
+		header: http.Header{},
+		status: http.StatusOK,
+	}
 	h.ServeHTTP(rec, req)
 	if rec.status >= 400 {
 		return toolError(rec.status, rec.body.Bytes())
 	}
-	res := &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: strings.TrimSpace(rec.body.String())}}}
+	res := &sdk.CallToolResult{
+		Content: []sdk.Content{&sdk.TextContent{
+			Text: strings.TrimSpace(rec.body.String()),
+		}},
+	}
 	var structured map[string]any
 	if json.Unmarshal(rec.body.Bytes(), &structured) == nil && structured != nil {
 		res.StructuredContent = structured
@@ -228,7 +292,8 @@ func serve(h http.Handler, req *http.Request) *sdk.CallToolResult {
 }
 
 // toolError is the result of a call the handler rejected or failed: the handler's {"error": "..."} message.
-func toolError(status int, body []byte) *sdk.CallToolResult {
+func toolError(status int,
+	body []byte) *sdk.CallToolResult {
 	var e struct {
 		Error string `json:"error"`
 	}
@@ -242,7 +307,14 @@ func toolError(status int, body []byte) *sdk.CallToolResult {
 	if msg == "" {
 		msg = http.StatusText(status)
 	}
-	return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: fmt.Sprintf("%s (status %d)", msg, status)}}}
+	return &sdk.CallToolResult{
+		IsError: true,
+		Content: []sdk.Content{&sdk.TextContent{
+			Text: fmt.Sprintf("%s (status %d)",
+				msg,
+				status),
+		}},
+	}
 }
 
 // recorder is an http.ResponseWriter that keeps the response in memory.

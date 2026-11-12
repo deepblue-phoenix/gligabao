@@ -38,12 +38,18 @@ func WithHTTPClient(hc *http.Client) Option {
 }
 
 // New returns a client for the sargo server at baseURL (e.g. "http://127.0.0.1:8080").
-func New(baseURL string, opts ...Option) (*Client, error) {
+func New(baseURL string,
+	opts ...Option) (*Client, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		return nil, errors.New("sargo: base URL is empty")
 	}
-	c := &Client{baseURL: baseURL, http: &http.Client{Timeout: defaultTimeout}}
+	c := &Client{
+		baseURL: baseURL,
+		http: &http.Client{
+			Timeout: defaultTimeout,
+		},
+	}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -59,7 +65,9 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("sargo: HTTP %d: %s", e.Status, e.Message)
+	return fmt.Sprintf("sargo: HTTP %d: %s",
+		e.Status,
+		e.Message)
 }
 
 // Retryable reports whether trying the same request again may work (the model provider failed).
@@ -69,7 +77,8 @@ func (e *APIError) Retryable() bool {
 
 // Infer runs one model inference (POST /v1/infer). The request is validated first (see Request.Validate). A non-200 reply is
 // returned as an *APIError.
-func (c *Client) Infer(ctx context.Context, req *Request) (*Response, error) {
+func (c *Client) Infer(ctx context.Context,
+	req *Request) (*Response, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -77,7 +86,10 @@ func (c *Client) Infer(ctx context.Context, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sargo: marshal request: %w", err)
 	}
-	data, err := c.do(ctx, http.MethodPost, "/v1/infer", body)
+	data, err := c.do(ctx,
+		http.MethodPost,
+		"/v1/infer",
+		body)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +102,10 @@ func (c *Client) Infer(ctx context.Context, req *Request) (*Response, error) {
 
 // Health calls GET /health and returns nil when the server answers "ok".
 func (c *Client) Health(ctx context.Context) error {
-	data, err := c.do(ctx, http.MethodGet, "/health", nil)
+	data, err := c.do(ctx,
+		http.MethodGet,
+		"/health",
+		nil)
 	if err != nil {
 		return err
 	}
@@ -105,12 +120,18 @@ func (c *Client) Health(ctx context.Context) error {
 }
 
 // do sends the request and returns the body of a 200 reply. The body is sent with a Content-Length (sargo does not accept chunked).
-func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+func (c *Client) do(ctx context.Context,
+	method,
+	path string,
+	body []byte) ([]byte, error) {
 	var rd io.Reader
 	if body != nil {
 		rd = bytes.NewReader(body)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, rd)
+	httpReq, err := http.NewRequestWithContext(ctx,
+		method,
+		c.baseURL+path,
+		rd)
 	if err != nil {
 		return nil, fmt.Errorf("sargo: build request: %w", err)
 	}
@@ -120,7 +141,10 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 	httpReq.Header.Set("Accept", "application/json")
 	httpResp, err := c.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("sargo: %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("sargo: %s %s: %w",
+			method,
+			path,
+			err)
 	}
 	defer httpResp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(httpResp.Body, maxReplyBytes))
@@ -134,10 +158,14 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 }
 
 // newAPIError builds the error of a non-200 reply; if the body is not an ErrorResponse its text is used as the message.
-func newAPIError(status int, data []byte) *APIError {
+func newAPIError(status int,
+	data []byte) *APIError {
 	var er ErrorResponse
 	if err := json.Unmarshal(data, &er); err == nil && er.Error != "" {
-		return &APIError{Status: status, Message: er.Error}
+		return &APIError{
+			Status:  status,
+			Message: er.Error,
+		}
 	}
 	msg := strings.TrimSpace(string(data))
 	if len(msg) > 500 {
@@ -146,5 +174,8 @@ func newAPIError(status int, data []byte) *APIError {
 	if msg == "" {
 		msg = http.StatusText(status)
 	}
-	return &APIError{Status: status, Message: msg}
+	return &APIError{
+		Status:  status,
+		Message: msg,
+	}
 }

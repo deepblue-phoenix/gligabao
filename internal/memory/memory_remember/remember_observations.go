@@ -97,14 +97,30 @@ func (o *observationPart) label() string {
 // noteObservable records series the call stored as candidates for an observation, if the call makes them. results are the
 // stored series, subjects[i] names the entity that results[i] is about (and its type), "" for none, and the points of
 // the window are [from[i], to[i]].
-func (j *job) noteObservable(parentID int64, results []memory_timeseries.Result, subjects [][2]string, windows [][2]time.Time) {
+func (j *job) noteObservable(parentID int64,
+	results []memory_timeseries.Result,
+	subjects [][2]string,
+	windows [][2]time.Time) {
 	if !j.co.SeriesObservations || j.web != nil || j.obs != nil || parentID == 0 {
 		return
 	}
 	for i, r := range results {
-		o := observable{SeriesID: r.ID, ParentID: parentID, From: windows[i][0], To: windows[i][1],
-			Observed: memory_timeseries.Observed{Key: r.Key, Field: r.Field, Name: r.Name, Unit: r.Unit, Frequency: r.Frequency,
-				Provider: r.Provider, Subject: subjects[i][0], SubjectType: subjects[i][1]}}
+		o := observable{
+			SeriesID: r.ID,
+			ParentID: parentID,
+			From:     windows[i][0],
+			To:       windows[i][1],
+			Observed: memory_timeseries.Observed{
+				Key:         r.Key,
+				Field:       r.Field,
+				Name:        r.Name,
+				Unit:        r.Unit,
+				Frequency:   r.Frequency,
+				Provider:    r.Provider,
+				Subject:     subjects[i][0],
+				SubjectType: subjects[i][1],
+			},
+		}
 		j.observables = append(j.observables, o)
 	}
 }
@@ -112,7 +128,8 @@ func (j *job) noteObservable(parentID int64, results []memory_timeseries.Result,
 // noteSuppliedSeries records the series the caller supplied (j.co.Series, in the order of results) that were stored and
 // anchored to the artifact artifactID. A series is about the entity its first entity selector names, and its window is the
 // period of the points of the request.
-func (j *job) noteSuppliedSeries(artifactID int64, results []memory_timeseries.Result) {
+func (j *job) noteSuppliedSeries(artifactID int64,
+	results []memory_timeseries.Result) {
 	if !j.co.SeriesObservations || len(results) != len(j.co.Series) {
 		return
 	}
@@ -127,7 +144,10 @@ func (j *job) noteSuppliedSeries(artifactID int64, results []memory_timeseries.R
 		}
 		windows[i] = [2]time.Time{s.Points[0].TS, s.Points[len(s.Points)-1].TS}
 	}
-	j.noteObservable(artifactID, results, subjects, windows)
+	j.noteObservable(artifactID,
+		results,
+		subjects,
+		windows)
 }
 
 // observeSeries is the observe_series stage of Remember (see observeSeriesStage): it makes an observation artifact of each
@@ -138,7 +158,9 @@ func (j *job) observeSeries(ctx context.Context) (out []SeriesObservationResult)
 	if len(obs) > maxSeriesObservations {
 		obs = obs[:maxSeriesObservations]
 	}
-	results := make([]SeriesObservationResult, 0, len(obs))
+	results := make([]SeriesObservationResult,
+		0,
+		len(obs))
 	for _, o := range obs {
 		results = append(results, j.observe(ctx, o))
 	}
@@ -146,13 +168,24 @@ func (j *job) observeSeries(ctx context.Context) (out []SeriesObservationResult)
 }
 
 // observe makes the observation of one series.
-func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult {
-	query := memory_timeseries.ObservationQuery(o.Observed, o.From, o.To)
-	out := SeriesObservationResult{SeriesID: o.SeriesID, Key: o.Observed.Key, Field: o.Observed.Field, ParentArtifactID: o.ParentID,
-		Query: query, From: relational.FormatTime(o.From), To: relational.FormatTime(o.To)}
+func (j *job) observe(ctx context.Context,
+	o observable) SeriesObservationResult {
+	query := memory_timeseries.ObservationQuery(o.Observed,
+		o.From,
+		o.To)
+	out := SeriesObservationResult{
+		SeriesID:         o.SeriesID,
+		Key:              o.Observed.Key,
+		Field:            o.Observed.Field,
+		ParentArtifactID: o.ParentID,
+		Query:            query,
+		From:             relational.FormatTime(o.From),
+		To:               relational.FormatTime(o.To),
+	}
 	fields := log.Fields{"stage": "observe_series", "user_id": j.userID, "dataset": j.dataset, "series_id": o.SeriesID,
 		"key": o.Observed.Key, "parent_artifact_id": o.ParentID}
-	fail := func(stage string, err error) SeriesObservationResult {
+	fail := func(stage string,
+		err error) SeriesObservationResult {
 		out.Error = stage + ": " + err.Error()
 		log.WithError(err).WithFields(fields).Warn("remember: series observation failed for " + stage)
 		return out
@@ -163,20 +196,37 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 	//--------------------------------------
 	// THE TEXT: from the stats of the points of the window, in Go
 	from, to := o.From, o.To
-	points, err := graph.SeriesPoints(ctx, j.d, o.SeriesID, &from, &to, maxObservationPoints)
+	points, err := graph.SeriesPoints(ctx,
+		j.d,
+		o.SeriesID,
+		&from,
+		&to,
+		maxObservationPoints)
 	if err != nil {
 		return fail("read points", err)
 	}
 	text := memory_timeseries.ObservationText(o.Observed, points)
 	if text == "" {
-		j.tr.Tool("The series has no points in the window, so there is nothing to observe.", "observe_series", args, map[string]any{"points": 0})
-		j.run.Output(StageObserveSeries, "observe_series", o.Observed.Key, map[string]any{"request": args, "points": 0})
+		j.tr.Tool("The series has no points in the window, so there is nothing to observe.",
+			"observe_series",
+			args,
+			map[string]any{"points": 0})
+		j.run.Output(StageObserveSeries,
+			"observe_series",
+			o.Observed.Key,
+			map[string]any{"request": args, "points": 0})
 		return out
 	}
 	out.Text = text
 	observed := map[string]any{"points": len(points), "text": text}
-	j.tr.Tool("Generated the observation text from the stats of the series' points in the window (no LLM).", "observe_series", args, observed)
-	j.run.Output(StageObserveSeries, "observe_series", o.Observed.Key, map[string]any{"request": args, "result": observed})
+	j.tr.Tool("Generated the observation text from the stats of the series' points in the window (no LLM).",
+		"observe_series",
+		args,
+		observed)
+	j.run.Output(StageObserveSeries,
+		"observe_series",
+		o.Observed.Key,
+		map[string]any{"request": args, "result": observed})
 
 	//--------------------------------------
 	// THE OBSERVATION IS A TEXT LIKE ANY OTHER: a job of its own that stores a "series_observation" artifact. It is as of
@@ -184,18 +234,29 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 	last := points[len(points)-1].TS
 	oj := *j
 	oj.run = j.run.Within(StageObserveSeries) // its inferences are the observe_series stage's
-	oj.obs = &observationPart{ParentID: o.ParentID, SeriesID: o.SeriesID, Query: query, Label: o.Observed.Key}
+	oj.obs = &observationPart{
+		ParentID: o.ParentID,
+		SeriesID: o.SeriesID,
+		Query:    query,
+		Label:    o.Observed.Key,
+	}
 	oj.kind, oj.ref = graph.ArtifactSeriesObservation, last
 
-	ex, err := Extract(ctx, oj.co.ModelLLM(oj.llm, memory_core.StageExtractGraph), text, oj.ref)
+	ex, err := Extract(ctx,
+		oj.co.ModelLLM(oj.llm, memory_core.StageExtractGraph),
+		text,
+		oj.ref)
 	oj.outputExtraction(oj.stepLabel(nil), ex)
 	if err != nil {
 		return fail("extract", err)
 	}
 	oj.tr.Tool("The LLM extracted these entities and edges (new facts) from the series observation, before any stored fact is considered."+oj.obs.label(),
-		"extract_graph", map[string]any{"text_chars": len(text)},
+		"extract_graph",
+		map[string]any{"text_chars": len(text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
-	res, err := oj.reconcile(ctx, text, ex)
+	res, err := oj.reconcile(ctx,
+		text,
+		ex)
 	if err != nil {
 		return fail("store", err)
 	}

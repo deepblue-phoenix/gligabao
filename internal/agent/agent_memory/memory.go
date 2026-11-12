@@ -45,8 +45,17 @@ type Memory struct {
 
 // Knowledge returns the knowledge base of one agent: the dataset of the user, with sessionID on everything it remembers and queries.
 // ctx is the lifetime of the agent's remember calls that do not wait: it ends when the process stops, not when the tool returns.
-func (m *Memory) Knowledge(ctx context.Context, userID, dataset, sessionID string) agent.Knowledge {
-	return &knowledge{mem: m, userID: userID, dataset: dataset, sessionID: sessionID, ctx: ctx}
+func (m *Memory) Knowledge(ctx context.Context,
+	userID,
+	dataset,
+	sessionID string) agent.Knowledge {
+	return &knowledge{
+		mem:       m,
+		userID:    userID,
+		dataset:   dataset,
+		sessionID: sessionID,
+		ctx:       ctx,
+	}
 }
 
 // Drain waits until every remember call that did not wait (the default of the tool) is over, or ctx is done. A program that stops
@@ -71,7 +80,11 @@ const SessionPrefix = "research-"
 
 // SessionID is the session of the calls the agent of run runID makes: everything it remembers (the artifacts, entities and facts) and
 // every query it asks carries it, so that what an agent contributed can be told (see the provenance of the admin UI).
-func SessionID(runID int64) string { return fmt.Sprintf("%s%d", SessionPrefix, runID) }
+func SessionID(runID int64) string {
+	return fmt.Sprintf("%s%d",
+		SessionPrefix,
+		runID)
+}
 
 // knowledge is the Knowledge of one research run: the knowledge base of the user, in one dataset. Remembered text and queries carry
 // the session "research-<run id>", so that what a run stored and asked can be told in the run logs.
@@ -88,10 +101,14 @@ var _ agent.Knowledge = (*knowledge)(nil)
 
 // Remember submits text to the remember manager. With wait it blocks for the outcome of the run, and returns what was stored;
 // without it, it returns when the text is queued, with the ID of the run (gb_remember_runs) that holds how it goes.
-func (k *knowledge) Remember(ctx context.Context, text string, wait bool) (string, error) {
+func (k *knowledge) Remember(ctx context.Context,
+	text string,
+	wait bool) (string, error) {
 	req := memory_remember.Request{
-		UserID: k.userID, Dataset: k.dataset, Text: text,
-		Opts: append(k.mem.RememberOpts[:len(k.mem.RememberOpts):len(k.mem.RememberOpts)], memory_core.WithSessionID(k.sessionID)),
+		UserID:  k.userID,
+		Dataset: k.dataset,
+		Text:    text,
+		Opts:    append(k.mem.RememberOpts[:len(k.mem.RememberOpts):len(k.mem.RememberOpts)], memory_core.WithSessionID(k.sessionID)),
 	}
 	if !wait {
 		// Nobody waits for the run: it must not end with the tool call, only with the server.
@@ -108,7 +125,10 @@ func (k *knowledge) Remember(ctx context.Context, text string, wait bool) (strin
 			if out := <-outcome; out.Err != nil {
 				log.WithError(out.Err).WithField("remember_run_id", runID).Warn("agent memory: a remember call that did not wait failed")
 				// Nobody is told about this text (the agent has moved on): it is lost, so it is tracked.
-				gberrors.New(context.WithoutCancel(k.ctx), k.mem.ErrSink, "agent.remember.async", out.Err,
+				gberrors.New(context.WithoutCancel(k.ctx),
+					k.mem.ErrSink,
+					"agent.remember.async",
+					out.Err,
 					gberrors.Meta{"remember_run_id": runID, "user_id": k.userID, "dataset": k.dataset, "session_id": k.sessionID})
 			}
 		}()
@@ -123,9 +143,14 @@ func (k *knowledge) Remember(ctx context.Context, text string, wait bool) (strin
 	select {
 	case out := <-outcome:
 		if out.Err != nil {
-			return "", fmt.Errorf("remember run %d failed: %w", runID, out.Err)
+			return "", fmt.Errorf("remember run %d failed: %w",
+				runID,
+				out.Err)
 		}
-		return fmt.Sprintf("remembered (remember run %d): %d entities and %d facts in the knowledge base", runID, len(out.Result.Entities), len(out.Result.Edges)), nil
+		return fmt.Sprintf("remembered (remember run %d): %d entities and %d facts in the knowledge base",
+			runID,
+			len(out.Result.Entities),
+			len(out.Result.Edges)), nil
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
@@ -133,8 +158,14 @@ func (k *knowledge) Remember(ctx context.Context, text string, wait bool) (strin
 
 // Query asks the knowledge base: the answer, then the facts it is based on. A dataset that does not exist yet (nothing was ever
 // remembered into it) is not an error, the knowledge base is just empty.
-func (k *knowledge) Query(ctx context.Context, question string) (string, error) {
-	res, err := memory_query.Query(ctx, k.mem.DB, k.mem.LLM, k.userID, k.dataset, question,
+func (k *knowledge) Query(ctx context.Context,
+	question string) (string, error) {
+	res, err := memory_query.Query(ctx,
+		k.mem.DB,
+		k.mem.LLM,
+		k.userID,
+		k.dataset,
+		question,
 		append(k.mem.QueryOpts[:len(k.mem.QueryOpts):len(k.mem.QueryOpts)], memory_core.WithSessionID(k.sessionID))...)
 	if errors.Is(err, memory_core.ErrDatasetNotFound) {
 		return "The knowledge base is empty: nothing was remembered yet.", nil
@@ -148,12 +179,20 @@ func (k *knowledge) Query(ctx context.Context, question string) (string, error) 
 		sb.WriteString("\n\nFacts it is based on:")
 		for i, e := range res.Evidence.Edges {
 			if i == maxQueryFacts {
-				fmt.Fprintf(&sb, "\n- ... and %d more", n-i)
+				fmt.Fprintf(&sb,
+					"\n- ... and %d more",
+					n-i)
 				break
 			}
-			fmt.Fprintf(&sb, "\n- %s %s %s", e.Source, e.Relation, e.Target)
+			fmt.Fprintf(&sb,
+				"\n- %s %s %s",
+				e.Source,
+				e.Relation,
+				e.Target)
 			if e.Description != "" {
-				fmt.Fprintf(&sb, ": %s", e.Description)
+				fmt.Fprintf(&sb,
+					": %s",
+					e.Description)
 			}
 		}
 	}

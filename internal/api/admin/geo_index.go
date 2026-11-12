@@ -54,19 +54,27 @@ func backendOf(d *sql.DB) string {
 // CheckGeoIndex probes d: SQLite gets a throwaway R*Tree table (in the temp schema of one connection, never in the
 // database file), PostgreSQL is asked for the postgis extension. It never returns an error: a probe that fails is
 // reported as not enabled, with the reason in Detail.
-func CheckGeoIndex(ctx context.Context, d *sql.DB) GeoIndexStatus {
+func CheckGeoIndex(ctx context.Context,
+	d *sql.DB) GeoIndexStatus {
 	switch b := backendOf(d); b {
 	case config.DBBackendSQLite:
 		return checkRTree(ctx, d)
 	case config.DBBackendPostgres:
 		return checkPostGIS(ctx, d)
 	default:
-		return GeoIndexStatus{Backend: b, Detail: "unknown database driver"}
+		return GeoIndexStatus{
+			Backend: b,
+			Detail:  "unknown database driver",
+		}
 	}
 }
 
-func checkRTree(ctx context.Context, d *sql.DB) GeoIndexStatus {
-	st := GeoIndexStatus{Backend: config.DBBackendSQLite, Index: "rtree"}
+func checkRTree(ctx context.Context,
+	d *sql.DB) GeoIndexStatus {
+	st := GeoIndexStatus{
+		Backend: config.DBBackendSQLite,
+		Index:   "rtree",
+	}
 	conn, err := d.Conn(ctx)
 	if err != nil {
 		st.Detail = err.Error()
@@ -84,8 +92,12 @@ func checkRTree(ctx context.Context, d *sql.DB) GeoIndexStatus {
 	return st
 }
 
-func checkPostGIS(ctx context.Context, d *sql.DB) GeoIndexStatus {
-	st := GeoIndexStatus{Backend: config.DBBackendPostgres, Index: "postgis"}
+func checkPostGIS(ctx context.Context,
+	d *sql.DB) GeoIndexStatus {
+	st := GeoIndexStatus{
+		Backend: config.DBBackendPostgres,
+		Index:   "postgis",
+	}
 	var version string
 	err := d.QueryRowContext(ctx, `SELECT extversion FROM pg_extension WHERE extname = 'postgis'`).Scan(&version)
 	switch {
@@ -107,7 +119,8 @@ func checkPostGIS(ctx context.Context, d *sql.DB) GeoIndexStatus {
 // GeoIndexOf serves GET /admin/api/geo-index[?db=<name>] for one of dbs (the first without db): a GeoIndexStatus, always with
 // status 200 (a failed probe is "enabled": false and a detail). It is a live check, not cached.
 func GeoIndexOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
@@ -116,10 +129,14 @@ func GeoIndexOf(dbs []Named) http.HandlerFunc {
 			if n.Name == name {
 				ctx, cancel := context.WithTimeout(r.Context(), geoIndexTimeout)
 				defer cancel()
-				httputil.WriteJSON(w, http.StatusOK, CheckGeoIndex(ctx, n.DB))
+				httputil.WriteJSON(w,
+					http.StatusOK,
+					CheckGeoIndex(ctx, n.DB))
 				return
 			}
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }

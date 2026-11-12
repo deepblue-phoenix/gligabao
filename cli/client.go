@@ -61,7 +61,8 @@ func exitCodeOf(status int) int {
 }
 
 // printError writes the error to w as {"error": ..., "status": ...}.
-func printError(w io.Writer, err error) {
+func printError(w io.Writer,
+	err error) {
 	out := map[string]any{"error": err.Error()}
 	var ee *exitError
 	if errors.As(err, &ee) && ee.status != 0 {
@@ -80,8 +81,12 @@ func codeOf(err error) int {
 	return exitOther
 }
 
-func usageErr(format string, args ...any) error {
-	return &exitError{code: exitUsage, msg: fmt.Sprintf(format, args...)}
+func usageErr(format string,
+	args ...any) error {
+	return &exitError{
+		code: exitUsage,
+		msg:  fmt.Sprintf(format, args...),
+	}
 }
 
 //---------------------------------------------------------------------------------------------
@@ -100,7 +105,11 @@ type apiClient struct {
 }
 
 // do sends the request and returns the status and the body of the response. No timeout: a remember takes as long as its LLM calls.
-func (c *apiClient) do(ctx context.Context, method, path string, query url.Values, body []byte) (int, []byte, error) {
+func (c *apiClient) do(ctx context.Context,
+	method,
+	path string,
+	query url.Values,
+	body []byte) (int, []byte, error) {
 	u := c.base + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -109,7 +118,10 @@ func (c *apiClient) do(ctx context.Context, method, path string, query url.Value
 	if body != nil {
 		rd = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, rd)
+	req, err := http.NewRequestWithContext(ctx,
+		method,
+		u,
+		rd)
 	if err != nil {
 		return 0, nil, usageErr("bad request: %v", err)
 	}
@@ -124,7 +136,12 @@ func (c *apiClient) do(ctx context.Context, method, path string, query url.Value
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, nil, &exitError{code: exitUnavailable, msg: fmt.Sprintf("cannot reach the server at %s: %v", c.base, err)}
+		return 0, nil, &exitError{
+			code: exitUnavailable,
+			msg: fmt.Sprintf("cannot reach the server at %s: %v",
+				c.base,
+				err),
+		}
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
@@ -133,8 +150,16 @@ func (c *apiClient) do(ctx context.Context, method, path string, query url.Value
 
 // call is do for the commands: a failed request (status 400 and up) becomes an exitError with the server's message, and the body of
 // a successful one is returned.
-func (c *apiClient) call(ctx context.Context, method, path string, query url.Values, body []byte) ([]byte, error) {
-	status, b, err := c.do(ctx, method, path, query, body)
+func (c *apiClient) call(ctx context.Context,
+	method,
+	path string,
+	query url.Values,
+	body []byte) ([]byte, error) {
+	status, b, err := c.do(ctx,
+		method,
+		path,
+		query,
+		body)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +174,11 @@ func (c *apiClient) call(ctx context.Context, method, path string, query url.Val
 		if msg == "" {
 			msg = http.StatusText(status)
 		}
-		return nil, &exitError{code: exitCodeOf(status), status: status, msg: msg}
+		return nil, &exitError{
+			code:   exitCodeOf(status),
+			status: status,
+			msg:    msg,
+		}
 	}
 	return b, nil
 }
@@ -159,9 +188,15 @@ func (c *CLI) client(cmd *cobra.Command) (*apiClient, error) {
 	server := c.flags.server
 	if server != "" {
 		if _, err := url.ParseRequestURI(server); err != nil {
-			return nil, usageErr("bad --server %q: %v", server, err)
+			return nil, usageErr("bad --server %q: %v",
+				server,
+				err)
 		}
-		return &apiClient{base: strings.TrimRight(server, "/"), key: os.Getenv(EnvAPIKey), user: c.flags.user}, nil
+		return &apiClient{
+			base: strings.TrimRight(server, "/"),
+			key:  os.Getenv(EnvAPIKey),
+			user: c.flags.user,
+		}, nil
 	}
 	d, err := c.localDaemon(cmd)
 	if err != nil {
@@ -170,7 +205,10 @@ func (c *CLI) client(cmd *cobra.Command) (*apiClient, error) {
 	if err := d.ensure(cmd.Context()); err != nil {
 		return nil, err
 	}
-	return &apiClient{base: d.url(), user: c.flags.user}, nil
+	return &apiClient{
+		base: d.url(),
+		user: c.flags.user,
+	}, nil
 }
 
 // localDaemon builds the local daemon from the layout (see resolveLayout).
@@ -183,9 +221,13 @@ func (c *CLI) localDaemon(cmd *cobra.Command) (*daemon, error) {
 }
 
 // emit prints a response body to stdout as indented JSON (as it is if it is not JSON).
-func emit(cmd *cobra.Command, b []byte) {
+func emit(cmd *cobra.Command,
+	b []byte) {
 	var out bytes.Buffer
-	if json.Indent(&out, bytes.TrimSpace(b), "", "  ") != nil {
+	if json.Indent(&out,
+		bytes.TrimSpace(b),
+		"",
+		"  ") != nil {
 		out.Reset()
 		out.Write(bytes.TrimSpace(b))
 	}
@@ -193,7 +235,8 @@ func emit(cmd *cobra.Command, b []byte) {
 }
 
 // readBody reads a request body given as JSON text, "@file" or "-" (stdin).
-func readBody(cmd *cobra.Command, spec string) ([]byte, error) {
+func readBody(cmd *cobra.Command,
+	spec string) ([]byte, error) {
 	switch {
 	case spec == "-":
 		return io.ReadAll(cmd.InOrStdin())
@@ -204,7 +247,8 @@ func readBody(cmd *cobra.Command, spec string) ([]byte, error) {
 }
 
 // bodyFromFlags starts the request body from --json (an object: JSON text, @file or -), if given.
-func bodyFromFlags(cmd *cobra.Command, spec string) (map[string]any, error) {
+func bodyFromFlags(cmd *cobra.Command,
+	spec string) (map[string]any, error) {
 	body := map[string]any{}
 	if spec == "" {
 		return body, nil
@@ -220,7 +264,8 @@ func bodyFromFlags(cmd *cobra.Command, spec string) (map[string]any, error) {
 }
 
 // pairs turns STAGE=VALUE flags into a map.
-func pairs(flag string, list []string) (map[string]string, error) {
+func pairs(flag string,
+	list []string) (map[string]string, error) {
 	if len(list) == 0 {
 		return nil, nil
 	}
@@ -228,7 +273,9 @@ func pairs(flag string, list []string) (map[string]string, error) {
 	for _, kv := range list {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok || k == "" || v == "" {
-			return nil, usageErr("--%s %q: want STAGE=VALUE", flag, kv)
+			return nil, usageErr("--%s %q: want STAGE=VALUE",
+				flag,
+				kv)
 		}
 		m[k] = v
 	}

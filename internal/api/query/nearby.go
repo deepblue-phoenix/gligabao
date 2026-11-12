@@ -19,18 +19,24 @@ import (
 // NearbyPoint). Parameters (the user is the gb-user-id header): dataset (default "main"), and either entity_id or latitude and longitude; radius_km (optional,
 // else the default radius of opts, memory_core.WithGeoRadius, else 50 km). The response is the `nearby` object of the query result.
 // It needs no LLM and no geo resolver, and writes nothing.
-func NearbyHandler(d *sql.DB, opts ...memory_core.Option) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func NearbyHandler(d *sql.DB,
+	opts ...memory_core.Option) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		callOpts := opts[:len(opts):len(opts)]
 		if v := q.Get("radius_km"); v != "" {
 			km, err := strconv.ParseFloat(v, 64)
 			if err != nil {
-				httputil.Error(w, http.StatusBadRequest, "radius_km must be a number")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"radius_km must be a number")
 				return
 			}
 			if err := memory_core.ValidateGeoRadius(km); err != nil { // 0 would mean "the default" to WithGeoRadius
-				httputil.Error(w, http.StatusBadRequest, err.Error())
+				httputil.Error(w,
+					http.StatusBadRequest,
+					err.Error())
 				return
 			}
 			callOpts = append(callOpts, memory_core.WithGeoRadius(km))
@@ -41,37 +47,66 @@ func NearbyHandler(d *sql.DB, opts ...memory_core.Option) http.HandlerFunc {
 		)
 		switch {
 		case q.Get("entity_id") != "":
-			id, parseErr := strconv.ParseInt(q.Get("entity_id"), 10, 64)
+			id, parseErr := strconv.ParseInt(q.Get("entity_id"),
+				10,
+				64)
 			if parseErr != nil || id <= 0 {
-				httputil.Error(w, http.StatusBadRequest, "entity_id must be a positive integer")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"entity_id must be a positive integer")
 				return
 			}
-			res, err = memory_query.NearbyEntityOf(r.Context(), d, httputil.UserID(r), q.Get("dataset"), id, callOpts...)
+			res, err = memory_query.NearbyEntityOf(r.Context(),
+				d,
+				httputil.UserID(r),
+				q.Get("dataset"),
+				id,
+				callOpts...)
 		case q.Get("latitude") != "" || q.Get("longitude") != "":
 			lat, latErr := strconv.ParseFloat(strings.TrimSpace(q.Get("latitude")), 64)
 			lon, lonErr := strconv.ParseFloat(strings.TrimSpace(q.Get("longitude")), 64)
 			if latErr != nil || lonErr != nil {
-				httputil.Error(w, http.StatusBadRequest, "latitude and longitude must both be numbers")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"latitude and longitude must both be numbers")
 				return
 			}
-			res, err = memory_query.NearbyPoint(r.Context(), d, httputil.UserID(r), q.Get("dataset"), lat, lon, callOpts...)
+			res, err = memory_query.NearbyPoint(r.Context(),
+				d,
+				httputil.UserID(r),
+				q.Get("dataset"),
+				lat,
+				lon,
+				callOpts...)
 		default:
-			httputil.Error(w, http.StatusBadRequest, "entity_id, or latitude and longitude, is required")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"entity_id, or latitude and longitude, is required")
 			return
 		}
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrInvalidUser),
 			errors.Is(err, memory_core.ErrInvalidGeoRadius), errors.Is(err, memory_query.ErrInvalidGeoPoint):
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 		case errors.Is(err, memory_core.ErrDatasetNotFound):
-			httputil.Error(w, http.StatusNotFound, "dataset not found")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"dataset not found")
 		case errors.Is(err, graph.ErrNotFound):
-			httputil.Error(w, http.StatusNotFound, "geo entity not found (no such entity in the dataset, or it has no coordinates)")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"geo entity not found (no such entity in the dataset, or it has no coordinates)")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": q.Get("dataset")}).Error("nearby geo entities failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to find the nearby geo entities")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to find the nearby geo entities")
 		default:
-			httputil.WriteJSON(w, http.StatusOK, res)
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				res)
 		}
 	}
 }

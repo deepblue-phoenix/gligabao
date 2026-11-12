@@ -26,40 +26,61 @@ type recordingLLM struct {
 	reqs []ai.Request
 }
 
-func (f *recordingLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, error) {
+func (f *recordingLLM) Complete(_ context.Context,
+	r ai.Request) (*ai.Response, error) {
 	f.reqs = append(f.reqs, r)
 	out := f.outs[0]
 	f.outs = f.outs[1:]
-	return &ai.Response{Text: out, StopReason: "end_turn"}, nil
+	return &ai.Response{
+		Text:       out,
+		StopReason: "end_turn",
+	}, nil
 }
 
 func TestQuery(t *testing.T) { dbtest.Run(t, testQuery) }
 
-func testQuery(t *testing.T, d *sql.DB) {
+func testQuery(t *testing.T,
+	d *sql.DB) {
 
 	ex := `{"entities":[{"name":"Alice","type":"person","description":"engineer"},{"name":"Acme","type":"organization"},{"name":"Bob","type":"person"},{"name":"Rome","type":"place"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"works_at"},{"source":"Bob","target":"Rome","relation":"lives_in"}]}`
 	// ids: Alice=1 Acme=2 Bob=3 Rome=4; edges: works_at=1 lives_in=2
-	llm := &recordingLLM{outs: []string{
-		ex,
-		"```json\n" + `{"answer":"Alice works at Acme.","entities":[1,999],"edges":[1,42]}` + "\n```",
-		`{"answer":"Nothing relevant.","entities":[],"edges":[]}`,
-	}}
+	llm := &recordingLLM{
+		outs: []string{
+			ex,
+			"```json\n" + `{"answer":"Alice works at Acme.","entities":[1,999],"edges":[1,42]}` + "\n```",
+			`{"answer":"Nothing relevant.","entities":[],"edges":[]}`,
+		},
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
+	mux.HandleFunc("POST /v1/gb/query", Handler(d,
+		llm,
+		withVectors(t)))
 
-	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+	if _, err := memory_remember.Remember(context.Background(),
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"x",
+		time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 
-	post := func(path, body string) *httptest.ResponseRecorder {
+	post := func(path,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+			path,
+			strings.NewReader(body)))
 		return rec
 	}
 	rec := post("/v1/gb/query", `{"user_id":"u1","query":"Where does Alice work?"}`)
 	if rec.Code != 200 {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	var res memory_query.QueryResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
@@ -84,7 +105,9 @@ func testQuery(t *testing.T, d *sql.DB) {
 	// No match: falls back to recent entities; empty evidence is serialized as [] not null.
 	rec = post("/v1/gb/query", `{"user_id":"u1","query":"zzz"}`)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"entities":[]`) || !strings.Contains(rec.Body.String(), `"edges":[]`) {
-		t.Errorf("fallback: %d %s", rec.Code, rec.Body)
+		t.Errorf("fallback: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 
 	if rec := post("/v1/gb/query", `{"user_id":"u1","query":"  "}`); rec.Code != 400 {
@@ -94,19 +117,31 @@ func testQuery(t *testing.T, d *sql.DB) {
 
 func TestQueryEmptyGraph(t *testing.T) { dbtest.Run(t, testQueryEmptyGraph) }
 
-func testQueryEmptyGraph(t *testing.T, d *sql.DB) {
+func testQueryEmptyGraph(t *testing.T,
+	d *sql.DB) {
 	//------------------
 	// MEMORY DATASET
-	if _, err := memory_dataset.CreateDataset(context.Background(), d, "u1", "main", "", nil); err != nil {
+	if _, err := memory_dataset.CreateDataset(context.Background(),
+		d,
+		"u1",
+		"main",
+		"",
+		nil); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, &recordingLLM{}, withVectors(t))) // must not call the LLM
+	mux.HandleFunc("POST /v1/gb/query", Handler(d,
+		&recordingLLM{},
+		withVectors(t))) // must not call the LLM
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"hi"}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+		"/v1/gb/query",
+		strings.NewReader(`{"user_id":"u1","query":"hi"}`)))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"edges":[]`) {
-		t.Errorf("%d %s", rec.Code, rec.Body)
+		t.Errorf("%d %s",
+			rec.Code,
+			rec.Body)
 	}
 }
 
@@ -114,7 +149,9 @@ func TestQueryNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/query", Handler(nil, nil))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"x"}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+		"/v1/gb/query",
+		strings.NewReader(`{"user_id":"u1","query":"x"}`)))
 	if rec.Code != 503 {
 		t.Errorf("status = %d", rec.Code)
 	}
@@ -122,21 +159,38 @@ func TestQueryNoLLM(t *testing.T) {
 
 func TestQuerySession(t *testing.T) { dbtest.Run(t, testQuerySession) }
 
-func testQuerySession(t *testing.T, d *sql.DB) {
+func testQuerySession(t *testing.T,
+	d *sql.DB) {
 	ex := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`
-	llm := &recordingLLM{outs: []string{ex, `{"answer":"Acme.","entities":[1],"edges":[1]}`, `{"answer":"Acme.","entities":[1],"edges":[1]}`}}
-	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+	llm := &recordingLLM{
+		outs: []string{ex, `{"answer":"Acme.","entities":[1],"edges":[1]}`, `{"answer":"Acme.","entities":[1],"edges":[1]}`},
+	}
+	if _, err := memory_remember.Remember(context.Background(),
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"x",
+		time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	prev := memory_core.TrajectoryDir
 	memory_core.TrajectoryDir = t.TempDir()
 	t.Cleanup(func() { memory_core.TrajectoryDir = prev })
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
-	mux.HandleFunc("POST /v1/gb/eval/query", EvalHandler(d, llm, withVectors(t)))
-	post := func(path, body string) *httptest.ResponseRecorder {
+	mux.HandleFunc("POST /v1/gb/query", Handler(d,
+		llm,
+		withVectors(t)))
+	mux.HandleFunc("POST /v1/gb/eval/query", EvalHandler(d,
+		llm,
+		withVectors(t)))
+	post := func(path,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+			path,
+			strings.NewReader(body)))
 		return rec
 	}
 
@@ -144,7 +198,9 @@ func testQuerySession(t *testing.T, d *sql.DB) {
 	var withSession, without memory_query.QueryResult
 	rec := post("/v1/gb/query", `{"user_id":"u1","query":"Where does Alice work?","session_id":" s1 "}`)
 	if rec.Code != 200 {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &withSession); err != nil {
 		t.Fatal(err)
@@ -154,10 +210,15 @@ func testQuerySession(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	if withSession.SessionID != "s1" || without.SessionID != "" || strings.Contains(rec.Body.String(), "session_id") {
-		t.Errorf("session IDs: %q, %q; body without: %s", withSession.SessionID, without.SessionID, rec.Body)
+		t.Errorf("session IDs: %q, %q; body without: %s",
+			withSession.SessionID,
+			without.SessionID,
+			rec.Body)
 	}
 	if withSession.Answer != without.Answer || len(withSession.Evidence.Edges) != len(without.Evidence.Edges) {
-		t.Errorf("the session changed the result: %+v vs %+v", withSession, without)
+		t.Errorf("the session changed the result: %+v vs %+v",
+			withSession,
+			without)
 	}
 
 	// With eval, the trajectory carries the session ID.
@@ -165,31 +226,49 @@ func testQuerySession(t *testing.T, d *sql.DB) {
 	rec = post("/v1/gb/eval/query", `{"user_id":"u1","query":"Where does Alice work?","session_id":"s1"}`)
 	var ev memory_query.QueryResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &ev); err != nil || ev.Trajectory == nil || ev.Trajectory.SessionID != "s1" || ev.Trajectory.TrajectoryID == "s1" {
-		t.Errorf("eval trajectory: %v %+v", err, ev.Trajectory)
+		t.Errorf("eval trajectory: %v %+v",
+			err,
+			ev.Trajectory)
 	}
 
 	if rec := post("/v1/gb/query", `{"user_id":"u1","query":"x","session_id":"a\tb"}`); rec.Code != 400 {
-		t.Errorf("invalid session status = %d, want 400: %s", rec.Code, rec.Body)
+		t.Errorf("invalid session status = %d, want 400: %s",
+			rec.Code,
+			rec.Body)
 	}
 }
 
 // The LLM call of a query is an inference, with no thinking (level none) unless the request names another.
 func TestQueryInference(t *testing.T) { dbtest.Run(t, testQueryInference) }
 
-func testQueryInference(t *testing.T, d *sql.DB) {
-	llm := &recordingLLM{outs: []string{
-		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
-		`{"answer":"Alice.","entities":[1],"edges":[]}`,
-		`{"answer":"Alice.","entities":[1],"edges":[]}`,
-	}}
+func testQueryInference(t *testing.T,
+	d *sql.DB) {
+	llm := &recordingLLM{
+		outs: []string{
+			`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
+			`{"answer":"Alice.","entities":[1],"edges":[]}`,
+			`{"answer":"Alice.","entities":[1],"edges":[]}`,
+		},
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
-	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+	mux.HandleFunc("POST /v1/gb/query", Handler(d,
+		llm,
+		withVectors(t)))
+	if _, err := memory_remember.Remember(context.Background(),
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"x",
+		time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	post := func(body string) int {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+			"/v1/gb/query",
+			strings.NewReader(body)))
 		return rec.Code
 	}
 	if c := post(`{"user_id":"u1","query":"Alice?"}`); c != 200 {
@@ -221,25 +300,43 @@ func testQueryInference(t *testing.T, d *sql.DB) {
 	// What remember did ran without thinking.
 	var n int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM gb_inferences WHERE type = 'remember' AND reasoning = 'none'`).Scan(&n); err != nil || n == 0 {
-		t.Errorf("remember runs with no reasoning = %d, %v", n, err)
+		t.Errorf("remember runs with no reasoning = %d, %v",
+			n,
+			err)
 	}
 }
 
 func TestQueryEvidenceOnly(t *testing.T) { dbtest.Run(t, testQueryEvidenceOnly) }
 
-func testQueryEvidenceOnly(t *testing.T, d *sql.DB) {
+func testQueryEvidenceOnly(t *testing.T,
+	d *sql.DB) {
 	ex := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`
-	llm := &recordingLLM{outs: []string{ex}} // one call only: remember's; a second one (the answer) would panic
+	llm := &recordingLLM{
+		outs: []string{ex},
+	} // one call only: remember's; a second one (the answer) would panic
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
-	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+	mux.HandleFunc("POST /v1/gb/query", Handler(d,
+		llm,
+		withVectors(t)))
+	if _, err := memory_remember.Remember(context.Background(),
+		d,
+		llm,
+		"u1",
+		"",
+		"",
+		"x",
+		time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"Where does Alice work?","evidence_only":true}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+		"/v1/gb/query",
+		strings.NewReader(`{"user_id":"u1","query":"Where does Alice work?","evidence_only":true}`)))
 	if rec.Code != 200 {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s",
+			rec.Code,
+			rec.Body)
 	}
 	var res memory_query.QueryResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {

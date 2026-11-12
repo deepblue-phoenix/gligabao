@@ -77,7 +77,8 @@ func ResolveGraphIndex(name string) (string, error) {
 // so a slow model slows the call.
 //
 // IMPORTANT: gligabao does not store the embedding yet, see the note at the top of graph_embedder.go.
-type GraphEmbedder func(ctx context.Context, req GraphEmbedRequest) ([]float32, error)
+type GraphEmbedder func(ctx context.Context,
+	req GraphEmbedRequest) ([]float32, error)
 
 // WithGraphEmbedder sets the graph embedder hook of Remember (called once the graph of the text is fully constructed) and Query (called
 // once the graph context of the question is fetched). nil (the default) leaves it off. The embedding is not used yet.
@@ -95,12 +96,16 @@ func WithGraphIndex(name string) Option { return func(o *CallOptions) { o.GraphI
 //
 // IMPORTANT: for now the embedding is only counted in a debug log and then DISCARDED. It has to be written to the vector store
 // (o.Vectors) by whoever completes this hook; that is the whole point of calling it.
-func EmbedGraph(ctx context.Context, o CallOptions, req GraphEmbedRequest) {
+func EmbedGraph(ctx context.Context,
+	o CallOptions,
+	req GraphEmbedRequest) {
 	if o.GraphEmbedder == nil || len(req.Entities)+len(req.Edges) == 0 {
 		return
 	}
 	fields := log.Fields{"pipeline": req.Pipeline, "index": req.Index, "run_id": req.RunID, "entities": len(req.Entities), "edges": len(req.Edges)}
-	emb, err := callGraphEmbedder(ctx, o.GraphEmbedder, req)
+	emb, err := callGraphEmbedder(ctx,
+		o.GraphEmbedder,
+		req)
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("memory: the graph embedder hook failed; the call is not affected")
 		return
@@ -111,7 +116,9 @@ func EmbedGraph(ctx context.Context, o CallOptions, req GraphEmbedRequest) {
 }
 
 // callGraphEmbedder runs f, turning a panic into an error.
-func callGraphEmbedder(ctx context.Context, f GraphEmbedder, req GraphEmbedRequest) (emb []float32, err error) {
+func callGraphEmbedder(ctx context.Context,
+	f GraphEmbedder,
+	req GraphEmbedRequest) (emb []float32, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			emb, err = nil, fmt.Errorf("panic: %v", rec)

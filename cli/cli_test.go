@@ -11,8 +11,12 @@ import (
 
 func TestNewHasServeFlags(t *testing.T) {
 	c := New(Options{
-		Use:          "embedder",
-		ServeOptions: func(*cobra.Command, *gligabao.Config, *gligabao.ServeOptions) (func(), error) { return nil, nil },
+		Use: "embedder",
+		ServeOptions: func(*cobra.Command,
+			*gligabao.Config,
+			*gligabao.ServeOptions) (func(), error) {
+			return nil, nil
+		},
 	})
 	if c.Root.Use != "embedder" {
 		t.Fatalf("Use = %q", c.Root.Use)
@@ -28,7 +32,9 @@ func TestNewHasServeFlags(t *testing.T) {
 }
 
 func TestVersionString(t *testing.T) {
-	c := New(Options{VersionString: func() string { return "x 1.2.3" }})
+	c := New(Options{
+		VersionString: func() string { return "x 1.2.3" },
+	})
 	if c.Root.Version == "" {
 		t.Fatal("no --version flag")
 	}

@@ -27,7 +27,9 @@ type Observed struct {
 
 // ObservationQuery says what an observation is of: the series (key, field) and the period of its points. It is stored
 // in the query column of the artifact.
-func ObservationQuery(o Observed, from, to time.Time) string {
+func ObservationQuery(o Observed,
+	from,
+	to time.Time) string {
 	q := o.Key
 	if o.Field != "" && o.Field != "value" {
 		q += " (" + o.Field + ")"
@@ -37,7 +39,8 @@ func ObservationQuery(o Observed, from, to time.Time) string {
 
 // ObservationText describes points (sorted oldest first) of the series o in a few plain sentences, from their Stats. It
 // returns "" for no points. Times are dates when every point is at midnight UTC, else RFC 3339.
-func ObservationText(o Observed, points []graph.SeriesPoint) string {
+func ObservationText(o Observed,
+	points []graph.SeriesPoint) string {
 	s := Summarize(points)
 	if s == nil {
 		return ""
@@ -55,50 +58,104 @@ func ObservationText(o Observed, points []graph.SeriesPoint) string {
 	at := func(t time.Time) string { return t.UTC().Format(day) }
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Observation of the timeseries %q (key %s", name, o.Key)
+	fmt.Fprintf(&b,
+		"Observation of the timeseries %q (key %s",
+		name,
+		o.Key)
 	if o.Field != "" && o.Field != "value" {
-		fmt.Fprintf(&b, ", field %s", o.Field)
+		fmt.Fprintf(&b,
+			", field %s",
+			o.Field)
 	}
 	if o.Unit != "" {
-		fmt.Fprintf(&b, ", unit %s", o.Unit)
+		fmt.Fprintf(&b,
+			", unit %s",
+			o.Unit)
 	}
 	if o.Frequency != "" {
-		fmt.Fprintf(&b, ", frequency %s", o.Frequency)
+		fmt.Fprintf(&b,
+			", frequency %s",
+			o.Frequency)
 	}
 	b.WriteString(")")
 	if o.Subject != "" {
-		fmt.Fprintf(&b, " for %s", o.Subject)
+		fmt.Fprintf(&b,
+			" for %s",
+			o.Subject)
 		if o.SubjectType != "" && o.SubjectType != "other" {
-			fmt.Fprintf(&b, " (%s)", o.SubjectType)
+			fmt.Fprintf(&b,
+				" (%s)",
+				o.SubjectType)
 		}
 	}
 	if o.Provider != "" {
-		fmt.Fprintf(&b, ", from the provider %s", o.Provider)
+		fmt.Fprintf(&b,
+			", from the provider %s",
+			o.Provider)
 	}
 	if s.Count == 1 {
-		fmt.Fprintf(&b, ", at %s: one point, with the value %s.", at(s.FirstTS), val(s.First))
+		fmt.Fprintf(&b,
+			", at %s: one point, with the value %s.",
+			at(s.FirstTS),
+			val(s.First))
 		return b.String()
 	}
-	fmt.Fprintf(&b, ", from %s to %s (%d points).\n", at(s.FirstTS), at(s.LastTS), s.Count)
+	fmt.Fprintf(&b,
+		", from %s to %s (%d points).\n",
+		at(s.FirstTS),
+		at(s.LastTS),
+		s.Count)
 
 	switch {
 	case s.Trend == "flat" && s.PctChange != nil:
-		fmt.Fprintf(&b, "%s was flat in this period: it went from %s on %s to %s on %s (%s).\n",
-			name, val(s.First), at(s.FirstTS), val(s.Last), at(s.LastTS), pctText(*s.PctChange))
+		fmt.Fprintf(&b,
+			"%s was flat in this period: it went from %s on %s to %s on %s (%s).\n",
+			name,
+			val(s.First),
+			at(s.FirstTS),
+			val(s.Last),
+			at(s.LastTS),
+			pctText(*s.PctChange))
 	case s.Trend == "flat":
-		fmt.Fprintf(&b, "%s was flat in this period at %s.\n", name, val(s.First))
+		fmt.Fprintf(&b,
+			"%s was flat in this period at %s.\n",
+			name,
+			val(s.First))
 	case s.PctChange != nil:
-		fmt.Fprintf(&b, "%s %s %s in this period, from %s on %s to %s on %s.\n",
-			name, verb(s.Trend), strings.TrimLeft(pctText(*s.PctChange), "+-"), val(s.First), at(s.FirstTS), val(s.Last), at(s.LastTS))
+		fmt.Fprintf(&b,
+			"%s %s %s in this period, from %s on %s to %s on %s.\n",
+			name,
+			verb(s.Trend),
+			strings.TrimLeft(pctText(*s.PctChange), "+-"),
+			val(s.First),
+			at(s.FirstTS),
+			val(s.Last),
+			at(s.LastTS))
 	default: // it started from 0: there is no relative change
-		fmt.Fprintf(&b, "%s %s in this period, from %s on %s to %s on %s.\n",
-			name, verb(s.Trend), val(s.First), at(s.FirstTS), val(s.Last), at(s.LastTS))
+		fmt.Fprintf(&b,
+			"%s %s in this period, from %s on %s to %s on %s.\n",
+			name,
+			verb(s.Trend),
+			val(s.First),
+			at(s.FirstTS),
+			val(s.Last),
+			at(s.LastTS))
 	}
-	fmt.Fprintf(&b, "Its highest value was %s on %s, its lowest %s on %s, and its average %s.",
-		val(s.Max), at(s.MaxTS), val(s.Min), at(s.MinTS), val(s.Mean))
+	fmt.Fprintf(&b,
+		"Its highest value was %s on %s, its lowest %s on %s, and its average %s.",
+		val(s.Max),
+		at(s.MaxTS),
+		val(s.Min),
+		at(s.MinTS),
+		val(s.Mean))
 	if m := s.LargestMove; m != nil {
-		fmt.Fprintf(&b, "\nThe largest move between two consecutive points was %s, from %s on %s to %s on %s.",
-			pctText(m.Pct), val(m.FromValue), at(m.From), val(m.ToValue), at(m.To))
+		fmt.Fprintf(&b,
+			"\nThe largest move between two consecutive points was %s, from %s on %s to %s on %s.",
+			pctText(m.Pct),
+			val(m.FromValue),
+			at(m.From),
+			val(m.ToValue),
+			at(m.To))
 	}
 	return b.String()
 }
@@ -113,7 +170,10 @@ func verb(trend string) string {
 // pctText formats a percentage with its sign and at most two decimals: "-6.57%", "+2%".
 func pctText(p float64) string {
 	r := math.Round(p*100) / 100
-	s := strconv.FormatFloat(math.Abs(r), 'f', -1, 64) + "%"
+	s := strconv.FormatFloat(math.Abs(r),
+		'f',
+		-1,
+		64) + "%"
 	if r < 0 {
 		return "-" + s
 	}
@@ -123,9 +183,15 @@ func pctText(p float64) string {
 // numberText formats a value: up to four decimals, or four significant digits for a tiny one.
 func numberText(v float64) string {
 	if a := math.Abs(v); a != 0 && a < 1e-4 {
-		return strconv.FormatFloat(v, 'g', 4, 64)
+		return strconv.FormatFloat(v,
+			'g',
+			4,
+			64)
 	}
-	return strconv.FormatFloat(math.Round(v*1e4)/1e4, 'f', -1, 64)
+	return strconv.FormatFloat(math.Round(v*1e4)/1e4,
+		'f',
+		-1,
+		64)
 }
 
 // dayFormat is the time layout for points: a date if all of them are at midnight UTC, else RFC 3339.

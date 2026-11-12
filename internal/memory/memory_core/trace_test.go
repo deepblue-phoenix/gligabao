@@ -9,16 +9,29 @@ import (
 
 type warnLLM struct{}
 
-func (warnLLM) Complete(context.Context, ai.Request) (*ai.Response, error) {
-	return &ai.Response{Text: "ok", Model: "m", Warning: "model m ignored the thinking level"}, nil
+func (warnLLM) Complete(context.Context,
+	ai.Request) (*ai.Response, error) {
+	return &ai.Response{
+		Text:    "ok",
+		Model:   "m",
+		Warning: "model m ignored the thinking level",
+	}, nil
 }
 
 // The warning of a call that ran differently from the request (see ai.Response.Warning) is kept, once, in the extra of the trajectory.
 func TestTraceKeepsWarnings(t *testing.T) {
-	tr := StartTrace("remember", CallOptions{Eval: true, Dir: t.TempDir()})
+	tr := StartTrace("remember", CallOptions{
+		Eval: true,
+		Dir:  t.TempDir(),
+	})
 	llm := tr.Wrap(warnLLM{})
 	for i := 0; i < 2; i++ {
-		if _, err := llm.Complete(context.Background(), ai.Request{Messages: []ai.Message{{Role: ai.RoleUser, Content: "x"}}}); err != nil {
+		if _, err := llm.Complete(context.Background(), ai.Request{
+			Messages: []ai.Message{{
+				Role:    ai.RoleUser,
+				Content: "x",
+			}},
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}

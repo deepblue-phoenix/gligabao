@@ -8,7 +8,8 @@ import (
 
 // ApplyReference gives an extracted edge its event-time span: a fact whose start the text does not state inherits ref,
 // the time of the artifact that states it, and the span is then made consistent (see FixSpan).
-func ApplyReference(e *graph.Edge, ref time.Time) {
+func ApplyReference(e *graph.Edge,
+	ref time.Time) {
 	if e.ValidAt == nil {
 		v := ref.UTC()
 		e.ValidAt = &v

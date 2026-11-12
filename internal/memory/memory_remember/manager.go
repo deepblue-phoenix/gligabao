@@ -63,7 +63,8 @@ type Outcome struct {
 type QueueHooks struct {
 	// Enqueue adds the run to the queue. It may block (a full queue) but must return when ctx is done. If it fails the
 	// request is not queued and Submit returns the error.
-	Enqueue func(ctx context.Context, runID int64) error
+	Enqueue func(ctx context.Context,
+		runID int64) error
 	// Dequeue blocks until there is a run to take, and returns its ID; it must return (with an error) when ctx is done. An
 	// error while ctx is not done is logged and Dequeue is tried again after a second.
 	Dequeue func(ctx context.Context) (runID int64, err error)
@@ -103,7 +104,8 @@ func (o Outcome) OK() bool { return o.Err == nil }
 func chanQueue() QueueHooks {
 	ch := make(chan int64, queueSize)
 	return QueueHooks{
-		Enqueue: func(ctx context.Context, id int64) error {
+		Enqueue: func(ctx context.Context,
+			id int64) error {
 			select {
 			case ch <- id:
 				return nil
@@ -138,8 +140,18 @@ func WithQueue(h QueueHooks) ManagerOption {
 // NewManager starts the manager's goroutine. d and llm are what every run uses (as the arguments of Remember). It runs
 // until ctx is done: the run in progress is cancelled, the requests still queued fail with ErrManagerClosed, and Submit
 // returns ErrManagerClosed from then on.
-func NewManager(ctx context.Context, d *sql.DB, llm memory_core.LLM, opts ...ManagerOption) *Manager {
-	m := &Manager{d: d, llm: llm, ctx: ctx, queue: chanQueue(), pending: map[int64]*queued{}, done: make(chan struct{})}
+func NewManager(ctx context.Context,
+	d *sql.DB,
+	llm memory_core.LLM,
+	opts ...ManagerOption) *Manager {
+	m := &Manager{
+		d:       d,
+		llm:     llm,
+		ctx:     ctx,
+		queue:   chanQueue(),
+		pending: map[int64]*queued{},
+		done:    make(chan struct{}),
+	}
 	for _, o := range opts {
 		o(m)
 	}
@@ -182,12 +194,22 @@ func (m *Manager) Submit(req Request) (runID int64, err error) {
 	}
 	m.mu.Unlock()
 
-	run := relational.NewRememberRun(userID, dataset, kind, map[string]any{"queued": true}, relational.Now())
-	runID, err = relational.CreateRememberRun(context.WithoutCancel(ctx), m.d, run)
+	run := relational.NewRememberRun(userID,
+		dataset,
+		kind,
+		map[string]any{"queued": true},
+		relational.Now())
+	runID, err = relational.CreateRememberRun(context.WithoutCancel(ctx),
+		m.d,
+		run)
 	if err != nil {
 		return 0, fmt.Errorf("memory: create remember run: %w", err)
 	}
-	q := &queued{Request: req, ctx: ctx, runID: runID}
+	q := &queued{
+		Request: req,
+		ctx:     ctx,
+		runID:   runID,
+	}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -219,15 +241,19 @@ func (m *Manager) Submit(req Request) (runID int64, err error) {
 }
 
 // Status returns the run log of the run: its status, stages and error (relational.ErrNotFound if there is no such run).
-func (m *Manager) Status(ctx context.Context, runID int64) (*relational.RememberRun, error) {
-	return relational.GetRememberRun(ctx, m.d, runID)
+func (m *Manager) Status(ctx context.Context,
+	runID int64) (*relational.RememberRun, error) {
+	return relational.GetRememberRun(ctx,
+		m.d,
+		runID)
 }
 
 //---------------------------------------------------------------------------------------------
 // The queue
 
 // enqueue puts the run in the queue.
-func (m *Manager) enqueue(ctx context.Context, runID int64) error {
+func (m *Manager) enqueue(ctx context.Context,
+	runID int64) error {
 	return m.queue.Enqueue(ctx, runID)
 }
 
@@ -257,7 +283,9 @@ func (m *Manager) loop() {
 		switch {
 		case m.ctx.Err() != nil:
 			if q != nil { // dequeued as the manager closed
-				m.finish(q, nil, ErrManagerClosed)
+				m.finish(q,
+					nil,
+					ErrManagerClosed)
 			}
 			m.shutdown()
 			return
@@ -281,7 +309,9 @@ func (m *Manager) shutdown() {
 	m.pending = map[int64]*queued{}
 	m.mu.Unlock()
 	for _, q := range waiting {
-		m.finish(q, nil, ErrManagerClosed)
+		m.finish(q,
+			nil,
+			ErrManagerClosed)
 	}
 }
 
@@ -294,7 +324,9 @@ func (m *Manager) run(q *queued) {
 			log.WithFields(log.Fields{"remember_run_id": q.runID, "panic": p, "stack": string(debug.Stack())}).Error("remember run panicked")
 			res, err = nil, fmt.Errorf("memory: remember panicked: %v", p)
 		}
-		m.finish(q, res, err)
+		m.finish(q,
+			res,
+			err)
 	}()
 	if err = q.ctx.Err(); err != nil { // cancelled while it waited
 		return
@@ -304,17 +336,30 @@ func (m *Manager) run(q *queued) {
 	defer cancel()
 	defer context.AfterFunc(m.ctx, cancel)()
 	opts := append(q.Opts[:len(q.Opts):len(q.Opts)], memory_core.WithRememberRunID(q.runID))
-	res, err = Remember(ctx, m.d, m.llm, q.UserID, q.Dataset, q.Kind, q.Text, q.Ref, opts...)
+	res, err = Remember(ctx,
+		m.d,
+		m.llm,
+		q.UserID,
+		q.Dataset,
+		q.Kind,
+		q.Text,
+		q.Ref,
+		opts...)
 }
 
 // finish closes the request: its run log (if the run did not), and its outcome channel.
-func (m *Manager) finish(q *queued, res *Result, err error) {
+func (m *Manager) finish(q *queued,
+	res *Result,
+	err error) {
 	if err != nil {
 		m.fail(q.runID, err)
 	}
 	if q.Outcome != nil {
 		select {
-		case q.Outcome <- Outcome{Result: res, Err: err}:
+		case q.Outcome <- Outcome{
+			Result: res,
+			Err:    err,
+		}:
 		default: // a full channel: the caller broke the contract; never block the manager on it
 			log.WithField("remember_run_id", q.runID).Error("remember manager: outcome channel is full")
 		}
@@ -323,9 +368,12 @@ func (m *Manager) finish(q *queued, res *Result, err error) {
 
 // fail marks the run failed with err, unless it already ended (Remember does that itself for the errors it returns; this is
 // for a run that never began, was cancelled in the queue, or panicked).
-func (m *Manager) fail(runID int64, err error) {
+func (m *Manager) fail(runID int64,
+	err error) {
 	ctx := context.Background()
-	run, getErr := relational.GetRememberRun(ctx, m.d, runID)
+	run, getErr := relational.GetRememberRun(ctx,
+		m.d,
+		runID)
 	if getErr != nil {
 		log.WithError(getErr).WithField("remember_run_id", runID).Error("remember manager: load run")
 		return
@@ -333,6 +381,12 @@ func (m *Manager) fail(runID int64, err error) {
 	if run.Status != relational.RememberStarted {
 		return
 	}
-	l := &runLog{runState: &runState{d: m.d, ctx: ctx, run: *run}}
+	l := &runLog{
+		runState: &runState{
+			d:   m.d,
+			ctx: ctx,
+			run: *run,
+		},
+	}
 	l.Finish(err)
 }

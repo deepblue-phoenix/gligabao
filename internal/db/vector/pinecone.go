@@ -46,7 +46,9 @@ func WithPineconeHTTPClient(h *http.Client) PineconeOption {
 // NewPinecone creates a store for the index served at indexHost, the index's data-plane host
 // shown in the Pinecone console (e.g. "my-index-abc123.svc.aped-1234.pinecone.io").
 // A scheme prefix is accepted (useful for tests/proxies); https is assumed otherwise.
-func NewPinecone(apiKey, indexHost string, opts ...PineconeOption) (*Pinecone, error) {
+func NewPinecone(apiKey,
+	indexHost string,
+	opts ...PineconeOption) (*Pinecone, error) {
 	if apiKey == "" {
 		return nil, errors.New("vector: missing Pinecone API key (set PINECONE_API_KEY)")
 	}
@@ -58,9 +60,11 @@ func NewPinecone(apiKey, indexHost string, opts ...PineconeOption) (*Pinecone, e
 		host = "https://" + host
 	}
 	p := &Pinecone{
-		apiKey:     apiKey,
-		baseURL:    host,
-		httpClient: &http.Client{Timeout: time.Minute},
+		apiKey:  apiKey,
+		baseURL: host,
+		httpClient: &http.Client{
+			Timeout: time.Minute,
+		},
 	}
 	for _, o := range opts {
 		o(p)
@@ -71,7 +75,9 @@ func NewPinecone(apiKey, indexHost string, opts ...PineconeOption) (*Pinecone, e
 //---------------------------------------------------------------------------------------------
 
 // Upsert inserts or overwrites vectors by ID.
-func (p *Pinecone) Upsert(ctx context.Context, dataset string, vectors []Vector) error {
+func (p *Pinecone) Upsert(ctx context.Context,
+	dataset string,
+	vectors []Vector) error {
 	for i, v := range vectors {
 		if v.ID == "" {
 			return fmt.Errorf("vector: vector %d has no ID", i)
@@ -82,11 +88,23 @@ func (p *Pinecone) Upsert(ctx context.Context, dataset string, vectors []Vector)
 	}
 	for start := 0; start < len(vectors); start += maxUpsertBatch {
 		end := min(start+maxUpsertBatch, len(vectors))
-		req := pcUpsertRequest{Namespace: dataset, Vectors: make([]pcVector, 0, end-start)}
-		for _, v := range vectors[start:end] {
-			req.Vectors = append(req.Vectors, pcVector{ID: v.ID, Values: v.Values, Metadata: v.Metadata})
+		req := pcUpsertRequest{
+			Namespace: dataset,
+			Vectors: make([]pcVector,
+				0,
+				end-start),
 		}
-		if err := p.do(ctx, "/vectors/upsert", req, nil); err != nil {
+		for _, v := range vectors[start:end] {
+			req.Vectors = append(req.Vectors, pcVector{
+				ID:       v.ID,
+				Values:   v.Values,
+				Metadata: v.Metadata,
+			})
+		}
+		if err := p.do(ctx,
+			"/vectors/upsert",
+			req,
+			nil); err != nil {
 			return err
 		}
 	}
@@ -94,7 +112,10 @@ func (p *Pinecone) Upsert(ctx context.Context, dataset string, vectors []Vector)
 }
 
 // Query returns the vectors closest to the given embedding, best first.
-func (p *Pinecone) Query(ctx context.Context, dataset string, vector []float32, opts QueryOptions) ([]Match, error) {
+func (p *Pinecone) Query(ctx context.Context,
+	dataset string,
+	vector []float32,
+	opts QueryOptions) ([]Match, error) {
 	if len(vector) == 0 {
 		return nil, errors.New("vector: empty query vector")
 	}
@@ -103,29 +124,45 @@ func (p *Pinecone) Query(ctx context.Context, dataset string, vector []float32, 
 		topK = defaultTopK
 	}
 	var resp pcQueryResponse
-	err := p.do(ctx, "/query", pcQueryRequest{
-		Namespace:       dataset,
-		Vector:          vector,
-		TopK:            topK,
-		Filter:          opts.Filter,
-		IncludeValues:   opts.IncludeValues,
-		IncludeMetadata: true,
-	}, &resp)
+	err := p.do(ctx,
+		"/query",
+		pcQueryRequest{
+			Namespace:       dataset,
+			Vector:          vector,
+			TopK:            topK,
+			Filter:          opts.Filter,
+			IncludeValues:   opts.IncludeValues,
+			IncludeMetadata: true,
+		},
+		&resp)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Match, len(resp.Matches))
 	for i, m := range resp.Matches {
-		out[i] = Match{ID: m.ID, Score: m.Score, Values: m.Values, Metadata: m.Metadata}
+		out[i] = Match{
+			ID:       m.ID,
+			Score:    m.Score,
+			Values:   m.Values,
+			Metadata: m.Metadata,
+		}
 	}
 	return out, nil
 }
 
 // Delete removes vectors by ID.
-func (p *Pinecone) Delete(ctx context.Context, dataset string, ids []string) error {
+func (p *Pinecone) Delete(ctx context.Context,
+	dataset string,
+	ids []string) error {
 	for start := 0; start < len(ids); start += maxDeleteBatch {
 		end := min(start+maxDeleteBatch, len(ids))
-		if err := p.do(ctx, "/vectors/delete", pcDeleteRequest{Namespace: dataset, IDs: ids[start:end]}, nil); err != nil {
+		if err := p.do(ctx,
+			"/vectors/delete",
+			pcDeleteRequest{
+				Namespace: dataset,
+				IDs:       ids[start:end],
+			},
+			nil); err != nil {
 			return err
 		}
 	}
@@ -133,8 +170,15 @@ func (p *Pinecone) Delete(ctx context.Context, dataset string, ids []string) err
 }
 
 // DeleteAll removes every vector in the dataset's namespace. A dataset that does not exist is not an error.
-func (p *Pinecone) DeleteAll(ctx context.Context, dataset string) error {
-	err := p.do(ctx, "/vectors/delete", pcDeleteRequest{Namespace: dataset, DeleteAll: true}, nil)
+func (p *Pinecone) DeleteAll(ctx context.Context,
+	dataset string) error {
+	err := p.do(ctx,
+		"/vectors/delete",
+		pcDeleteRequest{
+			Namespace: dataset,
+			DeleteAll: true,
+		},
+		nil)
 	var he *pineconeError
 	if errors.As(err, &he) && he.Status == http.StatusNotFound {
 		return nil
@@ -143,17 +187,25 @@ func (p *Pinecone) DeleteAll(ctx context.Context, dataset string) error {
 }
 
 // Stats returns the number of vectors in the dataset's namespace (from describe_index_stats). Dimensions is the index's.
-func (p *Pinecone) Stats(ctx context.Context, dataset string) (Stats, error) {
+func (p *Pinecone) Stats(ctx context.Context,
+	dataset string) (Stats, error) {
 	var resp struct {
 		Dimension  int `json:"dimension"`
 		Namespaces map[string]struct {
 			VectorCount int `json:"vectorCount"`
 		} `json:"namespaces"`
 	}
-	if err := p.do(ctx, "/describe_index_stats", struct{}{}, &resp); err != nil {
+	if err := p.do(ctx,
+		"/describe_index_stats",
+		struct{}{},
+		&resp); err != nil {
 		return Stats{}, err
 	}
-	st := Stats{Backend: "pinecone", Dimensions: resp.Dimension, Count: resp.Namespaces[dataset].VectorCount}
+	st := Stats{
+		Backend:    "pinecone",
+		Dimensions: resp.Dimension,
+		Count:      resp.Namespaces[dataset].VectorCount,
+	}
 	st.Bytes = int64(st.Count) * int64(st.Dimensions) * 4
 	return st, nil
 }
@@ -166,16 +218,24 @@ type pineconeError struct {
 }
 
 func (e *pineconeError) Error() string {
-	return fmt.Sprintf("vector: pinecone %d: %s", e.Status, e.Message)
+	return fmt.Sprintf("vector: pinecone %d: %s",
+		e.Status,
+		e.Message)
 }
 
 // do POSTs in as JSON to path and decodes the response into out (if non-nil).
-func (p *Pinecone) do(ctx context.Context, path string, in, out any) error {
+func (p *Pinecone) do(ctx context.Context,
+	path string,
+	in,
+	out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
 		return fmt.Errorf("vector: marshal request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodPost,
+		p.baseURL+path,
+		bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("vector: build request: %w", err)
 	}
@@ -207,7 +267,10 @@ func (p *Pinecone) do(ctx context.Context, path string, in, out any) error {
 				msg = pe.Message
 			}
 		}
-		return &pineconeError{Status: resp.StatusCode, Message: msg}
+		return &pineconeError{
+			Status:  resp.StatusCode,
+			Message: msg,
+		}
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {

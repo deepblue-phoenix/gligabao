@@ -36,16 +36,32 @@ type Fact struct {
 // FactFromEdge views an edge (as extracted or loaded by name) as a fact.
 func FactFromEdge(e graph.Edge) Fact {
 	return Fact{
-		EdgeID: e.ID, Source: e.Source, Relation: e.Relation, Target: e.Target, Statement: e.Description,
-		ValidAt: e.ValidAt, InvalidAt: e.InvalidAt, CreatedAt: e.CreatedAt, ExpiredAt: e.ExpiredAt,
+		EdgeID:    e.ID,
+		Source:    e.Source,
+		Relation:  e.Relation,
+		Target:    e.Target,
+		Statement: e.Description,
+		ValidAt:   e.ValidAt,
+		InvalidAt: e.InvalidAt,
+		CreatedAt: e.CreatedAt,
+		ExpiredAt: e.ExpiredAt,
 	}
 }
 
 // FactFromEvidence views an edge read for the graph context / evidence as a fact.
 func FactFromEvidence(e graph.EvidenceEdge) Fact {
 	return Fact{
-		EdgeID: e.ID, Source: e.Source, Relation: e.Relation, Target: e.Target, SourceID: e.SourceID, TargetID: e.TargetID,
-		Statement: e.Description, ValidAt: e.ValidAt, InvalidAt: e.InvalidAt, CreatedAt: e.CreatedAt, ExpiredAt: e.ExpiredAt,
+		EdgeID:     e.ID,
+		Source:     e.Source,
+		Relation:   e.Relation,
+		Target:     e.Target,
+		SourceID:   e.SourceID,
+		TargetID:   e.TargetID,
+		Statement:  e.Description,
+		ValidAt:    e.ValidAt,
+		InvalidAt:  e.InvalidAt,
+		CreatedAt:  e.CreatedAt,
+		ExpiredAt:  e.ExpiredAt,
 		ArtifactID: e.ArtifactID,
 	}
 }
@@ -62,8 +78,15 @@ func FactsFromEdges(edges []graph.Edge) []Fact {
 // Edge is the fact as the graph edge it is stored as (without the entity IDs and the artifact).
 func (f Fact) Edge() graph.Edge {
 	return graph.Edge{
-		ID: f.EdgeID, Source: f.Source, Target: f.Target, Relation: f.Relation, Description: f.Statement,
-		ValidAt: f.ValidAt, InvalidAt: f.InvalidAt, CreatedAt: f.CreatedAt, ExpiredAt: f.ExpiredAt,
+		ID:          f.EdgeID,
+		Source:      f.Source,
+		Target:      f.Target,
+		Relation:    f.Relation,
+		Description: f.Statement,
+		ValidAt:     f.ValidAt,
+		InvalidAt:   f.InvalidAt,
+		CreatedAt:   f.CreatedAt,
+		ExpiredAt:   f.ExpiredAt,
 	}
 }
 
@@ -72,12 +95,18 @@ func (f Fact) Text() string {
 	if f.Statement != "" {
 		return f.Statement
 	}
-	return SynthStatement(f.Source, f.Relation, f.Target)
+	return SynthStatement(f.Source,
+		f.Relation,
+		f.Target)
 }
 
 // SynthStatement makes a sentence out of an edge: "Alice works_at Acme" -> "Alice works at Acme."
-func SynthStatement(source, relation, target string) string {
-	return source + " " + strings.ReplaceAll(relation, "_", " ") + " " + target + "."
+func SynthStatement(source,
+	relation,
+	target string) string {
+	return source + " " + strings.ReplaceAll(relation,
+		"_",
+		" ") + " " + target + "."
 }
 
 // SameAs reports whether f and o state the same edge: same endpoints (by normalized name) and relation. Time and
@@ -98,7 +127,14 @@ func (f Fact) Span() string { return span(f.ValidAt, f.InvalidAt) }
 // ContextLine is the fact as one line of the graph context given to the query LLM.
 func (f Fact) ContextLine() string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "[edge %d] %s(%d) --%s--> %s(%d)", f.EdgeID, f.Source, f.SourceID, f.Relation, f.Target, f.TargetID)
+	fmt.Fprintf(&sb,
+		"[edge %d] %s(%d) --%s--> %s(%d)",
+		f.EdgeID,
+		f.Source,
+		f.SourceID,
+		f.Relation,
+		f.Target,
+		f.TargetID)
 	if f.Statement != "" {
 		sb.WriteString(": " + f.Statement)
 	}
@@ -131,7 +167,8 @@ func (f Fact) Summary(via string) map[string]any {
 	return m
 }
 
-func span(valid, invalid *time.Time) string {
+func span(valid,
+	invalid *time.Time) string {
 	f := func(t *time.Time) string {
 		if t == nil {
 			return "?"

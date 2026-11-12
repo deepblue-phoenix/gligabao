@@ -52,7 +52,8 @@ type GeoView struct {
 // GeoOf serves GET /admin/api/geo[?db=<name>] for one of dbs (the first without db): how many entities are geo entities and the
 // 100 most connected ones (by live edges).
 func GeoOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
@@ -63,33 +64,62 @@ func GeoOf(dbs []Named) http.HandlerFunc {
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), geoStatsTimeout)
 			defer cancel()
-			st, err := graph.GeoStatistics(ctx, n.DB, geoTopLimit)
+			st, err := graph.GeoStatistics(ctx,
+				n.DB,
+				geoTopLimit)
 			if err != nil {
 				log.WithError(err).Error("admin: geo statistics failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read geo entities")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read geo entities")
 				return
 			}
-			out := GeoView{Entities: st.Entities, AllEntities: st.AllEntities, Top: make([]GeoEntity, 0, len(st.Top))}
+			out := GeoView{
+				Entities:    st.Entities,
+				AllEntities: st.AllEntities,
+				Top: make([]GeoEntity,
+					0,
+					len(st.Top)),
+			}
 			for _, c := range st.Top {
 				out.Top = append(out.Top, GeoEntity{
-					EntityID: c.EntityID, Name: c.EntityName, Type: c.EntityType, UserID: c.UserID, Dataset: c.Dataset,
-					Connections: c.Connections, Kind: c.Kind, Latitude: c.Latitude, Longitude: c.Longitude,
-					DisplayName: c.DisplayName, Country: c.Country, CountryCode: c.CountryCode, Region: c.Region,
-					PlaceType: c.PlaceType, BBox: c.BBox, Importance: c.Importance, Provider: c.Provider,
+					EntityID:    c.EntityID,
+					Name:        c.EntityName,
+					Type:        c.EntityType,
+					UserID:      c.UserID,
+					Dataset:     c.Dataset,
+					Connections: c.Connections,
+					Kind:        c.Kind,
+					Latitude:    c.Latitude,
+					Longitude:   c.Longitude,
+					DisplayName: c.DisplayName,
+					Country:     c.Country,
+					CountryCode: c.CountryCode,
+					Region:      c.Region,
+					PlaceType:   c.PlaceType,
+					BBox:        c.BBox,
+					Importance:  c.Importance,
+					Provider:    c.Provider,
 				})
 			}
-			httputil.WriteJSON(w, http.StatusOK, out)
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				out)
 			return
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }
 
 // GeoNearbyOf serves GET /admin/api/geo/nearby?db=<name>&user_id=&dataset=&entity_id=[&radius_km=]: the geo entities near a geo
 // entity of the geo view, selected by the same code as the proximity step of query (the same handler as GET /v1/gb/geo/nearby, on
 // the database db). radius is the default radius, in kilometers, when the request has no radius_km (0: 50 km).
-func GeoNearbyOf(dbs []Named, radius float64) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func GeoNearbyOf(dbs []Named,
+	radius float64) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
@@ -104,6 +134,8 @@ func GeoNearbyOf(dbs []Named, radius float64) http.HandlerFunc {
 				return
 			}
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }

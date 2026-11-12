@@ -25,12 +25,19 @@ func TestInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := gberrors.New(context.Background(), sink, "geo.index", errors.New("x"), gberrors.Meta{"dataset": "d1"})
+	e := gberrors.New(context.Background(),
+		sink,
+		"geo.index",
+		errors.New("x"),
+		gberrors.Meta{"dataset": "d1"})
 	if e.ID == 0 {
 		t.Fatal("no id")
 	}
 	var op, meta string
 	if err := d.QueryRow(`SELECT op, meta FROM gb_errors WHERE id = ?`, e.ID).Scan(&op, &meta); err != nil || op != "geo.index" || meta != `{"dataset":"d1"}` {
-		t.Fatalf("%q %q %v", op, meta, err)
+		t.Fatalf("%q %q %v",
+			op,
+			meta,
+			err)
 	}
 }

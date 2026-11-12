@@ -22,49 +22,125 @@ import (
 
 const dims = 3
 
-func mustExec(t *testing.T, d *sql.DB, q string, args ...any) {
+func mustExec(t *testing.T,
+	d *sql.DB,
+	q string,
+	args ...any) {
 	t.Helper()
 	if _, err := d.Exec(q, args...); err != nil {
-		t.Fatalf("%s: %v", q, err)
+		t.Fatalf("%s: %v",
+			q,
+			err)
 	}
 }
 
 // fill puts a little of everything into the databases: a dataset with a text, its chunk, entities, a fact, a place, an image, and
 // the vectors of the entities and of the fact.
-func fill(t *testing.T, d *sql.DB, vs vector.Store, imageDir string) {
+func fill(t *testing.T,
+	d *sql.DB,
+	vs vector.Store,
+	imageDir string) {
 	t.Helper()
 	const ts = "2025-03-01T10:00:00Z"
-	mustExec(t, d, `INSERT INTO gb_datasets (user_id, name, description, tags, created_at) VALUES (?, ?, ?, ?, ?)`, "u1", "main", "unicode: é ✓ \"quoted\"", `["a","b"]`, ts)
-	mustExec(t, d, `INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, valid_at, created_at) VALUES (1, 'knowledge', ?, 'research-1', ?, ?)`, "Acme was founded in Paris in 1999.\nSecond line.", ts, ts)
-	mustExec(t, d, `INSERT INTO gb_artifacts (dataset_id, kind, text, parent_id, chunk_index, start_offset, end_offset, tokens, valid_at, created_at) VALUES (1, 'knowledge', 'Acme was', 1, 0, 0, 8, 2, ?, ?)`, ts, ts)
-	mustExec(t, d, `INSERT INTO gb_entities (dataset_id, name, name_key, type, description, created_at, updated_at) VALUES (1, 'Acme', 'acme', 'org', 'a company', ?, ?)`, ts, ts)
-	mustExec(t, d, `INSERT INTO gb_entities (dataset_id, name, name_key, type, description, created_at, updated_at) VALUES (1, 'Paris', 'paris', 'place', '', ?, ?)`, ts, ts)
-	mustExec(t, d, `INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, created_at, artifact_id) VALUES (1, 1, 2, 'founded_in', 'Acme was founded in Paris', ?, ?, 2)`, ts, ts)
-	mustExec(t, d, `INSERT INTO gb_edge_artifacts (edge_id, artifact_id) VALUES (1, 2)`)
-	mustExec(t, d, `INSERT INTO gb_entity_geo (entity_id, kind, latitude, longitude, provider, created_at, updated_at) VALUES (2, 'city', 48.85, 2.35, 'test', ?, ?)`, ts, ts)
-	mustExec(t, d, `INSERT INTO gb_image_artifacts (dataset_id, media_type, sha256, size_bytes, path, valid_at, created_at) VALUES (1, 'image/png', ?, 4, '1/img.png', ?, ?)`, strings.Repeat("a", 64), ts, ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_datasets (user_id, name, description, tags, created_at) VALUES (?, ?, ?, ?, ?)`,
+		"u1",
+		"main",
+		"unicode: é ✓ \"quoted\"",
+		`["a","b"]`,
+		ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, valid_at, created_at) VALUES (1, 'knowledge', ?, 'research-1', ?, ?)`,
+		"Acme was founded in Paris in 1999.\nSecond line.",
+		ts,
+		ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_artifacts (dataset_id, kind, text, parent_id, chunk_index, start_offset, end_offset, tokens, valid_at, created_at) VALUES (1, 'knowledge', 'Acme was', 1, 0, 0, 8, 2, ?, ?)`,
+		ts,
+		ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_entities (dataset_id, name, name_key, type, description, created_at, updated_at) VALUES (1, 'Acme', 'acme', 'org', 'a company', ?, ?)`,
+		ts,
+		ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_entities (dataset_id, name, name_key, type, description, created_at, updated_at) VALUES (1, 'Paris', 'paris', 'place', '', ?, ?)`,
+		ts,
+		ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, created_at, artifact_id) VALUES (1, 1, 2, 'founded_in', 'Acme was founded in Paris', ?, ?, 2)`,
+		ts,
+		ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_edge_artifacts (edge_id, artifact_id) VALUES (1, 2)`)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_entity_geo (entity_id, kind, latitude, longitude, provider, created_at, updated_at) VALUES (2, 'city', 48.85, 2.35, 'test', ?, ?)`,
+		ts,
+		ts)
+	mustExec(t,
+		d,
+		`INSERT INTO gb_image_artifacts (dataset_id, media_type, sha256, size_bytes, path, valid_at, created_at) VALUES (1, 'image/png', ?, 4, '1/img.png', ?, ?)`,
+		strings.Repeat("a", 64),
+		ts,
+		ts)
 
 	if err := os.MkdirAll(filepath.Join(imageDir, "1"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(imageDir, "1", "img.png"), []byte{0x89, 'P', 'N', 'G'}, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(imageDir,
+		"1",
+		"img.png"),
+		[]byte{0x89, 'P', 'N', 'G'},
+		0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(imageDir, "1", ".tmp-123"), []byte("half written"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(imageDir,
+		"1",
+		".tmp-123"),
+		[]byte("half written"),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	ctx := context.Background()
-	if err := vs.Upsert(ctx, "dataset-1-entities", []vector.Vector{
-		{ID: "entity:1", Values: []float32{1, 0, 0}, Metadata: map[string]any{"kind": "entity", "entity_id": float64(1)}},
-		{ID: "entity:2", Values: []float32{0, 1, 0}, Metadata: map[string]any{"kind": "entity", "entity_id": float64(2)}},
-	}); err != nil {
+	if err := vs.Upsert(ctx,
+		"dataset-1-entities",
+		[]vector.Vector{
+			{
+				ID:       "entity:1",
+				Values:   []float32{1, 0, 0},
+				Metadata: map[string]any{"kind": "entity", "entity_id": float64(1)},
+			},
+			{
+				ID:       "entity:2",
+				Values:   []float32{0, 1, 0},
+				Metadata: map[string]any{"kind": "entity", "entity_id": float64(2)},
+			},
+		}); err != nil {
 		t.Fatal(err)
 	}
-	if err := vs.Upsert(ctx, "dataset-1-edges", []vector.Vector{{ID: "edge:1", Values: []float32{0, 0, 1}, Metadata: map[string]any{"edge_id": float64(1)}}}); err != nil {
+	if err := vs.Upsert(ctx,
+		"dataset-1-edges",
+		[]vector.Vector{{
+			ID:       "edge:1",
+			Values:   []float32{0, 0, 1},
+			Metadata: map[string]any{"edge_id": float64(1)},
+		}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := vs.Upsert(ctx, "something-else", []vector.Vector{{ID: "s", Values: []float32{1, 1, 1}}}); err != nil {
+	if err := vs.Upsert(ctx,
+		"something-else",
+		[]vector.Vector{{
+			ID:     "s",
+			Values: []float32{1, 1, 1},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -77,7 +153,8 @@ func tableNames(m *Manifest) []string {
 	return out
 }
 
-func indexOf(list []string, s string) int {
+func indexOf(list []string,
+	s string) int {
 	for i, x := range list {
 		if x == s {
 			return i
@@ -92,18 +169,42 @@ func TestWriteAndRead(t *testing.T) {
 		ctx := context.Background()
 		const backend = config.DBBackendSQLite
 		if ok, err := graph.EnableGeoIndex(ctx, d); err != nil || !ok {
-			t.Fatalf("geo index: %v %v", ok, err)
+			t.Fatalf("geo index: %v %v",
+				ok,
+				err)
 		}
 		vs, err := vector.NewChromem(filepath.Join(t.TempDir(), "vectors"), dims)
 		if err != nil {
 			t.Fatal(err)
 		}
 		imageDir := filepath.Join(t.TempDir(), "images")
-		fill(t, d, vs, imageDir)
-		src := Source{Relational: d, Backend: backend, Vector: vs, VectorStore: config.VectorStoreChromem, EmbeddingDimensions: dims, ImageDir: imageDir}
+		fill(t,
+			d,
+			vs,
+			imageDir)
+		src := Source{
+			Relational:          d,
+			Backend:             backend,
+			Vector:              vs,
+			VectorStore:         config.VectorStoreChromem,
+			EmbeddingDimensions: dims,
+			ImageDir:            imageDir,
+		}
 
-		path := filepath.Join(t.TempDir(), "out", "export.zip")
-		m, err := WriteFile(ctx, path, src, Options{Source: "test", Version: "9.9.9", Extra: []Extra{{Name: "trajectory.json", Data: []byte(`{"a":1}`)}}})
+		path := filepath.Join(t.TempDir(),
+			"out",
+			"export.zip")
+		m, err := WriteFile(ctx,
+			path,
+			src,
+			Options{
+				Source:  "test",
+				Version: "9.9.9",
+				Extra: []Extra{{
+					Name: "trajectory.json",
+					Data: []byte(`{"a":1}`),
+				}},
+			})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,7 +217,9 @@ func TestWriteAndRead(t *testing.T) {
 		}
 		defer r.Close()
 		if !reflect.DeepEqual(r.Manifest, *m) && mustJSON(r.Manifest) != mustJSON(*m) {
-			t.Errorf("the manifest in the archive differs from the returned one:\n%s\n%s", mustJSON(r.Manifest), mustJSON(*m))
+			t.Errorf("the manifest in the archive differs from the returned one:\n%s\n%s",
+				mustJSON(r.Manifest),
+				mustJSON(*m))
 		}
 		if m.Format != Format || m.FormatVersion != FormatVersion || m.Backend != backend || m.EmbeddingDimensions != dims || m.Source != "test" || m.Version != "9.9.9" {
 			t.Errorf("manifest: %s", mustJSON(m))
@@ -131,12 +234,17 @@ func TestWriteAndRead(t *testing.T) {
 		}
 		for _, want := range []string{"gb_datasets", "gb_artifacts", "gb_entities", "gb_edges", "gb_edge_artifacts", "gb_entity_geo", "gb_image_artifacts", "gb_models", "gb_inferences", "gb_remember_runs"} {
 			if indexOf(names, want) < 0 {
-				t.Errorf("table %s is missing from %v", want, names)
+				t.Errorf("table %s is missing from %v",
+					want,
+					names)
 			}
 		}
 		for _, parent := range [][2]string{{"gb_datasets", "gb_artifacts"}, {"gb_datasets", "gb_entities"}, {"gb_entities", "gb_edges"}, {"gb_edges", "gb_edge_artifacts"}, {"gb_artifacts", "gb_edge_artifacts"}, {"gb_entities", "gb_entity_geo"}} {
 			if indexOf(names, parent[0]) > indexOf(names, parent[1]) {
-				t.Errorf("%s must come before %s: %v", parent[0], parent[1], names)
+				t.Errorf("%s must come before %s: %v",
+					parent[0],
+					parent[1],
+					names)
 			}
 		}
 		edges, _ := r.Table("gb_edges")
@@ -150,7 +258,9 @@ func TestWriteAndRead(t *testing.T) {
 			}
 		}
 		if delete(wantFK, "model_id"); len(wantFK) != 0 {
-			t.Errorf("foreign keys of gb_edges not found: %v in %+v", wantFK, edges.ForeignKeys)
+			t.Errorf("foreign keys of gb_edges not found: %v in %+v",
+				wantFK,
+				edges.ForeignKeys)
 		}
 		if pk, _ := r.Table("gb_edge_artifacts"); !reflect.DeepEqual(pk.PrimaryKey, []string{"edge_id", "artifact_id"}) {
 			t.Errorf("composite key: %+v", pk.PrimaryKey)
@@ -210,9 +320,12 @@ func TestWriteAndRead(t *testing.T) {
 
 		// Images and extra files.
 		var imgs []string
-		if err := r.Images(func(p string, c io.Reader) error {
+		if err := r.Images(func(p string,
+			c io.Reader) error {
 			b, _ := io.ReadAll(c)
-			imgs = append(imgs, fmt.Sprintf("%s:%q", p, b))
+			imgs = append(imgs, fmt.Sprintf("%s:%q",
+				p,
+				b))
 			return nil
 		}); err != nil {
 			t.Fatal(err)
@@ -221,7 +334,9 @@ func TestWriteAndRead(t *testing.T) {
 			t.Errorf("images (the partial file must be left out): %q", imgs)
 		}
 		if b, err := r.Extra("trajectory.json"); err != nil || string(b) != `{"a":1}` {
-			t.Errorf("extra: %q, %v", b, err)
+			t.Errorf("extra: %q, %v",
+				b,
+				err)
 		}
 		if _, err := r.Extra("nope"); err == nil {
 			t.Error("unknown extra file")
@@ -245,9 +360,21 @@ func TestLoadIntoAnotherDatabase(t *testing.T) {
 		const backend = config.DBBackendSQLite
 		vs, _ := vector.NewChromem(filepath.Join(t.TempDir(), "vectors"), dims)
 		imageDir := t.TempDir()
-		fill(t, d, vs, imageDir)
+		fill(t,
+			d,
+			vs,
+			imageDir)
 		var buf bytes.Buffer
-		if _, err := Write(ctx, &buf, Source{Relational: d, Backend: backend, Vector: vs, EmbeddingDimensions: dims, ImageDir: imageDir}, Options{}); err != nil {
+		if _, err := Write(ctx,
+			&buf,
+			Source{
+				Relational:          d,
+				Backend:             backend,
+				Vector:              vs,
+				EmbeddingDimensions: dims,
+				ImageDir:            imageDir,
+			},
+			Options{}); err != nil {
 			t.Fatal(err)
 		}
 		r, err := NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -277,7 +404,9 @@ func TestLoadIntoAnotherDatabase(t *testing.T) {
 				return err
 			})
 			if err != nil {
-				t.Fatalf("loading %s: %v", tb.Name, err)
+				t.Fatalf("loading %s: %v",
+					tb.Name,
+					err)
 			}
 		}
 		for _, tb := range r.Manifest.Tables {
@@ -287,19 +416,33 @@ func TestLoadIntoAnotherDatabase(t *testing.T) {
 			}
 			// gb_models is filled when a database is opened: the loaded rows replace, or are, those.
 			if n < tb.Rows || (tb.Name != "gb_models" && n != tb.Rows) {
-				t.Errorf("%s: %d rows loaded, %d in the archive", tb.Name, n, tb.Rows)
+				t.Errorf("%s: %d rows loaded, %d in the archive",
+					tb.Name,
+					n,
+					tb.Rows)
 			}
 		}
 
 		target2, _ := vector.NewChromem(filepath.Join(t.TempDir(), "vectors2"), dims)
 		for _, vd := range r.Manifest.Vectors {
-			if err := r.Vectors(vd.Name, func(v vector.Vector) error { return target2.Upsert(ctx, vd.Name, []vector.Vector{v}) }); err != nil {
+			if err := r.Vectors(vd.Name, func(v vector.Vector) error {
+				return target2.Upsert(ctx,
+					vd.Name,
+					[]vector.Vector{v})
+			}); err != nil {
 				t.Fatal(err)
 			}
 		}
-		got, err := target2.Query(ctx, "dataset-1-entities", []float32{0, 1, 0}, vector.QueryOptions{TopK: 1})
+		got, err := target2.Query(ctx,
+			"dataset-1-entities",
+			[]float32{0, 1, 0},
+			vector.QueryOptions{
+				TopK: 1,
+			})
 		if err != nil || len(got) != 1 || got[0].ID != "entity:2" {
-			t.Errorf("query of the loaded vectors: %+v, %v", got, err)
+			t.Errorf("query of the loaded vectors: %+v, %v",
+				got,
+				err)
 		}
 	}
 }
@@ -308,14 +451,32 @@ func TestWriteErrors(t *testing.T) {
 	ctx := context.Background()
 	d := dbtest.OpenSQLite(t)
 	vs, _ := vector.NewChromem(":memory:", dims)
-	src := Source{Relational: d, Backend: config.DBBackendSQLite, Vector: vs, EmbeddingDimensions: dims}
+	src := Source{
+		Relational:          d,
+		Backend:             config.DBBackendSQLite,
+		Vector:              vs,
+		EmbeddingDimensions: dims,
+	}
 
 	for _, name := range []string{"", "/abs", "../up", "a/../b", "a//b"} {
-		if _, err := Write(ctx, io.Discard, src, Options{Extra: []Extra{{Name: name}}}); err == nil {
+		if _, err := Write(ctx,
+			io.Discard,
+			src,
+			Options{
+				Extra: []Extra{{
+					Name: name,
+				}},
+			}); err == nil {
 			t.Errorf("extra file name %q accepted", name)
 		}
 	}
-	if _, err := Write(ctx, io.Discard, Source{Backend: config.DBBackendSQLite, Vector: vs}, Options{}); err == nil {
+	if _, err := Write(ctx,
+		io.Discard,
+		Source{
+			Backend: config.DBBackendSQLite,
+			Vector:  vs,
+		},
+		Options{}); err == nil {
 		t.Error("a SQLite source without a database accepted")
 	}
 
@@ -323,7 +484,10 @@ func TestWriteErrors(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "x.zip")
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := WriteFile(cancelled, path, src, Options{}); err == nil {
+	if _, err := WriteFile(cancelled,
+		path,
+		src,
+		Options{}); err == nil {
 		t.Error("a done context should fail the export")
 	}
 	if _, err := os.Stat(path); err == nil {
@@ -340,7 +504,10 @@ func TestRemoteStoresAreSkipped(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	vs, _ := vector.NewChromem(filepath.Join(t.TempDir(), "vectors"), dims)
 	imageDir := t.TempDir()
-	fill(t, d, vs, imageDir)
+	fill(t,
+		d,
+		vs,
+		imageDir)
 	remote := struct{ vector.Store }{vs} // a store that is not an Exporter, like Pinecone
 
 	for name, tc := range map[string]struct {
@@ -349,15 +516,39 @@ func TestRemoteStoresAreSkipped(t *testing.T) {
 		tables  bool
 		vectors bool
 	}{
-		"local":           {Source{Relational: d, Backend: config.DBBackendSQLite, Vector: vs}, nil, true, true},
-		"remote database": {Source{Backend: config.DBBackendPostgres, Vector: vs}, []string{"tables"}, false, true},
-		"remote vectors":  {Source{Relational: d, Backend: config.DBBackendSQLite, Vector: remote, VectorStore: config.VectorStorePinecone}, []string{"vectors"}, true, false},
-		"both remote":     {Source{Backend: config.DBBackendPostgres, Vector: remote, VectorStore: config.VectorStorePinecone}, []string{"tables", "vectors"}, false, false},
+		"local": {Source{
+			Relational: d,
+			Backend:    config.DBBackendSQLite,
+			Vector:     vs,
+		}, nil, true, true},
+		"remote database": {Source{
+			Backend: config.DBBackendPostgres,
+			Vector:  vs,
+		}, []string{"tables"}, false, true},
+		"remote vectors": {Source{
+			Relational:  d,
+			Backend:     config.DBBackendSQLite,
+			Vector:      remote,
+			VectorStore: config.VectorStorePinecone,
+		}, []string{"vectors"}, true, false},
+		"both remote": {Source{
+			Backend:     config.DBBackendPostgres,
+			Vector:      remote,
+			VectorStore: config.VectorStorePinecone,
+		}, []string{"tables", "vectors"}, false, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tc.src.ImageDir = imageDir
 			path := filepath.Join(t.TempDir(), "x.zip")
-			if _, err := WriteFile(ctx, path, tc.src, Options{Extra: []Extra{{Name: "t.json", Data: []byte("{}")}}}); err != nil {
+			if _, err := WriteFile(ctx,
+				path,
+				tc.src,
+				Options{
+					Extra: []Extra{{
+						Name: "t.json",
+						Data: []byte("{}"),
+					}},
+				}); err != nil {
 				t.Fatal(err)
 			}
 			r, err := Open(path)
@@ -374,11 +565,16 @@ func TestRemoteStoresAreSkipped(t *testing.T) {
 				}
 			}
 			if !reflect.DeepEqual(skipped, tc.skipped) || (len(m.Tables) > 0) != tc.tables || (len(m.Vectors) > 0) != tc.vectors {
-				t.Errorf("skipped %v, %d tables, %d vector datasets", skipped, len(m.Tables), len(m.Vectors))
+				t.Errorf("skipped %v, %d tables, %d vector datasets",
+					skipped,
+					len(m.Tables),
+					len(m.Vectors))
 			}
 			// The images and the extra files are local files: always in.
 			if len(m.Images) != 1 || len(m.Extra) != 1 {
-				t.Errorf("images %d, extra %v", len(m.Images), m.Extra)
+				t.Errorf("images %d, extra %v",
+					len(m.Images),
+					m.Extra)
 			}
 			if b := mustJSON(m); !strings.Contains(b, `"skipped":[`) || strings.Contains(b, `"tables":null`) || strings.Contains(b, `"vectors":null`) {
 				t.Errorf("empty lists must be [] in the manifest: %s", b)
@@ -418,19 +614,44 @@ func TestReaderErrors(t *testing.T) {
 
 func TestSortTables(t *testing.T) {
 	fk := func(ref string) []ForeignKey {
-		return []ForeignKey{{Columns: []string{"x"}, RefTable: ref, RefColumns: []string{"id"}}}
+		return []ForeignKey{{
+			Columns:    []string{"x"},
+			RefTable:   ref,
+			RefColumns: []string{"id"},
+		}}
 	}
-	got := tableNames(&Manifest{Tables: sortTables([]Table{
-		{Name: "c", ForeignKeys: fk("b")},
-		{Name: "b", ForeignKeys: append(fk("a"), fk("b")...)}, // and itself
-		{Name: "a"},
-		{Name: "z", ForeignKeys: fk("outside")}, // a table that is not exported
-		{Name: "p", ForeignKeys: fk("q")},       // a cycle
-		{Name: "q", ForeignKeys: fk("p")},
-	})})
+	got := tableNames(&Manifest{
+		Tables: sortTables([]Table{
+			{
+				Name:        "c",
+				ForeignKeys: fk("b"),
+			},
+			{
+				Name:        "b",
+				ForeignKeys: append(fk("a"), fk("b")...),
+			}, // and itself
+			{
+				Name: "a",
+			},
+			{
+				Name:        "z",
+				ForeignKeys: fk("outside"),
+			}, // a table that is not exported
+			{
+				Name:        "p",
+				ForeignKeys: fk("q"),
+			}, // a cycle
+			{
+				Name:        "q",
+				ForeignKeys: fk("p"),
+			},
+		}),
+	})
 	if want := []string{"a", "z", "b", "c", "p", "q"}; !reflect.DeepEqual(got, want) {
 		// "a" and "z" are ready first, then "b", then "c", and the cycle is broken by name.
-		t.Errorf("got %v, want %v", got, want)
+		t.Errorf("got %v, want %v",
+			got,
+			want)
 	}
 }
 
@@ -443,7 +664,11 @@ func TestEncodeValue(t *testing.T) {
 		{[]byte{0xff, 0x00}, `{"$base64":"/wA="}`},
 	} {
 		if b, err := encodeValue(tc.in); err != nil || string(b) != tc.want {
-			t.Errorf("%#v: %s, %v (want %s)", tc.in, b, err, tc.want)
+			t.Errorf("%#v: %s, %v (want %s)",
+				tc.in,
+				b,
+				err,
+				tc.want)
 		}
 	}
 }

@@ -9,12 +9,33 @@ import (
 )
 
 func TestBuilderAndWriteFile(t *testing.T) {
-	b := NewBuilder(Agent{Name: "a", Version: "1"})
+	b := NewBuilder(Agent{
+		Name:    "a",
+		Version: "1",
+	})
 	b.System("sys")
 	b.User("hi")
-	b.Agent(Step{ModelName: "m", Message: "yo", Metrics: &Metrics{PromptTokens: 10, CompletionTokens: 5, CostUSD: 0.5}})
-	b.Tool("looking", "search", map[string]any{"q": "x"}, "found")
-	b.Agent(Step{Message: "done", Metrics: &Metrics{PromptTokens: 1, CompletionTokens: 2, CostUSD: 0.25}})
+	b.Agent(Step{
+		ModelName: "m",
+		Message:   "yo",
+		Metrics: &Metrics{
+			PromptTokens:     10,
+			CompletionTokens: 5,
+			CostUSD:          0.5,
+		},
+	})
+	b.Tool("looking",
+		"search",
+		map[string]any{"q": "x"},
+		"found")
+	b.Agent(Step{
+		Message: "done",
+		Metrics: &Metrics{
+			PromptTokens:     1,
+			CompletionTokens: 2,
+			CostUSD:          0.25,
+		},
+	})
 
 	tr := b.Build()
 	if tr.TrajectoryID == "" || tr.TrajectoryID != b.ID() || tr.SessionID != tr.TrajectoryID {
@@ -22,7 +43,9 @@ func TestBuilderAndWriteFile(t *testing.T) {
 	}
 	for i, s := range tr.Steps {
 		if s.StepID != i+1 || s.Timestamp == "" {
-			t.Fatalf("step %d: %+v", i, s)
+			t.Fatalf("step %d: %+v",
+				i,
+				s)
 		}
 	}
 	tc := tr.Steps[3]
@@ -34,7 +57,9 @@ func TestBuilderAndWriteFile(t *testing.T) {
 		t.Fatalf("final metrics: %+v", fm)
 	}
 
-	dir := filepath.Join(t.TempDir(), "nested", "atif")
+	dir := filepath.Join(t.TempDir(),
+		"nested",
+		"atif")
 	path, err := WriteFile(dir, tr)
 	if err != nil {
 		t.Fatal(err)
@@ -48,12 +73,16 @@ func TestBuilderAndWriteFile(t *testing.T) {
 	}
 	var back Trajectory
 	if err := json.Unmarshal(data, &back); err != nil || len(back.Steps) != 5 {
-		t.Fatalf("round trip: %v %+v", err, back)
+		t.Fatalf("round trip: %v %+v",
+			err,
+			back)
 	}
 }
 
 func TestNewIDUnique(t *testing.T) {
 	if a, b := NewID(), NewID(); a == b || len(a) != 36 {
-		t.Fatalf("%s %s", a, b)
+		t.Fatalf("%s %s",
+			a,
+			b)
 	}
 }

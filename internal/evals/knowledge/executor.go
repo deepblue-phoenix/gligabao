@@ -68,7 +68,9 @@ func (x *Executor) out() io.Writer {
 
 // Execute implements runner.Executor: the cases of def.Cases one after the other, each recorded as a case run when it ends. A case
 // that fails is errored (or cancelled, if ctx ended) and the next one runs.
-func (x *Executor) Execute(ctx context.Context, rec *runner.EvalRecorder, def *core.EvalDef) error {
+func (x *Executor) Execute(ctx context.Context,
+	rec *runner.EvalRecorder,
+	def *core.EvalDef) error {
 	meta, ok := rec.Run().Meta.(*core.KnowledgeEvalRunMeta)
 	if !ok {
 		return fmt.Errorf("a knowledge eval run needs a *core.KnowledgeEvalRunMeta, not %T", rec.Run().Meta)
@@ -78,17 +80,27 @@ func (x *Executor) Execute(ctx context.Context, rec *runner.EvalRecorder, def *c
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := x.executeCase(ctx, dbCtx, rec, meta, c); err != nil {
+		if err := x.executeCase(ctx,
+			dbCtx,
+			rec,
+			meta,
+			c); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecorder, evalMeta *core.KnowledgeEvalRunMeta, c core.CaseDef) error {
+func (x *Executor) executeCase(ctx,
+	dbCtx context.Context,
+	rec *runner.EvalRecorder,
+	evalMeta *core.KnowledgeEvalRunMeta,
+	c core.CaseDef) error {
 	m, ok := c.Meta.(*core.KnowledgeCaseDefMeta)
 	if !ok {
-		return fmt.Errorf("case def %q has no knowledge metadata (%T)", c.Name, c.Meta)
+		return fmt.Errorf("case def %q has no knowledge metadata (%T)",
+			c.Name,
+			c.Meta)
 	}
 	cr, err := rec.StartCase(dbCtx, c)
 	if err != nil {
@@ -99,21 +111,37 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 	}
 	llm := x.LLM
 	if x.Verbose {
-		fmt.Fprintf(x.out(), "=== %s\n", c.Name)
-		llm = &verboseLLM{inner: x.LLM, out: x.out()}
+		fmt.Fprintf(x.out(),
+			"=== %s\n",
+			c.Name)
+		llm = &verboseLLM{
+			inner: x.LLM,
+			out:   x.out(),
+		}
 	}
 
 	out := &outcome{}
 	input, err := readTexts(x.EvalsDirs, m.KnowledgeInput)
 	if err == nil {
-		out, err = x.runCase(ctx, c.Name, *m, input, rec.Run().ID, llm)
+		out, err = x.runCase(ctx,
+			c.Name,
+			*m,
+			input,
+			rec.Run().ID,
+			llm)
 	}
 	cost, steps := out.cost()
 	if x.Verbose {
 		if out.Chunks > 0 {
-			fmt.Fprintf(x.out(), "  chunks: %d\n", out.Chunks)
+			fmt.Fprintf(x.out(),
+				"  chunks: %d\n",
+				out.Chunks)
 		}
-		fmt.Fprintf(x.out(), "  trajectories: %d, steps: %d, cost: $%.6f\n", len(out.Trajectories), steps, cost)
+		fmt.Fprintf(x.out(),
+			"  trajectories: %d, steps: %d, cost: $%.6f\n",
+			len(out.Trajectories),
+			steps,
+			cost)
 	}
 
 	// Everything that makes the case fail: failed checks, then expected answer text that is missing.
@@ -129,7 +157,11 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 	}
 
 	meta := &core.KnowledgeCaseRunMeta{
-		Input: input, Answer: out.Answer, Problems: problems, PassedChecks: passed, Steps: steps,
+		Input:        input,
+		Answer:       out.Answer,
+		Problems:     problems,
+		PassedChecks: passed,
+		Steps:        steps,
 	}
 	if out.DatasetID != 0 {
 		id := out.DatasetID
@@ -140,7 +172,10 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 		if i < len(out.ArtifactIDs) {
 			ids = out.ArtifactIDs[i]
 		}
-		ref, refErr := trajectoryRef(i, t, x.TrajectoryDir, ids)
+		ref, refErr := trajectoryRef(i,
+			t,
+			x.TrajectoryDir,
+			ids)
 		if refErr != nil {
 			if err == nil {
 				err = refErr
@@ -172,25 +207,45 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 	default:
 		cr.Status, cr.Verdict = core.StatusCompleted, core.VerdictPass
 	}
-	if finishErr := rec.FinishCase(dbCtx, cr, meta); finishErr != nil {
+	if finishErr := rec.FinishCase(dbCtx,
+		cr,
+		meta); finishErr != nil {
 		return finishErr
 	}
 
 	switch {
 	case err != nil:
-		fmt.Fprintln(x.out(), x.Colors.Red(fmt.Sprintf("FAIL %s: %v", c.Name, err)))
+		fmt.Fprintln(x.out(), x.Colors.Red(fmt.Sprintf("FAIL %s: %v",
+			c.Name,
+			err)))
 	case len(problems) > 0:
 		fmt.Fprintln(x.out(), x.Colors.Red(fmt.Sprintf("FAIL %s:\n     %s\n     %s %s",
-			c.Name, strings.Join(problems, "\n     "), x.Colors.Yellow("answer:"), out.Answer)))
+			c.Name,
+			strings.Join(problems, "\n     "),
+			x.Colors.Yellow("answer:"),
+			out.Answer)))
 	default:
-		fmt.Fprintln(x.out(), x.Colors.Green(fmt.Sprintf("PASS %s: %s", c.Name, out.Answer)))
+		fmt.Fprintln(x.out(), x.Colors.Green(fmt.Sprintf("PASS %s: %s",
+			c.Name,
+			out.Answer)))
 	}
 	// A case that failed or errored (not one that was cancelled) can have a commentary, printed under its failure log.
 	if x.Commentary != nil && ctx.Err() == nil && (err != nil || len(problems) > 0) {
-		x.Commentary.Offer(ctx, x.out(), x.Colors, commentary.Failure{
-			Case: c.Name, Def: *m, Input: input, RunModels: x.Models, RunReasoning: x.Reasoning,
-			Problems: problems, Passed: passed, Answer: out.Answer, Err: err, Trajectories: out.Trajectories,
-		})
+		x.Commentary.Offer(ctx,
+			x.out(),
+			x.Colors,
+			commentary.Failure{
+				Case:         c.Name,
+				Def:          *m,
+				Input:        input,
+				RunModels:    x.Models,
+				RunReasoning: x.Reasoning,
+				Problems:     problems,
+				Passed:       passed,
+				Answer:       out.Answer,
+				Err:          err,
+				Trajectories: out.Trajectories,
+			})
 	}
 	return nil
 }

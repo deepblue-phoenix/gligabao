@@ -97,16 +97,19 @@ type Resolver interface {
 	Name() string
 	// Resolve returns the best place for the query, or ErrNotFound if there is none. Any other error means the resolver failed
 	// (network, quota, ...): the query may succeed later. It must be safe for concurrent use.
-	Resolve(ctx context.Context, q Query) (*Place, error)
+	Resolve(ctx context.Context,
+		q Query) (*Place, error)
 }
 
 // Func adapts a function to a Resolver.
 type Func struct {
 	ResolverName string
-	Fn           func(ctx context.Context, q Query) (*Place, error)
+	Fn           func(ctx context.Context,
+		q Query) (*Place, error)
 }
 
 func (f Func) Name() string { return f.ResolverName }
-func (f Func) Resolve(ctx context.Context, q Query) (*Place, error) {
+func (f Func) Resolve(ctx context.Context,
+	q Query) (*Place, error) {
 	return f.Fn(ctx, q)
 }

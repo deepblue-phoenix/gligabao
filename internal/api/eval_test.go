@@ -14,22 +14,56 @@ import (
 
 func TestEvalEndpoints(t *testing.T) { dbtest.Run(t, testEvalEndpoints) }
 
-func testEvalEndpoints(t *testing.T, d *sql.DB) {
-	llm := &costLLM{outs: []string{
-		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
-		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
-		`{"answer":"Alice.","entities":[1],"edges":[]}`,
-		`{"answer":"Alice.","entities":[1],"edges":[]}`,
-	}}
+func testEvalEndpoints(t *testing.T,
+	d *sql.DB) {
+	llm := &costLLM{
+		outs: []string{
+			`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
+			`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
+			`{"answer":"Alice.","entities":[1],"edges":[]}`,
+			`{"answer":"Alice.","entities":[1],"edges":[]}`,
+		},
+	}
 	database := withVectors(t, d)
 	plain, eval := http.NewServeMux(), http.NewServeMux()
-	Register(plain, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
-	Register(eval, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
-	RegisterEval(eval, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
+	Register(plain,
+		mgrFor(t,
+			database,
+			llm),
+		database,
+		llm,
+		fakeEmbedder{},
+		nil,
+		nil,
+		nil)
+	Register(eval,
+		mgrFor(t,
+			database,
+			llm),
+		database,
+		llm,
+		fakeEmbedder{},
+		nil,
+		nil,
+		nil)
+	RegisterEval(eval,
+		mgrFor(t,
+			database,
+			llm),
+		database,
+		llm,
+		fakeEmbedder{},
+		nil,
+		nil,
+		nil)
 
-	do := func(mux *http.ServeMux, path, body string) *httptest.ResponseRecorder {
+	do := func(mux *http.ServeMux,
+		path,
+		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq("POST",
+			path,
+			strings.NewReader(body)))
 		return rec
 	}
 	type resp struct {
@@ -39,7 +73,9 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 	decode := func(rec *httptest.ResponseRecorder) resp {
 		t.Helper()
 		if rec.Code != 200 {
-			t.Fatalf("%d %s", rec.Code, rec.Body)
+			t.Fatalf("%d %s",
+				rec.Code,
+				rec.Body)
 		}
 		var r resp
 		if err := json.Unmarshal(rec.Body.Bytes(), &r); err != nil {
@@ -50,8 +86,12 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 
 	// Not registered by default.
 	for _, p := range []string{"/v1/gb/eval/remember", "/v1/gb/eval/query"} {
-		if rec := do(plain, p, `{}`); rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("%s without eval mode: %d", p, rec.Code)
+		if rec := do(plain,
+			p,
+			`{}`); rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("%s without eval mode: %d",
+				p,
+				rec.Code)
 		}
 	}
 
@@ -60,12 +100,20 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 		{"/v1/gb/query", "/v1/gb/eval/query", `{"user_id":"u1","query":"Alice?"}`},
 	} {
 		// Only the eval endpoint generates a trajectory.
-		if r := decode(do(eval, c.plain, c.body)); r.TrajectoryID != "" || r.Trajectory != nil {
-			t.Fatalf("%s: %+v", c.plain, r)
+		if r := decode(do(eval,
+			c.plain,
+			c.body)); r.TrajectoryID != "" || r.Trajectory != nil {
+			t.Fatalf("%s: %+v",
+				c.plain,
+				r)
 		}
-		r := decode(do(eval, c.eval, c.body))
+		r := decode(do(eval,
+			c.eval,
+			c.body))
 		if r.Trajectory == nil || r.TrajectoryID != r.Trajectory.TrajectoryID || len(r.Trajectory.Steps) == 0 {
-			t.Fatalf("%s: %+v", c.eval, r)
+			t.Fatalf("%s: %+v",
+				c.eval,
+				r)
 		}
 	}
 }

@@ -17,7 +17,8 @@ import (
 const schemaPath = "../../rust/sargo/inference.schema.json"
 
 // schemaFor returns a validator for one definition ("InferenceRequest", "InferenceResponse", ...) of the sargo JSON Schema.
-func schemaFor(t *testing.T, def string) *jsonschema.Resolved {
+func schemaFor(t *testing.T,
+	def string) *jsonschema.Resolved {
 	t.Helper()
 	data, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -44,7 +45,9 @@ func schemaFor(t *testing.T, def string) *jsonschema.Resolved {
 }
 
 // mustValidate checks that the JSON of v complies with the schema definition def.
-func mustValidate(t *testing.T, def string, v any) {
+func mustValidate(t *testing.T,
+	def string,
+	v any) {
 	t.Helper()
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -55,7 +58,10 @@ func mustValidate(t *testing.T, def string, v any) {
 		t.Fatal(err)
 	}
 	if err := schemaFor(t, def).Validate(inst); err != nil {
-		t.Fatalf("%s does not comply with the schema: %v\n%s", def, err, data)
+		t.Fatalf("%s does not comply with the schema: %v\n%s",
+			def,
+			err,
+			data)
 	}
 }
 
@@ -67,14 +73,29 @@ func fullRequest() *Request {
 		System:   "You are helpful.",
 		Messages: []Message{
 			UserText("Weather in Oslo?"),
-			{Role: RoleAssistant, Content: []ContentBlock{
-				TextBlock("Let me check."),
-				{Type: BlockToolUse, ID: "tu_1", Name: "weather", Input: json.RawMessage(`{"city":"Oslo"}`)},
-			}},
-			{Role: RoleUser, Content: []ContentBlock{
-				ToolResultBlock("tu_1", "3C, rain", false),
-				ToolResultBlock("tu_2", "boom", true),
-			}},
+			{
+				Role: RoleAssistant,
+				Content: []ContentBlock{
+					TextBlock("Let me check."),
+					{
+						Type:  BlockToolUse,
+						ID:    "tu_1",
+						Name:  "weather",
+						Input: json.RawMessage(`{"city":"Oslo"}`),
+					},
+				},
+			},
+			{
+				Role: RoleUser,
+				Content: []ContentBlock{
+					ToolResultBlock("tu_1",
+						"3C, rain",
+						false),
+					ToolResultBlock("tu_2",
+						"boom",
+						true),
+				},
+			},
 		},
 		Tools: []Tool{{
 			Name:        "weather",
@@ -91,17 +112,40 @@ func fullRequest() *Request {
 }
 
 func TestRequestComplyWithSchema(t *testing.T) {
-	mustValidate(t, "InferenceRequest", fullRequest())
+	mustValidate(t,
+		"InferenceRequest",
+		fullRequest())
 
-	minimal := &Request{Provider: ProviderOpenAI, Model: "gpt-4o", Messages: []Message{UserText("hi")}}
-	mustValidate(t, "InferenceRequest", minimal)
+	minimal := &Request{
+		Provider: ProviderOpenAI,
+		Model:    "gpt-4o",
+		Messages: []Message{UserText("hi")},
+	}
+	mustValidate(t,
+		"InferenceRequest",
+		minimal)
 
 	// A tool_use block without input and a message without content still produce valid JSON.
-	odd := &Request{Provider: ProviderOpenAI, Model: "gpt-4o", Messages: []Message{
-		{Role: RoleAssistant, Content: []ContentBlock{{Type: BlockToolUse, ID: "a", Name: "b"}}},
-		{Role: RoleUser},
-	}}
-	mustValidate(t, "InferenceRequest", odd)
+	odd := &Request{
+		Provider: ProviderOpenAI,
+		Model:    "gpt-4o",
+		Messages: []Message{
+			{
+				Role: RoleAssistant,
+				Content: []ContentBlock{{
+					Type: BlockToolUse,
+					ID:   "a",
+					Name: "b",
+				}},
+			},
+			{
+				Role: RoleUser,
+			},
+		},
+	}
+	mustValidate(t,
+		"InferenceRequest",
+		odd)
 }
 
 func TestSchemaRejectsWhatValidateRejects(t *testing.T) {
@@ -144,19 +188,37 @@ func TestResponseDecodesAndComplyWithSchema(t *testing.T) {
 	}
 
 	// The answer goes back as an assistant message, unchanged, and that is still valid.
-	req := &Request{Provider: ProviderAnthropic, Model: "m", Messages: []Message{
-		UserText("Weather in Oslo?"),
-		resp.AssistantMessage(),
-		{Role: RoleUser, Content: []ContentBlock{ToolResultBlock("tu_1", "rain", false)}},
-	}}
-	mustValidate(t, "InferenceRequest", req)
+	req := &Request{
+		Provider: ProviderAnthropic,
+		Model:    "m",
+		Messages: []Message{
+			UserText("Weather in Oslo?"),
+			resp.AssistantMessage(),
+			{
+				Role: RoleUser,
+				Content: []ContentBlock{ToolResultBlock("tu_1",
+					"rain",
+					false)},
+			},
+		},
+	}
+	mustValidate(t,
+		"InferenceRequest",
+		req)
 }
 
 func TestContentBlockRoundTrip(t *testing.T) {
 	blocks := []ContentBlock{
 		TextBlock("hi"),
-		{Type: BlockToolUse, ID: "i", Name: "n", Input: json.RawMessage(`{"a":1}`)},
-		ToolResultBlock("i", "out", true),
+		{
+			Type:  BlockToolUse,
+			ID:    "i",
+			Name:  "n",
+			Input: json.RawMessage(`{"a":1}`),
+		},
+		ToolResultBlock("i",
+			"out",
+			true),
 	}
 	data, err := json.Marshal(blocks)
 	if err != nil {
@@ -167,12 +229,16 @@ func TestContentBlockRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(blocks, got) {
-		t.Fatalf("round trip changed the blocks:\n%+v\n%+v", blocks, got)
+		t.Fatalf("round trip changed the blocks:\n%+v\n%+v",
+			blocks,
+			got)
 	}
 	if err := json.Unmarshal([]byte(`[{"type":"image"}]`), &got); err == nil {
 		t.Fatal("unknown block type accepted")
 	}
-	if _, err := json.Marshal(ContentBlock{Type: "image"}); err == nil {
+	if _, err := json.Marshal(ContentBlock{
+		Type: "image",
+	}); err == nil {
 		t.Fatal("unknown block type marshalled")
 	}
 }
@@ -209,12 +275,17 @@ func TestValidate(t *testing.T) {
 
 func TestInfer(t *testing.T) {
 	var gotBody []byte
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/infer" {
-			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected %s %s",
+				r.Method,
+				r.URL.Path)
 		}
 		if r.ContentLength <= 0 || len(r.TransferEncoding) != 0 {
-			t.Errorf("body must have a Content-Length, got %d / %v", r.ContentLength, r.TransferEncoding)
+			t.Errorf("body must have a Content-Length, got %d / %v",
+				r.ContentLength,
+				r.TransferEncoding)
 		}
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 			t.Errorf("Content-Type = %q", ct)
@@ -230,7 +301,11 @@ func TestInfer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := c.Infer(context.Background(), &Request{Provider: ProviderOpenAI, Model: "gpt-4o", Messages: []Message{UserText("hi")}})
+	resp, err := c.Infer(context.Background(), &Request{
+		Provider: ProviderOpenAI,
+		Model:    "gpt-4o",
+		Messages: []Message{UserText("hi")},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +317,9 @@ func TestInfer(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := schemaFor(t, "InferenceRequest").Validate(inst); err != nil {
-		t.Fatalf("the request on the wire does not comply with the schema: %v\n%s", err, gotBody)
+		t.Fatalf("the request on the wire does not comply with the schema: %v\n%s",
+			err,
+			gotBody)
 	}
 }
 
@@ -259,7 +336,8 @@ func TestInferErrors(t *testing.T) {
 		{500, `not json`, "not json", false},
 		{502, ``, "Bad Gateway", true},
 	} {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+			r *http.Request) {
 			w.WriteHeader(tc.status)
 			_, _ = w.Write([]byte(tc.body))
 		}))
@@ -267,24 +345,38 @@ func TestInferErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = c.Infer(context.Background(), &Request{Provider: ProviderOpenAI, Model: "m", Messages: []Message{UserText("hi")}})
+		_, err = c.Infer(context.Background(), &Request{
+			Provider: ProviderOpenAI,
+			Model:    "m",
+			Messages: []Message{UserText("hi")},
+		})
 		srv.Close()
 		var apiErr *APIError
 		if !errors.As(err, &apiErr) {
-			t.Fatalf("status %d: want *APIError, got %v", tc.status, err)
+			t.Fatalf("status %d: want *APIError, got %v",
+				tc.status,
+				err)
 		}
 		if apiErr.Status != tc.status || apiErr.Message != tc.msg || apiErr.Retryable() != tc.retryable {
-			t.Errorf("status %d: got %+v (retryable %v)", tc.status, apiErr, apiErr.Retryable())
+			t.Errorf("status %d: got %+v (retryable %v)",
+				tc.status,
+				apiErr,
+				apiErr.Retryable())
 		}
 	}
 }
 
 func TestInferRejectsInvalidRequestWithoutCalling(t *testing.T) {
 	called := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
+		called = true
+	}))
 	defer srv.Close()
 	c, _ := New(srv.URL)
-	if _, err := c.Infer(context.Background(), &Request{Provider: "nope"}); err == nil {
+	if _, err := c.Infer(context.Background(), &Request{
+		Provider: "nope",
+	}); err == nil {
 		t.Fatal("invalid request accepted")
 	}
 	if called {
@@ -294,7 +386,8 @@ func TestInferRejectsInvalidRequestWithoutCalling(t *testing.T) {
 
 func TestHealth(t *testing.T) {
 	status := `{"status":"ok"}`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if r.URL.Path != "/health" {
 			t.Errorf("path %s", r.URL.Path)
 		}

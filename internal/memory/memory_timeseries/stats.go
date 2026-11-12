@@ -49,8 +49,19 @@ func Summarize(points []graph.SeriesPoint) *Stats {
 		return nil
 	}
 	f, l := points[0], points[len(points)-1]
-	s := &Stats{Count: len(points), FirstTS: f.TS, LastTS: l.TS, First: f.Value, Last: l.Value,
-		Min: f.Value, MinTS: f.TS, Max: f.Value, MaxTS: f.TS, Change: l.Value - f.Value, Trend: "flat"}
+	s := &Stats{
+		Count:   len(points),
+		FirstTS: f.TS,
+		LastTS:  l.TS,
+		First:   f.Value,
+		Last:    l.Value,
+		Min:     f.Value,
+		MinTS:   f.TS,
+		Max:     f.Value,
+		MaxTS:   f.TS,
+		Change:  l.Value - f.Value,
+		Trend:   "flat",
+	}
 	var sum, best float64
 	for i, p := range points {
 		sum += p.Value
@@ -66,7 +77,13 @@ func Summarize(points []graph.SeriesPoint) *Stats {
 		prev := points[i-1]
 		if pct := (p.Value - prev.Value) / math.Abs(prev.Value) * 100; math.Abs(pct) > best {
 			best = math.Abs(pct)
-			s.LargestMove = &Move{From: prev.TS, To: p.TS, FromValue: prev.Value, ToValue: p.Value, Pct: pct}
+			s.LargestMove = &Move{
+				From:      prev.TS,
+				To:        p.TS,
+				FromValue: prev.Value,
+				ToValue:   p.Value,
+				Pct:       pct,
+			}
 		}
 	}
 	s.Mean = sum / float64(len(points))

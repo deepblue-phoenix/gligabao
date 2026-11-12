@@ -23,7 +23,10 @@ var ErrInvalidGeoRadius = errors.New("invalid geo radius")
 // ValidateGeoRadius returns ErrInvalidGeoRadius unless km is a number greater than 0 and at most MaxGeoRadiusKm.
 func ValidateGeoRadius(km float64) error {
 	if math.IsNaN(km) || km <= 0 || km > MaxGeoRadiusKm {
-		return fmt.Errorf("%w: %v km (it must be greater than 0 and at most %v)", ErrInvalidGeoRadius, km, MaxGeoRadiusKm)
+		return fmt.Errorf("%w: %v km (it must be greater than 0 and at most %v)",
+			ErrInvalidGeoRadius,
+			km,
+			MaxGeoRadiusKm)
 	}
 	return nil
 }

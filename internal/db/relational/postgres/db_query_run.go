@@ -26,8 +26,11 @@ func queryRunCols() []rememberCol {
 	cols := []rememberCol{{"user_id", false}, {"dataset", false}, {"question", false}, {"params", true}, {"session_id", false},
 		{"status", false}, {"error", false}, {"started_at", false}, {"finished_at", false}}
 	for _, s := range model.QueryStages {
-		cols = append(cols, rememberCol{s.Name + "_status", false}, rememberCol{s.Name + "_error", false},
-			rememberCol{s.Name + "_started_at", false}, rememberCol{s.Name + "_finished_at", false})
+		cols = append(cols,
+			rememberCol{s.Name + "_status", false},
+			rememberCol{s.Name + "_error", false},
+			rememberCol{s.Name + "_started_at", false},
+			rememberCol{s.Name + "_finished_at", false})
 		if s.Model {
 			cols = append(cols, rememberCol{s.Name + "_inference_ids", true})
 		}
@@ -44,7 +47,11 @@ func queryRunValues(r model.QueryRun) []any {
 		if st.Status == "" {
 			st.Status = model.RememberNotStarted
 		}
-		vals = append(vals, st.Status, nullableString(st.Error), nullableTime(st.StartedAt), nullableTime(st.FinishedAt))
+		vals = append(vals,
+			st.Status,
+			nullableString(st.Error),
+			nullableTime(st.StartedAt),
+			nullableTime(st.FinishedAt))
 		if s.Model {
 			vals = append(vals, jsonIDs(st.InferenceIDs))
 		}
@@ -60,7 +67,11 @@ func scanQueryRun(sc scanner) (*model.QueryRun, error) {
 	stages := make([]stageRow, len(model.QueryStages))
 	dest := []any{&r.ID, &r.UserID, &r.Dataset, &r.Question, &params, &r.SessionID, &r.Status, &errText, &r.StartedAt, &finished}
 	for i, s := range model.QueryStages {
-		dest = append(dest, &stages[i].status, &stages[i].err, &stages[i].started, &stages[i].finished)
+		dest = append(dest,
+			&stages[i].status,
+			&stages[i].err,
+			&stages[i].started,
+			&stages[i].finished)
 		if s.Model {
 			dest = append(dest, &stages[i].runIDs)
 		}
@@ -76,8 +87,12 @@ func scanQueryRun(sc scanner) (*model.QueryRun, error) {
 	r.FinishedAt = utc(finished)
 	r.Stages = make(map[string]model.QueryStage, len(stages))
 	for i, s := range model.QueryStages {
-		st := model.QueryStage{Status: stages[i].status, StartedAt: utc(stages[i].started), FinishedAt: utc(stages[i].finished),
-			InferenceIDs: parseIDs(stages[i].runIDs)}
+		st := model.QueryStage{
+			Status:       stages[i].status,
+			StartedAt:    utc(stages[i].started),
+			FinishedAt:   utc(stages[i].finished),
+			InferenceIDs: parseIDs(stages[i].runIDs),
+		}
 		if stages[i].err.Valid {
 			st.Error = &stages[i].err.String
 		}
@@ -95,14 +110,17 @@ func queryRunSelect() string {
 }
 
 // InsertQueryRun stores a query run (r.ID is ignored) and returns its ID.
-func InsertQueryRun(ctx context.Context, d *sql.DB, r model.QueryRun) (int64, error) {
+func InsertQueryRun(ctx context.Context,
+	d *sql.DB,
+	r model.QueryRun) (int64, error) {
 	cols := queryRunCols()
 	names, marks := make([]string, len(cols)), make([]string, len(cols))
 	for i, c := range cols {
 		names[i], marks[i] = c.name, c.placeholder(i+1)
 	}
 	var id int64
-	err := d.QueryRowContext(ctx, `INSERT INTO gb_query_runs (`+strings.Join(names, ", ")+`) VALUES (`+strings.Join(marks, ", ")+`) RETURNING id`,
+	err := d.QueryRowContext(ctx,
+		`INSERT INTO gb_query_runs (`+strings.Join(names, ", ")+`) VALUES (`+strings.Join(marks, ", ")+`) RETURNING id`,
 		queryRunValues(r)...).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert query run: %w", err)
@@ -111,13 +129,16 @@ func InsertQueryRun(ctx context.Context, d *sql.DB, r model.QueryRun) (int64, er
 }
 
 // SaveQueryRun overwrites the stored query run r.ID with r. It returns model.ErrNotFound if there is none.
-func SaveQueryRun(ctx context.Context, d *sql.DB, r model.QueryRun) error {
+func SaveQueryRun(ctx context.Context,
+	d *sql.DB,
+	r model.QueryRun) error {
 	cols := queryRunCols()
 	sets := make([]string, len(cols))
 	for i, c := range cols {
 		sets[i] = c.name + " = " + c.placeholder(i+1)
 	}
-	res, err := d.ExecContext(ctx, `UPDATE gb_query_runs SET `+strings.Join(sets, ", ")+` WHERE id = $`+strconv.Itoa(len(cols)+1),
+	res, err := d.ExecContext(ctx,
+		`UPDATE gb_query_runs SET `+strings.Join(sets, ", ")+` WHERE id = $`+strconv.Itoa(len(cols)+1),
 		append(queryRunValues(r), r.ID)...)
 	if err != nil {
 		return fmt.Errorf("save query run: %w", err)
@@ -129,8 +150,12 @@ func SaveQueryRun(ctx context.Context, d *sql.DB, r model.QueryRun) error {
 }
 
 // GetQueryRun returns the query run with that ID, or model.ErrNotFound.
-func GetQueryRun(ctx context.Context, d *sql.DB, id int64) (*model.QueryRun, error) {
-	r, err := scanQueryRun(d.QueryRowContext(ctx, queryRunSelect()+" WHERE id = $1", id))
+func GetQueryRun(ctx context.Context,
+	d *sql.DB,
+	id int64) (*model.QueryRun, error) {
+	r, err := scanQueryRun(d.QueryRowContext(ctx,
+		queryRunSelect()+" WHERE id = $1",
+		id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -139,7 +164,11 @@ func GetQueryRun(ctx context.Context, d *sql.DB, id int64) (*model.QueryRun, err
 
 // ListQueryRuns returns the query runs that match f, newest first (at most limit, after skipping offset), and how many match f
 // in all.
-func ListQueryRuns(ctx context.Context, d *sql.DB, f model.QueryRunFilter, limit, offset int) ([]model.QueryRun, int, error) {
+func ListQueryRuns(ctx context.Context,
+	d *sql.DB,
+	f model.QueryRunFilter,
+	limit,
+	offset int) ([]model.QueryRun, int, error) {
 	var conds []string
 	var args []any
 	for _, c := range []struct{ col, val string }{{"user_id", f.UserID}, {"dataset", f.Dataset}, {"status", f.Status}} {
@@ -153,12 +182,17 @@ func ListQueryRuns(ctx context.Context, d *sql.DB, f model.QueryRunFilter, limit
 		where = " WHERE " + strings.Join(conds, " AND ")
 	}
 	var total int
-	if err := d.QueryRowContext(ctx, "SELECT COUNT(*) FROM gb_query_runs"+where, args...).Scan(&total); err != nil {
+	if err := d.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM gb_query_runs"+where,
+		args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	n := len(args)
-	rows, err := d.QueryContext(ctx, queryRunSelect()+where+" ORDER BY id DESC LIMIT $"+strconv.Itoa(n+1)+" OFFSET $"+strconv.Itoa(n+2),
-		append(args, limit, offset)...)
+	rows, err := d.QueryContext(ctx,
+		queryRunSelect()+where+" ORDER BY id DESC LIMIT $"+strconv.Itoa(n+1)+" OFFSET $"+strconv.Itoa(n+2),
+		append(args,
+			limit,
+			offset)...)
 	if err != nil {
 		return nil, 0, err
 	}

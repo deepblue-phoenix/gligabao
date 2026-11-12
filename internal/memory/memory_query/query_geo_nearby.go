@@ -91,13 +91,21 @@ func geoRadius(co memory_core.CallOptions) (float64, error) {
 // findAnchors returns the places to center the search on, at most maxGeoAnchors: first the matched entities with coordinates,
 // then the places of the question: those the dataset has as an entity with coordinates, and for the others the resolver is asked
 // and what it finds is stored (storePlace). Errors only shorten the list.
-func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolver, matched []int64, names map[int64]string, places []QueryPlace) (anchors []GeoAnchor, errs []string) {
+func findAnchors(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	r memory_geo.Resolver,
+	matched []int64,
+	names map[int64]string,
+	places []QueryPlace) (anchors []GeoAnchor, errs []string) {
 	known := map[string]bool{}
 	for _, id := range matched {
 		if len(anchors) == maxGeoAnchors {
 			break
 		}
-		g, err := graph.GetEntityGeo(ctx, d, id)
+		g, err := graph.GetEntityGeo(ctx,
+			d,
+			id)
 		if errors.Is(err, graph.ErrNotFound) {
 			continue
 		}
@@ -105,7 +113,12 @@ func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolv
 			errs = append(errs, err.Error())
 			continue
 		}
-		anchors = append(anchors, GeoAnchor{Name: names[id], EntityID: id, Latitude: g.Latitude, Longitude: g.Longitude})
+		anchors = append(anchors, GeoAnchor{
+			Name:      names[id],
+			EntityID:  id,
+			Latitude:  g.Latitude,
+			Longitude: g.Longitude,
+		})
 		known[strings.ToLower(names[id])] = true
 	}
 	for _, p := range places {
@@ -117,15 +130,28 @@ func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolv
 		}
 		known[strings.ToLower(p.Text)] = true
 		// stored already (by remember, or by an earlier question) under that name, but not matched by this question's tokens
-		if id, g, err := storedPlace(ctx, d, dsID, p.Text); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", p.Text, err))
+		if id, g, err := storedPlace(ctx,
+			d,
+			dsID,
+			p.Text); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v",
+				p.Text,
+				err))
 			continue
 		} else if g != nil {
-			anchors = append(anchors, GeoAnchor{Name: p.Text, EntityID: id, Latitude: g.Latitude, Longitude: g.Longitude})
+			anchors = append(anchors, GeoAnchor{
+				Name:      p.Text,
+				EntityID:  id,
+				Latitude:  g.Latitude,
+				Longitude: g.Longitude,
+			})
 			continue
 		}
 		rctx, cancel := context.WithTimeout(ctx, geoResolveTimeout)
-		pl, err := r.Resolve(rctx, memory_geo.Query{Text: p.Query, Kind: p.Kind})
+		pl, err := r.Resolve(rctx, memory_geo.Query{
+			Text: p.Query,
+			Kind: p.Kind,
+		})
 		cancel()
 		if err == nil {
 			err = pl.Validate()
@@ -134,12 +160,25 @@ func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolv
 			continue
 		}
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", p.Text, err))
+			errs = append(errs, fmt.Sprintf("%s: %v",
+				p.Text,
+				err))
 			continue
 		}
-		a := GeoAnchor{Name: p.Text, Latitude: pl.Latitude, Longitude: pl.Longitude}
-		if id, err := storePlace(ctx, d, dsID, r, p, pl); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: could not store the place: %v", p.Text, err))
+		a := GeoAnchor{
+			Name:      p.Text,
+			Latitude:  pl.Latitude,
+			Longitude: pl.Longitude,
+		}
+		if id, err := storePlace(ctx,
+			d,
+			dsID,
+			r,
+			p,
+			pl); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: could not store the place: %v",
+				p.Text,
+				err))
 		} else {
 			a.EntityID, a.Stored = id, true
 		}
@@ -150,20 +189,27 @@ func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolv
 
 // storedPlace looks for an entity of the dataset named text (of a type that can be a place) and returns its ID and coordinates;
 // the coordinates are nil if there is none or the entity has none.
-func storedPlace(ctx context.Context, d *sql.DB, dsID int64, text string) (int64, *graph.EntityGeo, error) {
+func storedPlace(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	text string) (int64, *graph.EntityGeo, error) {
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return 0, nil, err
 	}
 	defer tx.Rollback() // only reads
-	id, err := tx.FindEntityID(ctx, dsID, memory_core.Key(text))
+	id, err := tx.FindEntityID(ctx,
+		dsID,
+		memory_core.Key(text))
 	if errors.Is(err, graph.ErrNotFound) {
 		return 0, nil, nil
 	}
 	if err != nil {
 		return 0, nil, err
 	}
-	if e, err := tx.GetEntity(ctx, dsID, id); err != nil || memory_geo.NotPlaceTypes[e.Type] {
+	if e, err := tx.GetEntity(ctx,
+		dsID,
+		id); err != nil || memory_geo.NotPlaceTypes[e.Type] {
 		return 0, nil, err // an entity of that name that is not a place ("Paris", a person)
 	}
 	g, err := tx.GetEntityGeo(ctx, id)
@@ -179,21 +225,36 @@ func storedPlace(ctx context.Context, d *sql.DB, dsID int64, text string) (int64
 // storePlace stores a place of the question that the resolver found, in one transaction: the entity named p.Text (the one of the
 // dataset if it has one of a type that can be a place, else a new entity of the type "place") and its coordinates. It returns the
 // entity's ID.
-func storePlace(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolver, p QueryPlace, pl *memory_geo.Place) (int64, error) {
+func storePlace(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	r memory_geo.Resolver,
+	p QueryPlace,
+	pl *memory_geo.Place) (int64, error) {
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
 	key := memory_core.Key(p.Text)
-	id, err := tx.FindEntityID(ctx, dsID, key)
+	id, err := tx.FindEntityID(ctx,
+		dsID,
+		key)
 	if err == nil {
-		if e, getErr := tx.GetEntity(ctx, dsID, id); getErr != nil || memory_geo.NotPlaceTypes[e.Type] {
+		if e, getErr := tx.GetEntity(ctx,
+			dsID,
+			id); getErr != nil || memory_geo.NotPlaceTypes[e.Type] {
 			id, err = 0, graph.ErrNotFound // an entity of that name that is not a place ("Paris", a person): a new one is made
 		}
 	}
 	if errors.Is(err, graph.ErrNotFound) {
-		id, err = tx.UpsertEntity(ctx, dsID, graph.Entity{Name: p.Text, Type: geoEntityType}, key)
+		id, err = tx.UpsertEntity(ctx,
+			dsID,
+			graph.Entity{
+				Name: p.Text,
+				Type: geoEntityType,
+			},
+			key)
 	}
 	if err != nil {
 		return 0, err
@@ -202,9 +263,23 @@ func storePlace(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolve
 	if provider == "" {
 		provider = r.Name()
 	}
-	err = tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: id, Kind: p.Kind, Query: p.Query, Latitude: pl.Latitude, Longitude: pl.Longitude,
-		DisplayName: pl.DisplayName, Country: pl.Country, CountryCode: pl.CountryCode, Region: pl.Region, PlaceType: pl.Type, BBox: pl.BBox,
-		Importance: pl.Importance, Provider: provider, ProviderRef: pl.Ref, Now: relational.Now()})
+	err = tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{
+		EntityID:    id,
+		Kind:        p.Kind,
+		Query:       p.Query,
+		Latitude:    pl.Latitude,
+		Longitude:   pl.Longitude,
+		DisplayName: pl.DisplayName,
+		Country:     pl.Country,
+		CountryCode: pl.CountryCode,
+		Region:      pl.Region,
+		PlaceType:   pl.Type,
+		BBox:        pl.BBox,
+		Importance:  pl.Importance,
+		Provider:    provider,
+		ProviderRef: pl.Ref,
+		Now:         relational.Now(),
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -215,13 +290,25 @@ func storePlace(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolve
 // Nearby (GET /v1/gb/geo/nearby, and the geo view of the admin UI) both call it, so they always select the same entities. It returns
 // the geo entities of the dataset within radiusKm of the anchors (see findNearby for the limits and the order); errs are the anchors
 // that could not be searched.
-func searchNearby(ctx context.Context, d *sql.DB, dsID int64, anchors []GeoAnchor, radiusKm float64) (nearby []NearbyEntity, errs []string) {
-	return findNearby(ctx, d, dsID, anchors, radiusKm)
+func searchNearby(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	anchors []GeoAnchor,
+	radiusKm float64) (nearby []NearbyEntity, errs []string) {
+	return findNearby(ctx,
+		d,
+		dsID,
+		anchors,
+		radiusKm)
 }
 
 // findNearby returns the geo entities of the dataset within radiusKm of the anchors, nearest first, at most maxNearbyEntities. An
 // entity near several anchors is listed once, with the nearest. The anchors that are entities are left out.
-func findNearby(ctx context.Context, d *sql.DB, dsID int64, anchors []GeoAnchor, radiusKm float64) (out []NearbyEntity, errs []string) {
+func findNearby(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	anchors []GeoAnchor,
+	radiusKm float64) (out []NearbyEntity, errs []string) {
 	var exclude []int64
 	for _, a := range anchors {
 		if a.EntityID != 0 {
@@ -230,23 +317,40 @@ func findNearby(ctx context.Context, d *sql.DB, dsID int64, anchors []GeoAnchor,
 	}
 	best := map[int64]NearbyEntity{}
 	for _, a := range anchors {
-		res, err := graph.NearbyEntityGeo(ctx, d, dsID, a.Latitude, a.Longitude, radiusKm, maxNearbyPerAnchor, exclude...)
+		res, err := graph.NearbyEntityGeo(ctx,
+			d,
+			dsID,
+			a.Latitude,
+			a.Longitude,
+			radiusKm,
+			maxNearbyPerAnchor,
+			exclude...)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", a.Name, err))
+			errs = append(errs, fmt.Sprintf("%s: %v",
+				a.Name,
+				err))
 			continue
 		}
 		for _, n := range res {
 			if b, ok := best[n.EntityID]; ok && b.DistanceKm <= n.DistanceKm {
 				continue
 			}
-			best[n.EntityID] = NearbyEntity{EntityID: n.EntityID, Name: n.EntityName, Type: n.EntityType, Latitude: n.Latitude,
-				Longitude: n.Longitude, DistanceKm: math.Round(n.DistanceKm*10) / 10, Anchor: a.Name}
+			best[n.EntityID] = NearbyEntity{
+				EntityID:   n.EntityID,
+				Name:       n.EntityName,
+				Type:       n.EntityType,
+				Latitude:   n.Latitude,
+				Longitude:  n.Longitude,
+				DistanceKm: math.Round(n.DistanceKm*10) / 10,
+				Anchor:     a.Name,
+			}
 		}
 	}
 	for _, n := range best {
 		out = append(out, n)
 	}
-	sort.Slice(out, func(i, j int) bool {
+	sort.Slice(out, func(i,
+		j int) bool {
 		if out[i].DistanceKm != out[j].DistanceKm {
 			return out[i].DistanceKm < out[j].DistanceKm
 		}
@@ -259,12 +363,22 @@ func findNearby(ctx context.Context, d *sql.DB, dsID int64, anchors []GeoAnchor,
 }
 
 // addToGraph adds the nearby entities, and the edges around them with the entities at their other end, to g.
-func addToGraph(ctx context.Context, d *sql.DB, dsID int64, g *graphContext, nearby []NearbyEntity) error {
-	ids := make([]int64, 0, len(nearby))
+func addToGraph(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	g *graphContext,
+	nearby []NearbyEntity) error {
+	ids := make([]int64,
+		0,
+		len(nearby))
 	for _, n := range nearby {
 		ids = append(ids, n.EntityID)
 	}
-	edges, err := graph.EdgesAround(ctx, d, dsID, ids, maxNearbyEdges)
+	edges, err := graph.EdgesAround(ctx,
+		d,
+		dsID,
+		ids,
+		maxNearbyEdges)
 	if err != nil {
 		return err
 	}
@@ -281,7 +395,9 @@ func addToGraph(ctx context.Context, d *sql.DB, dsID int64, g *graphContext, nea
 			missing = append(missing, id)
 		}
 	}
-	ents, err := graph.EntitiesByID(ctx, d, missing)
+	ents, err := graph.EntitiesByID(ctx,
+		d,
+		missing)
 	if err != nil {
 		return err
 	}
@@ -298,21 +414,44 @@ func addToGraph(ctx context.Context, d *sql.DB, dsID int64, g *graphContext, nea
 // search around, and adds the nearby entities to rc.Graph. What went wrong (a place that could not be looked up, ...) only
 // shortens the result: it is logged, and returned as the error, which Query records on the stage but otherwise ignores. The call
 // must have a geo resolver and ask for the search (co.GeoNearby).
-func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, userID, dataset string, dsID int64, rc *queryContext, places []QueryPlace, radiusKm float64) (*GeoContext, error) {
+func nearbyGeo(ctx context.Context,
+	d *sql.DB,
+	co memory_core.CallOptions,
+	tr *memory_core.Trace,
+	userID,
+	dataset string,
+	dsID int64,
+	rc *queryContext,
+	places []QueryPlace,
+	radiusKm float64) (*GeoContext, error) {
 	fields := log.Fields{"stage": "nearby_geo", "user_id": userID, "dataset": dataset}
 	names := make(map[int64]string, len(rc.Graph.matched))
 	for _, id := range rc.Graph.matched {
 		names[id] = rc.Graph.entities[id].Name
 	}
-	anchors, errs := findAnchors(ctx, d, dsID, co.GeoResolver, rc.Graph.matched, names, places)
+	anchors, errs := findAnchors(ctx,
+		d,
+		dsID,
+		co.GeoResolver,
+		rc.Graph.matched,
+		names,
+		places)
 	var nearby []NearbyEntity
 	if len(anchors) > 0 {
 		var more []string
-		nearby, more = searchNearby(ctx, d, dsID, anchors, radiusKm)
+		nearby, more = searchNearby(ctx,
+			d,
+			dsID,
+			anchors,
+			radiusKm)
 		errs = append(errs, more...)
 	}
 	if len(nearby) > 0 {
-		if err := addToGraph(ctx, d, dsID, rc.Graph, nearby); err != nil {
+		if err := addToGraph(ctx,
+			d,
+			dsID,
+			rc.Graph,
+			nearby); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
@@ -332,13 +471,19 @@ func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *m
 	if nearby == nil {
 		nearby = []NearbyEntity{}
 	}
-	gc := &GeoContext{RadiusKm: radiusKm, Anchors: anchors, Nearby: nearby}
+	gc := &GeoContext{
+		RadiusKm: radiusKm,
+		Anchors:  anchors,
+		Nearby:   nearby,
+	}
 	out := map[string]any{"radius_km": radiusKm, "anchors": anchors, "nearby": nearby}
 	if len(errs) > 0 {
 		out["errors"] = errs
 	}
-	tr.Tool("Looked up the geo entities near the places of the question, to give the LLM as context.", "nearby_geo",
-		map[string]any{"user_id": userID, "dataset": dataset, "radius_km": radiusKm}, out)
+	tr.Tool("Looked up the geo entities near the places of the question, to give the LLM as context.",
+		"nearby_geo",
+		map[string]any{"user_id": userID, "dataset": dataset, "radius_km": radiusKm},
+		out)
 	rc.Nearby = gc
 	return gc, failedErr
 }
@@ -347,7 +492,12 @@ func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *m
 func (g *GeoContext) render() string {
 	var sb strings.Builder
 	for _, n := range g.Nearby {
-		fmt.Fprintf(&sb, "[entity %d] %s is %s km from %s\n", n.EntityID, n.Name, strings.TrimSuffix(fmt.Sprintf("%.1f", n.DistanceKm), ".0"), n.Anchor)
+		fmt.Fprintf(&sb,
+			"[entity %d] %s is %s km from %s\n",
+			n.EntityID,
+			n.Name,
+			strings.TrimSuffix(fmt.Sprintf("%.1f", n.DistanceKm), ".0"),
+			n.Anchor)
 	}
 	return sb.String()
 }

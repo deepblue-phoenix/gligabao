@@ -21,7 +21,8 @@ type RawResponse struct {
 
 // Raw sends a Messages API payload as it is (so it can carry tools, tool results, ...) and returns the response.
 // "model" and "max_tokens" are filled in from the client's defaults if the payload leaves them out.
-func (c *Client) Raw(ctx context.Context, payload map[string]any) (*RawResponse, error) {
+func (c *Client) Raw(ctx context.Context,
+	payload map[string]any) (*RawResponse, error) {
 	if _, ok := payload["model"]; !ok {
 		payload["model"] = c.model
 	}

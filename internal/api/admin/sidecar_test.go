@@ -17,7 +17,8 @@ import (
 func TestSidecarBackendProxy(t *testing.T) {
 	release := make(chan struct{})
 	var gotMethod, gotURI string
-	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		gotMethod, gotURI = r.Method, r.URL.RequestURI()
 		if strings.HasSuffix(r.URL.Path, "/events") {
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -44,22 +45,31 @@ func TestSidecarBackendProxy(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Post(srv.URL+"/backends/modal/actions/deploy?x=1", "", nil)
+	resp, err := http.Post(srv.URL+"/backends/modal/actions/deploy?x=1",
+		"",
+		nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict || gotMethod != "POST" || gotURI != "/backends/modal/actions/deploy?x=1" {
-		t.Errorf("start: status %d, sidecar saw %s %s", resp.StatusCode, gotMethod, gotURI)
+		t.Errorf("start: status %d, sidecar saw %s %s",
+			resp.StatusCode,
+			gotMethod,
+			gotURI)
 	}
 
-	resp, err = http.Post(srv.URL+"/backends/modal/actions/deploy/cancel", "", nil)
+	resp, err = http.Post(srv.URL+"/backends/modal/actions/deploy/cancel",
+		"",
+		nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if gotMethod != "POST" || gotURI != "/backends/modal/actions/deploy/cancel" {
-		t.Errorf("cancel: sidecar saw %s %s", gotMethod, gotURI)
+		t.Errorf("cancel: sidecar saw %s %s",
+			gotMethod,
+			gotURI)
 	}
 
 	resp, err = http.Get(srv.URL + "/backends/modal/volumes")
@@ -68,7 +78,9 @@ func TestSidecarBackendProxy(t *testing.T) {
 	}
 	resp.Body.Close()
 	if gotMethod != "GET" || gotURI != "/backends/modal/volumes" {
-		t.Errorf("volumes: sidecar saw %s %s", gotMethod, gotURI)
+		t.Errorf("volumes: sidecar saw %s %s",
+			gotMethod,
+			gotURI)
 	}
 
 	resp, err = http.Get(srv.URL + "/backends/modal/apps")
@@ -77,16 +89,22 @@ func TestSidecarBackendProxy(t *testing.T) {
 	}
 	resp.Body.Close()
 	if gotMethod != "GET" || gotURI != "/backends/modal/apps" {
-		t.Errorf("apps: sidecar saw %s %s", gotMethod, gotURI)
+		t.Errorf("apps: sidecar saw %s %s",
+			gotMethod,
+			gotURI)
 	}
 
-	resp, err = http.Post(srv.URL+"/backends/modal/apps/gligabao-train-dev.1/actions/deploy", "", nil)
+	resp, err = http.Post(srv.URL+"/backends/modal/apps/gligabao-train-dev.1/actions/deploy",
+		"",
+		nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if gotMethod != "POST" || gotURI != "/backends/modal/apps/gligabao-train-dev.1/actions/deploy" {
-		t.Errorf("app action: sidecar saw %s %s", gotMethod, gotURI)
+		t.Errorf("app action: sidecar saw %s %s",
+			gotMethod,
+			gotURI)
 	}
 
 	resp, err = http.Get(srv.URL + "/backends/modal/actions/deploy/events?from=3")
@@ -95,7 +113,9 @@ func TestSidecarBackendProxy(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" || gotURI != "/backends/modal/actions/deploy/events?from=3" {
-		t.Errorf("events: content type %q, sidecar saw %s", ct, gotURI)
+		t.Errorf("events: content type %q, sidecar saw %s",
+			ct,
+			gotURI)
 	}
 	sc := bufio.NewScanner(resp.Body)
 	sc.Scan() // the first event arrives although the sidecar's stream is not finished
@@ -104,7 +124,9 @@ func TestSidecarBackendProxy(t *testing.T) {
 	}
 	close(release)
 
-	resp, err = http.Post(srv.URL+"/backends/mo.dal/actions/deploy", "", nil)
+	resp, err = http.Post(srv.URL+"/backends/mo.dal/actions/deploy",
+		"",
+		nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +135,9 @@ func TestSidecarBackendProxy(t *testing.T) {
 		t.Errorf("bad name: status %d, want 400", resp.StatusCode)
 	}
 
-	resp, err = http.Post(srv.URL+"/backends/modal/apps/-x/actions/deploy", "", nil)
+	resp, err = http.Post(srv.URL+"/backends/modal/apps/-x/actions/deploy",
+		"",
+		nil)
 	if err != nil {
 		t.Fatal(err)
 	}

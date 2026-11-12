@@ -21,9 +21,11 @@ import (
 )
 
 // researchManager makes a research manager over d whose LLM always answers with a report.
-func researchManager(t *testing.T, d *sql.DB) *agent_research.Manager {
+func researchManager(t *testing.T,
+	d *sql.DB) *agent_research.Manager {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		io.Copy(io.Discard, r.Body)
 		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"the report"}],"usage":{"input_tokens":1,"output_tokens":1}}`))
 	}))
@@ -32,30 +34,54 @@ func researchManager(t *testing.T, d *sql.DB) *agent_research.Manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := agent_research.NewManager(t.Context(), d, agent_research.SQLiteOps, client)
+	m := agent_research.NewManager(t.Context(),
+		d,
+		agent_research.SQLiteOps,
+		client)
 	t.Cleanup(m.Wait)
 	return m
 }
 
 func TestResearchRoutes(t *testing.T) { dbtest.Run(t, testResearchRoutes) }
 
-func testResearchRoutes(t *testing.T, d *sql.DB) {
+func testResearchRoutes(t *testing.T,
+	d *sql.DB) {
 	if !strings.HasSuffix(t.Name(), "sqlite") {
 		t.Skip("the research manager of this test is the sqlite one")
 	}
-	database := &db.DB{Relational: d, Graph: d}
+	database := &db.DB{
+		Relational: d,
+		Graph:      d,
+	}
 	m := researchManager(t, d)
 	keys := map[string]string{"key-alice": "alice", "key-bob": "bob"}
-	auth := func(_ context.Context, key string) (string, error) {
+	auth := func(_ context.Context,
+		key string) (string, error) {
 		if u, ok := keys[key]; ok {
 			return u, nil
 		}
 		return "", errors.New("unknown key")
 	}
 	mux := http.NewServeMux()
-	Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, WithAuth(auth), WithResearch(m))
-	do := func(key, method, path, body string) *httptest.ResponseRecorder {
-		req := newReq(method, path, strings.NewReader(body))
+	Register(mux,
+		mgrFor(t,
+			database,
+			nil),
+		database,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		WithAuth(auth),
+		WithResearch(m))
+	do := func(key,
+		method,
+		path,
+		body string) *httptest.ResponseRecorder {
+		req := newReq(method,
+			path,
+			strings.NewReader(body))
 		if key != "" {
 			req.Header.Set("Authorization", "Bearer "+key)
 		}
@@ -64,45 +90,85 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 		return rec
 	}
 
-	if rec := do("", "POST", "/v1/gb/research", `{"topic":"t"}`); rec.Code != 401 {
+	if rec := do("",
+		"POST",
+		"/v1/gb/research",
+		`{"topic":"t"}`); rec.Code != 401 {
 		t.Fatalf("no key: %d", rec.Code)
 	}
-	if rec := do("key-alice", "POST", "/v1/gb/research", `{"topic":"  "}`); rec.Code != 400 {
-		t.Fatalf("no topic: %d %s", rec.Code, rec.Body)
+	if rec := do("key-alice",
+		"POST",
+		"/v1/gb/research",
+		`{"topic":"  "}`); rec.Code != 400 {
+		t.Fatalf("no topic: %d %s",
+			rec.Code,
+			rec.Body)
 	}
-	if rec := do("key-alice", "POST", "/v1/gb/research", `{`); rec.Code != 400 {
+	if rec := do("key-alice",
+		"POST",
+		"/v1/gb/research",
+		`{`); rec.Code != 400 {
 		t.Fatalf("bad json: %d", rec.Code)
 	}
 
 	// The agent definitions: listed, and a request for an unknown one (or a bad cap) is refused.
-	if rec := do("", "GET", "/v1/gb/research/agents", ``); rec.Code != 401 {
+	if rec := do("",
+		"GET",
+		"/v1/gb/research/agents",
+		``); rec.Code != 401 {
 		t.Fatalf("agents without a key: %d", rec.Code)
 	}
-	rec := do("key-alice", "GET", "/v1/gb/research/agents", ``)
+	rec := do("key-alice",
+		"GET",
+		"/v1/gb/research/agents",
+		``)
 	var agents struct {
 		Agents []struct{ Name, Version, Hash, Source string } `json:"agents"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &agents); rec.Code != 200 || err != nil || len(agents.Agents) != 2 || agents.Agents[0].Name != "default" || agents.Agents[0].Source != "builtin" || len(agents.Agents[0].Hash) != 64 {
-		t.Fatalf("agents: %d %s", rec.Code, rec.Body)
+		t.Fatalf("agents: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	for _, body := range []string{`{"topic":"t","agent":"nobody"}`, `{"topic":"t","max_cost_usd":-1}`, `{"topic":"t","agent_version":">=9"}`} {
-		if rec := do("key-alice", "POST", "/v1/gb/research", body); rec.Code != 400 {
-			t.Fatalf("%s: %d %s", body, rec.Code, rec.Body)
+		if rec := do("key-alice",
+			"POST",
+			"/v1/gb/research",
+			body); rec.Code != 400 {
+			t.Fatalf("%s: %d %s",
+				body,
+				rec.Code,
+				rec.Body)
 		}
 	}
 
 	// The runner is local or modal; this manager has no way to run in Modal.
-	if rec := do("key-alice", "POST", "/v1/gb/research", `{"topic":"t","runner":"lambda"}`); rec.Code != 400 {
-		t.Fatalf("bad runner: %d %s", rec.Code, rec.Body)
+	if rec := do("key-alice",
+		"POST",
+		"/v1/gb/research",
+		`{"topic":"t","runner":"lambda"}`); rec.Code != 400 {
+		t.Fatalf("bad runner: %d %s",
+			rec.Code,
+			rec.Body)
 	}
-	if rec := do("key-alice", "POST", "/v1/gb/research", `{"topic":"t","runner":"modal"}`); rec.Code != 503 {
-		t.Fatalf("modal runner without the sidecar: %d %s", rec.Code, rec.Body)
+	if rec := do("key-alice",
+		"POST",
+		"/v1/gb/research",
+		`{"topic":"t","runner":"modal"}`); rec.Code != 503 {
+		t.Fatalf("modal runner without the sidecar: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 
 	// The user is the owner of the key, whatever user_id the caller sends.
-	rec = do("key-alice", "POST", "/v1/gb/research", `{"user_id":"mallory","topic":"batteries","max_steps":3}`)
+	rec = do("key-alice",
+		"POST",
+		"/v1/gb/research",
+		`{"user_id":"mallory","topic":"batteries","max_steps":3}`)
 	if rec.Code != http.StatusAccepted {
-		t.Fatalf("start: %d %s", rec.Code, rec.Body)
+		t.Fatalf("start: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	var started struct {
 		ID       int64  `json:"id"`
@@ -114,7 +180,10 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &started); err != nil || started.ID == 0 || started.UserID != "alice" || started.Status != "running" ||
 		started.State != "starting" || started.Topic != "batteries" || started.MaxSteps != 3 {
-		t.Fatalf("started: %+v (%v) %s", started, err, rec.Body)
+		t.Fatalf("started: %+v (%v) %s",
+			started,
+			err,
+			rec.Body)
 	}
 	m.Wait()
 
@@ -129,10 +198,15 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 		} `json:"states"`
 	}
 	path := "/v1/gb/research/" + strconv.FormatInt(started.ID, 10)
-	rec = do("key-alice", "GET", path, "")
+	rec = do("key-alice",
+		"GET",
+		path,
+		"")
 	var got run
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || got.Status != "completed" || got.Report != "the report" || got.State != "completed" {
-		t.Fatalf("get: %d %s", rec.Code, rec.Body)
+		t.Fatalf("get: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	var names []string
 	for _, s := range got.States {
@@ -143,47 +217,90 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 		t.Fatalf("states: %v", names)
 	}
 
-	if rec := do("key-bob", "GET", path, ""); rec.Code != 404 {
+	if rec := do("key-bob",
+		"GET",
+		path,
+		""); rec.Code != 404 {
 		t.Fatalf("another user's run: %d", rec.Code)
 	}
-	if rec := do("key-alice", "GET", "/v1/gb/research/0", ""); rec.Code != 400 {
+	if rec := do("key-alice",
+		"GET",
+		"/v1/gb/research/0",
+		""); rec.Code != 400 {
 		t.Fatalf("bad id: %d", rec.Code)
 	}
-	if rec := do("key-alice", "GET", "/v1/gb/research/999", ""); rec.Code != 404 {
+	if rec := do("key-alice",
+		"GET",
+		"/v1/gb/research/999",
+		""); rec.Code != 404 {
 		t.Fatalf("unknown id: %d", rec.Code)
 	}
 
 	var list struct {
 		Runs []run `json:"runs"`
 	}
-	rec = do("key-alice", "GET", "/v1/gb/research", "")
+	rec = do("key-alice",
+		"GET",
+		"/v1/gb/research",
+		"")
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &list) != nil || len(list.Runs) != 1 || list.Runs[0].ID != started.ID || list.Runs[0].States != nil {
-		t.Fatalf("list: %d %s", rec.Code, rec.Body)
+		t.Fatalf("list: %d %s",
+			rec.Code,
+			rec.Body)
 	}
 	for q, want := range map[string]int{"active=true": 0, "active=false": 1, "status=completed": 1, "status=failed": 0, "limit=1": 1} {
-		rec = do("key-alice", "GET", "/v1/gb/research?"+q, "")
+		rec = do("key-alice",
+			"GET",
+			"/v1/gb/research?"+q,
+			"")
 		list.Runs = nil
 		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &list) != nil || len(list.Runs) != want {
-			t.Fatalf("list ?%s: %d %s", q, rec.Code, rec.Body)
+			t.Fatalf("list ?%s: %d %s",
+				q,
+				rec.Code,
+				rec.Body)
 		}
 	}
-	if rec = do("key-bob", "GET", "/v1/gb/research", ""); !strings.Contains(rec.Body.String(), `"runs":[]`) {
+	if rec = do("key-bob",
+		"GET",
+		"/v1/gb/research",
+		""); !strings.Contains(rec.Body.String(), `"runs":[]`) {
 		t.Fatalf("bob's list: %s", rec.Body)
 	}
 	for _, q := range []string{"active=maybe", "limit=0", "limit=x", "status=bogus", "active=true&status=failed"} {
-		if rec = do("key-alice", "GET", "/v1/gb/research?"+q, ""); rec.Code != 400 {
-			t.Fatalf("list ?%s: %d", q, rec.Code)
+		if rec = do("key-alice",
+			"GET",
+			"/v1/gb/research?"+q,
+			""); rec.Code != 400 {
+			t.Fatalf("list ?%s: %d",
+				q,
+				rec.Code)
 		}
 	}
 }
 
 func TestResearchRoutesNeedTheManager(t *testing.T) {
-	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
-		database := &db.DB{Relational: d, Graph: d}
+	dbtest.Run(t, func(t *testing.T,
+		d *sql.DB) {
+		database := &db.DB{
+			Relational: d,
+			Graph:      d,
+		}
 		mux := http.NewServeMux()
-		Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil)
+		Register(mux,
+			mgrFor(t,
+				database,
+				nil),
+			database,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, newReq("GET", "/v1/gb/research?user_id=u", nil))
+		mux.ServeHTTP(rec, newReq("GET",
+			"/v1/gb/research?user_id=u",
+			nil))
 		if rec.Code != 404 {
 			t.Fatalf("status %d", rec.Code)
 		}
@@ -191,45 +308,92 @@ func TestResearchRoutesNeedTheManager(t *testing.T) {
 }
 
 func TestResearchNeedsAUserWithoutAuth(t *testing.T) {
-	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
+	dbtest.Run(t, func(t *testing.T,
+		d *sql.DB) {
 		if !strings.HasSuffix(t.Name(), "sqlite") {
 			t.Skip("sqlite manager")
 		}
-		database := &db.DB{Relational: d, Graph: d}
+		database := &db.DB{
+			Relational: d,
+			Graph:      d,
+		}
 		mux := http.NewServeMux()
-		Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, WithResearch(researchManager(t, d)))
+		Register(mux,
+			mgrFor(t,
+				database,
+				nil),
+			database,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			WithResearch(researchManager(t, d)))
 		for method, path := range map[string]string{"GET": "/v1/gb/research", "POST": "/v1/gb/research"} {
 			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(`{"topic":"t"}`)))
+			mux.ServeHTTP(rec, newReq(method,
+				path,
+				strings.NewReader(`{"topic":"t"}`)))
 			if rec.Code != 400 || !strings.Contains(rec.Body.String(), "gb-user-id") {
-				t.Fatalf("%s: %d %s", method, rec.Code, rec.Body)
+				t.Fatalf("%s: %d %s",
+					method,
+					rec.Code,
+					rec.Body)
 			}
 		}
 	})
 }
 
 func TestMCPResearchTools(t *testing.T) {
-	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
+	dbtest.Run(t, func(t *testing.T,
+		d *sql.DB) {
 		if !strings.HasSuffix(t.Name(), "sqlite") {
 			t.Skip("sqlite manager")
 		}
-		database := &db.DB{Relational: d, Graph: d}
+		database := &db.DB{
+			Relational: d,
+			Graph:      d,
+		}
 		m := researchManager(t, d)
 		mux := http.NewServeMux()
-		RegisterMCP(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, "test", WithResearch(m))
+		RegisterMCP(mux,
+			mgrFor(t,
+				database,
+				nil),
+			database,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			"test",
+			WithResearch(m))
 		srv := httptest.NewServer(mux)
 		defer srv.Close()
-		cs, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, nil).Connect(t.Context(),
-			&sdk.StreamableClientTransport{Endpoint: srv.URL + "/v1/gb/mcp", DisableStandaloneSSE: true}, nil)
+		cs, err := sdk.NewClient(&sdk.Implementation{
+			Name:    "test",
+			Version: "0",
+		}, nil).Connect(t.Context(),
+			&sdk.StreamableClientTransport{
+				Endpoint:             srv.URL + "/v1/gb/mcp",
+				DisableStandaloneSSE: true,
+			},
+			nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer cs.Close()
-		call := func(name string, args map[string]any) (map[string]any, string) {
+		call := func(name string,
+			args map[string]any) (map[string]any, string) {
 			t.Helper()
-			res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{Name: name, Arguments: args})
+			res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{
+				Name:      name,
+				Arguments: args,
+			})
 			if err != nil {
-				t.Fatalf("%s: %v", name, err)
+				t.Fatalf("%s: %v",
+					name,
+					err)
 			}
 			txt := res.Content[0].(*sdk.TextContent).Text
 			if res.IsError {
@@ -241,14 +405,18 @@ func TestMCPResearchTools(t *testing.T) {
 
 		out, txt := call("research_start", map[string]any{"user_id": "u1", "topic": "batteries", "max_steps": 2})
 		if out == nil || out["status"] != "running" || out["topic"] != "batteries" || out["user_id"] != "u1" {
-			t.Fatalf("start: %v %s", out, txt)
+			t.Fatalf("start: %v %s",
+				out,
+				txt)
 		}
 		id := out["id"]
 		m.Wait()
 
 		out, txt = call("research_get", map[string]any{"user_id": "u1", "id": id})
 		if out == nil || out["status"] != "completed" || out["report"] != "the report" || len(out["states"].([]any)) < 3 {
-			t.Fatalf("get: %v %s", out, txt)
+			t.Fatalf("get: %v %s",
+				out,
+				txt)
 		}
 		if _, txt = call("research_get", map[string]any{"user_id": "u2", "id": id}); !strings.Contains(txt, "not found") {
 			t.Fatalf("get of another user's: %s", txt)
@@ -268,21 +436,44 @@ func TestMCPResearchTools(t *testing.T) {
 }
 
 func TestMCPHasNoResearchToolsWithoutTheManager(t *testing.T) {
-	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
-		database := &db.DB{Relational: d, Graph: d}
+	dbtest.Run(t, func(t *testing.T,
+		d *sql.DB) {
+		database := &db.DB{
+			Relational: d,
+			Graph:      d,
+		}
 		mux := http.NewServeMux()
-		RegisterMCP(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, "test")
+		RegisterMCP(mux,
+			mgrFor(t,
+				database,
+				nil),
+			database,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			"test")
 		srv := httptest.NewServer(mux)
 		defer srv.Close()
-		cs, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, nil).Connect(t.Context(),
-			&sdk.StreamableClientTransport{Endpoint: srv.URL + "/v1/gb/mcp", DisableStandaloneSSE: true}, nil)
+		cs, err := sdk.NewClient(&sdk.Implementation{
+			Name:    "test",
+			Version: "0",
+		}, nil).Connect(t.Context(),
+			&sdk.StreamableClientTransport{
+				Endpoint:             srv.URL + "/v1/gb/mcp",
+				DisableStandaloneSSE: true,
+			},
+			nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer cs.Close()
 		res, err := cs.ListTools(t.Context(), nil)
 		if err != nil || len(res.Tools) != 2 {
-			t.Fatalf("tools: %+v %v", res, err)
+			t.Fatalf("tools: %+v %v",
+				res,
+				err)
 		}
 	})
 }

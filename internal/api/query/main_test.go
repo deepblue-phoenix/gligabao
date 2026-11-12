@@ -29,7 +29,8 @@ func TestMain(m *testing.M) {
 // should find only by topic ("employer" for "works at"), not by keyword.
 type topicEmbedder struct{}
 
-func (topicEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error) {
+func (topicEmbedder) EmbedBatchUsage(_ context.Context,
+	texts []string) ([][]float32, *ai.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
 		t = strings.ToLower(t)
@@ -46,7 +47,11 @@ func (topicEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]flo
 			out[i] = []float32{0, 0, 0, 0, 1}
 		}
 	}
-	return out, &ai.EmbedUsage{Provider: ai.ProviderOpenAI, Model: "test-embed", InputTokens: len(texts)}, nil
+	return out, &ai.EmbedUsage{
+		Provider:    ai.ProviderOpenAI,
+		Model:       "test-embed",
+		InputTokens: len(texts),
+	}, nil
 }
 
 // withVectors returns the option that gives a call a vector store of its own (in memory) and the topicEmbedder. The

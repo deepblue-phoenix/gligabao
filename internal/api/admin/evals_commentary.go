@@ -73,8 +73,13 @@ func commentable(c *core.CaseRun) bool {
 }
 
 // knowledgeCaseRunOf reads the case run id, which must be a knowledge one (anything else is not found).
-func knowledgeCaseRunOf(ctx context.Context, d *sql.DB, s evalsdb.Store, id int64) (*core.CaseRun, error) {
-	c, err := s.GetCaseRun(ctx, d, core.CaseRunID(id))
+func knowledgeCaseRunOf(ctx context.Context,
+	d *sql.DB,
+	s evalsdb.Store,
+	id int64) (*core.CaseRun, error) {
+	c, err := s.GetCaseRun(ctx,
+		d,
+		core.CaseRunID(id))
 	if err == nil && c.Type != core.TypeKnowledge {
 		err = evalsdb.ErrNotFound
 	}
@@ -83,16 +88,25 @@ func knowledgeCaseRunOf(ctx context.Context, d *sql.DB, s evalsdb.Store, id int6
 
 // caseDefOf returns the name of the eval of case run c, its case def (with its knowledge Meta; nil if it is gone) and the eval run
 // that holds the case run.
-func caseDefOf(ctx context.Context, d *sql.DB, s evalsdb.Store, c *core.CaseRun) (eval string, def *core.CaseDef, er *core.EvalRun, err error) {
-	er, err = s.GetEvalRun(ctx, d, c.EvalRunID)
+func caseDefOf(ctx context.Context,
+	d *sql.DB,
+	s evalsdb.Store,
+	c *core.CaseRun) (eval string, def *core.CaseDef, er *core.EvalRun, err error) {
+	er, err = s.GetEvalRun(ctx,
+		d,
+		c.EvalRunID)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	ed, err := s.GetEvalDef(ctx, d, er.DefID)
+	ed, err := s.GetEvalDef(ctx,
+		d,
+		er.DefID)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	full, err := s.GetEvalDefByName(ctx, d, ed.Name)
+	full, err := s.GetEvalDefByName(ctx,
+		d,
+		ed.Name)
 	if errors.Is(err, evalsdb.ErrNotFound) {
 		return ed.Name, nil, er, nil
 	}
@@ -112,30 +126,58 @@ func caseDefOf(ctx context.Context, d *sql.DB, s evalsdb.Store, c *core.CaseRun)
 // whether (and with which models) the case can be rerun (nil: it cannot). dir is the directory of the ATIF files (see EvalTrajectory), where
 // the warnings of the calls are read from. It also serves a case run that is still running (a rerun):
 // the checks are then empty. An unknown or non-knowledge case run is 404.
-func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, dir string, llm memory_core.LLM, rr EvalRerunner) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalCaseRunDebug(d *sql.DB,
+	s evalsdb.Store,
+	dir string,
+	llm memory_core.LLM,
+	rr EvalRerunner) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		ctx := r.Context()
-		c, err := knowledgeCaseRunOf(ctx, d, s, id)
+		c, err := knowledgeCaseRunOf(ctx,
+			d,
+			s,
+			id)
 		if err != nil {
-			evalFail(w, err, "case run")
+			evalFail(w,
+				err,
+				"case run")
 			return
 		}
-		eval, def, er, err := caseDefOf(ctx, d, s, c)
+		eval, def, er, err := caseDefOf(ctx,
+			d,
+			s,
+			c)
 		if err != nil {
-			evalFail(w, err, "case run")
+			evalFail(w,
+				err,
+				"case run")
 			return
 		}
 		m := knowledgeMeta(c)
 		out := evalCaseDebugResponse{
-			CaseRunID: id, Eval: eval, Status: c.Status, Verdict: c.Verdict, Error: c.Error, Answer: m.Answer,
-			Problems: orEmpty(m.Problems), PassedChecks: orEmpty(m.PassedChecks), Input: m.Input, DatasetID: m.DatasetID,
-			Commentable: commentable(c), CommentaryEnabled: llm != nil, DefaultModel: commentary.DefaultModel,
-			CostUSD: c.CostUSD, StartedAt: timeOr(c.StartedAt, c.CreatedAt), FinishedAt: c.FinishedAt, Rerun: rerunOf(er.Params),
-			RerunOptions: rerunInfo(rr),
+			CaseRunID:         id,
+			Eval:              eval,
+			Status:            c.Status,
+			Verdict:           c.Verdict,
+			Error:             c.Error,
+			Answer:            m.Answer,
+			Problems:          orEmpty(m.Problems),
+			PassedChecks:      orEmpty(m.PassedChecks),
+			Input:             m.Input,
+			DatasetID:         m.DatasetID,
+			Commentable:       commentable(c),
+			CommentaryEnabled: llm != nil,
+			DefaultModel:      commentary.DefaultModel,
+			CostUSD:           c.CostUSD,
+			StartedAt:         timeOr(c.StartedAt, c.CreatedAt),
+			FinishedAt:        c.FinishedAt,
+			Rerun:             rerunOf(er.Params),
+			RerunOptions:      rerunInfo(rr),
 		}
 		out.Warnings = trajectoryWarnings(m.Trajectories, dir)
 		if def != nil {
@@ -144,15 +186,27 @@ func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, dir string, llm memory_core.LL
 				out.Expected, out.Params = &dm.KnowledgeExpected, &dm.KnowledgeParams
 			}
 		}
-		if out.Reruns, err = rerunsOf(ctx, d, s, er, c.ID); err != nil {
-			evalFail(w, err, "reruns")
+		if out.Reruns, err = rerunsOf(ctx,
+			d,
+			s,
+			er,
+			c.ID); err != nil {
+			evalFail(w,
+				err,
+				"reruns")
 			return
 		}
-		if out.Commentaries, err = s.ListCaseCommentaries(ctx, d, c.ID); err != nil {
-			evalFail(w, err, "commentaries")
+		if out.Commentaries, err = s.ListCaseCommentaries(ctx,
+			d,
+			c.ID); err != nil {
+			evalFail(w,
+				err,
+				"commentaries")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -167,44 +221,72 @@ type commentaryRequest struct {
 // it (a core.CaseCommentary). It waits for the LLM. Asking again adds another commentary. The body is optional ({"model": ".."}).
 // Answers: 404 for an unknown case run, 400 for a case that did not fail or error, 503 without an LLM, 502 if the LLM call failed.
 // dir is the directory of the ATIF files (see EvalTrajectory); a trajectory whose file cannot be read is left out of the prompt.
-func EvalCaseRunCommentary(d *sql.DB, s evalsdb.Store, dir string, llm memory_core.LLM) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalCaseRunCommentary(d *sql.DB,
+	s evalsdb.Store,
+	dir string,
+	llm memory_core.LLM) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		var req commentaryRequest
-		if body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<16)); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "request body too large or unreadable")
+		if body, err := io.ReadAll(http.MaxBytesReader(w,
+			r.Body,
+			1<<16)); err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"request body too large or unreadable")
 			return
 		} else if len(strings.TrimSpace(string(body))) > 0 {
 			if err := json.Unmarshal(body, &req); err != nil {
-				httputil.Error(w, http.StatusBadRequest, "request body is not valid JSON")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"request body is not valid JSON")
 				return
 			}
 		}
 		if llm == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "no LLM is configured (the Anthropic API key is missing)")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"no LLM is configured (the Anthropic API key is missing)")
 			return
 		}
 		ctx := r.Context()
-		c, err := knowledgeCaseRunOf(ctx, d, s, id)
+		c, err := knowledgeCaseRunOf(ctx,
+			d,
+			s,
+			id)
 		if err != nil {
-			evalFail(w, err, "case run")
+			evalFail(w,
+				err,
+				"case run")
 			return
 		}
 		if !commentable(c) {
-			httputil.Error(w, http.StatusBadRequest, "only a case run that failed or errored can be commented on")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"only a case run that failed or errored can be commented on")
 			return
 		}
-		eval, def, _, err := caseDefOf(ctx, d, s, c)
+		eval, def, _, err := caseDefOf(ctx,
+			d,
+			s,
+			c)
 		if err != nil {
-			evalFail(w, err, "case run")
+			evalFail(w,
+				err,
+				"case run")
 			return
 		}
 		m := knowledgeMeta(c)
 		f := commentary.Failure{
-			Input: m.Input, Problems: m.Problems, Passed: m.PassedChecks, Answer: m.Answer, Trajectories: loadTrajectories(m.Trajectories, dir),
+			Input:        m.Input,
+			Problems:     m.Problems,
+			Passed:       m.PassedChecks,
+			Answer:       m.Answer,
+			Trajectories: loadTrajectories(m.Trajectories, dir),
 		}
 		if c.Error != "" {
 			f.Err = errors.New(c.Error)
@@ -220,31 +302,48 @@ func EvalCaseRunCommentary(d *sql.DB, s evalsdb.Store, dir string, llm memory_co
 		if model == "" {
 			model = commentary.DefaultModel
 		}
-		text, resp, err := commentary.Run(ctx, llm, model, 0, f)
+		text, resp, err := commentary.Run(ctx,
+			llm,
+			model,
+			0,
+			f)
 		if err != nil {
 			log.WithError(err).WithField("case_run_id", id).Error("admin: eval commentary failed")
-			httputil.Error(w, http.StatusBadGateway, "the commentary could not be written: "+err.Error())
+			httputil.Error(w,
+				http.StatusBadGateway,
+				"the commentary could not be written: "+err.Error())
 			return
 		}
 		out := core.CaseCommentary{
-			CaseRunID: c.ID, Model: resp.Model, Text: strings.TrimSpace(text), InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens,
-			CostUSD: resp.CostUSD,
+			CaseRunID:    c.ID,
+			Model:        resp.Model,
+			Text:         strings.TrimSpace(text),
+			InputTokens:  resp.InputTokens,
+			OutputTokens: resp.OutputTokens,
+			CostUSD:      resp.CostUSD,
 		}
 		if out.Model == "" {
 			out.Model = model
 		}
 		// The commentary was paid for: store it even if the browser has gone away.
-		if err := s.CreateCaseCommentary(context.WithoutCancel(ctx), d, &out); err != nil {
-			evalFail(w, err, "commentary")
+		if err := s.CreateCaseCommentary(context.WithoutCancel(ctx),
+			d,
+			&out); err != nil {
+			evalFail(w,
+				err,
+				"commentary")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // trajectoryWarnings are the warnings (the "warnings" of the extra) of the trajectories of a case run, each once, in call order. A
 // trajectory whose file cannot be read has none.
-func trajectoryWarnings(refs []core.KnowledgeTrajectory, dir string) []string {
+func trajectoryWarnings(refs []core.KnowledgeTrajectory,
+	dir string) []string {
 	var out []string
 	for _, t := range loadTrajectories(refs, dir) {
 		ws, _ := t.Extra["warnings"].([]any)
@@ -259,7 +358,8 @@ func trajectoryWarnings(refs []core.KnowledgeTrajectory, dir string) []string {
 
 // loadTrajectories reads the ATIF files of the trajectory references (see readTrajectoryFile); the ones that cannot be read or
 // decoded are left out.
-func loadTrajectories(refs []core.KnowledgeTrajectory, dir string) []*atif.Trajectory {
+func loadTrajectories(refs []core.KnowledgeTrajectory,
+	dir string) []*atif.Trajectory {
 	var out []*atif.Trajectory
 	for i := range refs {
 		data, err := readTrajectoryFile(&refs[i], dir)

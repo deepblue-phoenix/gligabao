@@ -55,7 +55,8 @@ type Generation struct {
 }
 
 // GenerateFunc asks the trained model a prompt. Run calls it for one question at a time, never in parallel.
-type GenerateFunc func(ctx context.Context, prompt string) (Generation, error)
+type GenerateFunc func(ctx context.Context,
+	prompt string) (Generation, error)
 
 // Config says how a run goes.
 type Config struct {
@@ -137,7 +138,9 @@ func (p Progress) MeanScore() float64 {
 }
 
 // Sink receives the cases of every finished batch with the progress after it. An error from it stops the run.
-type Sink func(ctx context.Context, cases []CaseResult, p Progress) error
+type Sink func(ctx context.Context,
+	cases []CaseResult,
+	p Progress) error
 
 // Run puts the questions to the model and has the judge grade the answers. The questions go in batches of cfg.BatchSize: the model
 // answers the questions of a batch (one at a time: parallel calls can start more GPU containers that each load the model), then ONE
@@ -145,19 +148,31 @@ type Sink func(ctx context.Context, cases []CaseResult, p Progress) error
 // failure of one question (the model errors, the judge gives no verdict) marks that case errored and the run goes on; a run that
 // only gets failures stops with an error. When ctx ends the run stops with its error, without reporting the batch it was in. The
 // Progress reached is returned along with any error.
-func Run(ctx context.Context, cfg Config, questions []Question, gen GenerateFunc, judge LLM, sink Sink) (Progress, error) {
+func Run(ctx context.Context,
+	cfg Config,
+	questions []Question,
+	gen GenerateFunc,
+	judge LLM,
+	sink Sink) (Progress, error) {
 	cfg, err := cfg.Normalize()
 	if err != nil {
 		return Progress{}, err
 	}
-	p := Progress{Total: len(questions)}
+	p := Progress{
+		Total: len(questions),
+	}
 	var badAnswerBatches, badJudgeBatches int
 	for start, batchNo := 0, 1; start < len(questions); start, batchNo = start+cfg.BatchSize, batchNo+1 {
 		if err := ctx.Err(); err != nil {
 			return p, err
 		}
 		end := min(start+cfg.BatchSize, len(questions))
-		cases := answerBatch(ctx, questions[start:end], start, batchNo, gen, cfg.OnAnswer)
+		cases := answerBatch(ctx,
+			questions[start:end],
+			start,
+			batchNo,
+			gen,
+			cfg.OnAnswer)
 		if err := ctx.Err(); err != nil {
 			return p, err
 		}
@@ -168,7 +183,11 @@ func Run(ctx context.Context, cfg Config, questions []Question, gen GenerateFunc
 			}
 		}
 		p.Answered += answered
-		judgeErr := judgeBatch(ctx, cfg, judge, cases, &p)
+		judgeErr := judgeBatch(ctx,
+			cfg,
+			judge,
+			cases,
+			&p)
 		if err := ctx.Err(); err != nil {
 			p.Answered -= answered // the batch is not reported
 			return p, err
@@ -194,20 +213,26 @@ func Run(ctx context.Context, cfg Config, questions []Question, gen GenerateFunc
 				p.Incorrect++
 			}
 		}
-		if err := sink(ctx, cases, p); err != nil {
+		if err := sink(ctx,
+			cases,
+			p); err != nil {
 			return p, err
 		}
 
 		if answered == 0 {
 			if badAnswerBatches++; badAnswerBatches >= maxFailedAnswerBatches {
-				return p, fmt.Errorf("the model failed to answer %d batches in a row, giving up: %s", badAnswerBatches, lastErr)
+				return p, fmt.Errorf("the model failed to answer %d batches in a row, giving up: %s",
+					badAnswerBatches,
+					lastErr)
 			}
 		} else {
 			badAnswerBatches = 0
 		}
 		if answered > 0 && judgeErr != nil {
 			if badJudgeBatches++; badJudgeBatches >= maxFailedJudgeBatches {
-				return p, fmt.Errorf("the judge failed to grade %d batches in a row, giving up: %w", badJudgeBatches, judgeErr)
+				return p, fmt.Errorf("the judge failed to grade %d batches in a row, giving up: %w",
+					badJudgeBatches,
+					judgeErr)
 			}
 		} else if answered > 0 {
 			badJudgeBatches = 0
@@ -218,11 +243,23 @@ func Run(ctx context.Context, cfg Config, questions []Question, gen GenerateFunc
 
 // answerBatch asks the model the questions (the first one is question number first), one after the other. A case whose question
 // failed has Status CaseErrored. When ctx ends, the questions not asked yet fail with its error.
-func answerBatch(ctx context.Context, questions []Question, first, batchNo int, gen GenerateFunc, onAnswer func(CaseResult)) []CaseResult {
+func answerBatch(ctx context.Context,
+	questions []Question,
+	first,
+	batchNo int,
+	gen GenerateFunc,
+	onAnswer func(CaseResult)) []CaseResult {
 	cases := make([]CaseResult, len(questions))
 	for i, q := range questions {
 		it := &cases[i]
-		*it = CaseResult{Idx: first + i, Batch: batchNo, Instruction: q.Instruction, Input: q.Input, Reference: q.Reference, StartedAt: time.Now().UTC()}
+		*it = CaseResult{
+			Idx:         first + i,
+			Batch:       batchNo,
+			Instruction: q.Instruction,
+			Input:       q.Input,
+			Reference:   q.Reference,
+			StartedAt:   time.Now().UTC(),
+		}
 		if err := ctx.Err(); err != nil {
 			it.Status, it.Error = CaseErrored, "model: "+err.Error()
 			continue
@@ -245,7 +282,11 @@ func answerBatch(ctx context.Context, questions []Question, first, batchNo int, 
 // judgeBatch grades the answered cases of a batch with one call to the judge (a second one for the cases the first call left
 // without a verdict), filling in their Score and Reason; the ones it cannot grade become errored. The judge's usage is added to p.
 // It returns the last error of the judge if some case could not be graded because of it, nil otherwise.
-func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []CaseResult, p *Progress) error {
+func judgeBatch(ctx context.Context,
+	cfg Config,
+	judge LLM,
+	cases []CaseResult,
+	p *Progress) error {
 	var pending []int // indices into cases
 	for i := range cases {
 		if cases[i].Status != CaseErrored {
@@ -256,12 +297,20 @@ func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []CaseResult, 
 	for attempt := 0; attempt < judgeAttempts && len(pending) > 0 && ctx.Err() == nil; attempt++ {
 		send := make([]judgeCase, len(pending))
 		for k, i := range pending {
-			send[k] = judgeCase{ID: k + 1, Question: cases[i].Instruction, Reference: cases[i].Reference, Answer: cases[i].Response}
+			send[k] = judgeCase{
+				ID:        k + 1,
+				Question:  cases[i].Instruction,
+				Reference: cases[i].Reference,
+				Answer:    cases[i].Response,
+			}
 			if cases[i].Input != "" {
 				send[k].Question += "\n\n" + cases[i].Input
 			}
 		}
-		verdicts, resp, err := grade(ctx, judge, send, cfg.JudgeModel)
+		verdicts, resp, err := grade(ctx,
+			judge,
+			send,
+			cfg.JudgeModel)
 		if resp != nil {
 			p.JudgeCalls++
 			p.JudgeInputTokens += resp.InputTokens

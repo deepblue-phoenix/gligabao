@@ -28,10 +28,16 @@ const maxTrainingJobBody = 1 << 16
 // (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
 // (trainingdb.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
 // rejects as invalid answers 400 with its message.
-func StartJobOf(db *sql.DB, datasetDirs []string, sc core.JobStarter, mon *core.Monitor) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func StartJobOf(db *sql.DB,
+	datasetDirs []string,
+	sc core.JobStarter,
+	mon *core.Monitor) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		if sc == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"sidecar is not active")
 			return
 		}
 		// Only these fields come from the client; the dataset's content is added from the dataset's file.
@@ -40,17 +46,32 @@ func StartJobOf(db *sql.DB, datasetDirs []string, sc core.JobStarter, mon *core.
 			ModelSize     string `json:"model_size"`
 			Dataset       string `json:"dataset"`
 		}
-		body := http.MaxBytesReader(w, r.Body, maxTrainingJobBody)
+		body := http.MaxBytesReader(w,
+			r.Body,
+			maxTrainingJobBody)
 		if err := json.NewDecoder(body).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body")
 			return
 		}
-		run, err := core.StartJob(r.Context(), db, datasetDirs, sc, mon, core.StartJobRequest{NumTrainSteps: in.NumTrainSteps, ModelSize: in.ModelSize, Dataset: in.Dataset})
+		run, err := core.StartJob(r.Context(),
+			db,
+			datasetDirs,
+			sc,
+			mon,
+			core.StartJobRequest{
+				NumTrainSteps: in.NumTrainSteps,
+				ModelSize:     in.ModelSize,
+				Dataset:       in.Dataset,
+			})
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusCreated, run)
+		httputil.WriteJSON(w,
+			http.StatusCreated,
+			run)
 	}
 }
 
@@ -58,22 +79,31 @@ func StartJobOf(db *sql.DB, datasetDirs []string, sc core.JobStarter, mon *core.
 // job ends at its next step (or at the next stage of its setup) with a "cancelled" event, which the monitor records like
 // any other: the answer is 202 with {"id": <run>, "status": "stopping"}, and the job's row changes when the event arrives.
 // 404 is for an unknown run, 409 for one that is over already, 503 for a nil sc, 502 for a sidecar error.
-func StopJobOf(db *sql.DB, sc core.JobCanceller) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func StopJobOf(db *sql.DB,
+	sc core.JobCanceller) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		if sc == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"sidecar is not active")
 			return
 		}
-		run, err := core.StopJob(r.Context(), db, sc, id)
+		run, err := core.StopJob(r.Context(),
+			db,
+			sc,
+			id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusAccepted, map[string]any{"id": run.ID, "status": "stopping"})
+		httputil.WriteJSON(w,
+			http.StatusAccepted,
+			map[string]any{"id": run.ID, "status": "stopping"})
 	}
 }
 
@@ -86,18 +116,29 @@ const (
 // ListJobsOf serves GET /v1/gb/training/jobs[?limit=<n>]: {"jobs": [...]}, the training job runs
 // , newest first, at most limit (default 50, at most 500).
 func ListJobsOf(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		limit, ok := limitParam(w, r, trainingJobsDefaultLimit, trainingJobsMaxLimit)
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		limit, ok := limitParam(w,
+			r,
+			trainingJobsDefaultLimit,
+			trainingJobsMaxLimit)
 		if !ok {
 			return
 		}
-		runs, err := trainingdb.ListTrainingJobRuns(r.Context(), db, limit, false)
+		runs, err := trainingdb.ListTrainingJobRuns(r.Context(),
+			db,
+			limit,
+			false)
 		if err != nil {
 			log.WithError(err).Error("training: list training jobs failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to list the training jobs")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to list the training jobs")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"jobs": runs})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"jobs": runs})
 	}
 }
 
@@ -109,18 +150,26 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 // reconnecting EventSource sends, or from the `from` parameter), then the live ones; each has `id: <seq>`. The stream
 // stays open after the run's last event; the client closes it. Without run_id it is the live events of all the runs of the
 // database, to follow the list of jobs (no history, no ids).
-func EventsOf(db *sql.DB, mon *core.Monitor) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EventsOf(db *sql.DB,
+	mon *core.Monitor) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		if mon == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "training is not available")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"training is not available")
 			return
 		}
 		var runID int64
 		if s := q.Get("run_id"); s != "" {
-			v, err := strconv.ParseInt(s, 10, 64)
+			v, err := strconv.ParseInt(s,
+				10,
+				64)
 			if err != nil || v < 1 {
-				httputil.Error(w, http.StatusBadRequest, "run_id must be a positive integer")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"run_id must be a positive integer")
 				return
 			}
 			runID = v
@@ -142,7 +191,10 @@ func EventsOf(db *sql.DB, mon *core.Monitor) http.HandlerFunc {
 		var history []core.FeedEvent
 		if runID != 0 {
 			var err error
-			if history, err = core.JobHistory(r.Context(), db, runID, from); err != nil {
+			if history, err = core.JobHistory(r.Context(),
+				db,
+				runID,
+				from); err != nil {
 				writeErr(w, err)
 				return
 			}

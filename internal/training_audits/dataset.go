@@ -47,7 +47,9 @@ func ParseExamples(content []byte) ([]Example, error) {
 		}
 		var e Example
 		if err := json.Unmarshal(line, &e); err != nil {
-			return nil, fmt.Errorf("line %d is not a dataset record: %w", i+1, err)
+			return nil, fmt.Errorf("line %d is not a dataset record: %w",
+				i+1,
+				err)
 		}
 		if strings.TrimSpace(e.Instruction) == "" {
 			return nil, fmt.Errorf("line %d has no instruction", i+1)
@@ -72,7 +74,8 @@ type Dataset struct {
 // LoadDataset reads the training dataset of a trained model from the training datasets directory dir. trainedDataset is the
 // model's dataset as the model records it (its file name, "" if it was trained on the sidecar's default dataset). The errors are
 // safe to show to the user.
-func LoadDataset(dirs []string, trainedDataset string) (*Dataset, error) {
+func LoadDataset(dirs []string,
+	trainedDataset string) (*Dataset, error) {
 	name := strings.TrimSuffix(trainedDataset, ".jsonl")
 	if name == "" {
 		return nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")
@@ -87,12 +90,20 @@ func LoadDataset(dirs []string, trainedDataset string) (*Dataset, error) {
 		return nil, fmt.Errorf("the data file of dataset %s cannot be read", name)
 	}
 	if len(content) > training.MaxDatasetBytes {
-		return nil, fmt.Errorf("the data file of dataset %s is over %d MB", name, training.MaxDatasetBytes>>20)
+		return nil, fmt.Errorf("the data file of dataset %s is over %d MB",
+			name,
+			training.MaxDatasetBytes>>20)
 	}
 	examples, err := ParseExamples(content)
 	if err != nil {
-		return nil, fmt.Errorf("dataset %s: %w", name, err)
+		return nil, fmt.Errorf("dataset %s: %w",
+			name,
+			err)
 	}
 	h := sha256.Sum256(content)
-	return &Dataset{Name: name, SHA256: hex.EncodeToString(h[:]), Examples: examples}, nil
+	return &Dataset{
+		Name:     name,
+		SHA256:   hex.EncodeToString(h[:]),
+		Examples: examples,
+	}, nil
 }

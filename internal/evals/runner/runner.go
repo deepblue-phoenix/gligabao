@@ -25,13 +25,20 @@ type Runner struct {
 }
 
 // New returns a Runner for d, a database with the schema applied (see evals.Open), whose backend is the one of store.
-func New(d *sql.DB, store db.Store) *Runner { return &Runner{DB: d, Store: store} }
+func New(d *sql.DB,
+	store db.Store) *Runner {
+	return &Runner{
+		DB:    d,
+		Store: store,
+	}
+}
 
 // now is the current time in the precision of the storage of every backend.
 func now() time.Time { return time.Now().UTC().Truncate(time.Second) }
 
 // tx runs f in a transaction: committed if it returns nil, rolled back otherwise.
-func (r *Runner) tx(ctx context.Context, f func(q db.Execer) error) error {
+func (r *Runner) tx(ctx context.Context,
+	f func(q db.Execer) error) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -48,7 +55,9 @@ func (r *Runner) tx(ctx context.Context, f func(q db.Execer) error) error {
 // case that fails is recorded as errored and the run goes on, unless it cannot go on (the model is down): then Execute returns
 // an error and the eval run is errored. When ctx ends it returns the error of ctx and the eval run is cancelled.
 type Executor interface {
-	Execute(ctx context.Context, rec *EvalRecorder, def *core.EvalDef) error
+	Execute(ctx context.Context,
+		rec *EvalRecorder,
+		def *core.EvalDef) error
 }
 
 // EvalOptions say how an eval run is started.
@@ -69,23 +78,40 @@ type EvalOptions struct {
 // RunEval runs the cases of def (def.Cases; the caller selects them) with ex as one eval run: it records the eval run, calls
 // ex.Execute, and ends the run completed, errored (ex failed) or cancelled (ctx ended). It returns the eval run as it was left,
 // and the error of ex if it had one; an error of the database is returned as it is (and the run may be left running).
-func (r *Runner) RunEval(ctx context.Context, def *core.EvalDef, ex Executor, opts EvalOptions) (*core.EvalRun, error) {
+func (r *Runner) RunEval(ctx context.Context,
+	def *core.EvalDef,
+	ex Executor,
+	opts EvalOptions) (*core.EvalRun, error) {
 	start := now()
 	run := &core.EvalRun{
-		DefID: def.ID, Type: def.Type, ExperimentRunID: opts.ExperimentRunID, Status: core.StatusRunning, Params: opts.Params,
-		Counts: core.Counts{Total: len(def.Cases), Pending: len(def.Cases)},
-		Timing: core.Timing{CreatedAt: start, StartedAt: &start},
-		Meta:   opts.Meta,
+		DefID:           def.ID,
+		Type:            def.Type,
+		ExperimentRunID: opts.ExperimentRunID,
+		Status:          core.StatusRunning,
+		Params:          opts.Params,
+		Counts: core.Counts{
+			Total:   len(def.Cases),
+			Pending: len(def.Cases),
+		},
+		Timing: core.Timing{
+			CreatedAt: start,
+			StartedAt: &start,
+		},
+		Meta: opts.Meta,
 	}
 	err := r.tx(ctx, func(q db.Execer) error {
-		if err := r.Store.CreateEvalRun(ctx, q, run); err != nil {
+		if err := r.Store.CreateEvalRun(ctx,
+			q,
+			run); err != nil {
 			return err
 		}
 		if run.Meta == nil {
 			return nil
 		}
 		setEvalRunID(run.Meta, run.ID)
-		return r.Store.CreateEvalRunMeta(ctx, q, run.Meta)
+		return r.Store.CreateEvalRunMeta(ctx,
+			q,
+			run.Meta)
 	})
 	if err != nil {
 		return nil, err
@@ -93,8 +119,13 @@ func (r *Runner) RunEval(ctx context.Context, def *core.EvalDef, ex Executor, op
 	if opts.OnCreated != nil {
 		opts.OnCreated(run)
 	}
-	rec := &EvalRecorder{r: r, run: run}
-	execErr := ex.Execute(ctx, rec, def)
+	rec := &EvalRecorder{
+		r:   r,
+		run: run,
+	}
+	execErr := ex.Execute(ctx,
+		rec,
+		def)
 	end := now()
 	run.FinishedAt = &end
 	switch {
@@ -113,7 +144,8 @@ func (r *Runner) RunEval(ctx context.Context, def *core.EvalDef, ex Executor, op
 
 // setEvalRunID sets the EvalRunID of a metadata struct that the caller gave by pointer (a value cannot be set; the run's
 // metadata must be a pointer for the executor to update it).
-func setEvalRunID(m core.EvalRunMeta, id core.EvalRunID) {
+func setEvalRunID(m core.EvalRunMeta,
+	id core.EvalRunID) {
 	switch m := m.(type) {
 	case *core.KnowledgeEvalRunMeta:
 		m.EvalRunID = id
@@ -122,7 +154,8 @@ func setEvalRunID(m core.EvalRunMeta, id core.EvalRunID) {
 	}
 }
 
-func setCaseRunID(m core.CaseRunMeta, id core.CaseRunID) {
+func setCaseRunID(m core.CaseRunMeta,
+	id core.CaseRunID) {
 	switch m := m.(type) {
 	case *core.KnowledgeCaseRunMeta:
 		m.CaseRunID = id
@@ -143,12 +176,17 @@ type EvalRecorder struct {
 func (e *EvalRecorder) Run() *core.EvalRun { return e.run }
 
 // save rewrites the eval run and its Meta.
-func (e *EvalRecorder) save(ctx context.Context, q db.Execer) error {
-	if err := e.r.Store.UpdateEvalRun(ctx, q, e.run); err != nil {
+func (e *EvalRecorder) save(ctx context.Context,
+	q db.Execer) error {
+	if err := e.r.Store.UpdateEvalRun(ctx,
+		q,
+		e.run); err != nil {
 		return err
 	}
 	if e.run.Meta != nil {
-		return e.r.Store.UpdateEvalRunMeta(ctx, q, e.run.Meta)
+		return e.r.Store.UpdateEvalRunMeta(ctx,
+			q,
+			e.run.Meta)
 	}
 	return nil
 }
@@ -157,16 +195,30 @@ func (e *EvalRecorder) save(ctx context.Context, q db.Execer) error {
 func (e *EvalRecorder) Save(ctx context.Context) error { return e.save(ctx, e.r.DB) }
 
 // StartCase records that the case def starts: a case run, running. Pass it to FinishCase when the case is over.
-func (e *EvalRecorder) StartCase(ctx context.Context, def core.CaseDef) (*core.CaseRun, error) {
+func (e *EvalRecorder) StartCase(ctx context.Context,
+	def core.CaseDef) (*core.CaseRun, error) {
 	start := now()
-	cr := &core.CaseRun{DefID: def.ID, EvalRunID: e.run.ID, Type: def.Type, Status: core.StatusRunning, Timing: core.Timing{CreatedAt: start, StartedAt: &start}}
+	cr := &core.CaseRun{
+		DefID:     def.ID,
+		EvalRunID: e.run.ID,
+		Type:      def.Type,
+		Status:    core.StatusRunning,
+		Timing: core.Timing{
+			CreatedAt: start,
+			StartedAt: &start,
+		},
+	}
 	e.run.Counts.Pending--
 	e.run.Counts.Running++
 	err := e.r.tx(ctx, func(q db.Execer) error {
-		if err := e.r.Store.CreateCaseRun(ctx, q, cr); err != nil {
+		if err := e.r.Store.CreateCaseRun(ctx,
+			q,
+			cr); err != nil {
 			return err
 		}
-		return e.r.Store.UpdateEvalRun(ctx, q, e.run)
+		return e.r.Store.UpdateEvalRun(ctx,
+			q,
+			e.run)
 	})
 	if err != nil {
 		e.run.Counts.Pending++
@@ -179,9 +231,13 @@ func (e *EvalRecorder) StartCase(ctx context.Context, def core.CaseDef) (*core.C
 // FinishCase records the end of a case run that StartCase made. The caller has set its Status (completed, errored or cancelled; a
 // case that did not run to the end has no verdict or score), Error, Verdict, Score and CostUSD. meta is the metadata of its Type,
 // stored with it (nil for none); its case run ID is set here. The eval run is rewritten with its Counts and cost updated.
-func (e *EvalRecorder) FinishCase(ctx context.Context, cr *core.CaseRun, meta core.CaseRunMeta) error {
+func (e *EvalRecorder) FinishCase(ctx context.Context,
+	cr *core.CaseRun,
+	meta core.CaseRunMeta) error {
 	if !cr.Status.Finished() {
-		return fmt.Errorf("finish case run %d: status %q is not final", cr.ID, cr.Status)
+		return fmt.Errorf("finish case run %d: status %q is not final",
+			cr.ID,
+			cr.Status)
 	}
 	end := now()
 	cr.FinishedAt = &end
@@ -189,12 +245,16 @@ func (e *EvalRecorder) FinishCase(ctx context.Context, cr *core.CaseRun, meta co
 	e.run.Counts.Running--
 	e.count(cr)
 	err := e.r.tx(ctx, func(q db.Execer) error {
-		if err := e.r.Store.UpdateCaseRun(ctx, q, cr); err != nil {
+		if err := e.r.Store.UpdateCaseRun(ctx,
+			q,
+			cr); err != nil {
 			return err
 		}
 		if meta != nil {
 			setCaseRunID(meta, cr.ID)
-			if err := e.r.Store.CreateCaseRunMeta(ctx, q, meta); err != nil {
+			if err := e.r.Store.CreateCaseRunMeta(ctx,
+				q,
+				meta); err != nil {
 				return err
 			}
 		}
@@ -216,11 +276,14 @@ type CaseRecord struct {
 
 // RecordCases records case runs that were not started one by one (the executor did the cases in a batch): each is created already
 // final, with its metadata, in one transaction with the rewrite of the eval run, whose Counts and cost are updated by them.
-func (e *EvalRecorder) RecordCases(ctx context.Context, cases []CaseRecord) error {
+func (e *EvalRecorder) RecordCases(ctx context.Context,
+	cases []CaseRecord) error {
 	counts, cost := e.run.Counts, e.run.CostUSD
 	for _, c := range cases {
 		if !c.Run.Status.Finished() {
-			return fmt.Errorf("record case run of case def %d: status %q is not final", c.Run.DefID, c.Run.Status)
+			return fmt.Errorf("record case run of case def %d: status %q is not final",
+				c.Run.DefID,
+				c.Run.Status)
 		}
 		e.run.Counts.Pending--
 		e.count(c.Run)
@@ -232,12 +295,16 @@ func (e *EvalRecorder) RecordCases(ctx context.Context, cases []CaseRecord) erro
 				end := now()
 				c.Run.FinishedAt = &end
 			}
-			if err := e.r.Store.CreateCaseRun(ctx, q, c.Run); err != nil {
+			if err := e.r.Store.CreateCaseRun(ctx,
+				q,
+				c.Run); err != nil {
 				return err
 			}
 			if c.Meta != nil {
 				setCaseRunID(c.Meta, c.Run.ID)
-				if err := e.r.Store.CreateCaseRunMeta(ctx, q, c.Meta); err != nil {
+				if err := e.r.Store.CreateCaseRunMeta(ctx,
+					q,
+					c.Meta); err != nil {
 					return err
 				}
 			}

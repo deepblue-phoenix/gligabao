@@ -116,7 +116,8 @@ func (v Investigate) WorkerContextTokensOrDefault() int {
 // MaxParallelOrDefault is the most workers at once (1: no delegation).
 func (v Investigate) MaxParallelOrDefault() int { return orDefault(v.MaxParallel, 1) }
 
-func orDefault(v, def int) int {
+func orDefault(v,
+	def int) int {
 	if v > 0 {
 		return v
 	}
@@ -152,7 +153,8 @@ const (
 
 // WithDefaults returns c with every unset number replaced by its default (MaxCalls is then never nil).
 func (c Code) WithDefaults() Code {
-	pick := func(v, def int) int {
+	pick := func(v,
+		def int) int {
 		if v > 0 {
 			return v
 		}

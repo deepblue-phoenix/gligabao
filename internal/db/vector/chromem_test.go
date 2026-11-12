@@ -28,19 +28,44 @@ func ids(ms []Match) []string {
 func TestChromemUpsertQuery(t *testing.T) {
 	ctx := context.Background()
 	s := newTestChromem(t)
-	err := s.Upsert(ctx, "main", []Vector{
-		{ID: "x", Values: []float32{1, 0, 0}, Metadata: map[string]any{"type": "person"}},
-		{ID: "y", Values: []float32{0, 1, 0}, Metadata: map[string]any{"type": "org"}},
-		{ID: "xy", Values: []float32{1, 1, 0}, Metadata: map[string]any{"type": "person"}},
-	})
+	err := s.Upsert(ctx,
+		"main",
+		[]Vector{
+			{
+				ID:       "x",
+				Values:   []float32{1, 0, 0},
+				Metadata: map[string]any{"type": "person"},
+			},
+			{
+				ID:       "y",
+				Values:   []float32{0, 1, 0},
+				Metadata: map[string]any{"type": "org"},
+			},
+			{
+				ID:       "xy",
+				Values:   []float32{1, 1, 0},
+				Metadata: map[string]any{"type": "person"},
+			},
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Upsert(ctx, "other", []Vector{{ID: "x", Values: []float32{0, 0, 1}}}); err != nil {
+	if err := s.Upsert(ctx,
+		"other",
+		[]Vector{{
+			ID:     "x",
+			Values: []float32{0, 0, 1},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := s.Query(ctx, "main", []float32{1, 0.1, 0}, QueryOptions{TopK: 2, IncludeValues: true})
+	got, err := s.Query(ctx,
+		"main",
+		[]float32{1, 0.1, 0},
+		QueryOptions{
+			TopK:          2,
+			IncludeValues: true,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,20 +77,34 @@ func TestChromemUpsertQuery(t *testing.T) {
 	}
 
 	// Datasets are isolated.
-	got, _ = s.Query(ctx, "other", []float32{1, 0, 0}, QueryOptions{})
+	got, _ = s.Query(ctx,
+		"other",
+		[]float32{1, 0, 0},
+		QueryOptions{})
 	if len(got) != 1 || got[0].ID != "x" || got[0].Score > 0.01 {
 		t.Fatalf("got %+v", got)
 	}
 
 	// Filter.
-	got, err = s.Query(ctx, "main", []float32{0, 1, 0}, QueryOptions{TopK: 5, Filter: map[string]any{"type": map[string]any{"$eq": "person"}}})
+	got, err = s.Query(ctx,
+		"main",
+		[]float32{0, 1, 0},
+		QueryOptions{
+			TopK:   5,
+			Filter: map[string]any{"type": map[string]any{"$eq": "person"}},
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if g := ids(got); len(g) != 2 || g[0] != "xy" || g[1] != "x" {
 		t.Fatalf("got %v", g)
 	}
-	if _, err := s.Query(ctx, "main", []float32{0, 1, 0}, QueryOptions{Filter: map[string]any{"n": map[string]any{"$gt": 1}}}); err == nil {
+	if _, err := s.Query(ctx,
+		"main",
+		[]float32{0, 1, 0},
+		QueryOptions{
+			Filter: map[string]any{"n": map[string]any{"$gt": 1}},
+		}); err == nil {
 		t.Error("expected error for unsupported operator")
 	}
 }
@@ -73,11 +112,26 @@ func TestChromemUpsertQuery(t *testing.T) {
 func TestChromemUpsertReplaces(t *testing.T) {
 	ctx := context.Background()
 	s := newTestChromem(t)
-	s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1, 0, 0}, Metadata: map[string]any{"v": 1}}})
-	if err := s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{0, 1, 0}, Metadata: map[string]any{"v": 2}}}); err != nil {
+	s.Upsert(ctx,
+		"n",
+		[]Vector{{
+			ID:       "a",
+			Values:   []float32{1, 0, 0},
+			Metadata: map[string]any{"v": 1},
+		}})
+	if err := s.Upsert(ctx,
+		"n",
+		[]Vector{{
+			ID:       "a",
+			Values:   []float32{0, 1, 0},
+			Metadata: map[string]any{"v": 2},
+		}}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.Query(ctx, "n", []float32{0, 1, 0}, QueryOptions{})
+	got, _ := s.Query(ctx,
+		"n",
+		[]float32{0, 1, 0},
+		QueryOptions{})
 	if len(got) != 1 || got[0].Score < 0.99 || got[0].Metadata["v"] != float64(2) {
 		t.Fatalf("got %+v", got)
 	}
@@ -86,22 +140,46 @@ func TestChromemUpsertReplaces(t *testing.T) {
 func TestChromemDelete(t *testing.T) {
 	ctx := context.Background()
 	s := newTestChromem(t)
-	s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1, 0, 0}}, {ID: "b", Values: []float32{0, 1, 0}}})
-	s.Upsert(ctx, "m", []Vector{{ID: "a", Values: []float32{1, 0, 0}}})
-	if err := s.Delete(ctx, "n", []string{"a", "nope"}); err != nil {
+	s.Upsert(ctx,
+		"n",
+		[]Vector{{
+			ID:     "a",
+			Values: []float32{1, 0, 0},
+		}, {
+			ID:     "b",
+			Values: []float32{0, 1, 0},
+		}})
+	s.Upsert(ctx,
+		"m",
+		[]Vector{{
+			ID:     "a",
+			Values: []float32{1, 0, 0},
+		}})
+	if err := s.Delete(ctx,
+		"n",
+		[]string{"a", "nope"}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.Query(ctx, "n", []float32{1, 0, 0}, QueryOptions{})
+	got, _ := s.Query(ctx,
+		"n",
+		[]float32{1, 0, 0},
+		QueryOptions{})
 	if g := ids(got); len(g) != 1 || g[0] != "b" {
 		t.Fatalf("got %v", g)
 	}
 	if err := s.DeleteAll(ctx, "n"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = s.Query(ctx, "n", []float32{1, 0, 0}, QueryOptions{}); len(got) != 0 {
+	if got, _ = s.Query(ctx,
+		"n",
+		[]float32{1, 0, 0},
+		QueryOptions{}); len(got) != 0 {
 		t.Fatalf("got %v", ids(got))
 	}
-	if got, _ = s.Query(ctx, "m", []float32{1, 0, 0}, QueryOptions{}); len(got) != 1 {
+	if got, _ = s.Query(ctx,
+		"m",
+		[]float32{1, 0, 0},
+		QueryOptions{}); len(got) != 1 {
 		t.Fatalf("other dataset affected: %v", ids(got))
 	}
 }
@@ -109,13 +187,25 @@ func TestChromemDelete(t *testing.T) {
 func TestChromemErrors(t *testing.T) {
 	ctx := context.Background()
 	s := newTestChromem(t)
-	if err := s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1}}}); err == nil {
+	if err := s.Upsert(ctx,
+		"n",
+		[]Vector{{
+			ID:     "a",
+			Values: []float32{1},
+		}}); err == nil {
 		t.Error("expected dimension error")
 	}
-	if err := s.Upsert(ctx, "n", []Vector{{Values: []float32{1, 0, 0}}}); err == nil {
+	if err := s.Upsert(ctx,
+		"n",
+		[]Vector{{
+			Values: []float32{1, 0, 0},
+		}}); err == nil {
 		t.Error("expected empty ID error")
 	}
-	if _, err := s.Query(ctx, "n", []float32{1}, QueryOptions{}); err == nil {
+	if _, err := s.Query(ctx,
+		"n",
+		[]float32{1},
+		QueryOptions{}); err == nil {
 		t.Error("expected dimension error")
 	}
 }
@@ -127,7 +217,12 @@ func TestChromemPersistsAndChecksDimensions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1, 0, 0}}})
+	s.Upsert(ctx,
+		"n",
+		[]Vector{{
+			ID:     "a",
+			Values: []float32{1, 0, 0},
+		}})
 	s.Close()
 
 	if _, err := NewChromem(path, 4); err == nil {
@@ -138,7 +233,10 @@ func TestChromemPersistsAndChecksDimensions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if got, _ := s.Query(ctx, "n", []float32{1, 0, 0}, QueryOptions{}); len(got) != 1 {
+	if got, _ := s.Query(ctx,
+		"n",
+		[]float32{1, 0, 0},
+		QueryOptions{}); len(got) != 1 {
 		t.Fatalf("got %v", ids(got))
 	}
 }
@@ -148,13 +246,25 @@ func TestChromemStats(t *testing.T) {
 	s := newTestChromem(t)
 	st, err := s.Stats(ctx, "main")
 	if err != nil || st.Count != 0 || st.Dimensions != 3 || st.Backend != "chromem" {
-		t.Fatalf("empty: %+v %v", st, err)
+		t.Fatalf("empty: %+v %v",
+			st,
+			err)
 	}
-	if err := s.Upsert(ctx, "main", []Vector{{ID: "a", Values: []float32{1, 0, 0}}, {ID: "b", Values: []float32{0, 1, 0}}}); err != nil {
+	if err := s.Upsert(ctx,
+		"main",
+		[]Vector{{
+			ID:     "a",
+			Values: []float32{1, 0, 0},
+		}, {
+			ID:     "b",
+			Values: []float32{0, 1, 0},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 	if st, err = s.Stats(ctx, "main"); err != nil || st.Count != 2 || st.Bytes != 24 {
-		t.Fatalf("stats: %+v %v", st, err)
+		t.Fatalf("stats: %+v %v",
+			st,
+			err)
 	}
 	if st, _ = s.Stats(ctx, "other"); st.Count != 0 {
 		t.Fatalf("other: %+v", st)
@@ -170,18 +280,30 @@ func TestChromemStatsStorage(t *testing.T) {
 		t.Fatalf("empty: %+v", st)
 	}
 	before := time.Now().Add(-time.Minute)
-	if err := s.Upsert(ctx, "main", []Vector{{ID: "a", Values: []float32{1, 0, 0}}}); err != nil {
+	if err := s.Upsert(ctx,
+		"main",
+		[]Vector{{
+			ID:     "a",
+			Values: []float32{1, 0, 0},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := s.Stats(ctx, "main")
 	if err != nil || st.DiskBytes <= 0 || st.LastWrite == nil || st.LastWrite.Before(before) {
-		t.Fatalf("stats: %+v %v", st, err)
+		t.Fatalf("stats: %+v %v",
+			st,
+			err)
 	}
 	mem, err := NewChromem(":memory:", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mem.Upsert(ctx, "main", []Vector{{ID: "a", Values: []float32{1, 0, 0}}}); err != nil {
+	if err := mem.Upsert(ctx,
+		"main",
+		[]Vector{{
+			ID:     "a",
+			Values: []float32{1, 0, 0},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 	if st, _ := mem.Stats(ctx, "main"); st.Count != 1 || st.DiskBytes != 0 || st.LastWrite != nil {

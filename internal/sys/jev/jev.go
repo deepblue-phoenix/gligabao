@@ -63,11 +63,19 @@ func WithModel(m string) Option {
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.httpClient = h } }
 
 // New creates a Client using the given TypeSafe API key (see config.Config).
-func New(apiKey string, opts ...Option) (*Client, error) {
+func New(apiKey string,
+	opts ...Option) (*Client, error) {
 	if apiKey == "" {
 		return nil, errors.New("jev: missing API key (set JEV_API_KEY)")
 	}
-	c := &Client{apiKey: apiKey, baseURL: DefaultBaseURL, model: DefaultModel, httpClient: &http.Client{Timeout: defaultTimeout}}
+	c := &Client{
+		apiKey:  apiKey,
+		baseURL: DefaultBaseURL,
+		model:   DefaultModel,
+		httpClient: &http.Client{
+			Timeout: defaultTimeout,
+		},
+	}
 	for _, o := range opts {
 		o(c)
 	}
@@ -121,13 +129,22 @@ type Call struct {
 // Evaluate asks questions (keyed by ids of your choice) about state (a string, or structured data) in one request.
 // The Call is valid even if the returned error is not nil, so latency can be measured for failures too. A call is not
 // retried: the latency is the latency of one request.
-func (c *Client) Evaluate(ctx context.Context, state any, questions map[string]Question) (*Response, Call, error) {
+func (c *Client) Evaluate(ctx context.Context,
+	state any,
+	questions map[string]Question) (*Response, Call, error) {
 	start := time.Now()
-	resp, err := c.evaluate(ctx, state, questions)
-	return resp, Call{Started: start, Latency: time.Since(start)}, err
+	resp, err := c.evaluate(ctx,
+		state,
+		questions)
+	return resp, Call{
+		Started: start,
+		Latency: time.Since(start),
+	}, err
 }
 
-func (c *Client) evaluate(ctx context.Context, state any, questions map[string]Question) (*Response, error) {
+func (c *Client) evaluate(ctx context.Context,
+	state any,
+	questions map[string]Question) (*Response, error) {
 	body, err := json.Marshal(struct {
 		State     any                 `json:"state"`
 		Model     string              `json:"model"`
@@ -136,7 +153,10 @@ func (c *Client) evaluate(ctx context.Context, state any, questions map[string]Q
 	if err != nil {
 		return nil, fmt.Errorf("jev: marshal request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+evalPath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodPost,
+		c.baseURL+evalPath,
+		bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("jev: build request: %w", err)
 	}
@@ -153,7 +173,9 @@ func (c *Client) evaluate(ctx context.Context, state any, questions map[string]Q
 		return nil, fmt.Errorf("jev: read response: %w", err)
 	}
 	if hr.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("jev: status %d: %s", hr.StatusCode, truncate(strings.TrimSpace(string(data)), 300))
+		return nil, fmt.Errorf("jev: status %d: %s",
+			hr.StatusCode,
+			truncate(strings.TrimSpace(string(data)), 300))
 	}
 	var r Response
 	if err := json.Unmarshal(data, &r); err != nil {
@@ -163,7 +185,8 @@ func (c *Client) evaluate(ctx context.Context, state any, questions map[string]Q
 	return &r, nil
 }
 
-func truncate(s string, n int) string {
+func truncate(s string,
+	n int) string {
 	if len(s) <= n {
 		return s
 	}

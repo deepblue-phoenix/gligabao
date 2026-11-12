@@ -20,10 +20,13 @@ type startRequest struct {
 }
 
 // writeErr answers with the status of the Kind of err (500 for any other error).
-func writeErr(w http.ResponseWriter, err error) {
+func writeErr(w http.ResponseWriter,
+	err error) {
 	var e *agent_research.Error
 	if !errors.As(err, &e) {
-		httputil.Error(w, http.StatusInternalServerError, "internal error")
+		httputil.Error(w,
+			http.StatusInternalServerError,
+			"internal error")
 		return
 	}
 	status := http.StatusInternalServerError
@@ -37,14 +40,19 @@ func writeErr(w http.ResponseWriter, err error) {
 	case agent_research.KindUnavailable:
 		status = http.StatusServiceUnavailable
 	}
-	httputil.Error(w, status, e.Msg)
+	httputil.Error(w,
+		status,
+		e.Msg)
 }
 
 // user validates the user of a request (see httputil.UserID), answering 400 itself if it is not valid.
-func user(w http.ResponseWriter, userID string) (string, bool) {
+func user(w http.ResponseWriter,
+	userID string) (string, bool) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return "", false
 	}
 	return userID, true
@@ -62,30 +70,42 @@ func user(w http.ResponseWriter, userID string) (string, bool) {
 //
 // 400 for a bad body, 409 when the user has 3 agents working already, 503 without an Anthropic API key.
 func Start(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		var req startRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		if err := json.NewDecoder(http.MaxBytesReader(w,
+			r.Body,
+			maxBodyBytes)).Decode(&req); err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body: "+err.Error())
 			return
 		}
 		userID, ok := user(w, httputil.UserID(r))
 		if !ok {
 			return
 		}
-		run, err := m.Start(r.Context(), userID, req.Options)
+		run, err := m.Start(r.Context(),
+			userID,
+			req.Options)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusAccepted, run)
+		httputil.WriteJSON(w,
+			http.StatusAccepted,
+			run)
 	}
 }
 
 // Agents serves GET /v1/gb/research/agents: {"agents": [...]}, the agent definitions a research can run (the "agent" of the start
 // request): name, version, description, the hash of the content, the file it came from, and its main settings (see agent_research.AgentInfo).
 func Agents(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"agents": m.Agents()})
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"agents": m.Agents()})
 	}
 }
 
@@ -94,25 +114,34 @@ func Agents(m *agent_research.Manager) http.HandlerFunc {
 // the agents that are working now; with status those with that status (not together with active); with parent_id only the
 // sub-agents (workers of the investigative loop) that the run with that id started. Sub-agents are agents like any other and are in the list (with parent_id and name set).
 func List(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		userID, ok := user(w, httputil.UserID(r))
 		if !ok {
 			return
 		}
-		opts := agent_research.ListOptions{Status: q.Get("status")}
+		opts := agent_research.ListOptions{
+			Status: q.Get("status"),
+		}
 		if s := q.Get("active"); s != "" {
 			active, err := strconv.ParseBool(s)
 			if err != nil {
-				httputil.Error(w, http.StatusBadRequest, "active must be true or false")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"active must be true or false")
 				return
 			}
 			opts.Active = active
 		}
 		if s := q.Get("parent_id"); s != "" {
-			n, err := strconv.ParseInt(s, 10, 64)
+			n, err := strconv.ParseInt(s,
+				10,
+				64)
 			if err != nil || n < 1 {
-				httputil.Error(w, http.StatusBadRequest, "parent_id must be a positive integer")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"parent_id must be a positive integer")
 				return
 			}
 			opts.ParentID = n
@@ -120,38 +149,53 @@ func List(m *agent_research.Manager) http.HandlerFunc {
 		if s := q.Get("limit"); s != "" {
 			n, err := strconv.Atoi(s)
 			if err != nil || n < 1 {
-				httputil.Error(w, http.StatusBadRequest, "limit must be a positive integer")
+				httputil.Error(w,
+					http.StatusBadRequest,
+					"limit must be a positive integer")
 				return
 			}
 			opts.Limit = n
 		}
-		runs, err := m.List(r.Context(), userID, opts)
+		runs, err := m.List(r.Context(),
+			userID,
+			opts)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"runs": runs})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"runs": runs})
 	}
 }
 
 // Get serves GET /v1/gb/research/{id}: the agent (core.Run) with its states, in the order it entered them, to follow what
 // it does. The report is in it once the status is "completed". 404 for an unknown id, or the one of another user's agent.
 func Get(m *agent_research.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		userID, ok := user(w, httputil.UserID(r))
 		if !ok {
 			return
 		}
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		id, err := strconv.ParseInt(r.PathValue("id"),
+			10,
+			64)
 		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "id must be a positive integer")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"id must be a positive integer")
 			return
 		}
-		run, err := m.Get(r.Context(), userID, id)
+		run, err := m.Get(r.Context(),
+			userID,
+			id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, run)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			run)
 	}
 }

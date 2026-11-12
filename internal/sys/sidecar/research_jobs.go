@@ -36,12 +36,16 @@ type StartResearchJobRequest struct {
 
 // StartResearchJob starts the agent in Modal through POST /research/job_start. The sidecar answers 503 (a *StatusError) when the app
 // it fronts has no agent function (the binary was not there when it was deployed).
-func (c *Client) StartResearchJob(ctx context.Context, req StartResearchJobRequest) (ResearchJob, error) {
+func (c *Client) StartResearchJob(ctx context.Context,
+	req StartResearchJobRequest) (ResearchJob, error) {
 	var out ResearchJob
 	if strings.TrimSpace(req.Topic) == "" {
 		return out, errors.New("sidecar: topic is required")
 	}
-	if err := c.post(ctx, "/research/job_start", req, &out); err != nil {
+	if err := c.post(ctx,
+		"/research/job_start",
+		req,
+		&out); err != nil {
 		return out, err
 	}
 	if strings.TrimSpace(out.JobID) == "" {
@@ -52,14 +56,18 @@ func (c *Client) StartResearchJob(ctx context.Context, req StartResearchJobReque
 
 // CancelResearchJob asks the sidecar to stop a research job (POST /research/job_cancel). The container ends the agent and the job ends
 // with a "cancelled" event. 404 for a job the sidecar does not know and 409 for one that is over (a *StatusError).
-func (c *Client) CancelResearchJob(ctx context.Context, jobID string) error {
+func (c *Client) CancelResearchJob(ctx context.Context,
+	jobID string) error {
 	if strings.TrimSpace(jobID) == "" {
 		return errors.New("sidecar: job_id is required")
 	}
 	var out struct {
 		Status string `json:"status"`
 	}
-	return c.post(ctx, "/research/job_cancel", map[string]string{"job_id": jobID}, &out)
+	return c.post(ctx,
+		"/research/job_cancel",
+		map[string]string{"job_id": jobID},
+		&out)
 }
 
 // Statuses of a ResearchEvent.
@@ -128,15 +136,23 @@ func (e ResearchEvent) Finished() bool {
 
 // StreamResearchJobEvents follows a research job: it calls GET /research/job_events (Server-Sent Events) and calls fn with each event,
 // from the one with index `from` on. The results are those of StreamTrainingJobEvents.
-func (c *Client) StreamResearchJobEvents(ctx context.Context, jobID string, from int, fn func(ResearchEvent) error) error {
-	return c.streamEvents(ctx, "/research/job_events", jobID, from, func(seq int, data []byte) error {
-		var ev ResearchEvent
-		if err := json.Unmarshal(data, &ev); err != nil {
-			return fmt.Errorf("sidecar GET /research/job_events: decode event: %w", err)
-		}
-		ev.Seq = seq
-		return fn(ev)
-	})
+func (c *Client) StreamResearchJobEvents(ctx context.Context,
+	jobID string,
+	from int,
+	fn func(ResearchEvent) error) error {
+	return c.streamEvents(ctx,
+		"/research/job_events",
+		jobID,
+		from,
+		func(seq int,
+			data []byte) error {
+			var ev ResearchEvent
+			if err := json.Unmarshal(data, &ev); err != nil {
+				return fmt.Errorf("sidecar GET /research/job_events: decode event: %w", err)
+			}
+			ev.Seq = seq
+			return fn(ev)
+		})
 }
 
 // DownloadResearchExport streams the export file of a research job from the sidecar into w (GET /research/job_export): the archive
@@ -144,23 +160,37 @@ func (c *Client) StreamResearchJobEvents(ctx context.Context, jobID string, from
 // a *StatusError (404 if the job has no export, 400 for a bad job ID) or a transport error; a body that ends early is an error too, but
 // w may already have got part of the file, so the caller must not trust w after an error (check the size and SHA-256 of the event's
 // ResearchExport as well).
-func (c *Client) DownloadResearchExport(ctx context.Context, jobID string, w io.Writer) (int64, error) {
+func (c *Client) DownloadResearchExport(ctx context.Context,
+	jobID string,
+	w io.Writer) (int64, error) {
 	if strings.TrimSpace(jobID) == "" {
 		return 0, errors.New("sidecar: job_id is required")
 	}
 	const path = "/research/job_export"
-	resp, err := c.Open(ctx, http.MethodGet, path, url.Values{"job_id": {jobID}}.Encode(), nil)
+	resp, err := c.Open(ctx,
+		http.MethodGet,
+		path,
+		url.Values{"job_id": {jobID}}.Encode(),
+		nil)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return 0, &StatusError{Method: http.MethodGet, Path: path, Code: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return 0, &StatusError{
+			Method: http.MethodGet,
+			Path:   path,
+			Code:   resp.StatusCode,
+			Body:   strings.TrimSpace(string(body)),
+		}
 	}
 	n, err := io.Copy(w, resp.Body)
 	if err != nil {
-		return n, fmt.Errorf("sidecar GET %s %s: reading the body: %w", path, jobID, err)
+		return n, fmt.Errorf("sidecar GET %s %s: reading the body: %w",
+			path,
+			jobID,
+			err)
 	}
 	return n, nil
 }

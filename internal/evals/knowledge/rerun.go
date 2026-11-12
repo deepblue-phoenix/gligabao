@@ -52,7 +52,9 @@ func NewRerunner(env server.EvalRerunEnv) admin.EvalRerunner {
 	if env.LLM == nil || env.DBPath == "" {
 		return nil
 	}
-	return &Rerunner{env: env}
+	return &Rerunner{
+		env: env,
+	}
 }
 
 // Models implements admin.EvalRerunner: the LLM models of the price table.
@@ -89,7 +91,9 @@ func (r *Rerunner) release() {
 // new case run as soon as it is recorded (running); follow it through the eval database. The errors are ErrNotFound (no such case
 // run), core.ErrRerunRefused (it cannot be rerun, the error says why), core.ErrRerunBusy, memory_core.ErrInvalidModels,
 // memory_core.ErrInvalidReasoning, or a failure of the database.
-func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.RerunOptions) (core.CaseRunID, error) {
+func (r *Rerunner) Rerun(ctx context.Context,
+	src core.CaseRunID,
+	opts core.RerunOptions) (core.CaseRunID, error) {
 	rememberModels, queryModels, err := PipelineModels(opts.RememberModel, opts.QueryModel)
 	if err != nil {
 		return 0, err
@@ -109,7 +113,11 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.Reru
 	}()
 
 	// Opened like the runner opens it, geo index included (the runner has geo on unless told not to), and closed when the rerun ends.
-	database, err := dbfull.Open(db.Config{SQLitePath: r.env.DBPath, Geo: true, Models: ai.SupportedModels(r.env.Prices)})
+	database, err := dbfull.Open(db.Config{
+		SQLitePath: r.env.DBPath,
+		Geo:        true,
+		Models:     ai.SupportedModels(r.env.Prices),
+	})
 	if err != nil {
 		return 0, fmt.Errorf("open the eval database: %w", err)
 	}
@@ -124,7 +132,9 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.Reru
 		return 0, err
 	}
 	rn := runner.New(database.Relational, store)
-	p, err := planRerun(ctx, rn, src)
+	p, err := planRerun(ctx,
+		rn,
+		src)
 	if err != nil {
 		return 0, err
 	}
@@ -135,10 +145,18 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.Reru
 	}
 	params["cases"] = []string{p.def.Cases[0].Name}
 	params[core.ParamRerunOf] = int64(src)
-	setOrDelete(params, core.ParamRememberModel, opts.RememberModel)
-	setOrDelete(params, core.ParamQueryModel, opts.QueryModel)
-	setOrDelete(params, core.ParamRememberReasoning, strings.ToLower(strings.TrimSpace(opts.RememberReasoning)))
-	setOrDelete(params, core.ParamQueryReasoning, strings.ToLower(strings.TrimSpace(opts.QueryReasoning)))
+	setOrDelete(params,
+		core.ParamRememberModel,
+		opts.RememberModel)
+	setOrDelete(params,
+		core.ParamQueryModel,
+		opts.QueryModel)
+	setOrDelete(params,
+		core.ParamRememberReasoning,
+		strings.ToLower(strings.TrimSpace(opts.RememberReasoning)))
+	setOrDelete(params,
+		core.ParamQueryReasoning,
+		strings.ToLower(strings.TrimSpace(opts.QueryReasoning)))
 
 	var geo memory_geo.Resolver
 	if on, ok := params["geo"].(bool); !ok || on {
@@ -148,11 +166,18 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.Reru
 	}
 	started := make(chan core.CaseRunID, 1)
 	ex := &Executor{
-		DB: database, LLM: r.env.LLM, Embedder: r.env.Embedder, WebSearch: r.env.WebSearch, Geo: geo,
-		Models: stringMap(params["models"]), Reasoning: stringMap(params["reasoning"]),
-		RememberModels: rememberModels, QueryModels: queryModels,
-		RememberReasoning: rememberReasoning, QueryReasoning: queryReasoning,
-		TrajectoryDir: memory_core.TrajectoryDir,
+		DB:                database,
+		LLM:               r.env.LLM,
+		Embedder:          r.env.Embedder,
+		WebSearch:         r.env.WebSearch,
+		Geo:               geo,
+		Models:            stringMap(params["models"]),
+		Reasoning:         stringMap(params["reasoning"]),
+		RememberModels:    rememberModels,
+		QueryModels:       queryModels,
+		RememberReasoning: rememberReasoning,
+		QueryReasoning:    queryReasoning,
+		TrajectoryDir:     memory_core.TrajectoryDir,
 		OnCaseStart: func(cr *core.CaseRun) {
 			select {
 			case started <- cr.ID:
@@ -167,8 +192,15 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.Reru
 		defer r.wg.Done()
 		defer r.release()
 		defer database.Close()
-		opts := runner.EvalOptions{ExperimentRunID: p.evalRun.ExperimentRunID, Params: params, Meta: &core.KnowledgeEvalRunMeta{}}
-		run, err := rn.RunEval(r.env.Ctx, p.def, ex, opts)
+		opts := runner.EvalOptions{
+			ExperimentRunID: p.evalRun.ExperimentRunID,
+			Params:          params,
+			Meta:            &core.KnowledgeEvalRunMeta{},
+		}
+		run, err := rn.RunEval(r.env.Ctx,
+			p.def,
+			ex,
+			opts)
 		if run != nil && p.experiment != nil {
 			// Recorded even if the server is shutting down: the run is in the experiment, so its counts must be too.
 			if addErr := p.experiment.Add(context.WithoutCancel(r.env.Ctx), run); addErr != nil {
@@ -211,12 +243,19 @@ type rerunPlan struct {
 
 // planRerun reads the case run src and checks that it can be rerun: it is a knowledge case run that has ended, its experiment run (if
 // any) has ended, and its case still exists.
-func planRerun(ctx context.Context, rn *runner.Runner, src core.CaseRunID) (*rerunPlan, error) {
-	refuse := func(format string, args ...any) error {
-		return fmt.Errorf("%w: %s", core.ErrRerunRefused, fmt.Sprintf(format, args...))
+func planRerun(ctx context.Context,
+	rn *runner.Runner,
+	src core.CaseRunID) (*rerunPlan, error) {
+	refuse := func(format string,
+		args ...any) error {
+		return fmt.Errorf("%w: %s",
+			core.ErrRerunRefused,
+			fmt.Sprintf(format, args...))
 	}
 	q, s := rn.DB, rn.Store
-	cr, err := s.GetCaseRun(ctx, q, src)
+	cr, err := s.GetCaseRun(ctx,
+		q,
+		src)
 	if err != nil {
 		return nil, err
 	}
@@ -226,11 +265,15 @@ func planRerun(ctx context.Context, rn *runner.Runner, src core.CaseRunID) (*rer
 	if !cr.Status.Finished() {
 		return nil, refuse("the case run has not ended (it is %s)", cr.Status)
 	}
-	er, err := s.GetEvalRun(ctx, q, cr.EvalRunID)
+	er, err := s.GetEvalRun(ctx,
+		q,
+		cr.EvalRunID)
 	if err != nil {
 		return nil, err
 	}
-	p := &rerunPlan{evalRun: er}
+	p := &rerunPlan{
+		evalRun: er,
+	}
 	if er.ExperimentRunID != nil {
 		if p.experiment, err = rn.ResumeExperimentRun(ctx, *er.ExperimentRunID); err != nil {
 			return nil, err
@@ -239,11 +282,15 @@ func planRerun(ctx context.Context, rn *runner.Runner, src core.CaseRunID) (*rer
 			return nil, refuse("its experiment run is still %s: wait for it to end", st)
 		}
 	}
-	ed, err := s.GetEvalDef(ctx, q, er.DefID)
+	ed, err := s.GetEvalDef(ctx,
+		q,
+		er.DefID)
 	if err != nil {
 		return nil, err
 	}
-	full, err := s.GetEvalDefByName(ctx, q, ed.Name)
+	full, err := s.GetEvalDefByName(ctx,
+		q,
+		ed.Name)
 	if errors.Is(err, evalsdb.ErrNotFound) || err == nil && full.ID != ed.ID {
 		return nil, refuse("the eval %q no longer exists", ed.Name)
 	}
@@ -275,7 +322,9 @@ func planRerun(ctx context.Context, rn *runner.Runner, src core.CaseRunID) (*rer
 		if a.Text != "" {
 			meta.Remember[i].TextFile = "" // the text is there: the file is only where it came from
 		} else if a.TextFile != "" {
-			return nil, refuse("remember #%d is the file %s, which was not read when the case ran", i+1, a.TextFile)
+			return nil, refuse("remember #%d is the file %s, which was not read when the case ran",
+				i+1,
+				a.TextFile)
 		}
 	}
 	rc := *c
@@ -287,7 +336,9 @@ func planRerun(ctx context.Context, rn *runner.Runner, src core.CaseRunID) (*rer
 }
 
 // setOrDelete sets params[key] to v, or removes it if v is empty.
-func setOrDelete(params core.Params, key, v string) {
+func setOrDelete(params core.Params,
+	key,
+	v string) {
 	if v == "" {
 		delete(params, key)
 	} else {

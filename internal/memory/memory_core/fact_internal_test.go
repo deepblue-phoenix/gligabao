@@ -7,8 +7,21 @@ import (
 )
 
 func TestFact(t *testing.T) {
-	v := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := graph.Edge{ID: 3, Source: "Alice", Target: "Acme", Relation: "works_at", ValidAt: &v}
+	v := time.Date(2023,
+		1,
+		1,
+		0,
+		0,
+		0,
+		0,
+		time.UTC)
+	e := graph.Edge{
+		ID:       3,
+		Source:   "Alice",
+		Target:   "Acme",
+		Relation: "works_at",
+		ValidAt:  &v,
+	}
 	f := FactFromEdge(e)
 
 	if got := f.Text(); got != "Alice works at Acme." {
@@ -21,10 +34,18 @@ func TestFact(t *testing.T) {
 	if f.Span() != "(2023-01-01T00:00:00Z -> ?)" || f.Ended() || f.Superseded() {
 		t.Errorf("Span/Ended/Superseded: %s", f.Span())
 	}
-	if !f.SameAs(Fact{Source: " alice ", Target: "ACME", Relation: "works_at"}) {
+	if !f.SameAs(Fact{
+		Source:   " alice ",
+		Target:   "ACME",
+		Relation: "works_at",
+	}) {
 		t.Errorf("SameAs should ignore case and spacing of names")
 	}
-	if f.SameAs(Fact{Source: "Alice", Target: "Acme", Relation: "founded"}) {
+	if f.SameAs(Fact{
+		Source:   "Alice",
+		Target:   "Acme",
+		Relation: "founded",
+	}) {
 		t.Errorf("SameAs should compare the relation")
 	}
 	if back := f.Edge(); back.ID != 3 || back.Description != f.Statement || back.Source != "Alice" {

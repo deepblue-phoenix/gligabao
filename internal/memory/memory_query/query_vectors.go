@@ -79,9 +79,16 @@ const StageEmbed = "embed"
 
 // searchVectors embeds the question and searches the indexes of dataset dsID with it. The embedding request is recorded as
 // an inference and as a step of the trajectory.
-func searchVectors(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, dsID int64, question string) (*vectorHits, error) {
+func searchVectors(ctx context.Context,
+	d *sql.DB,
+	co memory_core.CallOptions,
+	tr *memory_core.Trace,
+	dsID int64,
+	question string) (*vectorHits, error) {
 	embs, usage, err := co.Embedder.EmbedBatchUsage(ctx, []string{question})
-	recordEmbedUsage(ctx, d, usage) // no transaction is open here
+	recordEmbedUsage(ctx,
+		d,
+		usage) // no transaction is open here
 	if err != nil {
 		return nil, fmt.Errorf("memory: embed the question: %w", err)
 	}
@@ -91,40 +98,68 @@ func searchVectors(ctx context.Context, d *sql.DB, co memory_core.CallOptions, t
 	q := embs[0]
 
 	h := &vectorHits{}
-	search := func(ds string, topK int, min float32, kind string) ([]vectorHit, error) {
-		ms, err := co.Vectors.Query(ctx, ds, q, vector.QueryOptions{TopK: topK})
+	search := func(ds string,
+		topK int,
+		min float32,
+		kind string) ([]vectorHit, error) {
+		ms, err := co.Vectors.Query(ctx,
+			ds,
+			q,
+			vector.QueryOptions{
+				TopK: topK,
+			})
 		if err != nil {
-			return nil, fmt.Errorf("memory: search the %s index: %w", kind, err)
+			return nil, fmt.Errorf("memory: search the %s index: %w",
+				kind,
+				err)
 		}
 		var out []vectorHit
 		for _, m := range ms {
 			if id, ok := vectorRowID(m.ID, kind); ok && m.Score >= min {
-				out = append(out, vectorHit{ID: id, Score: m.Score})
+				out = append(out, vectorHit{
+					ID:    id,
+					Score: m.Score,
+				})
 			}
 		}
-		sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+		sort.SliceStable(out, func(i,
+			j int) bool {
+			return out[i].Score > out[j].Score
+		})
 		return out, nil
 	}
 	//------------------
 	// MEMORY DATASET
-	ents, err := search(memory_dataset.EntityDataset(dsID), vectorEntityTopK, minEntityScore, memory.VectorKindEntity)
+	ents, err := search(memory_dataset.EntityDataset(dsID),
+		vectorEntityTopK,
+		minEntityScore,
+		memory.VectorKindEntity)
 	//------------------
 	if err != nil {
 		return nil, err
 	}
 	//------------------
 	// MEMORY DATASET
-	edges, err := search(memory_dataset.EdgeDataset(dsID), vectorEdgeTopK, minEdgeScore, memory.VectorKindEdge)
+	edges, err := search(memory_dataset.EdgeDataset(dsID),
+		vectorEdgeTopK,
+		minEdgeScore,
+		memory.VectorKindEdge)
 	//------------------
 	if err != nil {
 		return nil, err
 	}
 	//------------------
 	// MEMORY DATASET
-	if h.chunks, err = search(memory_dataset.ChunkDataset(dsID), vectorPassageTopK, minPassageScore, memory.VectorKindChunk); err != nil {
+	if h.chunks, err = search(memory_dataset.ChunkDataset(dsID),
+		vectorPassageTopK,
+		minPassageScore,
+		memory.VectorKindChunk); err != nil {
 		return nil, err
 	}
-	if h.summaries, err = search(memory_dataset.SummaryDataset(dsID), vectorPassageTopK, minPassageScore, memory.VectorKindSummary); err != nil {
+	if h.summaries, err = search(memory_dataset.SummaryDataset(dsID),
+		vectorPassageTopK,
+		minPassageScore,
+		memory.VectorKindSummary); err != nil {
 		return nil, err
 	}
 	//------------------
@@ -135,31 +170,47 @@ func searchVectors(ctx context.Context, d *sql.DB, co memory_core.CallOptions, t
 		h.edges = append(h.edges, e.ID)
 	}
 
-	tr.EmbedStep("Embedded the question and searched the entity, edge, chunk and summary indexes with it.", "search_vectors",
+	tr.EmbedStep("Embedded the question and searched the entity, edge, chunk and summary indexes with it.",
+		"search_vectors",
 		map[string]any{"question": question},
-		map[string]any{"entities": ents, "edges": edges, "chunks": h.chunks, "summaries": h.summaries}, usage)
+		map[string]any{"entities": ents, "edges": edges, "chunks": h.chunks, "summaries": h.summaries},
+		usage)
 	return h, nil
 }
 
 // vectorRowID returns the row ID in the vector ID id of a vector of the given kind (see memory.EntityVectorID and the like).
-func vectorRowID(id, kind string) (int64, bool) {
+func vectorRowID(id,
+	kind string) (int64, bool) {
 	rest, ok := strings.CutPrefix(id, kind+"-")
 	if !ok {
 		return 0, false
 	}
-	n, err := strconv.ParseInt(rest, 10, 64)
+	n, err := strconv.ParseInt(rest,
+		10,
+		64)
 	return n, err == nil
 }
 
 // recordEmbedUsage records the cost of the embedding request of a query as an inference, as it was spent. Detached from ctx
 // so that a cancelled request still records money that was spent. It never fails the call.
-func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) {
+func recordEmbedUsage(ctx context.Context,
+	d *sql.DB,
+	usage *ai.EmbedUsage) {
 	if usage == nil {
 		return
 	}
-	_, err := memory_core.RecordRun(context.WithoutCancel(ctx), d, relational.Inference{Type: CallQuery, Stage: StageEmbed,
-		Model: usage.Model, Provider: usage.Provider, Kind: ai.KindEmbedding, Reasoning: ai.ReasoningNone,
-		InputTokens: usage.InputTokens, CostUSD: usage.CostUSD})
+	_, err := memory_core.RecordRun(context.WithoutCancel(ctx),
+		d,
+		relational.Inference{
+			Type:        CallQuery,
+			Stage:       StageEmbed,
+			Model:       usage.Model,
+			Provider:    usage.Provider,
+			Kind:        ai.KindEmbedding,
+			Reasoning:   ai.ReasoningNone,
+			InputTokens: usage.InputTokens,
+			CostUSD:     usage.CostUSD,
+		})
 	if err != nil {
 		log.WithError(err).WithField("model", usage.Model).Error("record embedding call")
 	}
@@ -171,18 +222,26 @@ func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) {
 // summary of its own if that was found. The best maxPassageChunks have the text of the chunk too; the next ones, up to
 // maxPassageSummaries more, are only given when their summary was found. A hit whose row is gone, or is not what the
 // index says (a chunk, a summary of a chunk), is dropped.
-func loadPassages(ctx context.Context, d *sql.DB, dsID int64, h *vectorHits) ([]EvidencePassage, error) {
+func loadPassages(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	h *vectorHits) ([]EvidencePassage, error) {
 	if len(h.chunks)+len(h.summaries) == 0 {
 		return nil, nil
 	}
-	ids := make([]int64, 0, len(h.chunks)+len(h.summaries))
+	ids := make([]int64,
+		0,
+		len(h.chunks)+len(h.summaries))
 	for _, c := range h.chunks {
 		ids = append(ids, c.ID)
 	}
 	for _, s := range h.summaries {
 		ids = append(ids, s.ID)
 	}
-	arts, err := graph.ArtifactsByID(ctx, d, dsID, ids)
+	arts, err := graph.ArtifactsByID(ctx,
+		d,
+		dsID,
+		ids)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +259,9 @@ func loadPassages(ctx context.Context, d *sql.DB, dsID int64, h *vectorHits) ([]
 	cands := map[int64]*cand{}
 	get := func(chunk int64) *cand {
 		if cands[chunk] == nil {
-			cands[chunk] = &cand{chunk: chunk}
+			cands[chunk] = &cand{
+				chunk: chunk,
+			}
 		}
 		return cands[chunk]
 	}
@@ -220,11 +281,14 @@ func loadPassages(ctx context.Context, d *sql.DB, dsID int64, h *vectorHits) ([]
 			}
 		}
 	}
-	order := make([]*cand, 0, len(cands))
+	order := make([]*cand,
+		0,
+		len(cands))
 	for _, c := range cands {
 		order = append(order, c)
 	}
-	sort.Slice(order, func(i, j int) bool {
+	sort.Slice(order, func(i,
+		j int) bool {
 		if order[i].score != order[j].score {
 			return order[i].score > order[j].score
 		}
@@ -242,7 +306,10 @@ func loadPassages(ctx context.Context, d *sql.DB, dsID int64, h *vectorHits) ([]
 		}
 	}
 	if len(missing) > 0 {
-		more, err := graph.ArtifactsByID(ctx, d, dsID, missing)
+		more, err := graph.ArtifactsByID(ctx,
+			d,
+			dsID,
+			missing)
 		if err != nil {
 			return nil, err
 		}
@@ -257,7 +324,12 @@ func loadPassages(ctx context.Context, d *sql.DB, dsID int64, h *vectorHits) ([]
 		if !ok || chunk.Kind == graph.ArtifactChunkSummary {
 			continue // the chunk is gone
 		}
-		p := EvidencePassage{ArtifactID: chunk.ID, ParentID: chunk.ParentID, Index: chunk.ChunkIndex, Summary: c.summary}
+		p := EvidencePassage{
+			ArtifactID: chunk.ID,
+			ParentID:   chunk.ParentID,
+			Index:      chunk.ChunkIndex,
+			Summary:    c.summary,
+		}
 		switch {
 		case len(out) < maxPassageChunks:
 			p.Text = chunk.Text
@@ -273,7 +345,11 @@ func loadPassages(ctx context.Context, d *sql.DB, dsID int64, h *vectorHits) ([]
 func renderPassages(ps []EvidencePassage) string {
 	var sb strings.Builder
 	for _, p := range ps {
-		fmt.Fprintf(&sb, "[passage %d] chunk %d of text %d\n", p.ArtifactID, p.Index+1, p.ParentID)
+		fmt.Fprintf(&sb,
+			"[passage %d] chunk %d of text %d\n",
+			p.ArtifactID,
+			p.Index+1,
+			p.ParentID)
 		if p.Summary != "" {
 			sb.WriteString("summary: " + p.Summary + "\n")
 		}

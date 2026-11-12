@@ -89,12 +89,17 @@ func Load(dir string) (*Registry, error) {
 		d, problems := loadFile(path, root)
 		if len(problems) > 0 {
 			for _, p := range problems {
-				errs = append(errs, fmt.Errorf("%s: %s", path, p))
+				errs = append(errs, fmt.Errorf("%s: %s",
+					path,
+					p))
 			}
 			continue
 		}
 		if other, dup := byName[d.Name]; dup {
-			errs = append(errs, fmt.Errorf("%s: the name %q is also the name of %s", path, d.Name, other))
+			errs = append(errs, fmt.Errorf("%s: the name %q is also the name of %s",
+				path,
+				d.Name,
+				other))
 			continue
 		}
 		byName[d.Name] = path
@@ -117,7 +122,8 @@ func Load(dir string) (*Registry, error) {
 }
 
 // loadFile reads and checks one file. root is the real path of the definitions directory: the prompt and skill files must stay in it.
-func loadFile(path, root string) (*Def, []string) {
+func loadFile(path,
+	root string) (*Def, []string) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, []string{err.Error()}
@@ -151,15 +157,32 @@ func loadFile(path, root string) (*Def, []string) {
 		problems = append(problems, "spawn: sub-agents of the simple loop were removed; set loop = \"investigative\" and investigate.max_parallel to run questions in workers (docs/agents/subagents.md)")
 	}
 	d := &Def{
-		Schema: f.Schema, Name: f.Name, Version: f.Version, Description: f.Description, SystemPrompt: f.SystemPrompt, Model: f.Model,
-		MaxSteps: f.MaxSteps, MaxTokens: f.MaxTokens, Tools: f.Tools, Search: f.Search, Knowledge: f.Knowledge, Limits: f.Limits, Loop: f.Loop, Investigate: f.Investigate, Code: f.Code, Schedule: f.Schedule,
-		Source: path,
+		Schema:       f.Schema,
+		Name:         f.Name,
+		Version:      f.Version,
+		Description:  f.Description,
+		SystemPrompt: f.SystemPrompt,
+		Model:        f.Model,
+		MaxSteps:     f.MaxSteps,
+		MaxTokens:    f.MaxTokens,
+		Tools:        f.Tools,
+		Search:       f.Search,
+		Knowledge:    f.Knowledge,
+		Limits:       f.Limits,
+		Loop:         f.Loop,
+		Investigate:  f.Investigate,
+		Code:         f.Code,
+		Schedule:     f.Schedule,
+		Source:       path,
 	}
 	switch {
 	case f.SystemPrompt != "" && f.SystemPromptFile != "":
 		problems = append(problems, "system_prompt and system_prompt_file: give one of them, not both")
 	case f.SystemPromptFile != "":
-		text, err := readInside(root, filepath.Dir(path), f.SystemPromptFile, maxPromptBytes)
+		text, err := readInside(root,
+			filepath.Dir(path),
+			f.SystemPromptFile,
+			maxPromptBytes)
 		if err != nil {
 			problems = append(problems, "system_prompt_file: "+err.Error())
 		}
@@ -167,7 +190,9 @@ func loadFile(path, root string) (*Def, []string) {
 	case f.SystemPrompt == "":
 		problems = append(problems, "system_prompt or system_prompt_file: one is required")
 	}
-	skills, skillProblems := loadSkills(root, f.Skills, f.RequiredSkills)
+	skills, skillProblems := loadSkills(root,
+		f.Skills,
+		f.RequiredSkills)
 	d.Skills = skills
 	problems = append(problems, skillProblems...)
 
@@ -187,34 +212,52 @@ func loadFile(path, root string) (*Def, []string) {
 
 // loadSkills reads the skill files by name from the skills directory: a missing optional skill is a warning, a missing required one an
 // error. The required skills come first in the prompt, then the optional ones, each in the order of the file.
-func loadSkills(root string, optional, required []string) ([]Skill, []string) {
+func loadSkills(root string,
+	optional,
+	required []string) ([]Skill, []string) {
 	var skills []Skill
 	var problems []string
 	seen := map[string]bool{}
-	read := func(name string, must bool) {
+	read := func(name string,
+		must bool) {
 		key := "skills"
 		if must {
 			key = "required_skills"
 		}
 		switch {
 		case !skillRe.MatchString(name):
-			problems = append(problems, fmt.Sprintf("%s: %q must be the name of a file of the skills directory without .md (lowercase letters, digits, - and _)", key, name))
+			problems = append(problems, fmt.Sprintf("%s: %q must be the name of a file of the skills directory without .md (lowercase letters, digits, - and _)",
+				key,
+				name))
 			return
 		case seen[name]:
-			problems = append(problems, fmt.Sprintf("%s: %q is listed twice", key, name))
+			problems = append(problems, fmt.Sprintf("%s: %q is listed twice",
+				key,
+				name))
 			return
 		}
 		seen[name] = true
-		text, err := readInside(root, filepath.Join(root, SkillsDir), name+".md", maxSkillBytes)
+		text, err := readInside(root,
+			filepath.Join(root, SkillsDir),
+			name+".md",
+			maxSkillBytes)
 		switch {
 		case errors.Is(err, os.ErrNotExist) && !must:
 			log.WithField("skill", name).Warn("agent definitions: skill file not found, the agent starts without it")
 		case err != nil:
-			problems = append(problems, fmt.Sprintf("%s: %s: %v", key, name, err))
+			problems = append(problems, fmt.Sprintf("%s: %s: %v",
+				key,
+				name,
+				err))
 		case text == "":
-			problems = append(problems, fmt.Sprintf("%s: %s: the file is empty", key, name))
+			problems = append(problems, fmt.Sprintf("%s: %s: the file is empty",
+				key,
+				name))
 		default:
-			skills = append(skills, Skill{Name: name, Content: text})
+			skills = append(skills, Skill{
+				Name:    name,
+				Content: text,
+			})
 		}
 	}
 	for _, n := range required {
@@ -228,7 +271,10 @@ func loadSkills(root string, optional, required []string) ([]Skill, []string) {
 
 // readInside reads the file rel (relative to base) as text, refusing a path that leaves root (after links are resolved) and a file over
 // max bytes. A missing file is an error that wraps os.ErrNotExist.
-func readInside(root, base, rel string, max int) (string, error) {
+func readInside(root,
+	base,
+	rel string,
+	max int) (string, error) {
 	if filepath.IsAbs(rel) {
 		return "", fmt.Errorf("%q must be a path relative to the file, inside the definitions directory", rel)
 	}
@@ -239,7 +285,9 @@ func readInside(root, base, rel string, max int) (string, error) {
 	real, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("%q: %w", rel, os.ErrNotExist)
+			return "", fmt.Errorf("%q: %w",
+				rel,
+				os.ErrNotExist)
 		}
 		return "", err
 	}
@@ -254,7 +302,10 @@ func readInside(root, base, rel string, max int) (string, error) {
 		return "", fmt.Errorf("%q is not a file", rel)
 	}
 	if info.Size() > int64(max) {
-		return "", fmt.Errorf("%q is too big (%d bytes, at most %d)", rel, info.Size(), max)
+		return "", fmt.Errorf("%q is too big (%d bytes, at most %d)",
+			rel,
+			info.Size(),
+			max)
 	}
 	b, err := os.ReadFile(real)
 	if err != nil {

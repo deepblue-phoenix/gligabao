@@ -21,12 +21,15 @@ type Executor struct {
 	// OnAnswer, if set, is called with each case as the model answers it (see Config.OnAnswer), before it is judged.
 	OnAnswer func(CaseResult)
 	// OnBatch, if set, is called with the cases of each batch once they are recorded; names are those of the cases (by Idx).
-	OnBatch func(cases []CaseResult, p Progress)
+	OnBatch func(cases []CaseResult,
+		p Progress)
 }
 
 // Execute implements runner.Executor. The questions go to the model in the order of def.Cases, and each judged batch is recorded
 // as case runs together with the new statistics of the eval run. The run is cost of the judge only.
-func (x *Executor) Execute(ctx context.Context, rec *runner.EvalRecorder, def *core.EvalDef) error {
+func (x *Executor) Execute(ctx context.Context,
+	rec *runner.EvalRecorder,
+	def *core.EvalDef) error {
 	meta, ok := rec.Run().Meta.(*core.TrainingEvalRunMeta)
 	if !ok {
 		return fmt.Errorf("a training eval run needs a *core.TrainingEvalRunMeta, not %T", rec.Run().Meta)
@@ -35,19 +38,29 @@ func (x *Executor) Execute(ctx context.Context, rec *runner.EvalRecorder, def *c
 	for i, c := range def.Cases {
 		m, ok := c.Meta.(*core.TrainingCaseDefMeta)
 		if !ok {
-			return fmt.Errorf("case def %q has no training metadata (%T)", c.Name, c.Meta)
+			return fmt.Errorf("case def %q has no training metadata (%T)",
+				c.Name,
+				c.Meta)
 		}
-		questions[i] = Question{Instruction: m.Instruction, Input: m.Input, Reference: m.Output}
+		questions[i] = Question{
+			Instruction: m.Instruction,
+			Input:       m.Input,
+			Reference:   m.Output,
+		}
 	}
 	cfg := x.Config
 	cfg.OnAnswer = x.OnAnswer
 	// What is recorded must outlive a cancelled run.
 	dbCtx := context.WithoutCancel(ctx)
-	sink := func(_ context.Context, cases []CaseResult, p Progress) error {
+	sink := func(_ context.Context,
+		cases []CaseResult,
+		p Progress) error {
 		now := time.Now().UTC().Truncate(time.Second)
 		records := make([]runner.CaseRecord, len(cases))
 		for i, r := range cases {
-			records[i] = caseRecord(def.Cases[r.Idx], r, now)
+			records[i] = caseRecord(def.Cases[r.Idx],
+				r,
+				now)
 		}
 		meta.JudgeModel = p.JudgeModel
 		meta.NumAnswered, meta.NumJudged = p.Answered, p.Judged
@@ -64,18 +77,38 @@ func (x *Executor) Execute(ctx context.Context, rec *runner.EvalRecorder, def *c
 		}
 		return nil
 	}
-	_, err := Run(ctx, cfg, questions, x.Generate, x.Judge, sink)
+	_, err := Run(ctx,
+		cfg,
+		questions,
+		x.Generate,
+		x.Judge,
+		sink)
 	return err
 }
 
 // caseRecord is the case run, with its metadata, of a case that has been through the engine. A judged case is completed, with the
 // verdict of its score (core.TrainingPassScore) and the score as a share of MaxScore; one that errored has neither.
-func caseRecord(def core.CaseDef, r CaseResult, finished time.Time) runner.CaseRecord {
+func caseRecord(def core.CaseDef,
+	r CaseResult,
+	finished time.Time) runner.CaseRecord {
 	started := r.StartedAt.UTC().Truncate(time.Second)
-	cr := &core.CaseRun{DefID: def.ID, Type: def.Type, Timing: core.Timing{CreatedAt: started, StartedAt: &started, FinishedAt: &finished}}
+	cr := &core.CaseRun{
+		DefID: def.ID,
+		Type:  def.Type,
+		Timing: core.Timing{
+			CreatedAt:  started,
+			StartedAt:  &started,
+			FinishedAt: &finished,
+		},
+	}
 	meta := &core.TrainingCaseRunMeta{
-		Instruction: r.Instruction, Input: r.Input, Reference: r.Reference, Response: r.Response,
-		InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, DurationMS: int(r.DurationMS),
+		Instruction:  r.Instruction,
+		Input:        r.Input,
+		Reference:    r.Reference,
+		Response:     r.Response,
+		InputTokens:  r.InputTokens,
+		OutputTokens: r.OutputTokens,
+		DurationMS:   int(r.DurationMS),
 	}
 	if r.Status == CaseJudged && r.Score != nil {
 		cr.Status = core.StatusCompleted
@@ -89,7 +122,10 @@ func caseRecord(def core.CaseDef, r CaseResult, finished time.Time) runner.CaseR
 	} else {
 		cr.Status, cr.Error = core.StatusErrored, r.Error
 	}
-	return runner.CaseRecord{Run: cr, Meta: meta}
+	return runner.CaseRecord{
+		Run:  cr,
+		Meta: meta,
+	}
 }
 
 const (

@@ -40,7 +40,10 @@ type Feed struct {
 
 // NewFeed makes the feed of an eval that starts.
 func NewFeed() *Feed {
-	return &Feed{pending: map[int]CaseView{}, subs: map[chan Event]struct{}{}}
+	return &Feed{
+		pending: map[int]CaseView{},
+		subs:    map[chan Event]struct{}{},
+	}
 }
 
 // Subscribe adds a watcher. It returns the answers awaiting the judge right now and the channel of the events after that moment
@@ -51,7 +54,9 @@ func (f *Feed) Subscribe() ([]CaseView, chan Event) {
 	if f.closed {
 		return nil, nil
 	}
-	pending := make([]CaseView, 0, len(f.pending))
+	pending := make([]CaseView,
+		0,
+		len(f.pending))
 	for _, c := range f.pending {
 		pending = append(pending, c)
 	}
@@ -90,11 +95,15 @@ func (f *Feed) Answer(c CaseView) {
 		return
 	}
 	f.pending[c.Idx] = c
-	f.send(Event{Type: EventAnswer, Cases: []CaseView{c}})
+	f.send(Event{
+		Type:  EventAnswer,
+		Cases: []CaseView{c},
+	})
 }
 
 // Batch announces the cases of a batch that was judged and the progress after it.
-func (f *Feed) Batch(r RunView, cases []CaseView) {
+func (f *Feed) Batch(r RunView,
+	cases []CaseView) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.closed {
@@ -103,7 +112,11 @@ func (f *Feed) Batch(r RunView, cases []CaseView) {
 	for _, c := range cases {
 		delete(f.pending, c.Idx)
 	}
-	f.send(Event{Type: EventBatch, Run: &r, Cases: cases})
+	f.send(Event{
+		Type:  EventBatch,
+		Run:   &r,
+		Cases: cases,
+	})
 }
 
 // End announces the end of the eval and closes the feed.
@@ -115,7 +128,10 @@ func (f *Feed) End(r RunView) {
 	}
 	f.closed = true
 	f.pending = nil
-	f.send(Event{Type: EventEnd, Run: &r})
+	f.send(Event{
+		Type: EventEnd,
+		Run:  &r,
+	})
 	for ch := range f.subs {
 		delete(f.subs, ch)
 		close(ch)

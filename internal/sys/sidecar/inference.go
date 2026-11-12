@@ -47,16 +47,23 @@ func (e *InferError) Error() string { return "sidecar: " + e.Message }
 // Infer runs a prompt through a fine-tuned model on the sidecar (POST /infer/query). The call takes as long as the model
 // needs to load (minutes on a cold start), so only ctx limits it. A failure of the generation itself
 // (e.g. the weights are not on the volume) is returned as an error with the sidecar's message.
-func (c *Client) Infer(ctx context.Context, req InferRequest) (InferResponse, error) {
+func (c *Client) Infer(ctx context.Context,
+	req InferRequest) (InferResponse, error) {
 	var out InferResponse
 	if strings.TrimSpace(req.Prompt) == "" {
 		return out, errors.New("sidecar: prompt is required")
 	}
-	if err := c.postVia(ctx, c.stream, "/infer/query", req, &out); err != nil {
+	if err := c.postVia(ctx,
+		c.stream,
+		"/infer/query",
+		req,
+		&out); err != nil {
 		return out, err
 	}
 	if out.Error != "" {
-		return out, &InferError{Message: out.Error}
+		return out, &InferError{
+			Message: out.Error,
+		}
 	}
 	return out, nil
 }

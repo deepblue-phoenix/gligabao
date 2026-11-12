@@ -29,42 +29,109 @@ import (
 // checks it).
 var rememberPipeline = []memory_pipeline.Step[job]{
 	// Jev (system 1) judges how complex the text is. Advisory: for now the result is only logged.
-	memory_pipeline.Stage[job]{Name: StageClassifyComplexity, Policy: memory_pipeline.Advisory, Enabled: (*job).hasJev, Run: (*job).classifyComplexity},
+	memory_pipeline.Stage[job]{
+		Name:    StageClassifyComplexity,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).hasJev,
+		Run:     (*job).classifyComplexity,
+	},
 
 	// A document is split into chunks...
-	memory_pipeline.Stage[job]{Name: StageChunkText, Enabled: (*job).isDocument, Run: (*job).chunkText},
+	memory_pipeline.Stage[job]{
+		Name:    StageChunkText,
+		Enabled: (*job).isDocument,
+		Run:     (*job).chunkText,
+	},
 	// ...and the graph is extracted from the text, or from every chunk, which is also summarized.
-	memory_pipeline.Each[job]{Count: (*job).itemCount, Set: (*job).setItem, Steps: []memory_pipeline.Step[job]{
-		memory_pipeline.Stage[job]{Name: memory_core.StageExtractGraph, Run: (*job).extract},
-		memory_pipeline.Stage[job]{Name: memory_core.StageSummarizeChunk, Enabled: (*job).isDocument, Run: (*job).summarize},
-	}},
+	memory_pipeline.Each[job]{
+		Count: (*job).itemCount,
+		Set:   (*job).setItem,
+		Steps: []memory_pipeline.Step[job]{
+			memory_pipeline.Stage[job]{
+				Name: memory_core.StageExtractGraph,
+				Run:  (*job).extract,
+			},
+			memory_pipeline.Stage[job]{
+				Name:    memory_core.StageSummarizeChunk,
+				Enabled: (*job).isDocument,
+				Run:     (*job).summarize,
+			},
+		},
+	},
 
 	// The whole text of a document is stored as the parent artifact of its chunks.
-	memory_pipeline.Stage[job]{Name: StageStore, Enabled: (*job).isDocument, Run: (*job).storeParent},
+	memory_pipeline.Stage[job]{
+		Name:    StageStore,
+		Enabled: (*job).isDocument,
+		Run:     (*job).storeParent,
+	},
 	// The new facts of the text, or of each chunk, are reconciled with the stored ones and stored.
-	memory_pipeline.Each[job]{Count: (*job).itemCount, Set: (*job).setUnit, Steps: reconcileSteps},
+	memory_pipeline.Each[job]{
+		Count: (*job).itemCount,
+		Set:   (*job).setUnit,
+		Steps: reconcileSteps,
+	},
 	// The series of a document are stored once the chunks, and so their entities, are (those of a text of one chunk are stored
 	// by its store stage, in the same transaction).
-	memory_pipeline.Stage[job]{Name: StageStoreSeries, Enabled: (*job).storesDocumentSeries, Run: (*job).storeDocumentSeries},
+	memory_pipeline.Stage[job]{
+		Name:    StageStoreSeries,
+		Enabled: (*job).storesDocumentSeries,
+		Run:     (*job).storeDocumentSeries,
+	},
 
 	// The graph of each stored artifact is classified by an LLM, once the artifacts are stored. Advisory: they are stored either way.
-	memory_pipeline.Stage[job]{Name: memory_core.StageClassifyGraph, Policy: memory_pipeline.Advisory, Enabled: (*job).hasClassifyGraph, Run: (*job).classifyGraphStage},
+	memory_pipeline.Stage[job]{
+		Name:    memory_core.StageClassifyGraph,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).hasClassifyGraph,
+		Run:     (*job).classifyGraphStage,
+	},
 
 	// The enrichment stages run once the text is stored, on its key entities: none of them fails the call.
-	memory_pipeline.Stage[job]{Name: StageResolveGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).hasGeo, Run: (*job).geoStage},
-	memory_pipeline.Stage[job]{Name: memory_core.StageWebSearch, Policy: memory_pipeline.Advisory, Enabled: (*job).hasWebSearch, Run: (*job).webSearchStage},
-	memory_pipeline.Stage[job]{Name: StageFetchSeries, Policy: memory_pipeline.Advisory, Enabled: (*job).hasSeriesFetch, Run: (*job).fetchSeriesStage},
+	memory_pipeline.Stage[job]{
+		Name:    StageResolveGeo,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).hasGeo,
+		Run:     (*job).geoStage,
+	},
+	memory_pipeline.Stage[job]{
+		Name:    memory_core.StageWebSearch,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).hasWebSearch,
+		Run:     (*job).webSearchStage,
+	},
+	memory_pipeline.Stage[job]{
+		Name:    StageFetchSeries,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).hasSeriesFetch,
+		Run:     (*job).fetchSeriesStage,
+	},
 	// An artifact for each series the call stored, supplied or fetched.
-	memory_pipeline.Stage[job]{Name: StageObserveSeries, Policy: memory_pipeline.Advisory, Enabled: (*job).hasObservables, Run: (*job).observeSeriesStage},
+	memory_pipeline.Stage[job]{
+		Name:    StageObserveSeries,
+		Policy:  memory_pipeline.Advisory,
+		Enabled: (*job).hasObservables,
+		Run:     (*job).observeSeriesStage,
+	},
 }
 
 // reconcileSteps are the stages that reconcile the facts extracted from a text with the stored ones and store the text (job.u):
 // those of the text itself or of a chunk (the Each of rememberPipeline), and of the texts the enrichment stages make (see
 // job.reconcile).
 var reconcileSteps = []memory_pipeline.Step[job]{
-	memory_pipeline.Stage[job]{Name: StageLoadCandidates, Run: (*job).loadCandidatesStage},
-	memory_pipeline.Stage[job]{Name: memory_core.StageResolveEdges, Run: (*job).resolveEdgesStage},
-	memory_pipeline.Stage[job]{Name: StageStore, Also: (*job).alsoStoresSeries, Run: (*job).storeStage},
+	memory_pipeline.Stage[job]{
+		Name: StageLoadCandidates,
+		Run:  (*job).loadCandidatesStage,
+	},
+	memory_pipeline.Stage[job]{
+		Name: memory_core.StageResolveEdges,
+		Run:  (*job).resolveEdgesStage,
+	},
+	memory_pipeline.Stage[job]{
+		Name: StageStore,
+		Also: (*job).alsoStoresSeries,
+		Run:  (*job).storeStage,
+	},
 }
 
 //------------------
@@ -85,11 +152,19 @@ type unit struct {
 // reconcile runs the reconcile stages on a text that an enrichment stage made (a web search result, a series observation), from
 // which ex was extracted, and returns what was stored. The job is the one of the enrichment stage, with its own run log view
 // (see runLog.Within).
-func (j *job) reconcile(ctx context.Context, text string, ex *Extraction) (*Result, error) {
-	j.u = &unit{text: text, ex: ex}
+func (j *job) reconcile(ctx context.Context,
+	text string,
+	ex *Extraction) (*Result, error) {
+	j.u = &unit{
+		text: text,
+		ex:   ex,
+	}
 	//------------------
 	// MEMORY PIPELINE
-	if err := memory_pipeline.Run(ctx, reconcileSteps, j, j.run); err != nil {
+	if err := memory_pipeline.Run(ctx,
+		reconcileSteps,
+		j,
+		j.run); err != nil {
 		return nil, err
 	}
 	//------------------
@@ -116,11 +191,23 @@ func (j *job) setItem(i int) { j.i = i }
 func (j *job) setUnit(i int) {
 	j.i = i
 	if !j.chunked {
-		j.u = &unit{text: j.text, ex: j.exs[0]}
+		j.u = &unit{
+			text: j.text,
+			ex:   j.exs[0],
+		}
 		return
 	}
 	c := j.chunks[i]
-	j.u = &unit{text: c.Text, ex: j.exs[i], part: &chunkPart{ParentID: j.parentID, Chunk: c, Count: len(j.chunks), Summary: j.sums[i]}}
+	j.u = &unit{
+		text: c.Text,
+		ex:   j.exs[i],
+		part: &chunkPart{
+			ParentID: j.parentID,
+			Chunk:    c,
+			Count:    len(j.chunks),
+			Summary:  j.sums[i],
+		},
+	}
 }
 
 // chunkError says which chunk a failure of the reconcile stages was of. Those stages cannot be one transaction (the candidates of
@@ -130,7 +217,11 @@ func (j *job) chunkError(err error) error {
 		return err
 	}
 	return fmt.Errorf("memory: chunk %d of %d (parent artifact %d; the %d chunks before it are stored): %w",
-		j.i+1, j.u.part.Count, j.u.part.ParentID, j.i, err)
+		j.i+1,
+		j.u.part.Count,
+		j.u.part.ParentID,
+		j.i,
+		err)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -143,15 +234,21 @@ func (j *job) chunkText(_ context.Context) error {
 		return fmt.Errorf("memory: chunk text: %w", err)
 	}
 	j.chunks = chunks
-	summary := make([]map[string]any, 0, len(chunks))
+	summary := make([]map[string]any,
+		0,
+		len(chunks))
 	for _, c := range chunks {
 		summary = append(summary, map[string]any{"index": c.Index, "tokens": c.Tokens, "overlap_tokens": c.OverlapTokens, "start": c.Start, "end": c.End})
 	}
 	j.tr.Tool("The text is larger than one chunk, so it was split into overlapping chunks at paragraph boundaries; each chunk is "+
-		"extracted, stored and embedded on its own.", "chunk_text",
+		"extracted, stored and embedded on its own.",
+		"chunk_text",
 		map[string]any{"text_chars": len(j.text), "chunk_size": j.cc.Size, "overlap_percent": j.cc.OverlapPercent},
 		map[string]any{"chunks": len(chunks), "details": summary})
-	j.run.Output(StageChunkText, "chunk_text", "", map[string]any{"chunks": len(chunks), "details": summary})
+	j.run.Output(StageChunkText,
+		"chunk_text",
+		"",
+		map[string]any{"chunks": len(chunks), "details": summary})
 	return nil
 }
 
@@ -162,27 +259,41 @@ func (j *job) extract(ctx context.Context) error {
 		j.exs = make([]*Extraction, j.itemCount())
 	}
 	if !j.chunked {
-		ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), j.text, j.ref)
+		ex, err := Extract(ctx,
+			j.co.ModelLLM(j.llm, memory_core.StageExtractGraph),
+			j.text,
+			j.ref)
 		j.outputExtraction("", ex)
 		if err != nil {
 			return err
 		}
 		j.exs[0] = ex
 		j.tr.Tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
-			"extract_graph", map[string]any{"text_chars": len(j.text)},
+			"extract_graph",
+			map[string]any{"text_chars": len(j.text)},
 			map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 		return nil
 	}
 	c := j.chunks[j.i]
-	part := &chunkPart{Chunk: c, Count: len(j.chunks)}
-	ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), c.Text, j.ref)
+	part := &chunkPart{
+		Chunk: c,
+		Count: len(j.chunks),
+	}
+	ex, err := Extract(ctx,
+		j.co.ModelLLM(j.llm, memory_core.StageExtractGraph),
+		c.Text,
+		j.ref)
 	j.outputExtraction(j.stepLabel(part), ex)
 	if err != nil {
-		return fmt.Errorf("memory: extract chunk %d of %d: %w", j.i+1, len(j.chunks), err)
+		return fmt.Errorf("memory: extract chunk %d of %d: %w",
+			j.i+1,
+			len(j.chunks),
+			err)
 	}
 	j.exs[j.i] = ex
 	j.tr.Tool("The LLM extracted these entities and edges (new facts) from the chunk, before any stored fact is considered."+part.label(),
-		"extract_graph", map[string]any{"chunk_index": j.i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text)},
+		"extract_graph",
+		map[string]any{"chunk_index": j.i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 	return nil
 }
@@ -193,18 +304,29 @@ func (j *job) summarize(ctx context.Context) error {
 		j.sums = make([]*chunkSummary, len(j.chunks))
 	}
 	c := j.chunks[j.i]
-	part := &chunkPart{Chunk: c, Count: len(j.chunks)}
-	sum, err := summarizeChunk(ctx, j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk), c.Text)
+	part := &chunkPart{
+		Chunk: c,
+		Count: len(j.chunks),
+	}
+	sum, err := summarizeChunk(ctx,
+		j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk),
+		c.Text)
 	if sum != nil {
-		j.run.Output(memory_core.StageSummarizeChunk, "summarize_chunk", j.stepLabel(part),
+		j.run.Output(memory_core.StageSummarizeChunk,
+			"summarize_chunk",
+			j.stepLabel(part),
 			map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning, "inference_id": sum.InferenceID, "raw": sum.Raw})
 	}
 	if err != nil {
-		return fmt.Errorf("memory: summarize chunk %d of %d: %w", j.i+1, len(j.chunks), err)
+		return fmt.Errorf("memory: summarize chunk %d of %d: %w",
+			j.i+1,
+			len(j.chunks),
+			err)
 	}
 	j.sums[j.i] = sum
 	j.tr.Tool("The LLM summarized the chunk; the summary is stored as an artifact of its own, a child of the chunk, and embedded."+part.label(),
-		"summarize_chunk", map[string]any{"chunk_index": j.i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text), "reasoning": sum.Reasoning},
+		"summarize_chunk",
+		map[string]any{"chunk_index": j.i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text), "reasoning": sum.Reasoning},
 		map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning, "inference_id": sum.InferenceID})
 	return nil
 }
@@ -220,20 +342,43 @@ func (j *job) storeParent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	parentID, err := storeParent(ctx, j.d, j.userID, j.dataset, j.kind, j.text, sessionID, j.ref, j.now)
+	parentID, err := storeParent(ctx,
+		j.d,
+		j.userID,
+		j.dataset,
+		j.kind,
+		j.text,
+		sessionID,
+		j.ref,
+		j.now)
 	if err != nil {
 		return err
 	}
 	j.run.Artifact(parentID)
 	j.parentID = parentID
-	j.tr.Tool("Stored the whole text as the parent artifact of the chunks.", "store_parent_artifact",
-		map[string]any{"user_id": j.userID, "dataset": j.dataset, "kind": j.kind}, map[string]any{"artifact_id": parentID, "chunks": len(j.chunks)})
-	j.run.Output(StageStore, "store_parent_artifact", "", map[string]any{"artifact_id": parentID, "chunks": len(j.chunks)})
+	j.tr.Tool("Stored the whole text as the parent artifact of the chunks.",
+		"store_parent_artifact",
+		map[string]any{"user_id": j.userID, "dataset": j.dataset, "kind": j.kind},
+		map[string]any{"artifact_id": parentID, "chunks": len(j.chunks)})
+	j.run.Output(StageStore,
+		"store_parent_artifact",
+		"",
+		map[string]any{"artifact_id": parentID, "chunks": len(j.chunks)})
 
 	j.res = &Result{
-		UserID: j.userID, Dataset: j.dataset, Kind: j.kind, ArtifactID: parentID, SessionID: sessionID,
-		ValidAt: j.ref.UTC(), CreatedAt: j.now.UTC(),
-		Entities: []Entity{}, Edges: []Edge{}, InvalidatedEdges: []int64{}, Chunks: make([]ChunkResult, 0, len(j.chunks)),
+		UserID:           j.userID,
+		Dataset:          j.dataset,
+		Kind:             j.kind,
+		ArtifactID:       parentID,
+		SessionID:        sessionID,
+		ValidAt:          j.ref.UTC(),
+		CreatedAt:        j.now.UTC(),
+		Entities:         []Entity{},
+		Edges:            []Edge{},
+		InvalidatedEdges: []int64{},
+		Chunks: make([]ChunkResult,
+			0,
+			len(j.chunks)),
 	}
 	j.merge = newMerger(j.res)
 	return nil
@@ -270,7 +415,12 @@ func (j *job) loadCandidatesStage(ctx context.Context) error {
 	// ones are invalidated (not deleted) by Store. Without candidates there is no LLM resolution call.
 	// For the chunks of a long text this runs after the previous chunk was stored, so a chunk is also compared with
 	// the facts of the chunks before it.
-	cs, err := loadCandidates(ctx, j.d, j.co, j.userID, j.dataset, u.ex)
+	cs, err := loadCandidates(ctx,
+		j.d,
+		j.co,
+		j.userID,
+		j.dataset,
+		u.ex)
 	if err != nil {
 		return j.chunkError(err)
 	}
@@ -279,18 +429,27 @@ func (j *job) loadCandidatesStage(ctx context.Context) error {
 
 	// Three steps in the trajectory: each lookup with what it found alone, then the merge.
 	j.tr.Tool("Looked up the live stored facts touching an entity whose normalized name is an endpoint of a new fact "+
-		"(newest first, at most 50): the candidates found by exact name."+label, "find_candidates_by_name",
+		"(newest first, at most 50): the candidates found by exact name."+label,
+		"find_candidates_by_name",
 		map[string]any{"user_id": j.userID, "dataset": j.dataset, "names": cs.Names},
 		map[string]any{"candidates": len(cs.ByName), "facts": candidateFacts(cs.ByName, nil)})
 
 	//--------------------------------------
 
-	traceSearchEntities(j.tr, cs.SearchTexts, cs.Similar, candidateFacts(cs.BySimilar, nil), cs.SearchUsage, cs.SearchErr)
+	traceSearchEntities(j.tr,
+		cs.SearchTexts,
+		cs.Similar,
+		candidateFacts(cs.BySimilar, nil),
+		cs.SearchUsage,
+		cs.SearchErr)
 	j.tr.Tool("Merged the two lookups by edge ID (newest first, at most 50); the new facts are checked against these "+
-		"candidates for duplicates and contradictions."+label, "load_candidates",
+		"candidates for duplicates and contradictions."+label,
+		"load_candidates",
 		map[string]any{"user_id": j.userID, "dataset": j.dataset, "new_edges": len(u.ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
 		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
-	j.outputCandidates(step, u.ex, cs)
+	j.outputCandidates(step,
+		u.ex,
+		cs)
 	return nil
 }
 
@@ -299,12 +458,21 @@ func (j *job) loadCandidatesStage(ctx context.Context) error {
 func (j *job) resolveEdgesStage(ctx context.Context) error {
 	u := j.u
 	_, step := j.labels()
-	plan, err := memory_temporal.ResolveEdges(ctx, j.co.ModelLLM(j.llm, memory_core.StageResolveEdges), u.ex.Edges, u.cs.Edges,
+	plan, err := memory_temporal.ResolveEdges(ctx,
+		j.co.ModelLLM(j.llm, memory_core.StageResolveEdges),
+		u.ex.Edges,
+		u.cs.Edges,
 		// IN-CONTEXT COUNTERS: the stored facts the LLM compares the new ones with.
 		func(edgeIDs []int64) {
-			memory_core.CountInContext(ctx, j.d, j.inContext(memory_core.StageResolveEdges), nil, edgeIDs)
+			memory_core.CountInContext(ctx,
+				j.d,
+				j.inContext(memory_core.StageResolveEdges),
+				nil,
+				edgeIDs)
 		})
-	j.outputResolveEdges(step, u.ex, plan)
+	j.outputResolveEdges(step,
+		u.ex,
+		plan)
 	if err != nil {
 		return j.chunkError(err)
 	}
@@ -326,7 +494,19 @@ func (j *job) alsoStoresSeries() []string {
 func (j *job) storeStage(ctx context.Context) error {
 	u := j.u
 	label, step := j.labels()
-	res, err := store(ctx, j.d, j.userID, j.dataset, j.kind, u.text, j.ref, j.now, u.ex, u.plan, u.part, j.web, j.obs,
+	res, err := store(ctx,
+		j.d,
+		j.userID,
+		j.dataset,
+		j.kind,
+		u.text,
+		j.ref,
+		j.now,
+		u.ex,
+		u.plan,
+		u.part,
+		j.web,
+		j.obs,
 		append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(j.tr))...)
 	if err != nil {
 		return j.chunkError(err)
@@ -346,8 +526,14 @@ func (j *job) storeStage(ctx context.Context) error {
 	}
 	stored := map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
 		"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks, "embedded_summaries": res.EmbeddedSummaries}
-	j.tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args, stored)
-	j.run.Output(StageStore, "store", step, stored)
+	j.tr.Tool("Stored the artifact, entities and edges."+label,
+		"store_artifact",
+		args,
+		stored)
+	j.run.Output(StageStore,
+		"store",
+		step,
+		stored)
 	j.traceSeries(res.ArtifactID, res.Series)
 
 	if j.web == nil && j.obs == nil { // the text of the call, or a chunk of it: part of the graph the graph embedder hook gets
@@ -362,7 +548,10 @@ func (j *job) storeStage(ctx context.Context) error {
 
 	switch {
 	case u.part != nil: // a chunk of a document: merged into its Result
-		j.merge.add(res, u.part.Chunk, len(u.ex.Entities), len(u.ex.Edges))
+		j.merge.add(res,
+			u.part.Chunk,
+			len(u.ex.Entities),
+			len(u.ex.Edges))
 	case j.web == nil && j.obs == nil: // the text of the call
 		j.run.Artifact(res.ArtifactID)
 		j.res = res
@@ -381,7 +570,9 @@ func (j *job) storesDocumentSeries() bool { return j.chunked && len(j.co.Series)
 func (j *job) storeDocumentSeries(ctx context.Context) (err error) {
 	j.res.Series, err = j.storeSeries(ctx, j.parentID)
 	if err != nil {
-		return fmt.Errorf("memory: timeseries (the text, its %d chunks and their facts are stored): %w", len(j.chunks), err)
+		return fmt.Errorf("memory: timeseries (the text, its %d chunks and their facts are stored): %w",
+			len(j.chunks),
+			err)
 	}
 	j.traceSeries(j.parentID, j.res.Series)
 	return nil

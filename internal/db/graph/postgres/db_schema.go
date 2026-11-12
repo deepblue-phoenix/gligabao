@@ -19,17 +19,22 @@ var schema string
 
 // initSchema applies the graph schema. Concurrent starters are serialized with an advisory lock, because
 // CREATE ... IF NOT EXISTS can still race in PostgreSQL.
-func initSchema(ctx context.Context, d *sql.DB) error {
+func initSchema(ctx context.Context,
+	d *sql.DB) error {
 	conn, err := d.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("init graph schema: %w", err)
 	}
 	defer conn.Close()
 	const lockID = 0x67620002 // arbitrary application-wide key (the relational schema uses 0x67620001)
-	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, int64(lockID)); err != nil {
+	if _, err := conn.ExecContext(ctx,
+		`SELECT pg_advisory_lock($1)`,
+		int64(lockID)); err != nil {
 		return fmt.Errorf("init graph schema: lock: %w", err)
 	}
-	defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(lockID))
+	defer conn.ExecContext(context.WithoutCancel(ctx),
+		`SELECT pg_advisory_unlock($1)`,
+		int64(lockID))
 	if _, err := conn.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("init graph schema: %w", err)
 	}
@@ -49,17 +54,22 @@ var geoIndexSQL string
 // an index, and the admin UI reports it; the next start with geo on after `CREATE EXTENSION postgis` creates it). The extension
 // is never created here. The generated column fills itself in for the rows stored before (PostgreSQL has no way to add it
 // without), so unlike for SQLite those are indexed too.
-func EnableGeoIndex(ctx context.Context, d *sql.DB) (bool, error) {
+func EnableGeoIndex(ctx context.Context,
+	d *sql.DB) (bool, error) {
 	conn, err := d.Conn(ctx)
 	if err != nil {
 		return false, fmt.Errorf("init geo index: %w", err)
 	}
 	defer conn.Close()
 	const lockID = 0x67620002 // the same lock as initSchema: the table must exist and nobody else may alter it meanwhile
-	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, int64(lockID)); err != nil {
+	if _, err := conn.ExecContext(ctx,
+		`SELECT pg_advisory_lock($1)`,
+		int64(lockID)); err != nil {
 		return false, fmt.Errorf("init geo index: lock: %w", err)
 	}
-	defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(lockID))
+	defer conn.ExecContext(context.WithoutCancel(ctx),
+		`SELECT pg_advisory_unlock($1)`,
+		int64(lockID))
 	var ns string
 	err = conn.QueryRowContext(ctx, `SELECT quote_ident(n.nspname) FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
 		WHERE e.extname = 'postgis'`).Scan(&ns)

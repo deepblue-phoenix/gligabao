@@ -36,8 +36,10 @@ var classifyQuestion = Question{
 	Instructions: "Estimate how many distinct entities (people, organizations, places, projects, products, concepts, events) " +
 		"a careful reader would extract from this text to build a knowledge graph. How many are there?",
 	Criteria: map[string]string{
-		string(Simple):  fmt.Sprintf("At most %d entities", SimpleMaxEntities),
-		string(Medium):  fmt.Sprintf("%d to %d entities", SimpleMaxEntities+1, MediumMaxEntities),
+		string(Simple): fmt.Sprintf("At most %d entities", SimpleMaxEntities),
+		string(Medium): fmt.Sprintf("%d to %d entities",
+			SimpleMaxEntities+1,
+			MediumMaxEntities),
 		string(Complex): fmt.Sprintf("More than %d entities", MediumMaxEntities),
 	},
 }
@@ -61,9 +63,14 @@ type Classification struct {
 
 // Classify asks Jev (one choice question) whether text is simple, medium or complex in the number of entities it will
 // yield. The Call is returned even on an error (see Evaluate).
-func (c *Client) Classify(ctx context.Context, text string) (*Classification, Call, error) {
+func (c *Client) Classify(ctx context.Context,
+	text string) (*Classification, Call, error) {
 	input, truncated := cut(text, MaxInputBytes)
-	resp, call, err := c.Evaluate(ctx, input, map[string]Question{classifyID: classifyQuestion})
+	resp, call, err := c.Evaluate(ctx,
+		input,
+		map[string]Question{
+			classifyID: classifyQuestion,
+		})
 	if err != nil {
 		return nil, call, err
 	}
@@ -87,8 +94,14 @@ func classificationOf(resp *Response) (*Classification, error) {
 	default:
 		return nil, fmt.Errorf("jev: unknown complexity %q", a.Choice)
 	}
-	cl := &Classification{Complexity: c, Confidence: -1, Probabilities: a.Probabilities, Model: resp.Model,
-		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens}
+	cl := &Classification{
+		Complexity:    c,
+		Confidence:    -1,
+		Probabilities: a.Probabilities,
+		Model:         resp.Model,
+		InputTokens:   resp.InputTokens,
+		OutputTokens:  resp.OutputTokens,
+	}
 	if a.Confidence != nil && *a.Confidence >= 0 && *a.Confidence <= 1 {
 		cl.Confidence = *a.Confidence
 	}
@@ -96,7 +109,8 @@ func classificationOf(resp *Response) (*Classification, error) {
 }
 
 // cut shortens s to at most n bytes without splitting a rune.
-func cut(s string, n int) (string, bool) {
+func cut(s string,
+	n int) (string, bool) {
 	if len(s) <= n {
 		return s, false
 	}

@@ -30,20 +30,37 @@ func checkCase(c *core.TrainingCase) error {
 // LoadEvals reads the evals of the directories dirs, in order: an eval whose name was found in an earlier directory hides the same
 // name in a later one. Case names are unique within an eval.
 func LoadEvals(dirs ...string) ([]Eval, error) {
-	return evalfile.ReadDirs(dirs, caseName, checkCase)
+	return evalfile.ReadDirs(dirs,
+		caseName,
+		checkCase)
 }
 
 // SelectEvals picks the eval called eval (all if empty) and, in it, the cases called by the names in only (all if none); see
 // evalfile.Select.
-func SelectEvals(evals []Eval, eval string, only []string) ([]Eval, error) {
-	return evalfile.Select(evals, caseName, eval, only)
+func SelectEvals(evals []Eval,
+	eval string,
+	only []string) ([]Eval, error) {
+	return evalfile.Select(evals,
+		caseName,
+		eval,
+		only)
 }
 
 // Spec is the eval as the runner puts it in the database: an eval def of the Type training, with a case def for each case.
 func Spec(e Eval) runner.EvalSpec {
-	spec := runner.EvalSpec{Name: e.Name, Type: core.TypeTraining, Description: e.Description}
+	spec := runner.EvalSpec{
+		Name:        e.Name,
+		Type:        core.TypeTraining,
+		Description: e.Description,
+	}
 	for _, c := range e.Cases {
-		spec.Cases = append(spec.Cases, runner.CaseSpec{Name: c.Name, Meta: &core.TrainingCaseDefMeta{TrainingInput: c.TrainingInput, TrainingExpected: c.TrainingExpected}})
+		spec.Cases = append(spec.Cases, runner.CaseSpec{
+			Name: c.Name,
+			Meta: &core.TrainingCaseDefMeta{
+				TrainingInput:    c.TrainingInput,
+				TrainingExpected: c.TrainingExpected,
+			},
+		})
 	}
 	return spec
 }

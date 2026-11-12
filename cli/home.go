@@ -33,14 +33,17 @@ type layout struct {
 }
 
 // resolveLayout decides the layout. configFlag is the value of --config and configChanged says it was given.
-func resolveLayout(configFlag string, configChanged bool) (layout, error) {
+func resolveLayout(configFlag string,
+	configChanged bool) (layout, error) {
 	l := layout{}
 	if env := os.Getenv(EnvHome); env != "" {
 		l.StateDir = env
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return l, fmt.Errorf("cannot find the home directory (set %s): %w", EnvHome, err)
+			return l, fmt.Errorf("cannot find the home directory (set %s): %w",
+				EnvHome,
+				err)
 		}
 		l.StateDir = filepath.Join(home, homeDirName)
 	}
@@ -72,7 +75,8 @@ func fileExists(p string) bool {
 }
 
 // tail returns the last n lines of the file at path (for the error when the daemon did not start).
-func tail(path string, n int) string {
+func tail(path string,
+	n int) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""

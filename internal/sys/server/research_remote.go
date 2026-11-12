@@ -29,12 +29,20 @@ func (sidecarRemote) client() (*sidecar.Client, error) {
 	return c, nil
 }
 
-func (r sidecarRemote) Start(ctx context.Context, req agent_research.RemoteRequest) (string, error) {
+func (r sidecarRemote) Start(ctx context.Context,
+	req agent_research.RemoteRequest) (string, error) {
 	c, err := r.client()
 	if err != nil {
 		return "", err
 	}
-	sreq := sidecar.StartResearchJobRequest{Topic: req.Topic, MaxSteps: req.MaxSteps, Model: req.Model, Dataset: req.Dataset, Agent: req.Agent, MaxCostUSD: req.MaxCostUSD}
+	sreq := sidecar.StartResearchJobRequest{
+		Topic:      req.Topic,
+		MaxSteps:   req.MaxSteps,
+		Model:      req.Model,
+		Dataset:    req.Dataset,
+		Agent:      req.Agent,
+		MaxCostUSD: req.MaxCostUSD,
+	}
 	if req.Bundle != nil {
 		if sreq.AgentBundle, err = req.Bundle.JSON(); err != nil {
 			return "", err
@@ -48,18 +56,25 @@ func (r sidecarRemote) Start(ctx context.Context, req agent_research.RemoteReque
 	return job.JobID, err
 }
 
-func (r sidecarRemote) Follow(ctx context.Context, jobID string, from int, fn func(agent_research.RemoteEvent) error) error {
+func (r sidecarRemote) Follow(ctx context.Context,
+	jobID string,
+	from int,
+	fn func(agent_research.RemoteEvent) error) error {
 	c, err := r.client()
 	if err != nil {
 		return err
 	}
-	return c.StreamResearchJobEvents(ctx, jobID, from, func(ev sidecar.ResearchEvent) error {
-		return fn(remoteEventOf(ev))
-	})
+	return c.StreamResearchJobEvents(ctx,
+		jobID,
+		from,
+		func(ev sidecar.ResearchEvent) error {
+			return fn(remoteEventOf(ev))
+		})
 }
 
 // Cancel asks the sidecar to stop the job. A job that is over already (409) is not an error: its last event is on its way.
-func (r sidecarRemote) Cancel(ctx context.Context, jobID string) error {
+func (r sidecarRemote) Cancel(ctx context.Context,
+	jobID string) error {
 	c, err := r.client()
 	if err != nil {
 		return err
@@ -73,12 +88,16 @@ func (r sidecarRemote) Cancel(ctx context.Context, jobID string) error {
 }
 
 // Export downloads the export file of the job from the sidecar (what the agent in the container wrote with --export).
-func (r sidecarRemote) Export(ctx context.Context, jobID string, w io.Writer) (int64, error) {
+func (r sidecarRemote) Export(ctx context.Context,
+	jobID string,
+	w io.Writer) (int64, error) {
 	c, err := r.client()
 	if err != nil {
 		return 0, err
 	}
-	n, err := c.DownloadResearchExport(ctx, jobID, w)
+	n, err := c.DownloadResearchExport(ctx,
+		jobID,
+		w)
 	var se *sidecar.StatusError
 	if errors.As(err, &se) {
 		return n, errors.New(se.Message())
@@ -92,19 +111,29 @@ type dbImporter struct{ d *db.DB }
 
 var _ agent_research.Importer = dbImporter{}
 
-func (i dbImporter) Import(ctx context.Context, path string, run agent_research.ImportRun) (string, error) {
+func (i dbImporter) Import(ctx context.Context,
+	path string,
+	run agent_research.ImportRun) (string, error) {
 	r, err := dbexport.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer r.Close()
-	res, err := dbimport.Import(ctx, r, dbimport.Target{
-		Relational:          i.d.Relational,
-		Backend:             i.d.Backend,
-		Vector:              i.d.Vector,
-		EmbeddingDimensions: i.d.EmbeddingDimensions,
-		ImageDir:            i.d.ImageDir,
-	}, dbimport.Options{UserID: run.UserID, RootRunID: run.RunID, SessionPrefix: agent_research.SessionPrefix, Runner: core.RunnerModal})
+	res, err := dbimport.Import(ctx,
+		r,
+		dbimport.Target{
+			Relational:          i.d.Relational,
+			Backend:             i.d.Backend,
+			Vector:              i.d.Vector,
+			EmbeddingDimensions: i.d.EmbeddingDimensions,
+			ImageDir:            i.d.ImageDir,
+		},
+		dbimport.Options{
+			UserID:        run.UserID,
+			RootRunID:     run.RunID,
+			SessionPrefix: agent_research.SessionPrefix,
+			Runner:        core.RunnerModal,
+		})
 	if err != nil {
 		return "", err
 	}
@@ -113,14 +142,33 @@ func (i dbImporter) Import(ctx context.Context, path string, run agent_research.
 
 func remoteEventOf(ev sidecar.ResearchEvent) agent_research.RemoteEvent {
 	out := agent_research.RemoteEvent{
-		Seq: ev.Seq, Type: ev.Type, Status: ev.Status, Error: ev.Error, Report: ev.Report,
-		Agent: ev.Agent, StateSeq: ev.StateSeq, State: ev.State, Step: ev.Step, Detail: ev.Detail, Message: ev.Message,
+		Seq:      ev.Seq,
+		Type:     ev.Type,
+		Status:   ev.Status,
+		Error:    ev.Error,
+		Report:   ev.Report,
+		Agent:    ev.Agent,
+		StateSeq: ev.StateSeq,
+		State:    ev.State,
+		Step:     ev.Step,
+		Detail:   ev.Detail,
+		Message:  ev.Message,
 	}
 	if x := ev.Export; x != nil {
-		out.Export = &agent_research.RemoteExport{Bytes: x.Bytes, SHA256: x.SHA256}
+		out.Export = &agent_research.RemoteExport{
+			Bytes:  x.Bytes,
+			SHA256: x.SHA256,
+		}
 	}
 	if u := ev.Usage; u != nil {
-		out.Usage = &agent_research.RemoteUsage{Steps: u.Steps, ToolCalls: u.ToolCalls, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, CostUSD: u.CostUSD, Subagents: u.Subagents}
+		out.Usage = &agent_research.RemoteUsage{
+			Steps:        u.Steps,
+			ToolCalls:    u.ToolCalls,
+			InputTokens:  u.InputTokens,
+			OutputTokens: u.OutputTokens,
+			CostUSD:      u.CostUSD,
+			Subagents:    u.Subagents,
+		}
 	}
 	return out
 }

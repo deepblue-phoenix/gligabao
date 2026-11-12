@@ -124,7 +124,10 @@ type graphIndex struct {
 }
 
 func newIndex(ts []triple) *graphIndex {
-	g := &graphIndex{seen: map[string]bool{}, values: map[[2]string][]term{}}
+	g := &graphIndex{
+		seen:   map[string]bool{},
+		values: map[[2]string][]term{},
+	}
 	for _, t := range ts {
 		if !g.seen[t.s] {
 			g.seen[t.s] = true
@@ -136,9 +139,13 @@ func newIndex(ts []triple) *graphIndex {
 	return g
 }
 
-func (g *graphIndex) get(s, p string) []term { return g.values[[2]string{s, p}] }
+func (g *graphIndex) get(s,
+	p string) []term {
+	return g.values[[2]string{s, p}]
+}
 
-func (g *graphIndex) hasType(s string, types func(string) bool) bool {
+func (g *graphIndex) hasType(s string,
+	types func(string) bool) bool {
 	for _, t := range g.get(s, rdfType) {
 		if t.isIRI() && types(t.v) {
 			return true
@@ -148,7 +155,8 @@ func (g *graphIndex) hasType(s string, types func(string) bool) bool {
 }
 
 // literal returns the first non-empty literal of (s, one of preds).
-func (g *graphIndex) literal(s string, preds ...string) string {
+func (g *graphIndex) literal(s string,
+	preds ...string) string {
 	for _, p := range preds {
 		for _, t := range g.get(s, p) {
 			if v := strings.TrimSpace(t.v); t.lit && v != "" {
@@ -189,7 +197,8 @@ func isNamed(s string) bool { return !strings.HasPrefix(s, "_:") && !builtin(s) 
 
 // members returns the named classes a class expression stands for: itself if it is named, its named members if
 // it is an owl:unionOf, nothing otherwise.
-func (g *graphIndex) members(t term, depth int) []string {
+func (g *graphIndex) members(t term,
+	depth int) []string {
 	switch {
 	case t.isIRI():
 		if builtin(t.v) {
@@ -214,12 +223,17 @@ func interpret(ts []triple) *Ontology {
 
 	// Classes, in order of appearance; classes only referenced by a relationship are added too.
 	classIdx := map[string]int{}
-	addClass := func(iri string, declared bool) {
+	addClass := func(iri string,
+		declared bool) {
 		if _, ok := classIdx[iri]; ok {
 			return
 		}
 		classIdx[iri] = len(o.Classes)
-		o.Classes = append(o.Classes, Class{IRI: iri, Name: LocalName(iri), Declared: declared})
+		o.Classes = append(o.Classes, Class{
+			IRI:      iri,
+			Name:     LocalName(iri),
+			Declared: declared,
+		})
 	}
 	for _, s := range g.order {
 		if isNamed(s) && g.hasType(s, func(t string) bool { return t == nsOWL+"Class" || t == nsRDFS+"Class" }) {
@@ -263,7 +277,13 @@ func interpret(ts []triple) *Ontology {
 						continue
 					}
 					addClass(s, false)
-					addEdge(Edge{SourceIRI: s, TargetIRI: m, Relation: cp.kind, Kind: cp.kind, IRI: cp.pred})
+					addEdge(Edge{
+						SourceIRI: s,
+						TargetIRI: m,
+						Relation:  cp.kind,
+						Kind:      cp.kind,
+						IRI:       cp.pred,
+					})
 				}
 			}
 		}
@@ -296,8 +316,14 @@ func interpret(ts []triple) *Ontology {
 		for _, d := range domain {
 			for _, r := range rng {
 				addEdge(Edge{
-					SourceIRI: d, TargetIRI: r, Relation: LocalName(s), Kind: KindProperty, IRI: s,
-					Label: g.literal(s, nsRDFS+"label"), Comment: g.literal(s, nsRDFS+"comment"), InverseOf: inv,
+					SourceIRI: d,
+					TargetIRI: r,
+					Relation:  LocalName(s),
+					Kind:      KindProperty,
+					IRI:       s,
+					Label:     g.literal(s, nsRDFS+"label"),
+					Comment:   g.literal(s, nsRDFS+"comment"),
+					InverseOf: inv,
 				})
 			}
 		}

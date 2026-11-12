@@ -46,9 +46,15 @@ const (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM)
 	defer stop()
-	os.Exit(run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(run(ctx,
+		os.Args[1:],
+		os.Stdin,
+		os.Stdout,
+		os.Stderr))
 }
 
 const usage = `Usage: gligabao_worker COMMAND [flags] ARG | -
@@ -71,16 +77,38 @@ type common struct {
 }
 
 func (c *common) register(fs *flag.FlagSet) {
-	fs.StringVar(&c.config, "config", "", "gligabao.toml to read the settings from (API keys, db_backend = \"postgres\", postgres_dsn, vector_store = \"pinecone\" or \"s3vectors\", ...); default: the environment only (POSTGRES_DSN, and the Pinecone or S3 Vectors variables)")
-	fs.StringVar(&c.user, "user", defaultUser, "the user whose knowledge base is used")
-	fs.StringVar(&c.dataset, "dataset", memory_core.DefaultDataset, "the dataset of the user's knowledge base")
-	fs.DurationVar(&c.timeout, "timeout", 0, "give up after this long, e.g. 90s (default: no limit)")
-	fs.BoolVar(&c.json, "json", false, "print the result as JSON")
-	fs.BoolVar(&c.verbose, "verbose", false, "log what the databases and pipelines do to stderr")
+	fs.StringVar(&c.config,
+		"config",
+		"",
+		"gligabao.toml to read the settings from (API keys, db_backend = \"postgres\", postgres_dsn, vector_store = \"pinecone\" or \"s3vectors\", ...); default: the environment only (POSTGRES_DSN, and the Pinecone or S3 Vectors variables)")
+	fs.StringVar(&c.user,
+		"user",
+		defaultUser,
+		"the user whose knowledge base is used")
+	fs.StringVar(&c.dataset,
+		"dataset",
+		memory_core.DefaultDataset,
+		"the dataset of the user's knowledge base")
+	fs.DurationVar(&c.timeout,
+		"timeout",
+		0,
+		"give up after this long, e.g. 90s (default: no limit)")
+	fs.BoolVar(&c.json,
+		"json",
+		false,
+		"print the result as JSON")
+	fs.BoolVar(&c.verbose,
+		"verbose",
+		false,
+		"log what the databases and pipelines do to stderr")
 }
 
 // run is main without the process: it returns the exit code.
-func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func run(ctx context.Context,
+	args []string,
+	stdin io.Reader,
+	stdout,
+	stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return exitUsage
@@ -95,7 +123,10 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return exitOK
 	case "remember", "query":
 	default:
-		fmt.Fprintf(stderr, "gligabao_worker: unknown command %q\n\n%s", cmd, usage)
+		fmt.Fprintf(stderr,
+			"gligabao_worker: unknown command %q\n\n%s",
+			cmd,
+			usage)
 		return exitUsage
 	}
 
@@ -106,14 +137,28 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	var kind, at, session string
 	switch cmd {
 	case "remember":
-		fs.StringVar(&kind, "kind", "", "kind of the text: knowledge (default) or episode")
-		fs.StringVar(&at, "at", "", "event time of the text, RFC 3339 (default: now)")
-		fs.StringVar(&session, "session", "", "session ID to attach to what is remembered")
+		fs.StringVar(&kind,
+			"kind",
+			"",
+			"kind of the text: knowledge (default) or episode")
+		fs.StringVar(&at,
+			"at",
+			"",
+			"event time of the text, RFC 3339 (default: now)")
+		fs.StringVar(&session,
+			"session",
+			"",
+			"session ID to attach to what is remembered")
 	case "query":
-		fs.StringVar(&session, "session", "", "session ID to label the query with")
+		fs.StringVar(&session,
+			"session",
+			"",
+			"session ID to label the query with")
 	}
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: gligabao_worker %s [flags] ARG | -\n\nFlags:\n", cmd)
+		fmt.Fprintf(stderr,
+			"Usage: gligabao_worker %s [flags] ARG | -\n\nFlags:\n",
+			cmd)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -122,12 +167,17 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return exitUsage
 	}
-	fail := func(code int, err error) int {
-		fmt.Fprintf(stderr, "gligabao_worker: %v\n", err)
+	fail := func(code int,
+		err error) int {
+		fmt.Fprintf(stderr,
+			"gligabao_worker: %v\n",
+			err)
 		return code
 	}
 
-	input, err := readInput(cmd, fs.Args(), stdin)
+	input, err := readInput(cmd,
+		fs.Args(),
+		stdin)
 	if err != nil {
 		return fail(exitUsage, err)
 	}
@@ -159,9 +209,13 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return fail(exitUsage, err)
 	}
-	emb, err := ai.NewEmbedder(cfg.OpenAIKey, ai.WithEmbedPrices(ai.NewPriceTable(cfg.AIPrices())), ai.WithEmbedDimensions(cfg.EmbeddingDimensions))
+	emb, err := ai.NewEmbedder(cfg.OpenAIKey,
+		ai.WithEmbedPrices(ai.NewPriceTable(cfg.AIPrices())),
+		ai.WithEmbedDimensions(cfg.EmbeddingDimensions))
 	if err != nil {
-		return fail(exitUsage, fmt.Errorf("embedder: %w (set %s or openai_api_key)", err, config.EnvOpenAIKey))
+		return fail(exitUsage, fmt.Errorf("embedder: %w (set %s or openai_api_key)",
+			err,
+			config.EnvOpenAIKey))
 	}
 
 	log.SetOutput(stderr)
@@ -176,7 +230,10 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		defer cancel()
 	}
 
-	a, err := openApp(ctx, cfg, client, emb)
+	a, err := openApp(ctx,
+		cfg,
+		client,
+		emb)
 	if err != nil {
 		return fail(exitUsage, err)
 	}
@@ -185,12 +242,27 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	var code int
 	switch cmd {
 	case "remember":
-		code = a.cmdRemember(ctx, stdout, stderr, c.json, memory_remember.Request{
-			UserID: userID, Dataset: datasetName, Kind: kind, Text: input, Ref: ref,
-			Opts: append(a.rememberOpts[:len(a.rememberOpts):len(a.rememberOpts)], sessionOpt(session)...),
-		})
+		code = a.cmdRemember(ctx,
+			stdout,
+			stderr,
+			c.json,
+			memory_remember.Request{
+				UserID:  userID,
+				Dataset: datasetName,
+				Kind:    kind,
+				Text:    input,
+				Ref:     ref,
+				Opts:    append(a.rememberOpts[:len(a.rememberOpts):len(a.rememberOpts)], sessionOpt(session)...),
+			})
 	case "query":
-		code = a.cmdQuery(ctx, stdout, stderr, c.json, userID, datasetName, input, sessionOpt(session))
+		code = a.cmdQuery(ctx,
+			stdout,
+			stderr,
+			c.json,
+			userID,
+			datasetName,
+			input,
+			sessionOpt(session))
 	}
 	return code
 }
@@ -203,62 +275,106 @@ func sessionOpt(session string) []memory_core.Option {
 }
 
 // cmdRemember stores the text and waits for the run to end, so the text is in the databases when the process exits.
-func (a *app) cmdRemember(ctx context.Context, stdout, stderr io.Writer, asJSON bool, req memory_remember.Request) int {
+func (a *app) cmdRemember(ctx context.Context,
+	stdout,
+	stderr io.Writer,
+	asJSON bool,
+	req memory_remember.Request) int {
 	outcome := make(chan memory_remember.Outcome, 1)
 	req.Ctx, req.Outcome = ctx, outcome
 	runID, err := a.remember.Submit(req)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_worker: could not queue the text: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_worker: could not queue the text: %v\n",
+			err)
 		return exitError
 	}
 	var out memory_remember.Outcome
 	select {
 	case out = <-outcome:
 	case <-ctx.Done():
-		fmt.Fprintf(stderr, "gligabao_worker: remember run %d: %v\n", runID, context.Cause(ctx))
+		fmt.Fprintf(stderr,
+			"gligabao_worker: remember run %d: %v\n",
+			runID,
+			context.Cause(ctx))
 		return exitError
 	}
 	if out.Err != nil {
-		fmt.Fprintf(stderr, "gligabao_worker: remember run %d failed: %v\n", runID, out.Err)
+		fmt.Fprintf(stderr,
+			"gligabao_worker: remember run %d failed: %v\n",
+			runID,
+			out.Err)
 		return exitError
 	}
 	if asJSON {
-		return printJSON(stdout, stderr, out.Result)
+		return printJSON(stdout,
+			stderr,
+			out.Result)
 	}
-	fmt.Fprintf(stdout, "remembered (run %d): %d entities, %d facts, %d facts invalidated\n", runID, len(out.Result.Entities), len(out.Result.Edges), len(out.Result.InvalidatedEdges))
+	fmt.Fprintf(stdout,
+		"remembered (run %d): %d entities, %d facts, %d facts invalidated\n",
+		runID,
+		len(out.Result.Entities),
+		len(out.Result.Edges),
+		len(out.Result.InvalidatedEdges))
 	return exitOK
 }
 
 // cmdQuery answers the question. A dataset that does not exist yet is not an error: the knowledge base is just empty.
-func (a *app) cmdQuery(ctx context.Context, stdout, stderr io.Writer, asJSON bool, userID, dataset, question string, extra []memory_core.Option) int {
+func (a *app) cmdQuery(ctx context.Context,
+	stdout,
+	stderr io.Writer,
+	asJSON bool,
+	userID,
+	dataset,
+	question string,
+	extra []memory_core.Option) int {
 	opts := append(a.queryOpts[:len(a.queryOpts):len(a.queryOpts)], extra...)
-	res, err := memory_query.Query(ctx, a.database.Relational, a.llm, userID, dataset, question, opts...)
+	res, err := memory_query.Query(ctx,
+		a.database.Relational,
+		a.llm,
+		userID,
+		dataset,
+		question,
+		opts...)
 	if errors.Is(err, memory_core.ErrDatasetNotFound) {
-		res, err = &memory_query.QueryResult{Answer: "The knowledge base is empty: nothing was remembered yet."}, nil
+		res, err = &memory_query.QueryResult{
+			Answer: "The knowledge base is empty: nothing was remembered yet.",
+		}, nil
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_worker: query: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_worker: query: %v\n",
+			err)
 		return exitError
 	}
 	if asJSON {
-		return printJSON(stdout, stderr, res)
+		return printJSON(stdout,
+			stderr,
+			res)
 	}
 	fmt.Fprintln(stdout, strings.TrimSpace(res.Answer))
 	return exitOK
 }
 
-func printJSON(stdout, stderr io.Writer, v any) int {
+func printJSON(stdout,
+	stderr io.Writer,
+	v any) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		fmt.Fprintf(stderr, "gligabao_worker: %v\n", err)
+		fmt.Fprintf(stderr,
+			"gligabao_worker: %v\n",
+			err)
 		return exitError
 	}
 	return exitOK
 }
 
 // readInput takes the text or question from the only argument, or from stdin if it is "-".
-func readInput(cmd string, args []string, stdin io.Reader) (string, error) {
+func readInput(cmd string,
+	args []string,
+	stdin io.Reader) (string, error) {
 	what := map[string]string{"remember": "text", "query": "question"}[cmd]
 	if len(args) != 1 {
 		return "", fmt.Errorf("give exactly one %s as an argument, or - to read it from stdin (see -h)", what)
@@ -276,7 +392,9 @@ func readInput(cmd string, args []string, stdin io.Reader) (string, error) {
 		return "", fmt.Errorf("empty %s", what)
 	}
 	if len(s) > maxTextLen {
-		return "", fmt.Errorf("%s too long (at most %d bytes)", what, maxTextLen)
+		return "", fmt.Errorf("%s too long (at most %d bytes)",
+			what,
+			maxTextLen)
 	}
 	return s, nil
 }

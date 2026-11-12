@@ -53,11 +53,15 @@ func ValidateDataset(content []byte) (int, error) {
 				if k == "input" {
 					continue
 				}
-				return 0, fmt.Errorf("line %d has no %q", i+1, k)
+				return 0, fmt.Errorf("line %d has no %q",
+					i+1,
+					k)
 			}
 			var s string
 			if json.Unmarshal(raw, &s) != nil || bytes.Equal(raw, []byte("null")) {
-				return 0, fmt.Errorf("line %d: %q must be a string", i+1, k)
+				return 0, fmt.Errorf("line %d: %q must be a string",
+					i+1,
+					k)
 			}
 		}
 		n++
@@ -70,7 +74,9 @@ func ValidateDataset(content []byte) (int, error) {
 
 // stageDatasetFile writes content to dir/name atomically (a temp file in dir, renamed), creating dir. It returns a
 // function that completes the write (the rename), and one that removes the temp file if the caller does not go on.
-func stageDatasetFile(dir, name string, content []byte) (commit func() error, discard func(), err error) {
+func stageDatasetFile(dir,
+	name string,
+	content []byte) (commit func() error, discard func(), err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, nil, err
 	}
@@ -102,37 +108,63 @@ type DatasetInfo struct {
 
 // ensureRecord returns the record of ds, whose data file has the stats s: the stored one if it describes this version of
 // the file, otherwise a new one (status stored, not synced), replacing the record that described an earlier version.
-func ensureRecord(ctx context.Context, db *sql.DB, ds LocalDataset, s FileStats) (*trainingdb.TrainingDataset, error) {
-	rec, err := trainingdb.GetTrainingDatasetByFilename(ctx, db, ds.Filename())
+func ensureRecord(ctx context.Context,
+	db *sql.DB,
+	ds LocalDataset,
+	s FileStats) (*trainingdb.TrainingDataset, error) {
+	rec, err := trainingdb.GetTrainingDatasetByFilename(ctx,
+		db,
+		ds.Filename())
 	if err == nil && rec.SHA256 == s.SHA256 && rec.SizeBytes == s.Size && rec.NumRecords == s.Records {
 		return rec, nil
 	}
 	if err != nil && !errors.Is(err, relational.ErrNotFound) {
 		return nil, err
 	}
-	if _, err := trainingdb.SaveTrainingDataset(ctx, db, trainingdb.TrainingDataset{
-		Filename: ds.Filename(), SizeBytes: s.Size, NumRecords: s.Records, SHA256: s.SHA256}); err != nil {
+	if _, err := trainingdb.SaveTrainingDataset(ctx,
+		db,
+		trainingdb.TrainingDataset{
+			Filename:   ds.Filename(),
+			SizeBytes:  s.Size,
+			NumRecords: s.Records,
+			SHA256:     s.SHA256,
+		}); err != nil {
 		return nil, err
 	}
-	return trainingdb.GetTrainingDatasetByFilename(ctx, db, ds.Filename())
+	return trainingdb.GetTrainingDatasetByFilename(ctx,
+		db,
+		ds.Filename())
 }
 
-func infoOf(ds LocalDataset, rec *trainingdb.TrainingDataset) DatasetInfo {
-	return DatasetInfo{TrainingDataset: *rec, Manifest: ds.Manifest, Dir: filepath.Base(ds.Dir)}
+func infoOf(ds LocalDataset,
+	rec *trainingdb.TrainingDataset) DatasetInfo {
+	return DatasetInfo{
+		TrainingDataset: *rec,
+		Manifest:        ds.Manifest,
+		Dir:             filepath.Base(ds.Dir),
+	}
 }
 
 // ListDatasets scans the training datasets directories (DiscoverDatasets) and returns their usable datasets, by name, with their
 // records (made or updated here when the file is new or changed), and the problems of the ones that are not usable.
-func ListDatasets(ctx context.Context, db *sql.DB, dirs []string) ([]DatasetInfo, []DatasetProblem, error) {
+func ListDatasets(ctx context.Context,
+	db *sql.DB,
+	dirs []string) ([]DatasetInfo, []DatasetProblem, error) {
 	found, problems := DiscoverDatasets(dirs...)
 	out := []DatasetInfo{}
 	for _, ds := range found {
 		s, err := DatasetFileStats(ds.Path)
 		if err != nil {
-			problems = append(problems, DatasetProblem{Dir: problemDirOf(ds, dirs), Error: err.Error()})
+			problems = append(problems, DatasetProblem{
+				Dir:   problemDirOf(ds, dirs),
+				Error: err.Error(),
+			})
 			continue
 		}
-		rec, err := ensureRecord(ctx, db, ds, s)
+		rec, err := ensureRecord(ctx,
+			db,
+			ds,
+			s)
 		if err != nil {
 			log.WithError(err).Error("training: list training datasets failed")
 			return nil, nil, internalErr("failed to list the datasets", err)
@@ -147,7 +179,8 @@ func ListDatasets(ctx context.Context, db *sql.DB, dirs []string) ([]DatasetInfo
 
 // problemDirOf is the Dir of a problem about ds, in the form DiscoverDatasets uses: the subdirectory's name, or with more than one
 // directory its path.
-func problemDirOf(ds LocalDataset, dirs []string) string {
+func problemDirOf(ds LocalDataset,
+	dirs []string) string {
 	if len(dirs) > 1 {
 		return ds.Dir
 	}
@@ -159,7 +192,8 @@ var ErrUnknownDataset = errors.New("unknown dataset")
 
 // FindDataset returns the dataset called name in the training datasets directories (the first one that has it), or
 // ErrUnknownDataset. Other errors are safe to show to the user.
-func FindDataset(dirs []string, name string) (*LocalDataset, error) {
+func FindDataset(dirs []string,
+	name string) (*LocalDataset, error) {
 	if !ValidDatasetName(name) {
 		return nil, ErrUnknownDataset
 	}
@@ -173,14 +207,17 @@ func FindDataset(dirs []string, name string) (*LocalDataset, error) {
 }
 
 // readDatasetFile reads the data file of ds. The errors are safe to show to the user.
-func readDatasetFile(ds *LocalDataset, name string) ([]byte, error) {
+func readDatasetFile(ds *LocalDataset,
+	name string) ([]byte, error) {
 	content, err := os.ReadFile(ds.Path)
 	if err != nil {
 		log.WithError(err).WithField("dataset", name).Error("training: read training dataset file failed")
 		return nil, fmt.Errorf("the data file of dataset %s cannot be read", name)
 	}
 	if len(content) > MaxDatasetBytes {
-		return nil, fmt.Errorf("the data file of dataset %s is over %d MB", name, MaxDatasetBytes>>20)
+		return nil, fmt.Errorf("the data file of dataset %s is over %d MB",
+			name,
+			MaxDatasetBytes>>20)
 	}
 	return content, nil
 }
@@ -188,7 +225,10 @@ func readDatasetFile(ds *LocalDataset, name string) ([]byte, error) {
 // LoadTrainingDataset returns the record and the file of the dataset called name, to be sent to the sidecar with a job.
 // The record is brought up to date with the file just read. An unknown name gives ErrUnknownDataset. The other errors
 // are safe to show to the user.
-func LoadTrainingDataset(ctx context.Context, db *sql.DB, dirs []string, name string) (*trainingdb.TrainingDataset, []byte, error) {
+func LoadTrainingDataset(ctx context.Context,
+	db *sql.DB,
+	dirs []string,
+	name string) (*trainingdb.TrainingDataset, []byte, error) {
 	ds, err := FindDataset(dirs, name)
 	if err != nil {
 		return nil, nil, err
@@ -199,9 +239,14 @@ func LoadTrainingDataset(ctx context.Context, db *sql.DB, dirs []string, name st
 	}
 	s, err := ContentStats(content)
 	if err != nil {
-		return nil, nil, fmt.Errorf("dataset %s: invalid data file: %w", name, err)
+		return nil, nil, fmt.Errorf("dataset %s: invalid data file: %w",
+			name,
+			err)
 	}
-	rec, err := ensureRecord(ctx, db, *ds, s)
+	rec, err := ensureRecord(ctx,
+		db,
+		*ds,
+		s)
 	if err != nil {
 		log.WithError(err).Error("training: record training dataset failed")
 		return nil, nil, errors.New("failed to record the dataset")
@@ -218,12 +263,18 @@ const uploadedManifestDescription = "Uploaded through the training datasets API.
 // gb_training_datasets. Saving a name again replaces the dataset's file. The sidecar is not involved. Errors are *Error:
 // KindInvalid for a bad name or file, KindConflict for a dataset of that name that has a manifest of its own, naming another
 // data file, or that is in another directory (it is not replaced), KindInternal.
-func SaveDataset(ctx context.Context, db *sql.DB, dirs []string, filename string, content []byte) (*DatasetInfo, error) {
+func SaveDataset(ctx context.Context,
+	db *sql.DB,
+	dirs []string,
+	filename string,
+	content []byte) (*DatasetInfo, error) {
 	if len(dirs) == 0 || dirs[0] == "" {
 		return nil, internalErr("no training dataset directory is configured", nil)
 	}
 	dir := dirs[0]
-	filename = path.Base(strings.ReplaceAll(filename, `\`, "/")) // some browsers send the full path
+	filename = path.Base(strings.ReplaceAll(filename,
+		`\`,
+		"/")) // some browsers send the full path
 	name := strings.TrimSuffix(filename, ".jsonl")
 	if !datasetFilenameRe.MatchString(filename) || !ValidDatasetName(name) {
 		return nil, invalidErr("the file name must be a plain *.jsonl name (letters, digits, . _ -)")
@@ -257,15 +308,31 @@ func SaveDataset(ctx context.Context, db *sql.DB, dirs []string, filename string
 	// The file is staged first, then recorded, then moved into place: a failure leaves neither a record without its
 	// file nor a half-written file.
 	ctx = context.WithoutCancel(ctx)
-	commit, discard, err := stageDatasetFile(dsDir, filename, content)
+	commit, discard, err := stageDatasetFile(dsDir,
+		filename,
+		content)
 	if err != nil {
 		log.WithError(err).Error("training: save training dataset file failed")
 		return nil, internalErr("failed to save the dataset file", err)
 	}
-	ds := LocalDataset{Manifest: Manifest{Name: name, Description: uploadedManifestDescription, Format: FormatJSONL, File: filename},
-		Dir: dsDir, Path: filepath.Join(dsDir, filename)}
-	if _, err := trainingdb.SaveTrainingDataset(ctx, db, trainingdb.TrainingDataset{
-		Filename: ds.Filename(), SizeBytes: stats.Size, NumRecords: stats.Records, SHA256: stats.SHA256}); err != nil {
+	ds := LocalDataset{
+		Manifest: Manifest{
+			Name:        name,
+			Description: uploadedManifestDescription,
+			Format:      FormatJSONL,
+			File:        filename,
+		},
+		Dir:  dsDir,
+		Path: filepath.Join(dsDir, filename),
+	}
+	if _, err := trainingdb.SaveTrainingDataset(ctx,
+		db,
+		trainingdb.TrainingDataset{
+			Filename:   ds.Filename(),
+			SizeBytes:  stats.Size,
+			NumRecords: stats.Records,
+			SHA256:     stats.SHA256,
+		}); err != nil {
 		discard()
 		log.WithError(err).Error("training: record training dataset failed")
 		return nil, internalErr("failed to record the dataset", err)
@@ -281,7 +348,9 @@ func SaveDataset(ctx context.Context, db *sql.DB, dirs []string, filename string
 			return nil, internalErr("failed to save the dataset's manifest", err)
 		}
 	}
-	rec, err := trainingdb.GetTrainingDatasetByFilename(ctx, db, ds.Filename())
+	rec, err := trainingdb.GetTrainingDatasetByFilename(ctx,
+		db,
+		ds.Filename())
 	if err != nil {
 		log.WithError(err).Error("training: read training dataset failed")
 		return nil, internalErr("failed to read the dataset's record", err)
@@ -291,8 +360,11 @@ func SaveDataset(ctx context.Context, db *sql.DB, dirs []string, filename string
 }
 
 // writeUploadManifest creates the manifest file of an uploaded dataset (it must not exist).
-func writeUploadManifest(path string, m Manifest) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+func writeUploadManifest(path string,
+	m Manifest) error {
+	f, err := os.OpenFile(path,
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		0o644)
 	if err != nil {
 		return err
 	}
@@ -323,7 +395,9 @@ type Preview struct {
 // PreviewDataset returns the first limit lines of the data file of the dataset called name (the name must be valid, see
 // ValidDatasetName), so it can be inspected. Only the beginning of the file is read. Errors are *Error: KindNotFound for an
 // unknown dataset or a data file that cannot be read, KindInternal.
-func PreviewDataset(dirs []string, name string, limit int) (*Preview, error) {
+func PreviewDataset(dirs []string,
+	name string,
+	limit int) (*Preview, error) {
 	ds, err := FindDataset(dirs, name)
 	if err != nil {
 		return nil, notFoundErr("unknown dataset")
@@ -366,5 +440,10 @@ func PreviewDataset(dirs []string, name string, limit int) (*Preview, error) {
 		}
 		lines = append(lines, strings.ToValidUTF8(strings.TrimSuffix(string(line), "\r"), "\uFFFD"))
 	}
-	return &Preview{Name: ds.Name, Lines: lines, NumRecords: stats.Records, Truncated: truncated}, nil
+	return &Preview{
+		Name:       ds.Name,
+		Lines:      lines,
+		NumRecords: stats.Records,
+		Truncated:  truncated,
+	}, nil
 }

@@ -139,7 +139,8 @@ func (b *Builder) SetNotes(s string) {
 }
 
 // SetExtra sets a custom key on the trajectory's extra field.
-func (b *Builder) SetExtra(key string, v any) {
+func (b *Builder) SetExtra(key string,
+	v any) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.t.Extra == nil {
@@ -149,10 +150,20 @@ func (b *Builder) SetExtra(key string, v any) {
 }
 
 // System appends a system-prompt step.
-func (b *Builder) System(message string) { b.add(Step{Source: SourceSystem, Message: message}) }
+func (b *Builder) System(message string) {
+	b.add(Step{
+		Source:  SourceSystem,
+		Message: message,
+	})
+}
 
 // User appends a user-message step.
-func (b *Builder) User(message string) { b.add(Step{Source: SourceUser, Message: message}) }
+func (b *Builder) User(message string) {
+	b.add(Step{
+		Source:  SourceUser,
+		Message: message,
+	})
+}
 
 // Agent appends an agent step (an LLM response, optionally with tool calls and their observation).
 func (b *Builder) Agent(s Step) {
@@ -161,21 +172,41 @@ func (b *Builder) Agent(s Step) {
 }
 
 // Tool appends an agent step that calls one tool and records its result. The tool call ID is generated.
-func (b *Builder) Tool(message, name string, args map[string]any, result string) {
-	b.ToolStep(Step{Message: message}, name, args, result)
+func (b *Builder) Tool(message,
+	name string,
+	args map[string]any,
+	result string) {
+	b.ToolStep(Step{
+		Message: message,
+	},
+		name,
+		args,
+		result)
 }
 
 // ToolStep is Tool for a step that carries more than a message (model name, metrics, extra): s is completed with the
 // tool call and its result.
-func (b *Builder) ToolStep(s Step, name string, args map[string]any, result string) {
+func (b *Builder) ToolStep(s Step,
+	name string,
+	args map[string]any,
+	result string) {
 	if args == nil {
 		args = map[string]any{}
 	}
 	b.mu.Lock()
 	callID := fmt.Sprintf("call_%d", len(b.t.Steps)+1)
 	b.mu.Unlock()
-	s.ToolCalls = []ToolCall{{ToolCallID: callID, FunctionName: name, Arguments: args}}
-	s.Observation = &Observation{Results: []ObservationResult{{SourceCallID: callID, Content: result}}}
+	s.ToolCalls = []ToolCall{{
+		ToolCallID:   callID,
+		FunctionName: name,
+		Arguments:    args,
+	}}
+	s.Observation = &Observation{
+		Results: []ObservationResult{{
+			SourceCallID: callID,
+			Content:      result,
+		}},
+	}
 	b.Agent(s)
 }
 
@@ -201,7 +232,9 @@ func (b *Builder) Build() *Trajectory {
 
 // ComputeFinalMetrics sets the final metrics from the steps (Build does it; call it again after changing the steps).
 func (t *Trajectory) ComputeFinalMetrics() {
-	fm := &FinalMetrics{TotalSteps: len(t.Steps)}
+	fm := &FinalMetrics{
+		TotalSteps: len(t.Steps),
+	}
 	for _, s := range t.Steps {
 		if m := s.Metrics; m != nil {
 			fm.TotalPromptTokens += m.PromptTokens
@@ -223,12 +256,19 @@ func NewID() string {
 	}
 	u[6] = u[6]&0x0f | 0x40
 	u[8] = u[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:])
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		u[0:4],
+		u[4:6],
+		u[6:8],
+		u[8:10],
+		u[10:])
 }
 
 // Marshal encodes t as pretty-printed JSON.
 func Marshal(t *Trajectory) ([]byte, error) {
-	b, err := json.MarshalIndent(t, "", "  ")
+	b, err := json.MarshalIndent(t,
+		"",
+		"  ")
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +277,8 @@ func Marshal(t *Trajectory) ([]byte, error) {
 
 // WriteFile stores t as pretty-printed JSON in dir (created if missing) and returns the file path,
 // which is <dir>/<trajectory_id>.json.
-func WriteFile(dir string, t *Trajectory) (string, error) {
+func WriteFile(dir string,
+	t *Trajectory) (string, error) {
 	data, err := Marshal(t)
 	if err != nil {
 		return "", fmt.Errorf("atif: marshal: %w", err)
@@ -246,7 +287,9 @@ func WriteFile(dir string, t *Trajectory) (string, error) {
 		return "", fmt.Errorf("atif: create dir: %w", err)
 	}
 	path := filepath.Join(dir, t.TrajectoryID+".json")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path,
+		data,
+		0o644); err != nil {
 		return "", fmt.Errorf("atif: write: %w", err)
 	}
 	return path, nil

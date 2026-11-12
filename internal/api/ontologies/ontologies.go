@@ -34,18 +34,31 @@ type loadRequest struct {
 // Load serves POST /v1/gb/ontologies: parses the OWL/RDF-XML document in "content" (or in the file "file" of the ontology
 // directories dirs), stores its metadata in the relational database and the ontology itself in the graph database, under the given
 // name. The ontology belongs to the user of the request (the gb-user-id header).
-func Load(d *sql.DB, dirs []string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		req, ok := decode(w, r, dirs)
+func Load(d *sql.DB,
+	dirs []string) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		req, ok := decode(w,
+			r,
+			dirs)
 		if !ok {
 			return
 		}
-		o, err := memory_ontology.Load(r.Context(), d, httputil.UserID(r), req.Name, req.Description, []byte(req.Content))
+		o, err := memory_ontology.Load(r.Context(),
+			d,
+			httputil.UserID(r),
+			req.Name,
+			req.Description,
+			[]byte(req.Content))
 		if err != nil {
-			fail(w, "load", err)
+			fail(w,
+				"load",
+				err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusCreated, o)
+		httputil.WriteJSON(w,
+			http.StatusCreated,
+			o)
 	}
 }
 
@@ -53,44 +66,72 @@ func Load(d *sql.DB, dirs []string) http.HandlerFunc {
 // is merged into the ontology stored under that name: new classes and edges are added and ones that exist already
 // are overwritten, nothing is deleted. With "replace": true the document replaces the stored ontology entirely.
 // The merge rules are documented on memory_ontology.Update.
-func Update(d *sql.DB, dirs []string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		req, ok := decode(w, r, dirs)
+func Update(d *sql.DB,
+	dirs []string) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		req, ok := decode(w,
+			r,
+			dirs)
 		if !ok {
 			return
 		}
-		o, err := memory_ontology.Update(r.Context(), d, httputil.UserID(r), r.PathValue("name"), req.Description, []byte(req.Content), req.Replace)
+		o, err := memory_ontology.Update(r.Context(),
+			d,
+			httputil.UserID(r),
+			r.PathValue("name"),
+			req.Description,
+			[]byte(req.Content),
+			req.Replace)
 		if err != nil {
-			fail(w, "update", err)
+			fail(w,
+				"update",
+				err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, o)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			o)
 	}
 }
 
 // decode reads and checks the request body, and reads the document of "file" into Content; it writes the error response itself when
 // it returns false.
-func decode(w http.ResponseWriter, r *http.Request, dirs []string) (loadRequest, bool) {
+func decode(w http.ResponseWriter,
+	r *http.Request,
+	dirs []string) (loadRequest, bool) {
 	var req loadRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
-		httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+	if err := json.NewDecoder(http.MaxBytesReader(w,
+		r.Body,
+		maxBodyBytes)).Decode(&req); err != nil {
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"invalid JSON body: "+err.Error())
 		return req, false
 	}
 	if req.Format != "" && req.Format != memory_ontology.FormatRDFXML {
-		httputil.Error(w, http.StatusBadRequest, `unsupported format: only "rdfxml" is supported`)
+		httputil.Error(w,
+			http.StatusBadRequest,
+			`unsupported format: only "rdfxml" is supported`)
 		return req, false
 	}
 	switch {
 	case req.Content != "" && req.File != "":
-		httputil.Error(w, http.StatusBadRequest, `set either "content" or "file", not both`)
+		httputil.Error(w,
+			http.StatusBadRequest,
+			`set either "content" or "file", not both`)
 		return req, false
 	case req.Content == "" && req.File == "":
-		httputil.Error(w, http.StatusBadRequest, `"content" or "file" is required`)
+		httputil.Error(w,
+			http.StatusBadRequest,
+			`"content" or "file" is required`)
 		return req, false
 	case req.File != "":
 		doc, err := readFile(dirs, req.File)
 		if err != nil {
-			fail(w, "read", err)
+			fail(w,
+				"read",
+				err)
 			return req, false
 		}
 		req.Content = string(doc)
@@ -106,7 +147,8 @@ var (
 
 // readFile reads the file called name from the first of the ontology directories dirs that has it. The name must be a plain file
 // name: it cannot reach outside the directories.
-func readFile(dirs []string, name string) ([]byte, error) {
+func readFile(dirs []string,
+	name string) ([]byte, error) {
 	if len(dirs) == 0 {
 		return nil, errNoDirs
 	}
@@ -142,19 +184,31 @@ func readDocument(f *os.File) ([]byte, error) {
 	return doc, nil
 }
 
-func fail(w http.ResponseWriter, op string, err error) {
+func fail(w http.ResponseWriter,
+	op string,
+	err error) {
 	switch {
 	case errors.Is(err, memory_ontology.ErrInvalidName), errors.Is(err, memory_core.ErrInvalidUser), errors.Is(err, memory_ontology.ErrInvalid),
 		errors.Is(err, errNoDirs), errors.Is(err, errBadFileName):
-		httputil.Error(w, http.StatusBadRequest, err.Error())
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 	case errors.Is(err, errFileNotFound):
-		httputil.Error(w, http.StatusNotFound, err.Error())
+		httputil.Error(w,
+			http.StatusNotFound,
+			err.Error())
 	case errors.Is(err, memory_ontology.ErrExists):
-		httputil.Error(w, http.StatusConflict, "ontology already exists")
+		httputil.Error(w,
+			http.StatusConflict,
+			"ontology already exists")
 	case errors.Is(err, memory_ontology.ErrNotFound):
-		httputil.Error(w, http.StatusNotFound, "ontology not found")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"ontology not found")
 	default:
 		log.WithError(err).WithField("op", op).Error("ontology request failed")
-		httputil.Error(w, http.StatusInternalServerError, "failed to "+op+" ontology")
+		httputil.Error(w,
+			http.StatusInternalServerError,
+			"failed to "+op+" ontology")
 	}
 }

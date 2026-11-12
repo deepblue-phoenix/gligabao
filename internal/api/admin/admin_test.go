@@ -30,19 +30,29 @@ import (
 // TestOverview checks that the admin overview lists the datasets of every user and counts the whole system.
 func TestOverview(t *testing.T) { dbtest.Run(t, testOverview) }
 
-func testOverview(t *testing.T, d *sql.DB) {
+func testOverview(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	for _, c := range []struct{ user, name string }{{"alice", "a"}, {"bob", "b"}} {
 		//------------------
 		// MEMORY DATASET
-		if _, err := memory_dataset.CreateDataset(ctx, d, c.user, c.name, "", nil); err != nil {
+		if _, err := memory_dataset.CreateDataset(ctx,
+			d,
+			c.user,
+			c.name,
+			"",
+			nil); err != nil {
 			t.Fatal(err)
 		}
 		//------------------
 	}
 	//------------------
 	// MEMORY DATASET
-	if err := memory_dataset.DeleteDataset(ctx, d, nil, "bob", "b"); err != nil {
+	if err := memory_dataset.DeleteDataset(ctx,
+		d,
+		nil,
+		"bob",
+		"b"); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
@@ -58,9 +68,14 @@ func testOverview(t *testing.T, d *sql.DB) {
 	}) {
 		t.Helper()
 		w := httptest.NewRecorder()
-		admin.Overview(d)(w, httptest.NewRequest(http.MethodGet, url, nil))
+		admin.Overview(d)(w, httptest.NewRequest(http.MethodGet,
+			url,
+			nil))
 		if w.Code != http.StatusOK {
-			t.Fatalf("%s: %d %s", url, w.Code, w.Body)
+			t.Fatalf("%s: %d %s",
+				url,
+				w.Code,
+				w.Body)
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
@@ -83,27 +98,39 @@ func testOverview(t *testing.T, d *sql.DB) {
 // TestGraph checks that the admin graph endpoint returns the graph of a live dataset and 404s otherwise.
 func TestGraph(t *testing.T) { dbtest.Run(t, testGraph) }
 
-func testGraph(t *testing.T, d *sql.DB) {
+func testGraph(t *testing.T,
+	d *sql.DB) {
 	//------------------
 	// MEMORY DATASET
-	if _, err := memory_dataset.CreateDataset(context.Background(), d, "alice", "a", "", nil); err != nil {
+	if _, err := memory_dataset.CreateDataset(context.Background(),
+		d,
+		"alice",
+		"a",
+		"",
+		nil); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
 	get := func(url string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		admin.Graph(d)(w, httptest.NewRequest(http.MethodGet, url, nil))
+		admin.Graph(d)(w, httptest.NewRequest(http.MethodGet,
+			url,
+			nil))
 		return w
 	}
 	w := get("/admin/api/graph?user_id=alice&dataset=a")
 	if w.Code != http.StatusOK {
-		t.Fatalf("%d %s", w.Code, w.Body)
+		t.Fatalf("%d %s",
+			w.Code,
+			w.Body)
 	}
 	var g struct {
 		Entities, Edges []any
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &g); err != nil || g.Entities == nil || g.Edges == nil {
-		t.Fatalf("bad graph: %v %s", err, w.Body)
+		t.Fatalf("bad graph: %v %s",
+			err,
+			w.Body)
 	}
 	if w := get("/admin/api/graph?user_id=alice&dataset=nope"); w.Code != http.StatusNotFound {
 		t.Fatalf("unknown dataset: %d", w.Code)
@@ -113,17 +140,28 @@ func testGraph(t *testing.T, d *sql.DB) {
 // TestDeleteDataset checks that the admin delete endpoint soft-deletes a dataset and 404s on unknown ones.
 func TestDeleteDataset(t *testing.T) { dbtest.Run(t, testDeleteDataset) }
 
-func testDeleteDataset(t *testing.T, d *sql.DB) {
+func testDeleteDataset(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	//------------------
 	// MEMORY DATASET
-	if _, err := memory_dataset.CreateDataset(ctx, d, "alice", "a", "", nil); err != nil {
+	if _, err := memory_dataset.CreateDataset(ctx,
+		d,
+		"alice",
+		"a",
+		"",
+		nil); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
 	del := func(url string) int {
 		w := httptest.NewRecorder()
-		admin.DeleteDatasetOf([]admin.Named{{Name: "standard", DB: d}})(w, httptest.NewRequest(http.MethodDelete, url, nil))
+		admin.DeleteDatasetOf([]admin.Named{{
+			Name: "standard",
+			DB:   d,
+		}})(w, httptest.NewRequest(http.MethodDelete,
+			url,
+			nil))
 		return w.Code
 	}
 	if c := del("/admin/api/datasets?user_id=alice&dataset=a"); c != http.StatusNoContent {
@@ -137,28 +175,44 @@ func testDeleteDataset(t *testing.T, d *sql.DB) {
 	}
 	//------------------
 	// MEMORY DATASET
-	live, err := memory_dataset.ListDatasets(ctx, d, "alice", false)
+	live, err := memory_dataset.ListDatasets(ctx,
+		d,
+		"alice",
+		false)
 	//------------------
 	if err != nil || len(live) != 0 {
-		t.Fatalf("live: %v %v", live, err)
+		t.Fatalf("live: %v %v",
+			live,
+			err)
 	}
 	//------------------
 	// MEMORY DATASET
-	all, err := memory_dataset.ListDatasets(ctx, d, "alice", true)
+	all, err := memory_dataset.ListDatasets(ctx,
+		d,
+		"alice",
+		true)
 	//------------------
 	if err != nil || len(all) != 1 || !all[0].Deleted {
-		t.Fatalf("all: %v %v", all, err)
+		t.Fatalf("all: %v %v",
+			all,
+			err)
 	}
 }
 
 // TestVectors checks that the admin vectors endpoint reports every index of a live dataset, and 404s otherwise.
 func TestVectors(t *testing.T) { dbtest.Run(t, testVectors) }
 
-func testVectors(t *testing.T, d *sql.DB) {
+func testVectors(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	//------------------
 	// MEMORY DATASET
-	ds, err := memory_dataset.CreateDataset(ctx, d, "alice", "a", "", nil)
+	ds, err := memory_dataset.CreateDataset(ctx,
+		d,
+		"alice",
+		"a",
+		"",
+		nil)
 	//------------------
 	if err != nil {
 		t.Fatal(err)
@@ -169,19 +223,32 @@ func testVectors(t *testing.T, d *sql.DB) {
 	}
 	//------------------
 	// MEMORY DATASET
-	if err := store.Upsert(ctx, memory_dataset.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+	if err := store.Upsert(ctx,
+		memory_dataset.EntityDataset(ds.ID),
+		[]vector.Vector{{
+			ID:     "entity-1",
+			Values: []float32{1, 0},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
-	h := admin.VectorsOf([]admin.Named{{Name: "standard", DB: d, Vectors: store}})
+	h := admin.VectorsOf([]admin.Named{{
+		Name:    "standard",
+		DB:      d,
+		Vectors: store,
+	}})
 	get := func(url string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		h(w, httptest.NewRequest(http.MethodGet, url, nil))
+		h(w, httptest.NewRequest(http.MethodGet,
+			url,
+			nil))
 		return w
 	}
 	w := get("/admin/api/vectors?user_id=alice&dataset=a")
 	if w.Code != http.StatusOK {
-		t.Fatalf("%d %s", w.Code, w.Body)
+		t.Fatalf("%d %s",
+			w.Code,
+			w.Body)
 	}
 	var out struct {
 		Backend string `json:"backend"`
@@ -212,7 +279,8 @@ func testVectors(t *testing.T, d *sql.DB) {
 // for an unknown database.
 func TestVectorsAll(t *testing.T) { dbtest.Run(t, testVectorsAll) }
 
-func testVectorsAll(t *testing.T, d *sql.DB) {
+func testVectorsAll(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	//------------------
 	// MEMORY DATASET
@@ -221,7 +289,12 @@ func testVectorsAll(t *testing.T, d *sql.DB) {
 	for i, u := range []string{"alice", "bob"} {
 		//------------------
 		// MEMORY DATASET
-		ds, err := memory_dataset.CreateDataset(ctx, d, u, "main", "", nil)
+		ds, err := memory_dataset.CreateDataset(ctx,
+			d,
+			u,
+			"main",
+			"",
+			nil)
 		//------------------
 		if err != nil {
 			t.Fatal(err)
@@ -232,14 +305,23 @@ func testVectorsAll(t *testing.T, d *sql.DB) {
 	}
 	//------------------
 	// MEMORY DATASET
-	gone, err := memory_dataset.CreateDataset(ctx, d, "alice", "gone", "", nil)
+	gone, err := memory_dataset.CreateDataset(ctx,
+		d,
+		"alice",
+		"gone",
+		"",
+		nil)
 	//------------------
 	if err != nil {
 		t.Fatal(err)
 	}
 	//------------------
 	// MEMORY DATASET
-	if err := memory_dataset.DeleteDataset(ctx, d, nil, "alice", gone.Name); err != nil {
+	if err := memory_dataset.DeleteDataset(ctx,
+		d,
+		nil,
+		"alice",
+		gone.Name); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
@@ -249,15 +331,28 @@ func testVectorsAll(t *testing.T, d *sql.DB) {
 	}
 	//------------------
 	// MEMORY DATASET
-	if err := store.Upsert(ctx, memory_dataset.EntityDataset(first.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+	if err := store.Upsert(ctx,
+		memory_dataset.EntityDataset(first.ID),
+		[]vector.Vector{{
+			ID:     "entity-1",
+			Values: []float32{1, 0},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
-	h := admin.VectorsAllOf([]admin.Named{{Name: "standard", DB: d, Vectors: store}})
+	h := admin.VectorsAllOf([]admin.Named{{
+		Name:    "standard",
+		DB:      d,
+		Vectors: store,
+	}})
 	w := httptest.NewRecorder()
-	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors/all", nil))
+	h(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/vectors/all",
+		nil))
 	if w.Code != http.StatusOK {
-		t.Fatalf("%d %s", w.Code, w.Body)
+		t.Fatalf("%d %s",
+			w.Code,
+			w.Body)
 	}
 	var out struct {
 		Datasets []struct {
@@ -287,7 +382,9 @@ func testVectorsAll(t *testing.T, d *sql.DB) {
 	}
 	//------------------
 	w = httptest.NewRecorder()
-	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors/all?db=nope", nil))
+	h(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/vectors/all?db=nope",
+		nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", w.Code)
 	}
@@ -297,25 +394,39 @@ func testVectorsAll(t *testing.T, d *sql.DB) {
 // to it later, e.g. by another process).
 func TestVectorsOpenOnDemand(t *testing.T) { dbtest.Run(t, testVectorsOpenOnDemand) }
 
-func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
+func testVectorsOpenOnDemand(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	//------------------
 	// MEMORY DATASET
-	ds, err := memory_dataset.CreateDataset(ctx, d, "alice", "a", "", nil)
+	ds, err := memory_dataset.CreateDataset(ctx,
+		d,
+		"alice",
+		"a",
+		"",
+		nil)
 	//------------------
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	h := admin.VectorsOf([]admin.Named{{Name: "eval", DB: d, OpenVectors: func() (vector.Store, error) { return vector.NewChromem(dir, 2) }}})
+	h := admin.VectorsOf([]admin.Named{{
+		Name:        "eval",
+		DB:          d,
+		OpenVectors: func() (vector.Store, error) { return vector.NewChromem(dir, 2) },
+	}})
 	count := func() int {
 		w := httptest.NewRecorder()
-		h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors?user_id=alice&dataset=a", nil))
+		h(w, httptest.NewRequest(http.MethodGet,
+			"/admin/api/vectors?user_id=alice&dataset=a",
+			nil))
 		var out struct {
 			Indexes []struct{ Count int } `json:"indexes"`
 		}
 		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &out) != nil || len(out.Indexes) == 0 {
-			t.Fatalf("%d %s", w.Code, w.Body)
+			t.Fatalf("%d %s",
+				w.Code,
+				w.Body)
 		}
 		return out.Indexes[0].Count
 	}
@@ -328,7 +439,12 @@ func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
 	}
 	//------------------
 	// MEMORY DATASET
-	if err := other.Upsert(ctx, memory_dataset.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+	if err := other.Upsert(ctx,
+		memory_dataset.EntityDataset(ds.ID),
+		[]vector.Vector{{
+			ID:     "entity-1",
+			Values: []float32{1, 0},
+		}}); err != nil {
 		t.Fatal(err)
 	}
 	//------------------
@@ -339,27 +455,44 @@ func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
 
 type fakeLLM struct{}
 
-func (fakeLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
+func (fakeLLM) Complete(ctx context.Context,
+	req ai.Request) (*ai.Response, error) {
 	return &ai.Response{
-		Text:       `{"theme":"plot","title":"T","text_blocks":[{"kind":"title","text":"T"}]}`,
-		StopReason: "end_turn", Provider: "p", Model: "m", InputTokens: 10, OutputTokens: 2, CostUSD: 0.5,
+		Text:         `{"theme":"plot","title":"T","text_blocks":[{"kind":"title","text":"T"}]}`,
+		StopReason:   "end_turn",
+		Provider:     "p",
+		Model:        "m",
+		InputTokens:  10,
+		OutputTokens: 2,
+		CostUSD:      0.5,
 	}, nil
 }
 
 // TestImages checks the image store statistics: database totals, and the comparison with the files on disk.
 func TestImages(t *testing.T) { dbtest.Run(t, testImages) }
 
-func testImages(t *testing.T, d *sql.DB) {
+func testImages(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	var buf bytes.Buffer
 	for i := 0; i < 2; i++ {
-		img := image.NewRGBA(image.Rect(0, 0, 2+i, 2))
+		img := image.NewRGBA(image.Rect(0,
+			0,
+			2+i,
+			2))
 		buf.Reset()
 		if err := png.Encode(&buf, img); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := memory_image.RememberImage(ctx, d, fakeLLM{}, "alice", "a", append([]byte(nil), buf.Bytes()...), time.Time{}, memory_image.WithImageDir(dir)); err != nil {
+		if _, err := memory_image.RememberImage(ctx,
+			d,
+			fakeLLM{},
+			"alice",
+			"a",
+			append([]byte(nil), buf.Bytes()...),
+			time.Time{},
+			memory_image.WithImageDir(dir)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -380,19 +513,28 @@ func testImages(t *testing.T, d *sql.DB) {
 			Files, Missing, Untracked int
 		}
 	}
-	get := func(dbs []admin.Named, url string) (s stats) {
+	get := func(dbs []admin.Named,
+		url string) (s stats) {
 		t.Helper()
 		w := httptest.NewRecorder()
-		admin.ImagesOf(dbs)(w, httptest.NewRequest(http.MethodGet, url, nil))
+		admin.ImagesOf(dbs)(w, httptest.NewRequest(http.MethodGet,
+			url,
+			nil))
 		if w.Code != http.StatusOK {
-			t.Fatalf("%d %s", w.Code, w.Body)
+			t.Fatalf("%d %s",
+				w.Code,
+				w.Body)
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil {
 			t.Fatal(err)
 		}
 		return s
 	}
-	s := get([]admin.Named{{Name: "standard", DB: d, ImageDir: dir}}, "/admin/api/images")
+	s := get([]admin.Named{{
+		Name:     "standard",
+		DB:       d,
+		ImageDir: dir,
+	}}, "/admin/api/images")
 	if s.Images != 2 || s.Extractions != 2 || s.Bytes <= 0 || s.CostUSD != 1 {
 		t.Fatalf("totals: %+v", s)
 	}
@@ -408,26 +550,44 @@ func testImages(t *testing.T, d *sql.DB) {
 
 	// One file vanishes, a stray one appears (and a temporary file being written is ignored).
 	var removed bool
-	filepath.WalkDir(dir, func(p string, e os.DirEntry, err error) error {
+	filepath.WalkDir(dir, func(p string,
+		e os.DirEntry,
+		err error) error {
 		if err == nil && !e.IsDir() && !removed {
 			removed = true
 			return os.Remove(p)
 		}
 		return nil
 	})
-	os.WriteFile(filepath.Join(dir, "stray.png"), []byte("x"), 0o644)
-	os.WriteFile(filepath.Join(dir, ".tmp-1"), []byte("x"), 0o644)
-	s = get([]admin.Named{{Name: "standard", DB: d, ImageDir: dir}}, "/admin/api/images?db=standard")
+	os.WriteFile(filepath.Join(dir, "stray.png"),
+		[]byte("x"),
+		0o644)
+	os.WriteFile(filepath.Join(dir, ".tmp-1"),
+		[]byte("x"),
+		0o644)
+	s = get([]admin.Named{{
+		Name:     "standard",
+		DB:       d,
+		ImageDir: dir,
+	}}, "/admin/api/images?db=standard")
 	if s.Disk.Files != 2 || s.Disk.Missing != 1 || s.Disk.Untracked != 1 {
 		t.Fatalf("disk after changes: %+v", s.Disk)
 	}
 
 	// An unknown image directory: no disk block. An unknown database: 404.
-	if s := get([]admin.Named{{Name: "standard", DB: d}}, "/admin/api/images"); s.Disk != nil {
+	if s := get([]admin.Named{{
+		Name: "standard",
+		DB:   d,
+	}}, "/admin/api/images"); s.Disk != nil {
 		t.Fatalf("disk without dir: %+v", s.Disk)
 	}
 	w := httptest.NewRecorder()
-	admin.ImagesOf([]admin.Named{{Name: "standard", DB: d}})(w, httptest.NewRequest(http.MethodGet, "/admin/api/images?db=x", nil))
+	admin.ImagesOf([]admin.Named{{
+		Name: "standard",
+		DB:   d,
+	}})(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/images?db=x",
+		nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", w.Code)
 	}
@@ -437,39 +597,78 @@ func testImages(t *testing.T, d *sql.DB) {
 // they are anchored to.
 func TestTimeseries(t *testing.T) { dbtest.Run(t, testTimeseries) }
 
-func testTimeseries(t *testing.T, d *sql.DB) {
+func testTimeseries(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	for _, u := range []string{"alice", "bob"} {
 		//------------------
 		// MEMORY DATASET
-		ds, err := memory_dataset.CreateDataset(ctx, d, u, "main", "", nil)
+		ds, err := memory_dataset.CreateDataset(ctx,
+			d,
+			u,
+			"main",
+			"",
+			nil)
 		//------------------
 		if err != nil {
 			t.Fatal(err)
 		}
-		dsID, err := memory_core.DatasetID(ctx, d, u, ds.Name)
+		dsID, err := memory_core.DatasetID(ctx,
+			d,
+			u,
+			ds.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		pt := func(h int, v float64) memory_core.SeriesPoint {
-			return memory_core.SeriesPoint{TS: time.Date(2025, 1, 1, h, 0, 0, 0, time.UTC), Value: v}
+		pt := func(h int,
+			v float64) memory_core.SeriesPoint {
+			return memory_core.SeriesPoint{
+				TS: time.Date(2025,
+					1,
+					1,
+					h,
+					0,
+					0,
+					0,
+					time.UTC),
+				Value: v,
+			}
 		}
 		specs, err := memory_core.ResolveSeries([]memory_core.SeriesSpec{{
-			Key: "AAPL.close", Unit: "USD", Frequency: "1h", Points: []memory_core.SeriesPoint{pt(9, 1), pt(12, 2)},
-			Anchors: []memory_core.SeriesAnchor{{Entity: &memory_core.SeriesEntity{Name: "Apple", Type: "organization"}, Role: "price"}},
+			Key:       "AAPL.close",
+			Unit:      "USD",
+			Frequency: "1h",
+			Points:    []memory_core.SeriesPoint{pt(9, 1), pt(12, 2)},
+			Anchors: []memory_core.SeriesAnchor{{
+				Entity: &memory_core.SeriesEntity{
+					Name: "Apple",
+					Type: "organization",
+				},
+				Role: "price",
+			}},
 		}}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := memory_timeseries.Attach(ctx, d, dsID, specs); err != nil {
+		if _, err := memory_timeseries.Attach(ctx,
+			d,
+			dsID,
+			specs); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	w := httptest.NewRecorder()
-	admin.TimeseriesOf([]admin.Named{{Name: "standard", DB: d}})(w, httptest.NewRequest(http.MethodGet, "/admin/api/timeseries", nil))
+	admin.TimeseriesOf([]admin.Named{{
+		Name: "standard",
+		DB:   d,
+	}})(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/timeseries",
+		nil))
 	if w.Code != http.StatusOK {
-		t.Fatalf("%d %s", w.Code, w.Body)
+		t.Fatalf("%d %s",
+			w.Code,
+			w.Body)
 	}
 	var out struct {
 		Series []struct {
@@ -499,7 +698,9 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 	}
 
 	w = httptest.NewRecorder()
-	admin.TimeseriesOf(nil)(w, httptest.NewRequest(http.MethodGet, "/admin/api/timeseries?db=nope", nil))
+	admin.TimeseriesOf(nil)(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/timeseries?db=nope",
+		nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", w.Code)
 	}
@@ -509,9 +710,13 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 // that an entity that never did is absent from the counts.
 func TestGraphInContext(t *testing.T) { dbtest.Run(t, testGraphInContext) }
 
-func testGraphInContext(t *testing.T, d *sql.DB) {
+func testGraphInContext(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	dsID, err := relational.EnsureDataset(ctx, d, "alice", "a")
+	dsID, err := relational.EnsureDataset(ctx,
+		d,
+		"alice",
+		"a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,11 +725,23 @@ func testGraphInContext(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	used, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person"}, "alice")
+	used, err := tx.UpsertEntity(ctx,
+		dsID,
+		graph.Entity{
+			Name: "Alice",
+			Type: "person",
+		},
+		"alice")
 	if err != nil {
 		t.Fatal(err)
 	}
-	idle, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Acme", Type: "org"}, "acme")
+	idle, err := tx.UpsertEntity(ctx,
+		dsID,
+		graph.Entity{
+			Name: "Acme",
+			Type: "org",
+		},
+		"acme")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,17 +749,34 @@ func testGraphInContext(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	for _, ev := range []graph.InContextEvent{
-		{Pipeline: graph.PipelineQuery, Stage: "query"}, {Pipeline: graph.PipelineQuery, Stage: "query"},
-		{Pipeline: graph.PipelineRemember, Stage: "resolve_edges"},
+		{
+			Pipeline: graph.PipelineQuery,
+			Stage:    "query",
+		}, {
+			Pipeline: graph.PipelineQuery,
+			Stage:    "query",
+		},
+		{
+			Pipeline: graph.PipelineRemember,
+			Stage:    "resolve_edges",
+		},
 	} {
-		if err := graph.CountInContext(ctx, d, ev, []int64{used}, nil); err != nil {
+		if err := graph.CountInContext(ctx,
+			d,
+			ev,
+			[]int64{used},
+			nil); err != nil {
 			t.Fatal(err)
 		}
 	}
 	w := httptest.NewRecorder()
-	admin.Graph(d)(w, httptest.NewRequest(http.MethodGet, "/admin/api/graph?user_id=alice&dataset=a", nil))
+	admin.Graph(d)(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/graph?user_id=alice&dataset=a",
+		nil))
 	if w.Code != http.StatusOK {
-		t.Fatalf("%d %s", w.Code, w.Body)
+		t.Fatalf("%d %s",
+			w.Code,
+			w.Body)
 	}
 	var g struct {
 		Entities  []struct{ ID int64 }

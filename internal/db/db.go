@@ -76,14 +76,18 @@ type Config struct {
 
 // Schema creates the tables of one feature in the relational database rel of the given backend (config.DBBackendSQLite or
 // config.DBBackendPostgres). It must be safe to run on every Open (create if not exists).
-type Schema func(backend string, rel *sql.DB) error
+type Schema func(backend string,
+	rel *sql.DB) error
 
 // DefaultSQLitePath is used when Config.SQLitePath is empty.
 const DefaultSQLitePath = "build/gligabao.db"
 
 // ConfigFrom builds a Config from the application config plus the settings that are not part of it
 // (sqlitePath, vectorDir and imageDir may be empty for their defaults).
-func ConfigFrom(c *config.Config, sqlitePath, vectorDir, imageDir string) Config {
+func ConfigFrom(c *config.Config,
+	sqlitePath,
+	vectorDir,
+	imageDir string) Config {
 	return Config{
 		Backend:             c.DBBackend,
 		SQLitePath:          sqlitePath,
@@ -95,7 +99,10 @@ func ConfigFrom(c *config.Config, sqlitePath, vectorDir, imageDir string) Config
 		PineconeKey:         c.PineconeKey,
 		PineconeIndexHost:   c.PineconeIndexHost,
 		S3Vectors: vector.S3VectorsConfig{
-			Bucket: c.S3VectorsBucket, Region: c.S3VectorsRegion, Prefix: c.S3VectorsPrefix, Dimensions: c.EmbeddingDimensions,
+			Bucket:     c.S3VectorsBucket,
+			Region:     c.S3VectorsRegion,
+			Prefix:     c.S3VectorsPrefix,
+			Dimensions: c.EmbeddingDimensions,
 		},
 		Chunking: c.Chunking(),
 	}
@@ -206,11 +213,19 @@ func Open(cfg Config) (*DB, error) {
 	if models == nil {
 		models = ai.SupportedModels(nil)
 	}
-	rows := make([]relational.Model, 0, len(models))
+	rows := make([]relational.Model,
+		0,
+		len(models))
 	for _, m := range models {
-		rows = append(rows, relational.Model{Name: m.Name, Provider: m.Provider, Kind: m.Kind})
+		rows = append(rows, relational.Model{
+			Name:     m.Name,
+			Provider: m.Provider,
+			Kind:     m.Kind,
+		})
 	}
-	if err := relational.SyncModels(context.Background(), rel, rows); err != nil {
+	if err := relational.SyncModels(context.Background(),
+		rel,
+		rows); err != nil {
 		rel.Close()
 		return nil, err
 	}
@@ -297,5 +312,9 @@ func (d *DB) String() string {
 	if d.VectorDir != "" {
 		vec += " " + d.VectorDir
 	}
-	return fmt.Sprintf("relational/graph: %s; vector: %s (%d dims); images: %s", rel, vec, d.EmbeddingDimensions, d.ImageDir)
+	return fmt.Sprintf("relational/graph: %s; vector: %s (%d dims); images: %s",
+		rel,
+		vec,
+		d.EmbeddingDimensions,
+		d.ImageDir)
 }

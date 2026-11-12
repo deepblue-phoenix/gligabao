@@ -7,14 +7,18 @@ import (
 )
 
 func TestDirsWithDefaults(t *testing.T) {
-	got := Dirs{Evals: []string{"/x/evals", "/y/evals"}}.WithDefaults("data/g.db")
+	got := Dirs{
+		Evals: []string{"/x/evals", "/y/evals"},
+	}.WithDefaults("data/g.db")
 	want := Dirs{
 		Datasets:    []string{filepath.Join("data", "datasets_training")},
 		Evals:       []string{"/x/evals", "/y/evals"},
 		ModelDeploy: filepath.Join("data", "trained_models"),
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %+v, want %+v", got, want)
+		t.Fatalf("got %+v, want %+v",
+			got,
+			want)
 	}
 	if def := DefaultDirs("build/gligabao.db"); def.ModelDeploy != filepath.Join("build", "trained_models") {
 		t.Fatalf("default: %+v", def)

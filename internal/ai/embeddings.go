@@ -59,16 +59,19 @@ func WithEmbedDimensions(n int) EmbedderOption { return func(e *Embedder) { e.di
 
 // NewEmbedder creates an Embedder using text-embedding-3-small.
 // apiKey is the OpenAI API key (see config.Config).
-func NewEmbedder(apiKey string, opts ...EmbedderOption) (*Embedder, error) {
+func NewEmbedder(apiKey string,
+	opts ...EmbedderOption) (*Embedder, error) {
 	if apiKey == "" {
 		return nil, errors.New("ai: missing API key (set OPENAI_API_KEY)")
 	}
 	e := &Embedder{
-		apiKey:     apiKey,
-		baseURL:    defaultOpenAIBaseURL,
-		model:      EmbeddingModel,
-		prices:     NewPriceTable(nil),
-		httpClient: &http.Client{Timeout: 2 * time.Minute},
+		apiKey:  apiKey,
+		baseURL: defaultOpenAIBaseURL,
+		model:   EmbeddingModel,
+		prices:  NewPriceTable(nil),
+		httpClient: &http.Client{
+			Timeout: 2 * time.Minute,
+		},
 	}
 	for _, o := range opts {
 		o(e)
@@ -79,7 +82,8 @@ func NewEmbedder(apiKey string, opts ...EmbedderOption) (*Embedder, error) {
 //---------------------------------------------------------------------------------------------
 
 // Embed returns the embedding of a single text.
-func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
+func (e *Embedder) Embed(ctx context.Context,
+	text string) ([]float32, error) {
 	vs, err := e.EmbedBatch(ctx, []string{text})
 	if err != nil {
 		return nil, err
@@ -88,7 +92,8 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 }
 
 // EmbedBatch returns one embedding per input, in the same order.
-func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+func (e *Embedder) EmbedBatch(ctx context.Context,
+	texts []string) ([][]float32, error) {
 	vs, _, err := e.EmbedBatchUsage(ctx, texts)
 	return vs, err
 }
@@ -102,7 +107,8 @@ type EmbedUsage struct {
 }
 
 // EmbedBatchUsage is EmbedBatch that also reports the total tokens used and cost (summed over all requests).
-func (e *Embedder) EmbedBatchUsage(ctx context.Context, texts []string) ([][]float32, *EmbedUsage, error) {
+func (e *Embedder) EmbedBatchUsage(ctx context.Context,
+	texts []string) ([][]float32, *EmbedUsage, error) {
 	if len(texts) == 0 {
 		return nil, nil, errors.New("ai: no input texts")
 	}
@@ -111,8 +117,13 @@ func (e *Embedder) EmbedBatchUsage(ctx context.Context, texts []string) ([][]flo
 			return nil, nil, fmt.Errorf("ai: input %d is empty", i)
 		}
 	}
-	out := make([][]float32, 0, len(texts))
-	usage := &EmbedUsage{Provider: ProviderOpenAI, Model: e.model}
+	out := make([][]float32,
+		0,
+		len(texts))
+	usage := &EmbedUsage{
+		Provider: ProviderOpenAI,
+		Model:    e.model,
+	}
 	for start := 0; start < len(texts); start += maxEmbedBatch {
 		end := min(start+maxEmbedBatch, len(texts))
 		vs, tokens, err := e.embedRequest(ctx, texts[start:end])
@@ -122,11 +133,14 @@ func (e *Embedder) EmbedBatchUsage(ctx context.Context, texts []string) ([][]flo
 		out = append(out, vs...)
 		usage.InputTokens += tokens
 	}
-	usage.CostUSD, _ = e.prices.Cost(e.model, Usage{InputTokens: usage.InputTokens})
+	usage.CostUSD, _ = e.prices.Cost(e.model, Usage{
+		InputTokens: usage.InputTokens,
+	})
 	return out, usage, nil
 }
 
-func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float32, int, error) {
+func (e *Embedder) embedRequest(ctx context.Context,
+	texts []string) ([][]float32, int, error) {
 	body, err := json.Marshal(embedRequest{
 		Model:          e.model,
 		Input:          texts,
@@ -137,7 +151,10 @@ func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float3
 		return nil, 0, fmt.Errorf("ai: marshal embeddings request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/v1/embeddings", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodPost,
+		e.baseURL+"/v1/embeddings",
+		bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, fmt.Errorf("ai: build embeddings request: %w", err)
 	}
@@ -157,9 +174,14 @@ func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float3
 	if resp.StatusCode != http.StatusOK {
 		var ae openAIError
 		if json.Unmarshal(data, &ae) == nil && ae.Error.Message != "" {
-			return nil, 0, fmt.Errorf("ai: openai %d %s: %s", resp.StatusCode, ae.Error.Type, ae.Error.Message)
+			return nil, 0, fmt.Errorf("ai: openai %d %s: %s",
+				resp.StatusCode,
+				ae.Error.Type,
+				ae.Error.Message)
 		}
-		return nil, 0, fmt.Errorf("ai: openai status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		return nil, 0, fmt.Errorf("ai: openai status %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(data)))
 	}
 
 	var er embedResponse
@@ -167,9 +189,14 @@ func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float3
 		return nil, 0, fmt.Errorf("ai: decode embeddings response: %w", err)
 	}
 	if len(er.Data) != len(texts) {
-		return nil, 0, fmt.Errorf("ai: expected %d embeddings, got %d", len(texts), len(er.Data))
+		return nil, 0, fmt.Errorf("ai: expected %d embeddings, got %d",
+			len(texts),
+			len(er.Data))
 	}
-	sort.Slice(er.Data, func(i, j int) bool { return er.Data[i].Index < er.Data[j].Index })
+	sort.Slice(er.Data, func(i,
+		j int) bool {
+		return er.Data[i].Index < er.Data[j].Index
+	})
 	out := make([][]float32, len(er.Data))
 	for i, d := range er.Data {
 		out[i] = d.Embedding
@@ -181,7 +208,8 @@ func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float3
 
 // CosineSimilarity returns the cosine similarity of two equal-length vectors.
 // It returns 0 if lengths differ or either vector has zero magnitude.
-func CosineSimilarity(a, b []float32) float32 {
+func CosineSimilarity(a,
+	b []float32) float32 {
 	if len(a) != len(b) || len(a) == 0 {
 		return 0
 	}

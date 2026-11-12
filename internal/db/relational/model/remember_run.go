@@ -140,11 +140,25 @@ type RememberRun struct {
 }
 
 // NewRememberRun returns a run that has just started, all of whose stages are not started.
-func NewRememberRun(userID, dataset, kind string, params map[string]any, startedAt time.Time) RememberRun {
-	r := RememberRun{UserID: userID, Dataset: dataset, Kind: kind, Params: params, Status: RememberStarted, StartedAt: startedAt,
-		Stages: make(map[string]RememberStage, len(RememberStages))}
+func NewRememberRun(userID,
+	dataset,
+	kind string,
+	params map[string]any,
+	startedAt time.Time) RememberRun {
+	r := RememberRun{
+		UserID:    userID,
+		Dataset:   dataset,
+		Kind:      kind,
+		Params:    params,
+		Status:    RememberStarted,
+		StartedAt: startedAt,
+		Stages:    make(map[string]RememberStage, len(RememberStages)),
+	}
 	for _, s := range RememberStages {
-		r.Stages[s.Name] = RememberStage{Status: RememberNotStarted, InferenceIDs: []int64{}}
+		r.Stages[s.Name] = RememberStage{
+			Status:       RememberNotStarted,
+			InferenceIDs: []int64{},
+		}
 	}
 	return r
 }

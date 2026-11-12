@@ -31,28 +31,53 @@ func (j *job) classifyComplexity(ctx context.Context) error {
 	cl, call, err := j.co.Jev.Classify(ctx, text)
 	fields["latency_ms"] = call.Latency.Milliseconds()
 	// The call is an inference whether or not it worked out; a failed one has no usage and no model reported.
-	run := relational.Inference{Type: CallRemember, Stage: StageClassifyComplexity, Provider: jev.Provider, Reasoning: ai.ReasoningNone}
+	run := relational.Inference{
+		Type:      CallRemember,
+		Stage:     StageClassifyComplexity,
+		Provider:  jev.Provider,
+		Reasoning: ai.ReasoningNone,
+	}
 	if err == nil {
 		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens
 	}
-	if _, recordErr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run); recordErr != nil {
+	if _, recordErr := memory_core.RecordRun(context.WithoutCancel(ctx),
+		j.d,
+		run); recordErr != nil {
 		log.WithError(recordErr).WithFields(fields).Error("record jev inference")
 	}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("jev: classify complexity failed")
 		j.tr.TimedTool("Jev (system 1) was asked to classify the text as simple, medium or complex in the number of entities it will yield; the call failed.",
-			StageClassifyComplexity, args, map[string]any{"error": err.Error()},
-			memory_core.ToolTiming{Provider: jev.Provider, Started: call.Started, Latency: call.Latency})
+			StageClassifyComplexity,
+			args,
+			map[string]any{"error": err.Error()},
+			memory_core.ToolTiming{
+				Provider: jev.Provider,
+				Started:  call.Started,
+				Latency:  call.Latency,
+			})
 		return err
 	}
 	fields["complexity"], fields["confidence"], fields["truncated"], fields["model"] = cl.Complexity, cl.Confidence, cl.Truncated, cl.Model
 	log.WithFields(fields).Info("jev: remember text complexity")
 	classified := map[string]any{"complexity": cl.Complexity, "confidence": cl.Confidence, "probabilities": cl.Probabilities, "truncated": cl.Truncated}
-	j.run.Output(StageClassifyComplexity, "classify_complexity", "", map[string]any{"model": cl.Model, "result": classified,
-		"text_chars": len(text), "text_tokens": tokens, "latency_ms": call.Latency.Milliseconds()})
+	j.run.Output(StageClassifyComplexity,
+		"classify_complexity",
+		"",
+		map[string]any{"model": cl.Model, "result": classified,
+			"text_chars": len(text), "text_tokens": tokens, "latency_ms": call.Latency.Milliseconds()})
 	j.tr.TimedTool("Jev (system 1) classified the text as simple, medium or complex in the number of entities it will yield, "+
-		"to predict the compute per entity and edge.", StageClassifyComplexity, args, classified,
-		memory_core.ToolTiming{Model: cl.Model, Provider: jev.Provider, Started: call.Started, Latency: call.Latency,
-			PromptTokens: cl.InputTokens, CompletionTokens: cl.OutputTokens})
+		"to predict the compute per entity and edge.",
+		StageClassifyComplexity,
+		args,
+		classified,
+		memory_core.ToolTiming{
+			Model:            cl.Model,
+			Provider:         jev.Provider,
+			Started:          call.Started,
+			Latency:          call.Latency,
+			PromptTokens:     cl.InputTokens,
+			CompletionTokens: cl.OutputTokens,
+		})
 	return nil
 }

@@ -45,7 +45,10 @@ type Feed struct {
 
 // NewFeed makes the feed of an audit that starts.
 func NewFeed() *Feed {
-	return &Feed{pending: map[int]core.AuditCaseRun{}, subs: map[chan Event]struct{}{}}
+	return &Feed{
+		pending: map[int]core.AuditCaseRun{},
+		subs:    map[chan Event]struct{}{},
+	}
 }
 
 // Subscribe adds a watcher. It returns the answers awaiting the judge right now and the channel of the events after that moment
@@ -56,7 +59,9 @@ func (f *Feed) Subscribe() ([]core.AuditCaseRun, chan Event) {
 	if f.closed {
 		return nil, nil
 	}
-	pending := make([]core.AuditCaseRun, 0, len(f.pending))
+	pending := make([]core.AuditCaseRun,
+		0,
+		len(f.pending))
 	for _, c := range f.pending {
 		pending = append(pending, c)
 	}
@@ -98,11 +103,15 @@ func (f *Feed) Answer(c core.AuditCaseRun) {
 		c.Status = core.StatusRunning
 	}
 	f.pending[c.Idx] = c
-	f.send(Event{Type: EventAnswer, CaseRuns: []core.AuditCaseRun{c}})
+	f.send(Event{
+		Type:     EventAnswer,
+		CaseRuns: []core.AuditCaseRun{c},
+	})
 }
 
 // Batch announces the case runs of a batch that ended and the progress after it.
-func (f *Feed) Batch(r core.AuditRun, cases []core.AuditCaseRun) {
+func (f *Feed) Batch(r core.AuditRun,
+	cases []core.AuditCaseRun) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.closed {
@@ -112,7 +121,11 @@ func (f *Feed) Batch(r core.AuditRun, cases []core.AuditCaseRun) {
 		delete(f.pending, c.Idx)
 	}
 	r.CaseRuns = nil
-	f.send(Event{Type: EventBatch, Run: &r, CaseRuns: cases})
+	f.send(Event{
+		Type:     EventBatch,
+		Run:      &r,
+		CaseRuns: cases,
+	})
 }
 
 // End announces the end of the audit and closes the feed.
@@ -125,7 +138,10 @@ func (f *Feed) End(r core.AuditRun) {
 	f.closed = true
 	f.pending = nil
 	r.CaseRuns = nil
-	f.send(Event{Type: EventEnd, Run: &r})
+	f.send(Event{
+		Type: EventEnd,
+		Run:  &r,
+	})
 	for ch := range f.subs {
 		delete(f.subs, ch)
 		close(ch)

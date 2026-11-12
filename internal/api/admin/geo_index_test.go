@@ -16,10 +16,16 @@ import (
 // table behind; PostgreSQL reports whether PostGIS is enabled (either answer is valid, but it must be consistent).
 func TestGeoIndex(t *testing.T) { dbtest.Run(t, testGeoIndex) }
 
-func testGeoIndex(t *testing.T, d *sql.DB) {
-	h := admin.GeoIndexOf([]admin.Named{{Name: "standard", DB: d}})
+func testGeoIndex(t *testing.T,
+	d *sql.DB) {
+	h := admin.GeoIndexOf([]admin.Named{{
+		Name: "standard",
+		DB:   d,
+	}})
 	w := httptest.NewRecorder()
-	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/geo-index", nil))
+	h(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/geo-index",
+		nil))
 	if w.Code != 200 {
 		t.Fatalf("status %d", w.Code)
 	}
@@ -35,7 +41,9 @@ func testGeoIndex(t *testing.T, d *sql.DB) {
 		}
 		var n int
 		if err := d.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name LIKE 'gb_rtree_probe%'`).Scan(&n); err != nil || n != 0 {
-			t.Errorf("probe left tables behind: %d, %v", n, err)
+			t.Errorf("probe left tables behind: %d, %v",
+				n,
+				err)
 		}
 	case config.DBBackendPostgres:
 		if st.Index != "postgis" || (st.Enabled && st.Version == "") || (!st.Enabled && st.Detail == "") {
@@ -46,7 +54,9 @@ func testGeoIndex(t *testing.T, d *sql.DB) {
 	}
 
 	w = httptest.NewRecorder()
-	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/geo-index?db=nope", nil))
+	h(w, httptest.NewRequest(http.MethodGet,
+		"/admin/api/geo-index?db=nope",
+		nil))
 	if w.Code != 404 {
 		t.Errorf("unknown db: status %d", w.Code)
 	}

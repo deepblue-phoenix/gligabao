@@ -58,8 +58,14 @@ func (p *EdgePlan) RunID() int64 {
 //
 // inContext, if not nil, is called right before the LLM call with the IDs of the stored edges (cands) that its prompt holds, so that
 // they can be counted (see memory_core.CountInContext); it is not called when there is no LLM call.
-func ResolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []graph.Edge, inContext func(edgeIDs []int64)) (*EdgePlan, error) {
-	plan := &EdgePlan{Duplicates: map[int]int64{}}
+func ResolveEdges(ctx context.Context,
+	llm memory_core.LLM,
+	edges,
+	cands []graph.Edge,
+	inContext func(edgeIDs []int64)) (*EdgePlan, error) {
+	plan := &EdgePlan{
+		Duplicates: map[int]int64{},
+	}
 
 	var rest []int // indices of new edges still undecided
 	for i, e := range edges {
@@ -83,16 +89,26 @@ func ResolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []graph
 	b.WriteString("<new_facts>\n")
 	for _, i := range rest {
 		f := memory_core.FactFromEdge(edges[i])
-		fmt.Fprintf(&b, "[%d] %s %s\n", i, f.Statement, f.Span())
+		fmt.Fprintf(&b,
+			"[%d] %s %s\n",
+			i,
+			f.Statement,
+			f.Span())
 	}
 	b.WriteString("</new_facts>\n\n<existing_facts>\n")
 	known := map[int64]bool{}
-	candIDs := make([]int64, 0, len(cands))
+	candIDs := make([]int64,
+		0,
+		len(cands))
 	for _, c := range cands {
 		known[c.ID] = true
 		candIDs = append(candIDs, c.ID)
 		f := memory_core.FactFromEdge(c)
-		fmt.Fprintf(&b, "[%d] %s %s\n", c.ID, f.Statement, f.Span())
+		fmt.Fprintf(&b,
+			"[%d] %s %s\n",
+			c.ID,
+			f.Statement,
+			f.Span())
 	}
 	b.WriteString("</existing_facts>")
 
@@ -100,14 +116,20 @@ func ResolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []graph
 		inContext(candIDs)
 	}
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:    resolveSystemPrompt,
-		Messages:  []ai.Message{{Role: ai.RoleUser, Content: b.String()}},
+		System: resolveSystemPrompt,
+		Messages: []ai.Message{{
+			Role:    ai.RoleUser,
+			Content: b.String(),
+		}},
 		MaxTokens: 2048,
 	})
 	if err != nil {
 		return nil, err
 	}
-	failed := &EdgePlan{InferenceID: resp.InferenceID, Raw: resp.Text}
+	failed := &EdgePlan{
+		InferenceID: resp.InferenceID,
+		Raw:         resp.Text,
+	}
 	if resp.StopReason == "max_tokens" {
 		return failed, errors.New("memory: LLM resolve output truncated")
 	}
@@ -141,7 +163,10 @@ func ResolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []graph
 	}
 	seen := map[Contradiction]bool{}
 	for _, p := range out.Contradictions {
-		c := Contradiction{New: p.New, Existing: p.Existing}
+		c := Contradiction{
+			New:      p.New,
+			Existing: p.Existing,
+		}
 		if pending[p.New] && known[p.Existing] && !seen[c] {
 			seen[c] = true
 			plan.Contradictions = append(plan.Contradictions, c)

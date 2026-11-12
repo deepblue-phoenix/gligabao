@@ -38,7 +38,10 @@ type Error struct {
 
 func (e *Error) Error() string {
 	if e.Line > 0 {
-		return fmt.Sprintf("%s: %s (line %d)", e.Kind, e.Message, e.Line)
+		return fmt.Sprintf("%s: %s (line %d)",
+			e.Kind,
+			e.Message,
+			e.Line)
 	}
 	return e.Kind + ": " + e.Message
 }
@@ -75,11 +78,16 @@ type Result struct {
 }
 
 // HostFunc runs a host function call of the code. An error becomes an exception inside the sandbox.
-type HostFunc func(ctx context.Context, name string, args []any, kwargs map[string]any) (any, error)
+type HostFunc func(ctx context.Context,
+	name string,
+	args []any,
+	kwargs map[string]any) (any, error)
 
 // Runner runs programs. *Sidecar is one; tests use fakes.
 type Runner interface {
-	Run(ctx context.Context, req Request, host HostFunc) (Result, error)
+	Run(ctx context.Context,
+		req Request,
+		host HostFunc) (Result, error)
 }
 
 // Config says where the sidecar's pieces are. The zero value is usable: python3 and the monty binary found by the bridge.
@@ -144,10 +152,14 @@ func (c Config) command() ([]string, []string) {
 	return argv, env
 }
 
-var errClosed = &Error{Kind: KindUnavailable, Message: "the code sandbox is shut down"}
+var errClosed = &Error{
+	Kind:    KindUnavailable,
+	Message: "the code sandbox is shut down",
+}
 
 // IsKind reports whether err is an *Error of that kind.
-func IsKind(err error, kind string) bool {
+func IsKind(err error,
+	kind string) bool {
 	var e *Error
 	return errors.As(err, &e) && e.Kind == kind
 }

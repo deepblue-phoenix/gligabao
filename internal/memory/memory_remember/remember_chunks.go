@@ -38,13 +38,26 @@ func (p *chunkPart) label() string {
 	if p == nil {
 		return ""
 	}
-	return fmt.Sprintf(" (chunk %d of %d)", p.Chunk.Index+1, p.Count)
+	return fmt.Sprintf(" (chunk %d of %d)",
+		p.Chunk.Index+1,
+		p.Count)
 }
 
 // storeParent stores the artifact that holds a whole chunked text, in a transaction of its own (the chunks are stored
 // afterwards, each in theirs). Nothing links to it: entities and edges link to its chunks.
-func storeParent(ctx context.Context, d *sql.DB, userID, dataset, kind, text, sessionID string, ref, now time.Time) (int64, error) {
-	dsID, err := relational.EnsureDataset(ctx, d, userID, dataset)
+func storeParent(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset,
+	kind,
+	text,
+	sessionID string,
+	ref,
+	now time.Time) (int64, error) {
+	dsID, err := relational.EnsureDataset(ctx,
+		d,
+		userID,
+		dataset)
 	if err != nil {
 		return 0, err
 	}
@@ -53,7 +66,13 @@ func storeParent(ctx context.Context, d *sql.DB, userID, dataset, kind, text, se
 		return 0, err
 	}
 	defer tx.Rollback()
-	id, err := tx.InsertArtifact(ctx, dsID, kind, text, sessionID, ref, now)
+	id, err := tx.InsertArtifact(ctx,
+		dsID,
+		kind,
+		text,
+		sessionID,
+		ref,
+		now)
 	if err != nil {
 		return 0, err
 	}
@@ -61,13 +80,21 @@ func storeParent(ctx context.Context, d *sql.DB, userID, dataset, kind, text, se
 }
 
 func newMerger(doc *Result) *merger {
-	return &merger{doc: doc, entities: map[string]bool{}, edgeAt: map[int64]int{}, inval: map[int64]bool{}}
+	return &merger{
+		doc:      doc,
+		entities: map[string]bool{},
+		edgeAt:   map[int64]int{},
+		inval:    map[int64]bool{},
+	}
 }
 
 // add merges the Result of chunk c. Its entities are added once per (name, type). An edge stated by several chunks
 // (a repeat is merged into the stored edge, so it has one ID) appears once, in its latest stored state, since a later
 // chunk may have closed it. extracted* are what the chunk's extraction listed.
-func (m *merger) add(r *Result, c memory_chunk.Chunk, extractedEntities, extractedEdges int) {
+func (m *merger) add(r *Result,
+	c memory_chunk.Chunk,
+	extractedEntities,
+	extractedEdges int) {
 	d := m.doc
 	for _, e := range r.Entities {
 		if k := memory_core.Key(e.Name) + "\x00" + e.Type; !m.entities[k] {
@@ -94,7 +121,14 @@ func (m *merger) add(r *Result, c memory_chunk.Chunk, extractedEntities, extract
 	d.EmbeddedChunks += r.EmbeddedChunks
 	d.EmbeddedSummaries += r.EmbeddedSummaries
 	d.Chunks = append(d.Chunks, ChunkResult{
-		ArtifactID: r.ArtifactID, Index: c.Index, Tokens: c.Tokens, OverlapTokens: c.OverlapTokens,
-		StartOffset: c.Start, EndOffset: c.End, Entities: extractedEntities, Edges: extractedEdges, Summary: r.summary,
+		ArtifactID:    r.ArtifactID,
+		Index:         c.Index,
+		Tokens:        c.Tokens,
+		OverlapTokens: c.OverlapTokens,
+		StartOffset:   c.Start,
+		EndOffset:     c.End,
+		Entities:      extractedEntities,
+		Edges:         extractedEdges,
+		Summary:       r.summary,
 	})
 }

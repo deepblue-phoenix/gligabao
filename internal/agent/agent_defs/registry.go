@@ -42,8 +42,10 @@ func BuiltinInvestigator() *Def {
 		Description:  "The built-in investigative agent: explores a frontier of questions, challenges its own claims, then writes a sourced report.",
 		SystemPrompt: investigatorPrompt,
 		Loop:         LoopInvestigative,
-		Limits:       Limits{MaxCostUSD: 2},
-		Source:       builtinSource,
+		Limits: Limits{
+			MaxCostUSD: 2,
+		},
+		Source: builtinSource,
 	}
 	normalize(d)
 	d.Hash = hashOf(d)
@@ -66,8 +68,12 @@ type Registry struct {
 }
 
 // newRegistry makes the registry of defs. The built-in default is added unless defs has one (so is the built-in investigator). The definitions must have been through normalize and check, as Load and ParseBundle do.
-func newRegistry(dir string, defs []*Def) (*Registry, error) {
-	r := &Registry{defs: map[string]*Def{}, dir: dir}
+func newRegistry(dir string,
+	defs []*Def) (*Registry, error) {
+	r := &Registry{
+		defs: map[string]*Def{},
+		dir:  dir,
+	}
 	for _, d := range defs {
 		r.defs[d.Name] = d
 	}
@@ -88,7 +94,9 @@ func (d *Def) sourceName() string {
 }
 
 func (r *Registry) names() []string {
-	names := make([]string, 0, len(r.defs))
+	names := make([]string,
+		0,
+		len(r.defs))
 	for n := range r.defs {
 		names = append(names, n)
 	}
@@ -107,7 +115,9 @@ func (r *Registry) Default() *Def { return r.defs[DefaultName] }
 
 // List returns the definitions, by name.
 func (r *Registry) List() []*Def {
-	out := make([]*Def, 0, len(r.defs))
+	out := make([]*Def,
+		0,
+		len(r.defs))
 	for _, n := range r.names() {
 		out = append(out, r.defs[n])
 	}
@@ -119,21 +129,27 @@ func (r *Registry) Dir() string { return r.dir }
 
 // Resolve returns the definition called name ("" is the default), and checks it against a version constraint ("" for none; "1.2.0"
 // is exactly that version, see parseConstraint for the syntax). The error says which agents there are.
-func (r *Registry) Resolve(name, constraint string) (*Def, error) {
+func (r *Registry) Resolve(name,
+	constraint string) (*Def, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = DefaultName
 	}
 	d, ok := r.defs[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown agent %q (available: %s)", name, strings.Join(r.names(), ", "))
+		return nil, fmt.Errorf("unknown agent %q (available: %s)",
+			name,
+			strings.Join(r.names(), ", "))
 	}
 	ok, err := satisfies(d.Version, strings.TrimSpace(constraint))
 	if err != nil {
 		return nil, fmt.Errorf("agent_version: %w", err)
 	}
 	if !ok {
-		return nil, fmt.Errorf("agent %q is at version %s, which does not meet %q", name, d.Version, strings.TrimSpace(constraint))
+		return nil, fmt.Errorf("agent %q is at version %s, which does not meet %q",
+			name,
+			d.Version,
+			strings.TrimSpace(constraint))
 	}
 	return d, nil
 }

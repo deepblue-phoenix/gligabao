@@ -59,7 +59,11 @@ Final advice: exactly one piece of advice, the one with the highest probability 
 
 // Run sends the failure to llm and returns the commentary and the response (tokens, cost). An empty model is DefaultModel and a
 // maxTokens below 1 is DefaultMaxTokens.
-func Run(ctx context.Context, llm memory_core.LLM, model string, maxTokens int, f Failure) (string, *ai.Response, error) {
+func Run(ctx context.Context,
+	llm memory_core.LLM,
+	model string,
+	maxTokens int,
+	f Failure) (string, *ai.Response, error) {
 	if llm == nil {
 		return "", nil, errors.New("no LLM")
 	}
@@ -70,8 +74,11 @@ func Run(ctx context.Context, llm memory_core.LLM, model string, maxTokens int, 
 		maxTokens = DefaultMaxTokens
 	}
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:    system,
-		Messages:  []ai.Message{{Role: ai.RoleUser, Content: Prompt(f)}},
+		System: system,
+		Messages: []ai.Message{{
+			Role:    ai.RoleUser,
+			Content: Prompt(f),
+		}},
 		Model:     model,
 		MaxTokens: maxTokens,
 	})
@@ -87,7 +94,9 @@ func Run(ctx context.Context, llm memory_core.LLM, model string, maxTokens int, 
 // Prompt is the message sent to the LLM: the case, what failed, and the trajectories.
 func Prompt(f Failure) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Eval case: %s\n\n", f.Case)
+	fmt.Fprintf(&b,
+		"Eval case: %s\n\n",
+		f.Case)
 
 	// The case: its input (as it ran) and what it expects, as JSON; long texts are cut (the trajectories hold them as well).
 	caseInfo := map[string]any{
@@ -105,18 +114,26 @@ func Prompt(f Failure) string {
 	b.WriteString(compactJSON(caseInfo, 6000))
 	b.WriteString("\n\nFailure:\n")
 	if f.Err != nil {
-		fmt.Fprintf(&b, "- the case could not run to the end: %v\n", f.Err)
+		fmt.Fprintf(&b,
+			"- the case could not run to the end: %v\n",
+			f.Err)
 	}
 	for _, p := range f.Problems {
-		fmt.Fprintf(&b, "- failed check: %s\n", p)
+		fmt.Fprintf(&b,
+			"- failed check: %s\n",
+			p)
 	}
 	if f.Answer != "" {
-		fmt.Fprintf(&b, "- answer given by the query: %q\n", f.Answer)
+		fmt.Fprintf(&b,
+			"- answer given by the query: %q\n",
+			f.Answer)
 	}
 	if len(f.Passed) > 0 {
 		b.WriteString("\nChecks that held:\n")
 		for _, p := range f.Passed {
-			fmt.Fprintf(&b, "- %s\n", p)
+			fmt.Fprintf(&b,
+				"- %s\n",
+				p)
 		}
 	}
 
@@ -125,14 +142,20 @@ func Prompt(f Failure) string {
 		b.WriteString("\nNo trajectory was recorded for this case (it failed before any remember or query call returned).\n")
 	}
 	for i, t := range trajs {
-		fmt.Fprintf(&b, "\nATIF trajectory %d of %d (%s):\n%s\n", i+1, len(trajs), f.Trajectories[i].Agent.Name, t)
+		fmt.Fprintf(&b,
+			"\nATIF trajectory %d of %d (%s):\n%s\n",
+			i+1,
+			len(trajs),
+			f.Trajectories[i].Agent.Name,
+			t)
 	}
 	return b.String()
 }
 
 // trajectoriesJSON encodes the trajectories as compact JSON, cutting the longest strings in them (progressively harder) until the
 // total is at most budget bytes, or the strings are cut to a stub.
-func trajectoriesJSON(ts []*atif.Trajectory, budget int) []string {
+func trajectoriesJSON(ts []*atif.Trajectory,
+	budget int) []string {
 	if len(ts) == 0 {
 		return nil
 	}
@@ -157,7 +180,8 @@ func trajectoriesJSON(ts []*atif.Trajectory, budget int) []string {
 	return nil // not reached
 }
 
-func encodeAll(generic []any, limit int) (out []string, total int) {
+func encodeAll(generic []any,
+	limit int) (out []string, total int) {
 	for _, v := range generic {
 		s := compactJSON(v, limit)
 		out = append(out, s)
@@ -167,7 +191,8 @@ func encodeAll(generic []any, limit int) (out []string, total int) {
 }
 
 // compactJSON encodes v as one line of JSON, with every string longer than limit bytes cut (limit 0: none are).
-func compactJSON(v any, limit int) string {
+func compactJSON(v any,
+	limit int) string {
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf("(could not be encoded: %v)", err)
@@ -187,7 +212,8 @@ func compactJSON(v any, limit int) string {
 }
 
 // cutStrings returns v (decoded JSON) with each string longer than limit bytes cut and marked.
-func cutStrings(v any, limit int) any {
+func cutStrings(v any,
+	limit int) any {
 	switch x := v.(type) {
 	case string:
 		if len(x) > limit {
@@ -195,7 +221,9 @@ func cutStrings(v any, limit int) any {
 			for cut > 0 && !isRuneStart(x[cut]) {
 				cut--
 			}
-			return fmt.Sprintf("%s...[%d bytes cut]", x[:cut], len(x)-cut)
+			return fmt.Sprintf("%s...[%d bytes cut]",
+				x[:cut],
+				len(x)-cut)
 		}
 		return x
 	case []any:

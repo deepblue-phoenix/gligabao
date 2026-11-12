@@ -71,7 +71,12 @@ func (j *job) noteGraph(res *Result) {
 	if j.u != nil && j.u.part != nil {
 		label = strings.Trim(j.u.part.label(), " ()")
 	}
-	j.graphs = append(j.graphs, artifactGraph{ArtifactID: res.ArtifactID, Label: label, Entities: res.Entities, Edges: res.Edges})
+	j.graphs = append(j.graphs, artifactGraph{
+		ArtifactID: res.ArtifactID,
+		Label:      label,
+		Entities:   res.Entities,
+		Edges:      res.Edges,
+	})
 }
 
 func (j *job) hasClassifyGraph() bool { return j.co.ClassifyGraph }
@@ -83,14 +88,21 @@ func (j *job) classifyGraphStage(ctx context.Context) error {
 	if len(j.graphs) == 0 {
 		return nil
 	}
-	dsID, err := memory_core.DatasetID(ctx, j.d, j.userID, j.dataset)
+	dsID, err := memory_core.DatasetID(ctx,
+		j.d,
+		j.userID,
+		j.dataset)
 	if err != nil {
 		return fmt.Errorf("memory: classify graph: %w", err)
 	}
 	var errs []error
-	results := make([]ClassResult, 0, len(j.graphs))
+	results := make([]ClassResult,
+		0,
+		len(j.graphs))
 	for _, g := range j.graphs {
-		r, err := j.classifyOne(ctx, dsID, g)
+		r, err := j.classifyOne(ctx,
+			dsID,
+			g)
 		results = append(results, r)
 		if err != nil {
 			errs = append(errs, err)
@@ -103,37 +115,64 @@ func (j *job) classifyGraphStage(ctx context.Context) error {
 }
 
 // classifyOne classifies one graph and stores its classes.
-func (j *job) classifyOne(ctx context.Context, dsID int64, g artifactGraph) (ClassResult, error) {
-	res := ClassResult{ArtifactID: g.ArtifactID, Classes: []string{}}
+func (j *job) classifyOne(ctx context.Context,
+	dsID int64,
+	g artifactGraph) (ClassResult, error) {
+	res := ClassResult{
+		ArtifactID: g.ArtifactID,
+		Classes:    []string{},
+	}
 	fields := log.Fields{"stage": memory_core.StageClassifyGraph, "user_id": j.userID, "dataset": j.dataset, "artifact_id": g.ArtifactID}
 
 	var known []string
 	if len(j.co.GraphClasses) == 0 { // free choice: tell the LLM what the dataset already uses, so that it reuses it
 		var err error
-		if known, err = graph.ClassNames(ctx, j.d, dsID, classifyKnownClasses); err != nil {
+		if known, err = graph.ClassNames(ctx,
+			j.d,
+			dsID,
+			classifyKnownClasses); err != nil {
 			log.WithError(err).WithFields(fields).Warn("memory: reading the classes of the dataset failed; the LLM is not told of them")
 		}
 	}
-	c, err := classifyGraph(ctx, j.co.ModelLLM(j.llm, memory_core.StageClassifyGraph), g, j.co.GraphClasses, known)
+	c, err := classifyGraph(ctx,
+		j.co.ModelLLM(j.llm, memory_core.StageClassifyGraph),
+		g,
+		j.co.GraphClasses,
+		known)
 	if c != nil {
 		res.InferenceID, res.Model, res.Reasoning = c.InferenceID, c.Model, c.Reasoning
-		j.run.Output(memory_core.StageClassifyGraph, "classify_graph", g.Label, map[string]any{"artifact_id": g.ArtifactID,
-			"classes": c.Classes, "model": c.Model, "reasoning": c.Reasoning, "inference_id": c.InferenceID, "raw": c.Raw})
+		j.run.Output(memory_core.StageClassifyGraph,
+			"classify_graph",
+			g.Label,
+			map[string]any{"artifact_id": g.ArtifactID,
+				"classes": c.Classes, "model": c.Model, "reasoning": c.Reasoning, "inference_id": c.InferenceID, "raw": c.Raw})
 	}
 	if err != nil {
-		err = fmt.Errorf("memory: classify graph of artifact %d: %w", g.ArtifactID, err)
+		err = fmt.Errorf("memory: classify graph of artifact %d: %w",
+			g.ArtifactID,
+			err)
 		res.Error = err.Error()
 		return res, err
 	}
-	if _, err := graph.InsertArtifactClasses(ctx, j.d, dsID, g.ArtifactID, c.InferenceID, c.Classes, j.now); err != nil {
-		err = fmt.Errorf("memory: store the classes of artifact %d: %w", g.ArtifactID, err)
+	if _, err := graph.InsertArtifactClasses(ctx,
+		j.d,
+		dsID,
+		g.ArtifactID,
+		c.InferenceID,
+		c.Classes,
+		j.now); err != nil {
+		err = fmt.Errorf("memory: store the classes of artifact %d: %w",
+			g.ArtifactID,
+			err)
 		res.Error = err.Error()
 		return res, err
 	}
 	res.Classes = c.Classes
 	j.tr.Tool("The LLM classified the graph of the artifact; each class is stored as a record of its own (gb_artifact_classes), with the run of the call."+
-		labelSuffix(g.Label), memory_core.StageClassifyGraph, map[string]any{"artifact_id": g.ArtifactID, "entities": len(g.Entities), "edges": len(g.Edges),
-		"allowed": j.co.GraphClasses, "known": known},
+		labelSuffix(g.Label),
+		memory_core.StageClassifyGraph,
+		map[string]any{"artifact_id": g.ArtifactID, "entities": len(g.Entities), "edges": len(g.Edges),
+			"allowed": j.co.GraphClasses, "known": known},
 		map[string]any{"classes": c.Classes, "model": c.Model, "reasoning": c.Reasoning, "inference_id": c.InferenceID})
 	return res, nil
 }
@@ -149,17 +188,32 @@ func labelSuffix(label string) string {
 // memory_core.CallOptions.ModelLLM). allowed, if not empty, are the only classes it may choose (it is then not told of known); otherwise it
 // chooses freely, and known are the classes the dataset already uses, which it should reuse when one fits. If the LLM answered but its
 // answer is no use, the error comes with a classification that has only its InferenceID and Raw.
-func classifyGraph(ctx context.Context, llm memory_core.LLM, g artifactGraph, allowed, known []string) (*graphClassification, error) {
+func classifyGraph(ctx context.Context,
+	llm memory_core.LLM,
+	g artifactGraph,
+	allowed,
+	known []string) (*graphClassification, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:    classifySystemPrompt,
-		Messages:  []ai.Message{{Role: ai.RoleUser, Content: classifyUserMessage(g, allowed, known)}},
+		System: classifySystemPrompt,
+		Messages: []ai.Message{{
+			Role: ai.RoleUser,
+			Content: classifyUserMessage(g,
+				allowed,
+				known),
+		}},
 		MaxTokens: classifyMaxTokens,
 	})
 	if err != nil {
 		return nil, err
 	}
 	level, _ := ai.NormalizeReasoning(resp.Reasoning)
-	c := &graphClassification{Provider: resp.Provider, Model: resp.Model, InferenceID: resp.InferenceID, Reasoning: level, Raw: resp.Text}
+	c := &graphClassification{
+		Provider:    resp.Provider,
+		Model:       resp.Model,
+		InferenceID: resp.InferenceID,
+		Reasoning:   level,
+		Raw:         resp.Text,
+	}
 	if resp.StopReason == "max_tokens" {
 		return c, errors.New("memory: LLM class answer truncated")
 	}
@@ -173,7 +227,8 @@ func classifyGraph(ctx context.Context, llm memory_core.LLM, g artifactGraph, al
 
 // parseClasses reads the answer {"classes": ["a", "b"]}: the classes are normalized, repeats dropped, only the first
 // memory_core.MaxClassesPerGraph kept (only the first if allowed is not empty), and, if allowed is not empty, those not in it left out. It is an error if none is left.
-func parseClasses(answer string, allowed []string) ([]string, error) {
+func parseClasses(answer string,
+	allowed []string) ([]string, error) {
 	js, err := memory_core.JSONObject(answer)
 	if err != nil {
 		return nil, err
@@ -209,7 +264,9 @@ func parseClasses(answer string, allowed []string) ([]string, error) {
 }
 
 // classifyUserMessage describes the graph (and the classes to choose from) for the LLM.
-func classifyUserMessage(g artifactGraph, allowed, known []string) string {
+func classifyUserMessage(g artifactGraph,
+	allowed,
+	known []string) string {
 	var b strings.Builder
 	if len(allowed) > 0 {
 		b.WriteString("<allowed_classes>\n" + strings.Join(allowed, "\n") + "\n</allowed_classes>\n\n")
@@ -219,10 +276,15 @@ func classifyUserMessage(g artifactGraph, allowed, known []string) string {
 	b.WriteString("<graph>\nentities:\n")
 	for i, e := range g.Entities {
 		if i == classifyMaxEntities {
-			fmt.Fprintf(&b, "... (%d more entities)\n", len(g.Entities)-i)
+			fmt.Fprintf(&b,
+				"... (%d more entities)\n",
+				len(g.Entities)-i)
 			break
 		}
-		fmt.Fprintf(&b, "- %s (%s)", e.Name, e.Type)
+		fmt.Fprintf(&b,
+			"- %s (%s)",
+			e.Name,
+			e.Type)
 		if e.Description != "" {
 			b.WriteString(": " + e.Description)
 		}
@@ -231,10 +293,16 @@ func classifyUserMessage(g artifactGraph, allowed, known []string) string {
 	b.WriteString("facts:\n")
 	for i, e := range g.Edges {
 		if i == classifyMaxEdges {
-			fmt.Fprintf(&b, "... (%d more facts)\n", len(g.Edges)-i)
+			fmt.Fprintf(&b,
+				"... (%d more facts)\n",
+				len(g.Edges)-i)
 			break
 		}
-		fmt.Fprintf(&b, "- %s --%s--> %s\n", e.Source, e.Relation, e.Target)
+		fmt.Fprintf(&b,
+			"- %s --%s--> %s\n",
+			e.Source,
+			e.Relation,
+			e.Target)
 	}
 	b.WriteString("</graph>")
 	return b.String()

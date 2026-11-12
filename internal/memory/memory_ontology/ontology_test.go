@@ -11,7 +11,8 @@ const header = `<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
   xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:ex="http://ex.org/o#" xml:base="http://ex.org/o">`
 
-func parse(t *testing.T, body string) *Ontology {
+func parse(t *testing.T,
+	body string) *Ontology {
 	t.Helper()
 	o, err := Parse(strings.NewReader(header + body + `</rdf:RDF>`))
 	if err != nil {
@@ -31,7 +32,10 @@ func TestMarketOntology(t *testing.T) {
 		t.Fatal(err)
 	}
 	if o.IRI != "https://gligabao.example/ontology/market" || o.Title != "Market ontology" || o.Comment == "" {
-		t.Errorf("ontology header: %q %q %q", o.IRI, o.Title, o.Comment)
+		t.Errorf("ontology header: %q %q %q",
+			o.IRI,
+			o.Title,
+			o.Comment)
 	}
 	if len(o.Classes) != 20 {
 		t.Errorf("%d classes, want 20", len(o.Classes))
@@ -43,29 +47,50 @@ func TestMarketOntology(t *testing.T) {
 			t.Errorf("class %s lacks a label or comment", c.Name)
 		}
 	}
-	has := func(src, rel, tgt string) Edge {
+	has := func(src,
+		rel,
+		tgt string) Edge {
 		t.Helper()
 		for _, e := range o.Edges {
 			if LocalName(e.SourceIRI) == src && e.Relation == rel && LocalName(e.TargetIRI) == tgt {
 				return e
 			}
 		}
-		t.Fatalf("missing edge %s -%s-> %s", src, rel, tgt)
+		t.Fatalf("missing edge %s -%s-> %s",
+			src,
+			rel,
+			tgt)
 		return Edge{}
 	}
-	has("Exchange", "subclass_of", "Market")
-	has("Buyer", "subclass_of", "MarketParticipant")
-	has("Trade", "hasBuyer", "Buyer")
+	has("Exchange",
+		"subclass_of",
+		"Market")
+	has("Buyer",
+		"subclass_of",
+		"MarketParticipant")
+	has("Trade",
+		"hasBuyer",
+		"Buyer")
 	// Union domains and ranges expand to one edge per member.
 	for _, d := range []string{"Asset", "Order", "Trade"} {
-		has(d, "hasPrice", "Price")
+		has(d,
+			"hasPrice",
+			"Price")
 	}
-	has("Regulator", "regulates", "Market")
-	has("Regulator", "regulates", "MarketParticipant")
-	if e := has("Asset", "tradedOn", "Market"); e.InverseOf != "listsAsset" || e.Label == "" || e.Kind != KindProperty {
+	has("Regulator",
+		"regulates",
+		"Market")
+	has("Regulator",
+		"regulates",
+		"MarketParticipant")
+	if e := has("Asset",
+		"tradedOn",
+		"Market"); e.InverseOf != "listsAsset" || e.Label == "" || e.Kind != KindProperty {
 		t.Errorf("tradedOn edge: %+v", e)
 	}
-	if e := has("Market", "listsAsset", "Asset"); e.InverseOf != "tradedOn" {
+	if e := has("Market",
+		"listsAsset",
+		"Asset"); e.InverseOf != "tradedOn" {
 		t.Errorf("listsAsset edge: %+v", e)
 	}
 	if o.Properties() != 26 {
@@ -100,7 +125,9 @@ func TestRDFXMLForms(t *testing.T) {
 	  <owl:DatatypeProperty rdf:about="#size"><rdfs:domain rdf:resource="#A"/><rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#int"/></owl:DatatypeProperty>
 	  <owl:ObjectProperty rdf:about="#orphan"><rdfs:domain rdf:resource="#A"/></owl:ObjectProperty>`)
 	if o.IRI != "http://ex.org/o" || o.Title != "T" {
-		t.Errorf("ontology: %q %q", o.IRI, o.Title)
+		t.Errorf("ontology: %q %q",
+			o.IRI,
+			o.Title)
 	}
 	names := []string{}
 	for _, c := range o.Classes {
@@ -121,7 +148,9 @@ func TestRDFXMLForms(t *testing.T) {
 	sort.Strings(got)
 	want := "A near B|B subclass_of A|C disjoint_with A|C equivalent_class D"
 	if g := strings.Join(got, "|"); g != want {
-		t.Errorf("edges %q, want %q", g, want)
+		t.Errorf("edges %q, want %q",
+			g,
+			want)
 	}
 }
 

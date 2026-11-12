@@ -9,7 +9,10 @@ const EarthRadiusKm = 6371.0088
 const MaxDistanceKm = 20015.0
 
 // DistanceKm is the great-circle (haversine) distance in kilometers between two points given in degrees.
-func DistanceKm(lat1, lon1, lat2, lon2 float64) float64 {
+func DistanceKm(lat1,
+	lon1,
+	lat2,
+	lon2 float64) float64 {
 	p1, p2 := lat1*math.Pi/180, lat2*math.Pi/180
 	dp, dl := p2-p1, (lon2-lon1)*math.Pi/180
 	a := math.Sin(dp/2)*math.Sin(dp/2) + math.Cos(p1)*math.Cos(p2)*math.Sin(dl/2)*math.Sin(dl/2)
@@ -29,10 +32,19 @@ type Box struct {
 
 // BoundingBox returns the smallest box that contains every point within radiusKm of (lat, lon). It is a prefilter for a proximity
 // query (every point of the circle is in the box, not every point of the box is in the circle): refine with DistanceKm.
-func BoundingBox(lat, lon, radiusKm float64) Box {
+func BoundingBox(lat,
+	lon,
+	radiusKm float64) Box {
 	d := radiusKm / EarthRadiusKm // angular radius
-	b := Box{MinLat: lat - d*180/math.Pi, MaxLat: lat + d*180/math.Pi}
-	full := Box{MinLat: math.Max(b.MinLat, -90), MaxLat: math.Min(b.MaxLat, 90), Lon: []LonRange{{-180, 180}}}
+	b := Box{
+		MinLat: lat - d*180/math.Pi,
+		MaxLat: lat + d*180/math.Pi,
+	}
+	full := Box{
+		MinLat: math.Max(b.MinLat, -90),
+		MaxLat: math.Min(b.MaxLat, 90),
+		Lon:    []LonRange{{-180, 180}},
+	}
 	if b.MinLat <= -90 || b.MaxLat >= 90 || d >= math.Pi/2 {
 		return full // the circle holds a pole (or half the Earth): every longitude is in it
 	}

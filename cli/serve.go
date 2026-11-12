@@ -7,7 +7,8 @@ import (
 )
 
 // newServe builds the `serve` command. Its flags are the single definition of gligabao's serve flags.
-func newServe(c *CLI, o Options) *cobra.Command {
+func newServe(c *CLI,
+	o Options) *cobra.Command {
 	var (
 		dbPath, vectorDir, imageDir string
 		host                        string
@@ -21,7 +22,8 @@ func newServe(c *CLI, o Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the HTTP server",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command,
+			args []string) error {
 			// Arguments are parsed by now: a runtime error is not a usage error, so do not print the help for it.
 			cmd.SilenceUsage = true
 			cfg := c.cfg
@@ -55,7 +57,9 @@ func newServe(c *CLI, o Options) *cobra.Command {
 				EvalDBPath:            evalDB,
 			}
 			if o.ServeOptions != nil {
-				cleanup, err := o.ServeOptions(cmd, cfg, &opts)
+				cleanup, err := o.ServeOptions(cmd,
+					cfg,
+					&opts)
 				if cleanup != nil {
 					defer cleanup()
 				}
@@ -63,24 +67,71 @@ func newServe(c *CLI, o Options) *cobra.Command {
 					return err
 				}
 			}
-			return gligabao.Serve(cmd.Context(), cfg, opts)
+			return gligabao.Serve(cmd.Context(),
+				cfg,
+				opts)
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&dbPath, "db", gligabao.DefaultDBPath, "SQLite database file path")
-	f.StringVar(&host, "host", "", "address to listen on, e.g. 127.0.0.1 for this machine only (default: every interface) (config: host)")
-	f.StringVar(&vectorDir, "vector-dir", "", "chromem vector store directory (default: next to --db)")
-	f.StringVar(&imageDir, "image-dir", "", "directory of the image files stored by remember with an image (default: next to --db)")
-	f.StringArrayVar(&datasetDirs, "training-dataset-dir", nil, "training datasets directory: one subdirectory with a dataset.toml manifest per dataset; repeatable, searched in order, uploads go to the first (default: config datasets_training_dirs, else a datasets_training directory next to --db)")
-	f.StringArrayVar(&evalDirs, "training-eval-dir", nil, "directory of the evals of trained models: one JSON file (a map with the keys name and cases) per eval; repeatable, searched in order (default: config evals_training_dirs, else an evals_training directory next to --db)")
-	f.StringArrayVar(&ontologyDirs, "ontology-dir", nil, "directory ontology files (OWL, RDF/XML) are loaded from by name through the ontologies API; repeatable, searched in order (default: config ontology_dirs, else none)")
-	f.StringVar(&agentDefsDir, "agent-defs-dir", "", "directory the definitions of the research agents (one TOML or JSON file each) are loaded from at startup (default: config agent_defs_dir, else an agent_defs directory next to the binary)")
-	f.StringVar(&deployDir, "trained-model-deploy-dir", "", "directory the files of trained models are fetched to for a deployment, one subdirectory per training job (default: a trained_models directory next to --db)")
-	f.StringVar(&evalDB, "eval-db", "", "eval database: SQLite file with the eval datasets, experiments and runs (./run_evals.sh); shown next to the main database in the admin UI, which reads the Evals block from it")
-	f.BoolVar(&eval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
-	f.BoolVar(&training, "training", false, "register the training endpoints under /v1/gb/training/ (config: training)")
-	f.BoolVar(&geoOn, "geo", false, "make remember find the places among the entities and store their coordinates, using OpenStreetMap's Nominatim (config: geo)")
-	f.BoolVar(&mcpOn, "mcp", false, "serve remember and query as MCP tools at /v1/gb/mcp (streamable HTTP, no authentication) (config: mcp)")
-	f.BoolVar(&adminUI, "admin-ui", false, "serve the admin UI at /v1/gb/admin/ (config: admin_ui)")
+	f.StringVar(&dbPath,
+		"db",
+		gligabao.DefaultDBPath,
+		"SQLite database file path")
+	f.StringVar(&host,
+		"host",
+		"",
+		"address to listen on, e.g. 127.0.0.1 for this machine only (default: every interface) (config: host)")
+	f.StringVar(&vectorDir,
+		"vector-dir",
+		"",
+		"chromem vector store directory (default: next to --db)")
+	f.StringVar(&imageDir,
+		"image-dir",
+		"",
+		"directory of the image files stored by remember with an image (default: next to --db)")
+	f.StringArrayVar(&datasetDirs,
+		"training-dataset-dir",
+		nil,
+		"training datasets directory: one subdirectory with a dataset.toml manifest per dataset; repeatable, searched in order, uploads go to the first (default: config datasets_training_dirs, else a datasets_training directory next to --db)")
+	f.StringArrayVar(&evalDirs,
+		"training-eval-dir",
+		nil,
+		"directory of the evals of trained models: one JSON file (a map with the keys name and cases) per eval; repeatable, searched in order (default: config evals_training_dirs, else an evals_training directory next to --db)")
+	f.StringArrayVar(&ontologyDirs,
+		"ontology-dir",
+		nil,
+		"directory ontology files (OWL, RDF/XML) are loaded from by name through the ontologies API; repeatable, searched in order (default: config ontology_dirs, else none)")
+	f.StringVar(&agentDefsDir,
+		"agent-defs-dir",
+		"",
+		"directory the definitions of the research agents (one TOML or JSON file each) are loaded from at startup (default: config agent_defs_dir, else an agent_defs directory next to the binary)")
+	f.StringVar(&deployDir,
+		"trained-model-deploy-dir",
+		"",
+		"directory the files of trained models are fetched to for a deployment, one subdirectory per training job (default: a trained_models directory next to --db)")
+	f.StringVar(&evalDB,
+		"eval-db",
+		"",
+		"eval database: SQLite file with the eval datasets, experiments and runs (./run_evals.sh); shown next to the main database in the admin UI, which reads the Evals block from it")
+	f.BoolVar(&eval,
+		"eval",
+		false,
+		"register the eval endpoints that return ATIF trajectories (config: eval)")
+	f.BoolVar(&training,
+		"training",
+		false,
+		"register the training endpoints under /v1/gb/training/ (config: training)")
+	f.BoolVar(&geoOn,
+		"geo",
+		false,
+		"make remember find the places among the entities and store their coordinates, using OpenStreetMap's Nominatim (config: geo)")
+	f.BoolVar(&mcpOn,
+		"mcp",
+		false,
+		"serve remember and query as MCP tools at /v1/gb/mcp (streamable HTTP, no authentication) (config: mcp)")
+	f.BoolVar(&adminUI,
+		"admin-ui",
+		false,
+		"serve the admin UI at /v1/gb/admin/ (config: admin_ui)")
 	return cmd
 }

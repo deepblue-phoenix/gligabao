@@ -31,17 +31,24 @@ func (r *Request) Validate() error {
 	}
 	for i, m := range r.Messages {
 		if m.Role != RoleUser && m.Role != RoleAssistant {
-			return fmt.Errorf("sargo: messages[%d]: unknown role %q", i, m.Role)
+			return fmt.Errorf("sargo: messages[%d]: unknown role %q",
+				i,
+				m.Role)
 		}
 		for j, b := range m.Content {
 			if err := b.validate(); err != nil {
-				return fmt.Errorf("sargo: messages[%d].content[%d]: %w", i, j, err)
+				return fmt.Errorf("sargo: messages[%d].content[%d]: %w",
+					i,
+					j,
+					err)
 			}
 		}
 	}
 	for i, t := range r.Tools {
 		if err := t.validate(); err != nil {
-			return fmt.Errorf("sargo: tools[%d]: %w", i, err)
+			return fmt.Errorf("sargo: tools[%d]: %w",
+				i,
+				err)
 		}
 	}
 	return nil

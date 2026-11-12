@@ -63,7 +63,8 @@ func (e TrainedModelDeployment) OptionsJSON() string { return jsonObject(e.Optio
 func (e TrainedModelDeployment) DetailsJSON() string { return jsonObject(e.Details) }
 
 // SetStoredJSON sets Options and Details from the columns they are stored in (an unreadable column leaves the field "{}").
-func (e *TrainedModelDeployment) SetStoredJSON(options, details string) {
+func (e *TrainedModelDeployment) SetStoredJSON(options,
+	details string) {
 	e.Options, e.Details = json.RawMessage("{}"), json.RawMessage("{}")
 	if json.Valid([]byte(options)) {
 		e.Options = json.RawMessage(options)

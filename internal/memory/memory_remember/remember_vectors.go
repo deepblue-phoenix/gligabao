@@ -33,20 +33,37 @@ type candidates struct {
 
 // loadCandidates returns the candidates of the new edges of ex in the user's dataset: the lookup by name, and with WithVectors
 // the one by similarity of the entity embeddings, which finds aliases (see memory_temporal.LoadCandidates).
-func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
+func loadCandidates(ctx context.Context,
+	d *sql.DB,
+	o memory_core.CallOptions,
+	userID,
+	dataset string,
+	ex *Extraction) (*candidates, error) {
 	out := &candidates{}
 	var err error
-	out.Candidates, err = memory_temporal.LoadCandidates(ctx, d, userID, dataset, ex.Edges, func(ctx context.Context, dsID int64) []string {
-		out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, o, dsID, ex)
-		if out.SearchErr != nil {
-			log.WithError(out.SearchErr).Warn("similar entity search failed; candidates are matched by name only")
-		}
-		names := make([]string, 0, len(out.Similar))
-		for _, s := range out.Similar {
-			names = append(names, s.name)
-		}
-		return names
-	})
+	out.Candidates, err = memory_temporal.LoadCandidates(ctx,
+		d,
+		userID,
+		dataset,
+		ex.Edges,
+		func(ctx context.Context,
+			dsID int64) []string {
+			out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx,
+				d,
+				o,
+				dsID,
+				ex)
+			if out.SearchErr != nil {
+				log.WithError(out.SearchErr).Warn("similar entity search failed; candidates are matched by name only")
+			}
+			names := make([]string,
+				0,
+				len(out.Similar))
+			for _, s := range out.Similar {
+				names = append(names, s.name)
+			}
+			return names
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -87,9 +104,15 @@ type summaryVector struct {
 }
 
 // entityText is the text that is embedded for an entity.
-func entityText(e *graph.EvidenceEntity) string { return entityLabel(e.Name, e.Type, e.Description) }
+func entityText(e *graph.EvidenceEntity) string {
+	return entityLabel(e.Name,
+		e.Type,
+		e.Description)
+}
 
-func entityLabel(name, typ, description string) string {
+func entityLabel(name,
+	typ,
+	description string) string {
 	s := name + " (" + typ + ")"
 	if description != "" {
 		s += ": " + description
@@ -118,7 +141,11 @@ const (
 // run is told of the embedding request. It returns the texts that were embedded (empty if no search was made: no vectors configured, or no endpoints) and
 // the usage of the embedding request, which is already recorded as spent. It is only a hint for choosing candidate
 // facts: the caller treats an error as "no matches".
-func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptions, dsID int64, ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
+func findSimilarEntities(ctx context.Context,
+	d *sql.DB,
+	o memory_core.CallOptions,
+	dsID int64,
+	ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
 	if o.Vectors == nil || o.Embedder == nil {
 		return nil, nil, nil, nil
 	}
@@ -142,7 +169,9 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptio
 				if typ == "" {
 					typ = "other"
 				}
-				texts = append(texts, entityLabel(n, typ, descOf[k]))
+				texts = append(texts, entityLabel(n,
+					typ,
+					descOf[k]))
 			}
 		}
 	}
@@ -151,18 +180,27 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptio
 	}
 
 	embs, usage, err := o.Embedder.EmbedBatchUsage(ctx, texts)
-	recordEmbedUsage(ctx, d, usage) // no transaction is open here
+	recordEmbedUsage(ctx,
+		d,
+		usage) // no transaction is open here
 	if err != nil {
 		return nil, texts, usage, fmt.Errorf("memory: embed entities to search: %w", err)
 	}
 	if len(embs) != len(texts) {
-		return nil, texts, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
+		return nil, texts, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts",
+			len(embs),
+			len(texts))
 	}
 	got := map[string]bool{}
 	for i, ep := range endpoints {
 		//------------------
 		// MEMORY DATASET
-		ms, err := o.Vectors.Query(ctx, memory_dataset.EntityDataset(dsID), embs[i], vector.QueryOptions{TopK: similarEntityTopK})
+		ms, err := o.Vectors.Query(ctx,
+			memory_dataset.EntityDataset(dsID),
+			embs[i],
+			vector.QueryOptions{
+				TopK: similarEntityTopK,
+			})
 		//------------------
 		if err != nil {
 			return found, texts, usage, fmt.Errorf("memory: search similar entities: %w", err)
@@ -174,7 +212,12 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptio
 				continue
 			}
 			got[memory_core.Key(name)] = true
-			found = append(found, similarEntity{endpoint: ep, name: name, typ: typ, score: m.Score})
+			found = append(found, similarEntity{
+				endpoint: ep,
+				name:     name,
+				typ:      typ,
+				score:    m.Score,
+			})
 		}
 	}
 	return found, texts, usage, nil
@@ -190,14 +233,27 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptio
 // The usage of the embedding request is returned (non-nil whenever the request was made, even if the call fails
 // afterwards) for the caller to record with recordEmbedUsage once tx is finished: recording it here, through d,
 // would block on the write lock tx holds (SQLITE_BUSY).
-func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions, dsID int64, entityIDs []int64, edges []Edge, chunk *chunkVector, summary *summaryVector) (*pendingVectors, *ai.EmbedUsage, error) {
+func prepareVectors(ctx context.Context,
+	tx graph.Tx,
+	o memory_core.CallOptions,
+	dsID int64,
+	entityIDs []int64,
+	edges []Edge,
+	chunk *chunkVector,
+	summary *summaryVector) (*pendingVectors, *ai.EmbedUsage, error) {
 	if o.Vectors == nil || o.Embedder == nil || (len(entityIDs)+len(edges) == 0 && chunk == nil && summary == nil) {
 		return nil, nil, nil
 	}
-	ents := make([]*graph.EvidenceEntity, 0, len(entityIDs))
-	texts := make([]string, 0, len(entityIDs)+len(edges)+1)
+	ents := make([]*graph.EvidenceEntity,
+		0,
+		len(entityIDs))
+	texts := make([]string,
+		0,
+		len(entityIDs)+len(edges)+1)
 	for _, id := range entityIDs {
-		e, err := tx.GetEntity(ctx, dsID, id)
+		e, err := tx.GetEntity(ctx,
+			dsID,
+			id)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -218,12 +274,25 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 	if err != nil {
 		return nil, nil, fmt.Errorf("memory: embed entities and edges: %w", err)
 	}
-	traceEmbed(o.Trace, texts, len(entityIDs), len(edges), chunk != nil, summary != nil, usage)
+	traceEmbed(o.Trace,
+		texts,
+		len(entityIDs),
+		len(edges),
+		chunk != nil,
+		summary != nil,
+		usage)
 	if len(embs) != len(texts) {
-		return nil, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
+		return nil, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts",
+			len(embs),
+			len(texts))
 	}
 
-	p := &pendingVectors{store: o.Vectors, byDataset: map[string][]vector.Vector{}, entities: len(ents), edges: len(edges)}
+	p := &pendingVectors{
+		store:     o.Vectors,
+		byDataset: map[string][]vector.Vector{},
+		entities:  len(ents),
+		edges:     len(edges),
+	}
 	for i, e := range ents {
 		//------------------
 		// MEMORY DATASET
@@ -306,13 +375,24 @@ const StageEmbed = "embed"
 // recordEmbedUsage records the cost of an embedding request as an inference, as it was spent, like the LLM's. Detached from ctx so a
 // cancelled request still records money that was spent. It must not run while a write transaction of d is open. It returns
 // the ID of the inference, 0 if there is none (no request was made, or it could not be recorded).
-func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) int64 {
+func recordEmbedUsage(ctx context.Context,
+	d *sql.DB,
+	usage *ai.EmbedUsage) int64 {
 	if usage == nil {
 		return 0
 	}
-	id, err := memory_core.RecordRun(context.WithoutCancel(ctx), d, relational.Inference{Type: CallRemember, Stage: StageEmbed,
-		Model: usage.Model, Provider: usage.Provider, Kind: ai.KindEmbedding, Reasoning: ai.ReasoningNone,
-		InputTokens: usage.InputTokens, CostUSD: usage.CostUSD})
+	id, err := memory_core.RecordRun(context.WithoutCancel(ctx),
+		d,
+		relational.Inference{
+			Type:        CallRemember,
+			Stage:       StageEmbed,
+			Model:       usage.Model,
+			Provider:    usage.Provider,
+			Kind:        ai.KindEmbedding,
+			Reasoning:   ai.ReasoningNone,
+			InputTokens: usage.InputTokens,
+			CostUSD:     usage.CostUSD,
+		})
 	if err != nil {
 		log.WithError(err).WithField("model", usage.Model).Error("record embedding call")
 	}
@@ -326,8 +406,12 @@ func (p *pendingVectors) write(ctx context.Context) error {
 		return nil
 	}
 	for ns, vs := range p.byDataset {
-		if err := p.store.Upsert(ctx, ns, vs); err != nil {
-			return fmt.Errorf("memory: store vectors in dataset %s: %w", ns, err)
+		if err := p.store.Upsert(ctx,
+			ns,
+			vs); err != nil {
+			return fmt.Errorf("memory: store vectors in dataset %s: %w",
+				ns,
+				err)
 		}
 	}
 	return nil

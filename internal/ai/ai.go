@@ -61,14 +61,24 @@ func (m Message) MarshalJSON() ([]byte, error) {
 			Content string `json:"content"`
 		}{m.Role, m.Content})
 	}
-	blocks := make([]contentBlock, 0, len(m.Images)+1)
+	blocks := make([]contentBlock,
+		0,
+		len(m.Images)+1)
 	for _, im := range m.Images {
-		blocks = append(blocks, contentBlock{Type: "image", Source: &imageSource{
-			Type: "base64", MediaType: im.MediaType, Data: base64.StdEncoding.EncodeToString(im.Data),
-		}})
+		blocks = append(blocks, contentBlock{
+			Type: "image",
+			Source: &imageSource{
+				Type:      "base64",
+				MediaType: im.MediaType,
+				Data:      base64.StdEncoding.EncodeToString(im.Data),
+			},
+		})
 	}
 	if m.Content != "" {
-		blocks = append(blocks, contentBlock{Type: "text", Text: m.Content})
+		blocks = append(blocks, contentBlock{
+			Type: "text",
+			Text: m.Content,
+		})
 	}
 	return json.Marshal(struct {
 		Role    Role           `json:"role"`
@@ -208,17 +218,20 @@ func WithBaseURL(u string) Option { return func(c *Client) { c.baseURL = strings
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.httpClient = h } }
 
 // New creates a Client using the given Anthropic API key (see config.Config).
-func New(apiKey string, opts ...Option) (*Client, error) {
+func New(apiKey string,
+	opts ...Option) (*Client, error) {
 	if apiKey == "" {
 		return nil, errors.New("ai: missing API key (set ANTHROPIC_API_KEY)")
 	}
 	c := &Client{
-		apiKey:     apiKey,
-		baseURL:    defaultBaseURL,
-		model:      defaultModel,
-		maxTokens:  defaultMaxTokens,
-		prices:     NewPriceTable(nil),
-		httpClient: &http.Client{Timeout: 2 * time.Minute},
+		apiKey:    apiKey,
+		baseURL:   defaultBaseURL,
+		model:     defaultModel,
+		maxTokens: defaultMaxTokens,
+		prices:    NewPriceTable(nil),
+		httpClient: &http.Client{
+			Timeout: 2 * time.Minute,
+		},
 	}
 	for _, o := range opts {
 		o(c)
@@ -229,7 +242,8 @@ func New(apiKey string, opts ...Option) (*Client, error) {
 //---------------------------------------------------------------------------------------------
 
 // Complete sends a request and returns the model's text response.
-func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
+func (c *Client) Complete(ctx context.Context,
+	req Request) (*Response, error) {
 	if len(req.Messages) == 0 {
 		return nil, errors.New("ai: no messages")
 	}
@@ -245,12 +259,16 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 	level, _ := NormalizeReasoning(req.Reasoning)
 	budget := ReasoningBudget(level)
 	var warning string
-	mode := thinkMode{kind: thinkBudget}
+	mode := thinkMode{
+		kind: thinkBudget,
+	}
 	switch {
 	case budget == 0:
 		level, mode.kind = ReasoningNone, thinkOff
 	case !SupportsReasoning(model):
-		warning = fmt.Sprintf("model %s does not support thinking: the thinking level %q was ignored and the call ran without thinking", model, level)
+		warning = fmt.Sprintf("model %s does not support thinking: the thinking level %q was ignored and the call ran without thinking",
+			model,
+			level)
 		level, mode.kind = ReasoningNone, thinkOff
 	default:
 		if m, ok := c.thinkModes.Load(model); ok {
@@ -260,7 +278,12 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 
 	var data []byte
 	for {
-		body, err := json.Marshal(c.apiRequestFor(model, maxTokens, req, level, budget, mode.kind))
+		body, err := json.Marshal(c.apiRequestFor(model,
+			maxTokens,
+			req,
+			level,
+			budget,
+			mode.kind))
 		if err != nil {
 			return nil, fmt.Errorf("ai: marshal request: %w", err)
 		}
@@ -274,16 +297,26 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		if next == "" {
 			return nil, postErr
 		}
-		mode = thinkMode{kind: next, why: why}
+		mode = thinkMode{
+			kind: next,
+			why:  why,
+		}
 		c.thinkModes.Store(model, mode)
 		log.WithFields(log.Fields{"model": model, "reasoning": level, "thinking": next, "provider_said": why}).Warn("model refused the thinking request; retrying")
 	}
 	switch mode.kind {
 	case thinkAdaptive:
-		warning = fmt.Sprintf("model %s does not take a thinking budget: the thinking level %q ran as adaptive thinking with effort %q (provider said: %s)", model, level, effortOf(level), mode.why)
+		warning = fmt.Sprintf("model %s does not take a thinking budget: the thinking level %q ran as adaptive thinking with effort %q (provider said: %s)",
+			model,
+			level,
+			effortOf(level),
+			mode.why)
 	case thinkOff:
 		if budget > 0 && warning == "" {
-			warning = fmt.Sprintf("model %s does not support the thinking level %q: the call ran without thinking (provider said: %s)", model, level, mode.why)
+			warning = fmt.Sprintf("model %s does not support the thinking level %q: the call ran without thinking (provider said: %s)",
+				model,
+				level,
+				mode.why)
 		}
 		level = ReasoningNone
 	}
@@ -320,16 +353,33 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 
 // apiRequestFor builds the Messages API request of a call that asks for thinking in the given way (see thinkMode). The thinking
 // budget is added to max_tokens, as thinking is spent out of it, so the answer keeps its size.
-func (c *Client) apiRequestFor(model string, maxTokens int, req Request, level string, budget int, kind string) apiRequest {
-	ar := apiRequest{Model: model, MaxTokens: maxTokens, System: req.System, Messages: req.Messages}
+func (c *Client) apiRequestFor(model string,
+	maxTokens int,
+	req Request,
+	level string,
+	budget int,
+	kind string) apiRequest {
+	ar := apiRequest{
+		Model:     model,
+		MaxTokens: maxTokens,
+		System:    req.System,
+		Messages:  req.Messages,
+	}
 	switch kind {
 	case thinkBudget:
 		ar.MaxTokens = maxTokens + budget
-		ar.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
+		ar.Thinking = &thinking{
+			Type:         "enabled",
+			BudgetTokens: budget,
+		}
 	case thinkAdaptive:
 		ar.MaxTokens = maxTokens + budget
-		ar.Thinking = &thinking{Type: "adaptive"}
-		ar.OutputConfig = &outputConfig{Effort: effortOf(level)}
+		ar.Thinking = &thinking{
+			Type: "adaptive",
+		}
+		ar.OutputConfig = &outputConfig{
+			Effort: effortOf(level),
+		}
 	}
 	return ar
 }
@@ -351,15 +401,21 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	if e.Type == "" {
-		return fmt.Sprintf("ai: anthropic status %d: %s", e.Status, e.Message)
+		return fmt.Sprintf("ai: anthropic status %d: %s",
+			e.Status,
+			e.Message)
 	}
-	return fmt.Sprintf("ai: anthropic %d %s: %s", e.Status, e.Type, e.Message)
+	return fmt.Sprintf("ai: anthropic %d %s: %s",
+		e.Status,
+		e.Type,
+		e.Message)
 }
 
 // thinkingFallback says how to retry a call that failed with err when it asked for thinking in the given way: the way to ask
 // next (thinkAdaptive when the provider says it takes that, thinkOff otherwise) and what the provider said, or "" if err is not a
 // refusal of the thinking request (or there is nothing left to try).
-func thinkingFallback(err error, kind string) (next, why string) {
+func thinkingFallback(err error,
+	kind string) (next, why string) {
 	var ae *APIError
 	if kind == thinkOff || !errors.As(err, &ae) || ae.Status != http.StatusBadRequest {
 		return "", ""
@@ -376,8 +432,12 @@ func thinkingFallback(err error, kind string) (next, why string) {
 
 // post sends a Messages API request body and returns the body of the 200 response; any other status is an error that
 // carries Anthropic's message.
-func (c *Client) post(ctx context.Context, body []byte) ([]byte, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(body))
+func (c *Client) post(ctx context.Context,
+	body []byte) ([]byte, error) {
+	httpReq, err := http.NewRequestWithContext(ctx,
+		http.MethodPost,
+		c.baseURL+"/v1/messages",
+		bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("ai: build request: %w", err)
 	}
@@ -398,16 +458,29 @@ func (c *Client) post(ctx context.Context, body []byte) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		var e apiError
 		if json.Unmarshal(data, &e) == nil && e.Error.Message != "" {
-			return nil, &APIError{Status: resp.StatusCode, Type: e.Error.Type, Message: e.Error.Message}
+			return nil, &APIError{
+				Status:  resp.StatusCode,
+				Type:    e.Error.Type,
+				Message: e.Error.Message,
+			}
 		}
-		return nil, &APIError{Status: resp.StatusCode, Message: strings.TrimSpace(string(data))}
+		return nil, &APIError{
+			Status:  resp.StatusCode,
+			Message: strings.TrimSpace(string(data)),
+		}
 	}
 	return data, nil
 }
 
 // Ask is a convenience for a single-prompt call.
-func (c *Client) Ask(ctx context.Context, prompt string) (string, error) {
-	r, err := c.Complete(ctx, Request{Messages: []Message{{Role: RoleUser, Content: prompt}}})
+func (c *Client) Ask(ctx context.Context,
+	prompt string) (string, error) {
+	r, err := c.Complete(ctx, Request{
+		Messages: []Message{{
+			Role:    RoleUser,
+			Content: prompt,
+		}},
+	})
 	if err != nil {
 		return "", err
 	}

@@ -40,7 +40,8 @@ type EvalTotals struct {
 }
 
 // addCounts adds the counts of b to those of a.
-func addCounts(a *core.Counts, b core.Counts) {
+func addCounts(a *core.Counts,
+	b core.Counts) {
 	a.Total += b.Total
 	a.Pending += b.Pending
 	a.Running += b.Running
@@ -68,8 +69,17 @@ type experimentRunView struct {
 }
 
 func viewOfRun(r *core.ExperimentRun) experimentRunView {
-	v := experimentRunView{ID: int64(r.ID), ExperimentID: int64(r.DefID), Status: r.Status, Error: r.Error, Params: map[string]any(r.Params),
-		Counts: r.Counts, CostUSD: r.CostUSD, StartedAt: r.CreatedAt, FinishedAt: r.FinishedAt}
+	v := experimentRunView{
+		ID:           int64(r.ID),
+		ExperimentID: int64(r.DefID),
+		Status:       r.Status,
+		Error:        r.Error,
+		Params:       map[string]any(r.Params),
+		Counts:       r.Counts,
+		CostUSD:      r.CostUSD,
+		StartedAt:    r.CreatedAt,
+		FinishedAt:   r.FinishedAt,
+	}
 	if r.StartedAt != nil {
 		v.StartedAt = *r.StartedAt
 	}
@@ -90,7 +100,14 @@ type experimentFields struct {
 }
 
 func experimentOf(d *core.ExperimentDef) experimentFields {
-	f := experimentFields{ID: int64(d.ID), Type: string(core.TypeKnowledge), Name: d.Name, Description: d.Description, Config: map[string]any(d.Params), CreatedAt: d.CreatedAt}
+	f := experimentFields{
+		ID:          int64(d.ID),
+		Type:        string(core.TypeKnowledge),
+		Name:        d.Name,
+		Description: d.Description,
+		Config:      map[string]any(d.Params),
+		CreatedAt:   d.CreatedAt,
+	}
 	if f.Config == nil {
 		f.Config = map[string]any{}
 	}
@@ -178,7 +195,8 @@ func knowledgeMeta(c *core.CaseRun) *core.KnowledgeCaseRunMeta {
 	return &core.KnowledgeCaseRunMeta{}
 }
 
-func timeOr(t *time.Time, fallback time.Time) time.Time {
+func timeOr(t *time.Time,
+	fallback time.Time) time.Time {
 	if t != nil {
 		return *t
 	}
@@ -193,11 +211,27 @@ func orEmpty[T any](s []T) []T {
 }
 
 // viewOfCase is the view of a case run; the trajectories (with their artifacts) are added by the caller that needs them.
-func viewOfCase(c *core.CaseRun, eval, name string) caseRunView {
+func viewOfCase(c *core.CaseRun,
+	eval,
+	name string) caseRunView {
 	m := knowledgeMeta(c)
-	return caseRunView{ID: int64(c.ID), Eval: eval, Name: name, Status: c.Status, Verdict: c.Verdict, Score: c.Score, Answer: m.Answer, Problems: orEmpty(m.Problems),
-		PassedChecks: orEmpty(m.PassedChecks), Error: c.Error, Steps: m.Steps, CostUSD: c.CostUSD, StartedAt: timeOr(c.StartedAt, c.CreatedAt),
-		FinishedAt: timeOr(c.FinishedAt, c.CreatedAt), DatasetID: m.DatasetID}
+	return caseRunView{
+		ID:           int64(c.ID),
+		Eval:         eval,
+		Name:         name,
+		Status:       c.Status,
+		Verdict:      c.Verdict,
+		Score:        c.Score,
+		Answer:       m.Answer,
+		Problems:     orEmpty(m.Problems),
+		PassedChecks: orEmpty(m.PassedChecks),
+		Error:        c.Error,
+		Steps:        m.Steps,
+		CostUSD:      c.CostUSD,
+		StartedAt:    timeOr(c.StartedAt, c.CreatedAt),
+		FinishedAt:   timeOr(c.FinishedAt, c.CreatedAt),
+		DatasetID:    m.DatasetID,
+	}
 }
 
 // knowledgeCaseRun is a case run of a knowledge eval with the names of its eval and its case.
@@ -210,8 +244,13 @@ type knowledgeCaseRun struct {
 
 // knowledgeCaseRuns returns the case runs of the knowledge evals of experiment run id, with their metadata and trajectories, in
 // the order of the eval runs and of the cases.
-func knowledgeCaseRuns(ctx context.Context, d *sql.DB, s evalsdb.Store, id core.ExperimentRunID) ([]knowledgeCaseRun, error) {
-	evalRuns, err := s.ListEvalRunsOfExperimentRun(ctx, d, id)
+func knowledgeCaseRuns(ctx context.Context,
+	d *sql.DB,
+	s evalsdb.Store,
+	id core.ExperimentRunID) ([]knowledgeCaseRun, error) {
+	evalRuns, err := s.ListEvalRunsOfExperimentRun(ctx,
+		d,
+		id)
 	if err != nil {
 		return nil, err
 	}
@@ -220,11 +259,15 @@ func knowledgeCaseRuns(ctx context.Context, d *sql.DB, s evalsdb.Store, id core.
 		if er.Type != core.TypeKnowledge {
 			continue
 		}
-		def, err := s.GetEvalDef(ctx, d, er.DefID)
+		def, err := s.GetEvalDef(ctx,
+			d,
+			er.DefID)
 		if err != nil {
 			return nil, err
 		}
-		cases, err := s.ListCaseDefs(ctx, d, er.DefID)
+		cases, err := s.ListCaseDefs(ctx,
+			d,
+			er.DefID)
 		if err != nil {
 			return nil, err
 		}
@@ -232,12 +275,19 @@ func knowledgeCaseRuns(ctx context.Context, d *sql.DB, s evalsdb.Store, id core.
 		for _, c := range cases {
 			names[c.ID] = c.Name
 		}
-		runs, err := s.ListCaseRuns(ctx, d, er.ID)
+		runs, err := s.ListCaseRuns(ctx,
+			d,
+			er.ID)
 		if err != nil {
 			return nil, err
 		}
 		for _, c := range runs {
-			out = append(out, knowledgeCaseRun{Eval: def.Name, Name: names[c.DefID], Run: c, EvalRunParams: er.Params})
+			out = append(out, knowledgeCaseRun{
+				Eval:          def.Name,
+				Name:          names[c.DefID],
+				Run:           c,
+				EvalRunParams: er.Params,
+			})
 		}
 	}
 	return out, nil
@@ -258,7 +308,9 @@ func (k *experimentKinds) isKnowledge(def *core.ExperimentDef) (bool, error) {
 	for _, id := range def.EvalDefIDs {
 		t, ok := k.types[id]
 		if !ok {
-			e, err := k.s.GetEvalDef(k.ctx, k.d, id)
+			e, err := k.s.GetEvalDef(k.ctx,
+				k.d,
+				id)
 			if err != nil {
 				return false, err
 			}
@@ -273,7 +325,9 @@ func (k *experimentKinds) isKnowledge(def *core.ExperimentDef) (bool, error) {
 }
 
 // knowledgeExperiments returns the experiment defs of the knowledge evals, oldest first.
-func knowledgeExperiments(ctx context.Context, d *sql.DB, s evalsdb.Store) ([]core.ExperimentDef, error) {
+func knowledgeExperiments(ctx context.Context,
+	d *sql.DB,
+	s evalsdb.Store) ([]core.ExperimentDef, error) {
 	all, err := s.ListExperimentDefs(ctx, d)
 	if err != nil {
 		return nil, err
@@ -292,39 +346,68 @@ func knowledgeExperiments(ctx context.Context, d *sql.DB, s evalsdb.Store) ([]co
 	return out, nil
 }
 
-func evalFail(w http.ResponseWriter, err error, what string) {
+func evalFail(w http.ResponseWriter,
+	err error,
+	what string) {
 	if errors.Is(err, evalsdb.ErrNotFound) {
-		httputil.Error(w, http.StatusNotFound, what+" not found")
+		httputil.Error(w,
+			http.StatusNotFound,
+			what+" not found")
 		return
 	}
 	log.WithError(err).Errorf("admin: %s failed", what)
-	httputil.Error(w, http.StatusInternalServerError, "failed to load "+what)
+	httputil.Error(w,
+		http.StatusInternalServerError,
+		"failed to load "+what)
 }
 
 // EvalOverview serves GET /admin/api/evals: every experiment with its counts, and the totals over all of them.
-func EvalOverview(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalOverview(d *sql.DB,
+	s evalsdb.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		ctx := r.Context()
-		list, err := knowledgeExperiments(ctx, d, s)
+		list, err := knowledgeExperiments(ctx,
+			d,
+			s)
 		if err != nil {
-			evalFail(w, err, "experiments")
+			evalFail(w,
+				err,
+				"experiments")
 			return
 		}
-		out := evalOverview{Experiments: make([]experimentView, 0, len(list))}
+		out := evalOverview{
+			Experiments: make([]experimentView,
+				0,
+				len(list)),
+		}
 		out.Totals.Experiments = len(list)
 		distinct := map[core.CaseRef]bool{}
 		for i := range list {
-			cases, err := s.ListExperimentCases(ctx, d, list[i].ID)
+			cases, err := s.ListExperimentCases(ctx,
+				d,
+				list[i].ID)
 			if err != nil {
-				evalFail(w, err, "experiment")
+				evalFail(w,
+					err,
+					"experiment")
 				return
 			}
-			runs, err := s.ListExperimentRuns(ctx, d, list[i].ID)
+			runs, err := s.ListExperimentRuns(ctx,
+				d,
+				list[i].ID)
 			if err != nil {
-				evalFail(w, err, "experiment runs")
+				evalFail(w,
+					err,
+					"experiment runs")
 				return
 			}
-			v := experimentView{experimentFields: experimentOf(&list[i]), Runs: len(runs), Cases: len(cases), RunsByStatus: map[core.Status]int{}}
+			v := experimentView{
+				experimentFields: experimentOf(&list[i]),
+				Runs:             len(runs),
+				Cases:            len(cases),
+				RunsByStatus:     map[core.Status]int{},
+			}
 			for j := range runs {
 				run := viewOfRun(&runs[j])
 				v.RunsByStatus[run.Status]++
@@ -340,48 +423,75 @@ func EvalOverview(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
 			out.Experiments = append(out.Experiments, v)
 		}
 		out.Totals.Cases = len(distinct)
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // pathID parses the {id} path value.
-func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+func pathID(w http.ResponseWriter,
+	r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"),
+		10,
+		64)
 	if err != nil || id <= 0 {
-		httputil.Error(w, http.StatusBadRequest, "invalid id")
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"invalid id")
 		return 0, false
 	}
 	return id, true
 }
 
 // EvalExperiment serves GET /admin/api/evals/experiments/{id}: the experiment with its cases and its runs (newest first).
-func EvalExperiment(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalExperiment(d *sql.DB,
+	s evalsdb.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		ctx := r.Context()
-		def, err := s.GetExperimentDef(ctx, d, core.ExperimentDefID(id))
+		def, err := s.GetExperimentDef(ctx,
+			d,
+			core.ExperimentDefID(id))
 		if err != nil {
-			evalFail(w, err, "experiment")
+			evalFail(w,
+				err,
+				"experiment")
 			return
 		}
-		cases, err := s.ListExperimentCases(ctx, d, def.ID)
+		cases, err := s.ListExperimentCases(ctx,
+			d,
+			def.ID)
 		if err != nil {
-			evalFail(w, err, "experiment")
+			evalFail(w,
+				err,
+				"experiment")
 			return
 		}
-		runs, err := s.ListExperimentRuns(ctx, d, def.ID)
+		runs, err := s.ListExperimentRuns(ctx,
+			d,
+			def.ID)
 		if err != nil {
-			evalFail(w, err, "experiment runs")
+			evalFail(w,
+				err,
+				"experiment runs")
 			return
 		}
-		out := experimentDetail{experimentFields: experimentOf(def), Cases: cases, Runs: make([]experimentRunView, len(runs))}
+		out := experimentDetail{
+			experimentFields: experimentOf(def),
+			Cases:            cases,
+			Runs:             make([]experimentRunView, len(runs)),
+		}
 		for i := range runs {
 			out.Runs[len(runs)-1-i] = viewOfRun(&runs[i])
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -410,21 +520,35 @@ type casePoint struct {
 // historyPoints keeps of the results of a case (its history) only what the UI plots, and adds when the run of each
 // started. Results of runs not in runs are dropped. It leaves out what the history does not need: the answer, the dataset,
 // the trajectories and the cost.
-func historyPoints(results []evalsdb.CaseHistoryEntry, runs []core.ExperimentRun) []casePoint {
+func historyPoints(results []evalsdb.CaseHistoryEntry,
+	runs []core.ExperimentRun) []casePoint {
 	started := make(map[core.ExperimentRunID]time.Time, len(runs))
 	for _, r := range runs {
 		started[r.ID] = timeOr(r.StartedAt, r.CreatedAt)
 	}
-	out := make([]casePoint, 0, len(results))
+	out := make([]casePoint,
+		0,
+		len(results))
 	for i := range results {
 		at, ok := started[results[i].ExperimentRunID]
 		if !ok {
 			continue
 		}
-		v := viewOfCase(&results[i].CaseRun, "", "")
+		v := viewOfCase(&results[i].CaseRun,
+			"",
+			"")
 		out = append(out, casePoint{
-			RunID: int64(results[i].ExperimentRunID), RunStartedAt: at, Status: v.Status, Verdict: v.Verdict, Score: v.Score, Problems: v.Problems, PassedChecks: v.PassedChecks,
-			Error: v.Error, Steps: v.Steps, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt,
+			RunID:        int64(results[i].ExperimentRunID),
+			RunStartedAt: at,
+			Status:       v.Status,
+			Verdict:      v.Verdict,
+			Score:        v.Score,
+			Problems:     v.Problems,
+			PassedChecks: v.PassedChecks,
+			Error:        v.Error,
+			Steps:        v.Steps,
+			StartedAt:    v.StartedAt,
+			FinishedAt:   v.FinishedAt,
 		})
 	}
 	return out
@@ -432,76 +556,130 @@ func historyPoints(results []evalsdb.CaseHistoryEntry, runs []core.ExperimentRun
 
 // EvalCaseHistory serves GET /admin/api/evals/experiments/{id}/history?eval=..&name=..: the status of one case in each run
 // of the experiment, oldest run first.
-func EvalCaseHistory(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalCaseHistory(d *sql.DB,
+	s evalsdb.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		eval, name := r.URL.Query().Get("eval"), r.URL.Query().Get("name")
 		if eval == "" || name == "" {
-			httputil.Error(w, http.StatusBadRequest, "eval and name are required")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"eval and name are required")
 			return
 		}
-		results, err := s.ListCaseHistory(r.Context(), d, core.ExperimentDefID(id), eval, name)
+		results, err := s.ListCaseHistory(r.Context(),
+			d,
+			core.ExperimentDefID(id),
+			eval,
+			name)
 		if err != nil {
-			evalFail(w, err, "case history")
+			evalFail(w,
+				err,
+				"case history")
 			return
 		}
-		runs, err := s.ListExperimentRuns(r.Context(), d, core.ExperimentDefID(id))
+		runs, err := s.ListExperimentRuns(r.Context(),
+			d,
+			core.ExperimentDefID(id))
 		if err != nil {
-			evalFail(w, err, "experiment runs")
+			evalFail(w,
+				err,
+				"experiment runs")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, caseHistory{Eval: eval, Name: name, Points: historyPoints(results, runs)})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			caseHistory{
+				Eval:   eval,
+				Name:   name,
+				Points: historyPoints(results, runs),
+			})
 	}
 }
 
 // EvalRun serves GET /admin/api/evals/runs/{id}: the run with its cases and their trajectory references. The artifacts of each
 // trajectory are read from the dataset its case ran in.
-func EvalRun(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalRun(d *sql.DB,
+	s evalsdb.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		ctx := r.Context()
-		run, err := s.GetExperimentRun(ctx, d, core.ExperimentRunID(id))
+		run, err := s.GetExperimentRun(ctx,
+			d,
+			core.ExperimentRunID(id))
 		if err != nil {
-			evalFail(w, err, "run")
+			evalFail(w,
+				err,
+				"run")
 			return
 		}
-		cases, err := knowledgeCaseRuns(ctx, d, s, run.ID)
+		cases, err := knowledgeCaseRuns(ctx,
+			d,
+			s,
+			run.ID)
 		if err != nil {
-			evalFail(w, err, "run")
+			evalFail(w,
+				err,
+				"run")
 			return
 		}
 		out := viewOfRun(run)
-		out.CaseRuns = make([]caseRunView, 0, len(cases))
+		out.CaseRuns = make([]caseRunView,
+			0,
+			len(cases))
 		for i := range cases {
-			v, err := viewWithTrajectories(ctx, d, &cases[i])
+			v, err := viewWithTrajectories(ctx,
+				d,
+				&cases[i])
 			if err != nil {
-				evalFail(w, err, "run")
+				evalFail(w,
+					err,
+					"run")
 				return
 			}
 			out.CaseRuns = append(out.CaseRuns, v)
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // viewWithTrajectories is the view of a case run with its trajectories and their artifacts.
-func viewWithTrajectories(ctx context.Context, d *sql.DB, c *knowledgeCaseRun) (caseRunView, error) {
-	v := viewOfCase(&c.Run, c.Eval, c.Name)
+func viewWithTrajectories(ctx context.Context,
+	d *sql.DB,
+	c *knowledgeCaseRun) (caseRunView, error) {
+	v := viewOfCase(&c.Run,
+		c.Eval,
+		c.Name)
 	v.Rerun = rerunOf(c.EvalRunParams)
 	m := knowledgeMeta(&c.Run)
 	var all map[int64]graph.Artifact // the dataset's artifacts, loaded when a trajectory needs them
 	for _, t := range m.Trajectories {
-		tv := trajectoryView{Seq: t.Seq + 1, Kind: t.Kind, TrajectoryID: t.TrajectoryID, AgentName: t.AgentName, Steps: t.Steps, CostUSD: t.CostUSD,
-			ArtifactIDs: orEmpty(t.ArtifactIDs), Artifacts: []artifactView{}, CreatedAt: t.CreatedAt}
+		tv := trajectoryView{
+			Seq:          t.Seq + 1,
+			Kind:         t.Kind,
+			TrajectoryID: t.TrajectoryID,
+			AgentName:    t.AgentName,
+			Steps:        t.Steps,
+			CostUSD:      t.CostUSD,
+			ArtifactIDs:  orEmpty(t.ArtifactIDs),
+			Artifacts:    []artifactView{},
+			CreatedAt:    t.CreatedAt,
+		}
 		if len(t.ArtifactIDs) > 0 && m.DatasetID != nil {
 			if all == nil {
-				list, err := graph.ListArtifacts(ctx, d, *m.DatasetID)
+				list, err := graph.ListArtifacts(ctx,
+					d,
+					*m.DatasetID)
 				if err != nil {
 					return v, err
 				}
@@ -512,7 +690,13 @@ func viewWithTrajectories(ctx context.Context, d *sql.DB, c *knowledgeCaseRun) (
 			}
 			for _, id := range t.ArtifactIDs {
 				if a, ok := all[id]; ok {
-					tv.Artifacts = append(tv.Artifacts, artifactView{ID: a.ID, Kind: a.Kind, Text: a.Text, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+					tv.Artifacts = append(tv.Artifacts, artifactView{
+						ID:        a.ID,
+						Kind:      a.Kind,
+						Text:      a.Text,
+						ValidAt:   a.ValidAt,
+						CreatedAt: a.CreatedAt,
+					})
 				}
 			}
 		}
@@ -523,42 +707,64 @@ func viewWithTrajectories(ctx context.Context, d *sql.DB, c *knowledgeCaseRun) (
 
 // EvalCaseRunGraph serves GET /admin/api/evals/case_runs/{id}/graph: the knowledge graph the case built, read from
 // the dataset the case ran in (same JSON as /admin/api/graph).
-func EvalCaseRunGraph(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalCaseRunGraph(d *sql.DB,
+	s evalsdb.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		ctx := r.Context()
-		c, err := s.GetCaseRun(ctx, d, core.CaseRunID(id))
+		c, err := s.GetCaseRun(ctx,
+			d,
+			core.CaseRunID(id))
 		if err == nil && (c.Type != core.TypeKnowledge || knowledgeMeta(c).DatasetID == nil) {
 			err = evalsdb.ErrNotFound
 		}
 		if err != nil {
-			evalFail(w, err, "graph")
+			evalFail(w,
+				err,
+				"graph")
 			return
 		}
-		all, err := relational.ListAllDatasets(ctx, d, true)
+		all, err := relational.ListAllDatasets(ctx,
+			d,
+			true)
 		if err != nil {
-			evalFail(w, err, "graph")
+			evalFail(w,
+				err,
+				"graph")
 			return
 		}
 		i := slices.IndexFunc(all, func(ds relational.Dataset) bool { return ds.ID == *knowledgeMeta(c).DatasetID })
 		if i < 0 {
-			evalFail(w, evalsdb.ErrNotFound, "graph")
+			evalFail(w,
+				evalsdb.ErrNotFound,
+				"graph")
 			return
 		}
-		g, err := memory.ExportDatasetGraph(ctx, d, &all[i])
+		g, err := memory.ExportDatasetGraph(ctx,
+			d,
+			&all[i])
 		if err != nil {
-			evalFail(w, err, "graph")
+			evalFail(w,
+				err,
+				"graph")
 			return
 		}
-		v, err := withInContext(ctx, d, g)
+		v, err := withInContext(ctx,
+			d,
+			g)
 		if err != nil {
-			evalFail(w, err, "graph")
+			evalFail(w,
+				err,
+				"graph")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, v)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			v)
 	}
 }
 
@@ -577,30 +783,45 @@ type evalCaseTemporalResponse struct {
 // temporal state of the facts (gb_edge_events of the artifacts the trajectories of kind remember stored, and of their chunks and
 // enrichments), read from the dataset the case ran in, with the reference times of the texts. Same events as the temporal view of a
 // remember run (RememberRunTemporalOf). A case without a dataset, or an unknown case run, is 404.
-func EvalCaseRunTemporal(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func EvalCaseRunTemporal(d *sql.DB,
+	s evalsdb.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		ctx := r.Context()
-		c, err := s.GetCaseRun(ctx, d, core.CaseRunID(id))
+		c, err := s.GetCaseRun(ctx,
+			d,
+			core.CaseRunID(id))
 		if err == nil && (c.Type != core.TypeKnowledge || knowledgeMeta(c).DatasetID == nil) {
 			err = evalsdb.ErrNotFound
 		}
 		if err != nil {
-			evalFail(w, err, "temporal changes")
+			evalFail(w,
+				err,
+				"temporal changes")
 			return
 		}
-		out := evalCaseTemporalResponse{CaseRunID: id, ArtifactIDs: []int64{}, Artifacts: []rememberRunTemporalArtifact{}, Events: []graph.EdgeEvent{}}
+		out := evalCaseTemporalResponse{
+			CaseRunID:   id,
+			ArtifactIDs: []int64{},
+			Artifacts:   []rememberRunTemporalArtifact{},
+			Events:      []graph.EdgeEvent{},
+		}
 		for _, t := range knowledgeMeta(c).Trajectories {
 			if t.Kind != "remember" {
 				continue
 			}
 			for _, aid := range t.ArtifactIDs {
-				events, err := graph.ListEdgeEvents(ctx, d, aid)
+				events, err := graph.ListEdgeEvents(ctx,
+					d,
+					aid)
 				if err != nil {
-					evalFail(w, err, "temporal changes")
+					evalFail(w,
+						err,
+						"temporal changes")
 					return
 				}
 				out.ArtifactIDs = append(out.ArtifactIDs, aid)
@@ -608,33 +829,53 @@ func EvalCaseRunTemporal(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
 			}
 		}
 		// The trees of the artifacts do not overlap; the events of all the calls are in the order they were made.
-		slices.SortFunc(out.Events, func(a, b graph.EdgeEvent) int { return cmp.Compare(a.ID, b.ID) })
-		if out.Artifacts, err = temporalArtifacts(ctx, d, out.Events); err != nil {
-			evalFail(w, err, "temporal changes")
+		slices.SortFunc(out.Events, func(a,
+			b graph.EdgeEvent) int {
+			return cmp.Compare(a.ID, b.ID)
+		})
+		if out.Artifacts, err = temporalArtifacts(ctx,
+			d,
+			out.Events); err != nil {
+			evalFail(w,
+				err,
+				"temporal changes")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
 // EvalTrajectory serves GET /admin/api/evals/trajectories/{id}: the ATIF trajectory JSON of a trajectory that an
 // experiment recorded. The ID must be one of the recorded references; the file is looked up in the trajectory
 // directory dir first (when not empty), then at the path stored with the reference.
-func EvalTrajectory(d *sql.DB, s evalsdb.Store, dir string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ref, err := s.FindKnowledgeTrajectory(r.Context(), d, r.PathValue("id"))
+func EvalTrajectory(d *sql.DB,
+	s evalsdb.Store,
+	dir string) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		ref, err := s.FindKnowledgeTrajectory(r.Context(),
+			d,
+			r.PathValue("id"))
 		if err != nil {
-			evalFail(w, err, "trajectory")
+			evalFail(w,
+				err,
+				"trajectory")
 			return
 		}
 		data, err := readTrajectoryFile(&ref.KnowledgeTrajectory, dir)
 		if err != nil {
-			httputil.Error(w, http.StatusNotFound, "trajectory file not found")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"trajectory file not found")
 			return
 		}
 		if !json.Valid(data) {
 			log.WithField("trajectory_id", ref.TrajectoryID).Error("admin: stored trajectory is not valid JSON")
-			httputil.Error(w, http.StatusInternalServerError, "stored trajectory is corrupt")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"stored trajectory is corrupt")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -645,7 +886,8 @@ func EvalTrajectory(d *sql.DB, s evalsdb.Store, dir string) http.HandlerFunc {
 
 // readTrajectoryFile reads the JSON file of a recorded trajectory: from the trajectory directory dir first (when not
 // empty), then from the path stored with the reference. It fails if neither can be read.
-func readTrajectoryFile(ref *core.KnowledgeTrajectory, dir string) ([]byte, error) {
+func readTrajectoryFile(ref *core.KnowledgeTrajectory,
+	dir string) ([]byte, error) {
 	var candidates []string
 	if dir != "" {
 		candidates = append(candidates, filepath.Join(dir, filepath.Base(ref.TrajectoryID)+".json"))

@@ -28,33 +28,50 @@ func TestMain(m *testing.M) {
 }
 
 // mgrFor makes the remember manager for Register, which stops with the test.
-func mgrFor(t testing.TB, database *db.DB, llm memory_core.LLM) *memory_remember.Manager {
-	return memory_remember.NewManager(t.Context(), database.Relational, llm)
+func mgrFor(t testing.TB,
+	database *db.DB,
+	llm memory_core.LLM) *memory_remember.Manager {
+	return memory_remember.NewManager(t.Context(),
+		database.Relational,
+		llm)
 }
 
 // fakeEmbedder embeds every text as [1, 0] and reports no tokens and no cost: Register needs an embedder, which both
 // remember (to embed what it stores) and query (to embed the question) use.
 type fakeEmbedder struct{}
 
-func (fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error) {
+func (fakeEmbedder) EmbedBatchUsage(_ context.Context,
+	texts []string) ([][]float32, *ai.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = []float32{1, 0}
 	}
-	return out, &ai.EmbedUsage{Provider: ai.ProviderOpenAI, Model: "test-embed"}, nil
+	return out, &ai.EmbedUsage{
+		Provider: ai.ProviderOpenAI,
+		Model:    "test-embed",
+	}, nil
 }
 
 // withVectors returns a database over d, with a vector store in memory (2 dimensions, like fakeEmbedder's).
-func withVectors(t testing.TB, d *sql.DB) *db.DB {
+func withVectors(t testing.TB,
+	d *sql.DB) *db.DB {
 	t.Helper()
 	vs, err := vector.NewChromem(":memory:", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &db.DB{Relational: d, Graph: d, Vector: vs}
+	return &db.DB{
+		Relational: d,
+		Graph:      d,
+		Vector:     vs,
+	}
 }
 
 // newReq is httputiltest.NewRequest.
-func newReq(method, target string, body io.Reader) *http.Request {
-	return httputiltest.NewRequest(method, target, body)
+func newReq(method,
+	target string,
+	body io.Reader) *http.Request {
+	return httputiltest.NewRequest(method,
+		target,
+		body)
 }

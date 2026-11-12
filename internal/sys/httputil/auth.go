@@ -22,7 +22,8 @@ func UserID(r *http.Request) string { return strings.TrimSpace(r.Header.Get(User
 
 // Authenticator authenticates a request from the API key it carries and returns the ID of the user the key belongs to. Any error
 // rejects the request (401).
-type Authenticator func(ctx context.Context, apiKey string) (userID string, err error)
+type Authenticator func(ctx context.Context,
+	apiKey string) (userID string, err error)
 
 // Authenticate wraps next so that the request acts as one user, which the handlers read with UserID:
 //
@@ -30,11 +31,15 @@ type Authenticator func(ctx context.Context, apiKey string) (userID string, err 
 //     acts as the user auth returns: the UserIDHeader header is set to it, replacing whatever the caller sent. A request without a
 //     key, or whose key auth rejects, gets 401 and never reaches next.
 //   - Without one (auth nil), the request acts as the user in its UserIDHeader header, trusted as is. Without the header it gets 400.
-func Authenticate(auth Authenticator, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func Authenticate(auth Authenticator,
+	next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		if auth == nil {
 			if UserID(r) == "" {
-				Error(w, http.StatusBadRequest, "missing user: send the "+UserIDHeader+" header")
+				Error(w,
+					http.StatusBadRequest,
+					"missing user: send the "+UserIDHeader+" header")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -43,7 +48,9 @@ func Authenticate(auth Authenticator, next http.Handler) http.Handler {
 		key, ok := bearerToken(r)
 		if !ok {
 			w.Header().Set("www-authenticate", "Bearer")
-			Error(w, http.StatusUnauthorized, "missing API key (send Authorization: Bearer <key>)")
+			Error(w,
+				http.StatusUnauthorized,
+				"missing API key (send Authorization: Bearer <key>)")
 			return
 		}
 		userID, err := auth(r.Context(), key)
@@ -52,7 +59,9 @@ func Authenticate(auth Authenticator, next http.Handler) http.Handler {
 				log.WithError(err).Debug("authentication failed")
 			}
 			w.Header().Set("www-authenticate", "Bearer")
-			Error(w, http.StatusUnauthorized, "invalid API key")
+			Error(w,
+				http.StatusUnauthorized,
+				"invalid API key")
 			return
 		}
 		// Overwrite (not add) the header, so a caller-supplied gb-user-id can never win over the key's user. This mutates the

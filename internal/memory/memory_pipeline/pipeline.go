@@ -54,18 +54,22 @@ type Observer interface {
 	Start(stages ...string)
 
 	// Done says that the stages ended now, failed with err if it is not nil.
-	Done(err error, stages ...string)
+	Done(err error,
+		stages ...string)
 
 	// Skip says that the stages are not used by this call. A stage that has begun is left as it is.
 	Skip(stages ...string)
 
 	// AddInference says that the inference (gb_inferences) with that ID was made by the stage.
-	AddInference(stage string, id int64)
+	AddInference(stage string,
+		id int64)
 }
 
 // Step is a Stage, or an Each of stages.
 type Step[S any] interface {
-	exec(ctx context.Context, r *runner[S], s *S) error
+	exec(ctx context.Context,
+		r *runner[S],
+		s *S) error
 	// names appends the names of the stages of the step, in order.
 	names(into []string) []string
 }
@@ -83,7 +87,8 @@ type Stage[S any] struct {
 	Also func(*S) []string
 	// Run does the work of the stage. It returns the error that ends it (see Policy, and Stop). The state comes first, so that
 	// a method of it can be Run as it is: (*job).extract.
-	Run func(s *S, ctx context.Context) error
+	Run func(s *S,
+		ctx context.Context) error
 }
 
 // Each runs its steps once for every item of the call (every chunk of a document), in order and each item to the end, before
@@ -91,17 +96,25 @@ type Stage[S any] struct {
 // many items there are, and Set makes the item i the current one of s.
 type Each[S any] struct {
 	Count func(*S) int
-	Set   func(s *S, i int)
+	Set   func(s *S,
+		i int)
 	Steps []Step[S]
 }
 
 // Run runs the steps on s, in order, telling obs. It returns the error of the first Fatal stage that failed, after which no
 // other stage runs (they stay as they were: not started); nil if none did, or if a stage ended the pipeline with Stop. obs may
 // be nil.
-func Run[S any](ctx context.Context, steps []Step[S], s *S, obs Observer) error {
-	r := &runner[S]{obs: obs}
+func Run[S any](ctx context.Context,
+	steps []Step[S],
+	s *S,
+	obs Observer) error {
+	r := &runner[S]{
+		obs: obs,
+	}
 	for _, st := range steps {
-		if err := st.exec(ctx, r, s); err != nil {
+		if err := st.exec(ctx,
+			r,
+			s); err != nil {
 			return err
 		}
 	}
@@ -138,7 +151,9 @@ func (r *runner[S]) skip(names ...string) {
 
 func (st Stage[S]) names(into []string) []string { return append(into, st.Name) }
 
-func (st Stage[S]) exec(ctx context.Context, r *runner[S], s *S) error {
+func (st Stage[S]) exec(ctx context.Context,
+	r *runner[S],
+	s *S) error {
 	if r.stopped || (st.Enabled != nil && !st.Enabled(s)) {
 		r.skip(st.Name)
 		return nil
@@ -177,7 +192,9 @@ func (e Each[S]) names(into []string) []string {
 	return into
 }
 
-func (e Each[S]) exec(ctx context.Context, r *runner[S], s *S) error {
+func (e Each[S]) exec(ctx context.Context,
+	r *runner[S],
+	s *S) error {
 	if r.stopped {
 		r.skip(e.names(nil)...)
 		return nil
@@ -185,7 +202,9 @@ func (e Each[S]) exec(ctx context.Context, r *runner[S], s *S) error {
 	for i, n := 0, e.Count(s); i < n; i++ {
 		e.Set(s, i)
 		for _, st := range e.Steps {
-			if err := st.exec(ctx, r, s); err != nil {
+			if err := st.exec(ctx,
+				r,
+				s); err != nil {
 				return err
 			}
 		}

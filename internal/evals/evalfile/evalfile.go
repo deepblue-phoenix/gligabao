@@ -33,14 +33,20 @@ type file struct {
 // Read reads the evals of the directory dir (dir/*.json, ordered by file name). nameOf gives the name of a case, which must be
 // set and unique within its eval (two evals may use the same case name; Select resolves a name given alone). check, if not nil, validates a case (it is
 // given the eval's file name for its message). The names of the evals must be set and unique too.
-func Read[C any](dir string, nameOf func(*C) string, check func(*C) error) ([]Eval[C], error) {
-	return ReadDirs([]string{dir}, nameOf, check)
+func Read[C any](dir string,
+	nameOf func(*C) string,
+	check func(*C) error) ([]Eval[C], error) {
+	return ReadDirs([]string{dir},
+		nameOf,
+		check)
 }
 
 // ReadDirs reads the evals of the directories dirs, in order (each as Read does). An eval whose name was found in an earlier
 // directory is hidden by it: it is skipped altogether, its cases included. Case names must be unique within an eval only. An
 // eval's Dir is the directory it was read from.
-func ReadDirs[C any](dirs []string, nameOf func(*C) string, check func(*C) error) ([]Eval[C], error) {
+func ReadDirs[C any](dirs []string,
+	nameOf func(*C) string,
+	check func(*C) error) ([]Eval[C], error) {
 	var evals []Eval[C]
 	evalNames := map[string]bool{}
 	for _, dir := range dirs {
@@ -59,36 +65,56 @@ func ReadDirs[C any](dirs []string, nameOf func(*C) string, check func(*C) error
 			}
 			var f file
 			if err := json.Unmarshal(data, &f); err != nil {
-				return nil, fmt.Errorf("%s: %w", e.Name(), err)
+				return nil, fmt.Errorf("%s: %w",
+					e.Name(),
+					err)
 			}
 			if f.Name == "" {
 				return nil, fmt.Errorf("%s: the eval has no name", e.Name())
 			}
 			if dirEvals[f.Name] {
-				return nil, fmt.Errorf("%s: duplicate eval name %q", e.Name(), f.Name)
+				return nil, fmt.Errorf("%s: duplicate eval name %q",
+					e.Name(),
+					f.Name)
 			}
 			dirEvals[f.Name] = true
 			if evalNames[f.Name] {
 				continue // hidden by an eval of an earlier directory
 			}
 			evalNames[f.Name] = true
-			ev := Eval[C]{Dir: dir, File: e.Name(), Name: f.Name, Description: f.Description, Cases: []C{}}
+			ev := Eval[C]{
+				Dir:         dir,
+				File:        e.Name(),
+				Name:        f.Name,
+				Description: f.Description,
+				Cases:       []C{},
+			}
 			caseNames := map[string]bool{} // the names of the cases of this eval
 			for i, raw := range f.Cases {
 				var c C
 				if err := json.Unmarshal(raw, &c); err != nil {
-					return nil, fmt.Errorf("%s: case %d: %w", e.Name(), i, err)
+					return nil, fmt.Errorf("%s: case %d: %w",
+						e.Name(),
+						i,
+						err)
 				}
 				name := nameOf(&c)
 				switch {
 				case name == "":
-					return nil, fmt.Errorf("%s: case %d has no name", e.Name(), i)
+					return nil, fmt.Errorf("%s: case %d has no name",
+						e.Name(),
+						i)
 				case caseNames[name]:
-					return nil, fmt.Errorf("%s: duplicate case name %q", e.Name(), name)
+					return nil, fmt.Errorf("%s: duplicate case name %q",
+						e.Name(),
+						name)
 				}
 				if check != nil {
 					if err := check(&c); err != nil {
-						return nil, fmt.Errorf("%s: case %q: %w", e.Name(), name, err)
+						return nil, fmt.Errorf("%s: case %q: %w",
+							e.Name(),
+							name,
+							err)
 					}
 				}
 				caseNames[name] = true
@@ -113,9 +139,14 @@ func Names[C any](evals []Eval[C]) []string {
 // in only (all of them if only is empty). An eval left without cases is dropped. An unknown eval or case name is an error, and
 // so is a case that is not in the eval asked for. Case names are unique within an eval only: a name that more than one eval has
 // is ambiguous when no eval is asked for, and is an error then (name the eval).
-func Select[C any](evals []Eval[C], nameOf func(*C) string, eval string, only []string) ([]Eval[C], error) {
+func Select[C any](evals []Eval[C],
+	nameOf func(*C) string,
+	eval string,
+	only []string) ([]Eval[C], error) {
 	if eval != "" && !slices.ContainsFunc(evals, func(e Eval[C]) bool { return e.Name == eval }) {
-		return nil, fmt.Errorf("unknown eval %q (available: %s)", eval, strings.Join(Names(evals), ", "))
+		return nil, fmt.Errorf("unknown eval %q (available: %s)",
+			eval,
+			strings.Join(Names(evals), ", "))
 	}
 	if eval == "" {
 		for _, n := range only {
@@ -126,7 +157,9 @@ func Select[C any](evals []Eval[C], nameOf func(*C) string, eval string, only []
 				}
 			}
 			if len(owners) > 1 {
-				return nil, fmt.Errorf("ambiguous case %q: it is in the evals %s (pick one with the eval name)", n, strings.Join(owners, ", "))
+				return nil, fmt.Errorf("ambiguous case %q: it is in the evals %s (pick one with the eval name)",
+					n,
+					strings.Join(owners, ", "))
 			}
 		}
 	}
@@ -136,7 +169,13 @@ func Select[C any](evals []Eval[C], nameOf func(*C) string, eval string, only []
 		if eval != "" && e.Name != eval {
 			continue
 		}
-		sel := Eval[C]{Dir: e.Dir, File: e.File, Name: e.Name, Description: e.Description, Cases: []C{}}
+		sel := Eval[C]{
+			Dir:         e.Dir,
+			File:        e.File,
+			Name:        e.Name,
+			Description: e.Description,
+			Cases:       []C{},
+		}
 		for _, c := range e.Cases {
 			if n := nameOf(&c); len(only) == 0 || slices.Contains(only, n) {
 				sel.Cases = append(sel.Cases, c)

@@ -23,8 +23,17 @@ var ErrInvalidGeoPoint = errors.New("invalid geo point")
 // radius (memory_core.WithGeoRadius, else memory_core.DefaultGeoRadiusKm; memory_core.ErrInvalidGeoRadius if it is invalid), nearest
 // first, at most 30, the entity itself left out. It is the single anchor of the result. graph.ErrNotFound if the dataset has no
 // such entity, or it has no coordinates; memory_core.ErrDatasetNotFound if the dataset does not exist.
-func NearbyEntityOf(ctx context.Context, d *sql.DB, userID, dataset string, entityID int64, opts ...memory_core.Option) (*GeoContext, error) {
-	dsID, radiusKm, err := resolveNearby(ctx, d, userID, dataset, opts)
+func NearbyEntityOf(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset string,
+	entityID int64,
+	opts ...memory_core.Option) (*GeoContext, error) {
+	dsID, radiusKm, err := resolveNearby(ctx,
+		d,
+		userID,
+		dataset,
+		opts)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +42,9 @@ func NearbyEntityOf(ctx context.Context, d *sql.DB, userID, dataset string, enti
 		return nil, err
 	}
 	defer tx.Rollback() // only reads
-	e, err := tx.GetEntity(ctx, dsID, entityID)
+	e, err := tx.GetEntity(ctx,
+		dsID,
+		entityID)
 	if err != nil {
 		return nil, err
 	}
@@ -41,24 +52,58 @@ func NearbyEntityOf(ctx context.Context, d *sql.DB, userID, dataset string, enti
 	if err != nil {
 		return nil, err
 	}
-	return nearbyOf(ctx, d, dsID, []GeoAnchor{{Name: e.Name, EntityID: entityID, Latitude: g.Latitude, Longitude: g.Longitude}}, radiusKm)
+	return nearbyOf(ctx,
+		d,
+		dsID,
+		[]GeoAnchor{{
+			Name:      e.Name,
+			EntityID:  entityID,
+			Latitude:  g.Latitude,
+			Longitude: g.Longitude,
+		}},
+		radiusKm)
 }
 
 // NearbyPoint is NearbyEntityOf for a point: the anchor is (lat, lon), named "point" and not an entity, so every geo entity in the
 // radius is listed. ErrInvalidGeoPoint if the coordinates are out of range.
-func NearbyPoint(ctx context.Context, d *sql.DB, userID, dataset string, lat, lon float64, opts ...memory_core.Option) (*GeoContext, error) {
+func NearbyPoint(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset string,
+	lat,
+	lon float64,
+	opts ...memory_core.Option) (*GeoContext, error) {
 	if math.IsNaN(lat) || math.IsNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
-		return nil, fmt.Errorf("%w: (%v, %v)", ErrInvalidGeoPoint, lat, lon)
+		return nil, fmt.Errorf("%w: (%v, %v)",
+			ErrInvalidGeoPoint,
+			lat,
+			lon)
 	}
-	dsID, radiusKm, err := resolveNearby(ctx, d, userID, dataset, opts)
+	dsID, radiusKm, err := resolveNearby(ctx,
+		d,
+		userID,
+		dataset,
+		opts)
 	if err != nil {
 		return nil, err
 	}
-	return nearbyOf(ctx, d, dsID, []GeoAnchor{{Name: "point", Latitude: lat, Longitude: lon}}, radiusKm)
+	return nearbyOf(ctx,
+		d,
+		dsID,
+		[]GeoAnchor{{
+			Name:      "point",
+			Latitude:  lat,
+			Longitude: lon,
+		}},
+		radiusKm)
 }
 
 // resolveNearby validates the call the way Query does and returns the ID of the dataset and the radius.
-func resolveNearby(ctx context.Context, d *sql.DB, userID, dataset string, opts []memory_core.Option) (dsID int64, radiusKm float64, err error) {
+func resolveNearby(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset string,
+	opts []memory_core.Option) (dsID int64, radiusKm float64, err error) {
 	if userID, err = memory_core.ResolveUserID(userID); err != nil {
 		return 0, 0, err
 	}
@@ -68,18 +113,33 @@ func resolveNearby(ctx context.Context, d *sql.DB, userID, dataset string, opts 
 	if radiusKm, err = geoRadius(memory_core.NewCallOptions(opts)); err != nil {
 		return 0, 0, err
 	}
-	dsID, err = memory_core.DatasetID(ctx, d, userID, dataset)
+	dsID, err = memory_core.DatasetID(ctx,
+		d,
+		userID,
+		dataset)
 	return dsID, radiusKm, err
 }
 
 // nearbyOf runs searchNearby; unlike Query, which only logs the failures of a step, it fails when the search failed for every anchor.
-func nearbyOf(ctx context.Context, d *sql.DB, dsID int64, anchors []GeoAnchor, radiusKm float64) (*GeoContext, error) {
-	nearby, errs := searchNearby(ctx, d, dsID, anchors, radiusKm)
+func nearbyOf(ctx context.Context,
+	d *sql.DB,
+	dsID int64,
+	anchors []GeoAnchor,
+	radiusKm float64) (*GeoContext, error) {
+	nearby, errs := searchNearby(ctx,
+		d,
+		dsID,
+		anchors,
+		radiusKm)
 	if len(errs) > 0 && len(errs) == len(anchors) {
 		return nil, fmt.Errorf("nearby search failed: %s", errs[0])
 	}
 	if nearby == nil {
 		nearby = []NearbyEntity{}
 	}
-	return &GeoContext{RadiusKm: radiusKm, Anchors: anchors, Nearby: nearby}, nil
+	return &GeoContext{
+		RadiusKm: radiusKm,
+		Anchors:  anchors,
+		Nearby:   nearby,
+	}, nil
 }

@@ -82,40 +82,81 @@ func (e *GBerror) Unwrap() error { return e.cause }
 
 // Execer is what *sql.DB and *sql.Tx share for running a statement that returns a row; the Insert functions of the backends take it.
 type Execer interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context,
+		query string,
+		args ...any) *sql.Row
 }
 
 // Sink stores a GBerror (and sets its ID). It is given the error to store and returns why it could not.
-type Sink func(ctx context.Context, e *GBerror) error
+type Sink func(ctx context.Context,
+	e *GBerror) error
 
 // NopSink stores nothing.
-func NopSink(context.Context, *GBerror) error { return nil }
+func NopSink(context.Context,
+	*GBerror) error {
+	return nil
+}
 
 // New creates a GBerror for the operation op that failed with cause (may be nil), at the caller of New, and stores it with sink.
 // meta is the unique failure parameters (see Meta; it is limited, and not changed). The error is returned even if the storing
 // failed (that failure is logged), so the caller can always return it. A nil sink stores nothing.
-func New(ctx context.Context, sink Sink, op string, cause error, meta Meta) *GBerror {
-	return store(ctx, sink, build(2, time.Now(), op, cause, meta))
+func New(ctx context.Context,
+	sink Sink,
+	op string,
+	cause error,
+	meta Meta) *GBerror {
+	return store(ctx,
+		sink,
+		build(2,
+			time.Now(),
+			op,
+			cause,
+			meta))
 }
 
 // Newf is New with the cause made by fmt.Errorf(format, args...) (so %w works).
-func Newf(ctx context.Context, sink Sink, op string, meta Meta, format string, args ...any) *GBerror {
-	return store(ctx, sink, build(2, time.Now(), op, fmt.Errorf(format, args...), meta))
+func Newf(ctx context.Context,
+	sink Sink,
+	op string,
+	meta Meta,
+	format string,
+	args ...any) *GBerror {
+	return store(ctx,
+		sink,
+		build(2,
+			time.Now(),
+			op,
+			fmt.Errorf(format, args...),
+			meta))
 }
 
 // store stores e with sink (if any), logging a failure, and returns e.
-func store(ctx context.Context, sink Sink, e *GBerror) *GBerror {
+func store(ctx context.Context,
+	sink Sink,
+	e *GBerror) *GBerror {
 	if sink == nil {
 		return e
 	}
 	if sinkErr := sink(ctx, e); sinkErr != nil {
-		slog.Error("store GBerror", "op", e.Op, "package", e.Package, "function", e.Function, "err", sinkErr)
+		slog.Error("store GBerror",
+			"op",
+			e.Op,
+			"package",
+			e.Package,
+			"function",
+			e.Function,
+			"err",
+			sinkErr)
 	}
 	return e
 }
 
 // build makes the GBerror without storing it; skip is the number of stack frames above build to leave out (1 is build's caller).
-func build(skip int, at time.Time, op string, cause error, meta Meta) *GBerror {
+func build(skip int,
+	at time.Time,
+	op string,
+	cause error,
+	meta Meta) *GBerror {
 	pcs := make([]uintptr, MaxStackFrames)
 	frames := runtime.CallersFrames(pcs[:runtime.Callers(skip+1, pcs)])
 	stack, first := formatStack(frames)
@@ -126,8 +167,14 @@ func build(skip int, at time.Time, op string, cause error, meta Meta) *GBerror {
 		message = cause.Error()
 	}
 	return &GBerror{
-		CreatedAt: at.UTC(), Op: cleanOp, Package: pkg, Function: fn, Message: message, Stack: stack,
-		Meta: nilIfEmpty(merge(limitMeta(meta), opMeta)), cause: cause,
+		CreatedAt: at.UTC(),
+		Op:        cleanOp,
+		Package:   pkg,
+		Function:  fn,
+		Message:   message,
+		Stack:     stack,
+		Meta:      nilIfEmpty(merge(limitMeta(meta), opMeta)),
+		cause:     cause,
 	}
 }
 
@@ -140,7 +187,11 @@ func formatStack(frames *runtime.Frames) (stack, first string) {
 			if first == "" {
 				first = f.Function
 			}
-			fmt.Fprintf(&b, "%s\n\t%s:%d\n", f.Function, f.File, f.Line)
+			fmt.Fprintf(&b,
+				"%s\n\t%s:%d\n",
+				f.Function,
+				f.File,
+				f.Line)
 		}
 		if !more {
 			return b.String(), first
@@ -163,11 +214,14 @@ func normalizeOp(op string) (string, Meta) {
 	if ValidOp(op) {
 		return op, nil
 	}
-	return InvalidOp, Meta{MetaOriginalOp: truncate(op)}
+	return InvalidOp, Meta{
+		MetaOriginalOp: truncate(op),
+	}
 }
 
 // merge returns a new Meta with the keys of a and then b.
-func merge(a, b Meta) Meta {
+func merge(a,
+	b Meta) Meta {
 	out := make(Meta, len(a)+len(b))
 	for k, v := range a {
 		out[k] = v
@@ -192,7 +246,9 @@ func limitMeta(m Meta) Meta {
 	if len(m) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(m))
+	keys := make([]string,
+		0,
+		len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}

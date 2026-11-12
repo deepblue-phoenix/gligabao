@@ -29,12 +29,22 @@ type graphView struct {
 }
 
 // withInContext returns g with the in-context counts of its dataset (gb_graph_in_ctx_counters).
-func withInContext(ctx context.Context, d *sql.DB, g *memory.GraphExport) (*graphView, error) {
-	counts, err := graph.InContextCounts(ctx, d, g.DatasetID)
+func withInContext(ctx context.Context,
+	d *sql.DB,
+	g *memory.GraphExport) (*graphView, error) {
+	counts, err := graph.InContextCounts(ctx,
+		d,
+		g.DatasetID)
 	if err != nil {
 		return nil, err
 	}
-	v := &graphView{GraphExport: g, InContext: inContext{Entities: map[int64]useCount{}, Edges: map[int64]useCount{}}}
+	v := &graphView{
+		GraphExport: g,
+		InContext: inContext{
+			Entities: map[int64]useCount{},
+			Edges:    map[int64]useCount{},
+		},
+	}
 	for _, c := range counts {
 		switch c.Kind {
 		case graph.CounterEntity:

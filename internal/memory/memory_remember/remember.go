@@ -210,14 +210,20 @@ func (ex *Extraction) RunID() int64 {
 //
 // If the LLM answered but its answer is no use (too long, malformed), the error comes with an Extraction that is empty but
 // for its InferenceID, so that the run it cost is not lost; it is nil if the call itself failed.
-func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Time) (*Extraction, error) {
+func Extract(ctx context.Context,
+	llm memory_core.LLM,
+	text string,
+	ref time.Time) (*Extraction, error) {
 
 	//-----------------------
 	// LLM
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: entitySystemPrompt,
-		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<reference_time>\n" + relational.FormatTime(ref) +
-			"\n</reference_time>\n\n<text>\n" + text + "\n</text>"}},
+		Messages: []ai.Message{{
+			Role: ai.RoleUser,
+			Content: "<reference_time>\n" + relational.FormatTime(ref) +
+				"\n</reference_time>\n\n<text>\n" + text + "\n</text>",
+		}},
 		MaxTokens: 4096,
 	})
 
@@ -227,11 +233,17 @@ func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Tim
 		return nil, err
 	}
 	if resp.StopReason == "max_tokens" {
-		return &Extraction{InferenceID: resp.InferenceID, Raw: resp.Text}, errors.New("memory: LLM output truncated; text too large")
+		return &Extraction{
+			InferenceID: resp.InferenceID,
+			Raw:         resp.Text,
+		}, errors.New("memory: LLM output truncated; text too large")
 	}
 	ex, err := parseExtraction(resp.Text, ref)
 	if err != nil {
-		return &Extraction{InferenceID: resp.InferenceID, Raw: resp.Text}, err
+		return &Extraction{
+			InferenceID: resp.InferenceID,
+			Raw:         resp.Text,
+		}, err
 	}
 	ex.stampModel(resp.Provider, resp.Model)
 	ex.InferenceID, ex.Raw = resp.InferenceID, resp.Text
@@ -240,7 +252,8 @@ func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Tim
 
 // stampModel records the model that made the extraction on ex and on each of its entities and edges. The LLM's own
 // output never decides it.
-func (ex *Extraction) stampModel(provider, name string) {
+func (ex *Extraction) stampModel(provider,
+	name string) {
 	modelID := relational.ModelID(name)
 	ex.Provider, ex.Model, ex.ModelID = provider, name, modelID
 	for i := range ex.Entities {
@@ -252,7 +265,8 @@ func (ex *Extraction) stampModel(provider, name string) {
 }
 
 // parseExtraction decodes the LLM's JSON, tolerating surrounding prose or code fences, and normalizes the edges.
-func parseExtraction(s string, ref time.Time) (*Extraction, error) {
+func parseExtraction(s string,
+	ref time.Time) (*Extraction, error) {
 	js, err := memory_core.JSONObject(s)
 	if err != nil {
 		return nil, err
@@ -273,7 +287,9 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 	if err := json.Unmarshal([]byte(js), &raw); err != nil {
 		return nil, fmt.Errorf("memory: decode LLM output: %w", err)
 	}
-	ex := &Extraction{Entities: raw.Entities}
+	ex := &Extraction{
+		Entities: raw.Entities,
+	}
 	for _, r := range raw.Edges {
 
 		// EDGE
@@ -289,7 +305,9 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 			continue
 		}
 		if e.Description == "" {
-			e.Description = memory_core.SynthStatement(e.Source, e.Relation, e.Target)
+			e.Description = memory_core.SynthStatement(e.Source,
+				e.Relation,
+				e.Target)
 		}
 		memory_temporal.ApplyReference(&e, ref) // a fact without a start inherits the time of the artifact that states it
 		ex.Edges = append(ex.Edges, e)
@@ -314,7 +332,10 @@ func ResolveKind(kind string) (string, error) {
 	case graph.ArtifactKnowledge, graph.ArtifactEpisode:
 		return k, nil
 	}
-	return "", fmt.Errorf("%w: kind must be %q or %q", ErrInvalidKind, graph.ArtifactKnowledge, graph.ArtifactEpisode)
+	return "", fmt.Errorf("%w: kind must be %q or %q",
+		ErrInvalidKind,
+		graph.ArtifactKnowledge,
+		graph.ArtifactEpisode)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -354,7 +375,15 @@ func ResolveKind(kind string) (string, error) {
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // Result.Trajectory, with its ID in Result.TrajectoryID).
-func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, kind, text string, ref time.Time, opts ...memory_core.Option) (res *Result, err error) {
+func Remember(ctx context.Context,
+	d *sql.DB,
+	llm memory_core.LLM,
+	userID,
+	dataset,
+	kind,
+	text string,
+	ref time.Time,
+	opts ...memory_core.Option) (res *Result, err error) {
 	userID, err = memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -372,7 +401,9 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		ref = now
 	}
 	ref = relational.Normalize(ref)
-	llm = memory_core.WithRecording(llm, d, CallRemember)
+	llm = memory_core.WithRecording(llm,
+		d,
+		CallRemember)
 
 	co := memory_core.NewCallOptions(opts)
 	if co.WebSearch && co.WebSearcher == nil {
@@ -433,7 +464,13 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}
 	tr.Input(input)
 
-	run := startRunLog(ctx, d, co.RememberRunID, userID, dataset, kind, input)
+	run := startRunLog(ctx,
+		d,
+		co.RememberRunID,
+		userID,
+		dataset,
+		kind,
+		input)
 	defer func() {
 		run.Finish(err)
 		if res != nil {
@@ -441,11 +478,28 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		}
 	}()
 
-	j := &job{d: d, llm: llm, tr: tr, run: run, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now,
-		text: text, cc: cc, chunked: chunked}
+	j := &job{
+		d:       d,
+		llm:     llm,
+		tr:      tr,
+		run:     run,
+		co:      co,
+		opts:    opts,
+		userID:  userID,
+		dataset: dataset,
+		kind:    kind,
+		ref:     ref,
+		now:     now,
+		text:    text,
+		cc:      cc,
+		chunked: chunked,
+	}
 	//------------------
 	// MEMORY PIPELINE
-	if err := memory_pipeline.Run(ctx, rememberPipeline, j, run); err != nil {
+	if err := memory_pipeline.Run(ctx,
+		rememberPipeline,
+		j,
+		run); err != nil {
 		return nil, err
 	}
 	//------------------
@@ -464,39 +518,67 @@ func (j *job) embedGraph(ctx context.Context) {
 	if j.co.GraphEmbedder == nil || j.res == nil {
 		return
 	}
-	dsID, err := memory_core.DatasetID(ctx, j.d, j.userID, j.dataset)
+	dsID, err := memory_core.DatasetID(ctx,
+		j.d,
+		j.userID,
+		j.dataset)
 	if err != nil {
 		log.WithError(err).Warn("memory: loading the graph for the graph embedder hook failed; the hook is not called")
 		return
 	}
-	entityIDs := make([]int64, 0, len(j.graphEntityIDs))
+	entityIDs := make([]int64,
+		0,
+		len(j.graphEntityIDs))
 	for id := range j.graphEntityIDs {
 		entityIDs = append(entityIDs, id)
 	}
-	sort.Slice(entityIDs, func(a, b int) bool { return entityIDs[a] < entityIDs[b] })
-	edgeIDs := make([]int64, 0, len(j.res.Edges))
+	sort.Slice(entityIDs, func(a,
+		b int) bool {
+		return entityIDs[a] < entityIDs[b]
+	})
+	edgeIDs := make([]int64,
+		0,
+		len(j.res.Edges))
 	for _, e := range j.res.Edges {
 		if e.ID != 0 {
 			edgeIDs = append(edgeIDs, e.ID)
 		}
 	}
-	entities, err := graph.EntitiesByID(ctx, j.d, entityIDs)
+	entities, err := graph.EntitiesByID(ctx,
+		j.d,
+		entityIDs)
 	if err != nil {
 		log.WithError(err).Warn("memory: loading the graph for the graph embedder hook failed; the hook is not called")
 		return
 	}
-	edges, err := graph.EdgesByID(ctx, j.d, dsID, edgeIDs)
+	edges, err := graph.EdgesByID(ctx,
+		j.d,
+		dsID,
+		edgeIDs)
 	if err != nil {
 		log.WithError(err).Warn("memory: loading the graph for the graph embedder hook failed; the hook is not called")
 		return
 	}
-	memory_core.EmbedGraph(ctx, j.co, memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedRemember, Index: j.co.GraphIndex, UserID: j.userID, Dataset: j.dataset,
-		RunID: j.run.ID(), ArtifactID: j.res.ArtifactID, Entities: entities, Edges: edges})
+	memory_core.EmbedGraph(ctx,
+		j.co,
+		memory_core.GraphEmbedRequest{
+			Pipeline:   memory_core.GraphEmbedRemember,
+			Index:      j.co.GraphIndex,
+			UserID:     j.userID,
+			Dataset:    j.dataset,
+			RunID:      j.run.ID(),
+			ArtifactID: j.res.ArtifactID,
+			Entities:   entities,
+			Edges:      edges,
+		})
 }
 
 // candidateFacts summarizes edges for the trajectory; via, if not nil, says how each (by ID) was found.
-func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
-	out := make([]map[string]any, 0, len(edges))
+func candidateFacts(edges []Edge,
+	via map[int64]string) []map[string]any {
+	out := make([]map[string]any,
+		0,
+		len(edges))
 	for _, e := range edges {
 		out = append(out, memory_core.FactFromEdge(e).Summary(via[e.ID]))
 	}
@@ -519,8 +601,31 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // VectorDataset). The embedding is computed before the transaction commits, so an embedder failure stores
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
-func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *memory_temporal.EdgePlan, opts ...memory_core.Option) (*Result, error) {
-	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
+func Store(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset,
+	kind,
+	text string,
+	ref,
+	now time.Time,
+	ex *Extraction,
+	plan *memory_temporal.EdgePlan,
+	opts ...memory_core.Option) (*Result, error) {
+	return store(ctx,
+		d,
+		userID,
+		dataset,
+		kind,
+		text,
+		ref,
+		now,
+		ex,
+		plan,
+		nil,
+		nil,
+		nil,
+		opts...)
 }
 
 // store is Store. part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
@@ -529,7 +634,20 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 // query and is a child of web.ParentID (kind is ignored). obs, if not nil, says the text is the observation of a series:
 // it is then stored as an artifact of kind series_observation that records the series and is a child of obs.ParentID
 // (kind is ignored). part, web and obs are never more than one set.
-func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *memory_temporal.EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
+func store(ctx context.Context,
+	d *sql.DB,
+	userID,
+	dataset,
+	kind,
+	text string,
+	ref,
+	now time.Time,
+	ex *Extraction,
+	plan *memory_temporal.EdgePlan,
+	part *chunkPart,
+	web *webPart,
+	obs *observationPart,
+	opts ...memory_core.Option) (*Result, error) {
 	co := memory_core.NewCallOptions(opts)
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -544,7 +662,10 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return nil, err
 	}
 	// The dataset belongs to the relational store and the graph to the graph store, so they are written separately.
-	dsID, err := relational.EnsureDataset(ctx, d, userID, dataset)
+	dsID, err := relational.EnsureDataset(ctx,
+		d,
+		userID,
+		dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -552,17 +673,29 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	// graph transaction, which would hold the database's write lock). A model that gligabao supports is already
 	// there; a dated snapshot of one, for instance, is added here.
 	if ex.Model != "" {
-		id, err := relational.EnsureModel(ctx, d, relational.Model{Name: ex.Model, Provider: ex.Provider, Kind: ai.KindOf(ex.Model)})
+		id, err := relational.EnsureModel(ctx,
+			d,
+			relational.Model{
+				Name:     ex.Model,
+				Provider: ex.Provider,
+				Kind:     ai.KindOf(ex.Model),
+			})
 		if err != nil {
 			return nil, err
 		}
 		if id != ex.ModelID {
-			return nil, fmt.Errorf("memory: extraction model_id %q does not match model %q", ex.ModelID, ex.Model)
+			return nil, fmt.Errorf("memory: extraction model_id %q does not match model %q",
+				ex.ModelID,
+				ex.Model)
 		}
 	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
 	var embedUsage *ai.EmbedUsage
-	defer func() { recordEmbedUsage(ctx, d, embedUsage) }()
+	defer func() {
+		recordEmbedUsage(ctx,
+			d,
+			embedUsage)
+	}()
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return nil, err
@@ -572,19 +705,50 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	var artID int64
 	switch {
 	case web != nil:
-		artID, err = tx.InsertWebSearchArtifact(ctx, graph.NewWebSearchArtifact{DatasetID: dsID, ParentID: web.ParentID, Query: web.Query,
-			Text: text, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+		artID, err = tx.InsertWebSearchArtifact(ctx, graph.NewWebSearchArtifact{
+			DatasetID: dsID,
+			ParentID:  web.ParentID,
+			Query:     web.Query,
+			Text:      text,
+			SessionID: sessionID,
+			ValidAt:   ref,
+			CreatedAt: now,
+		})
 		kind = graph.ArtifactWebSearch
 	case obs != nil:
-		artID, err = tx.InsertSeriesObservationArtifact(ctx, graph.NewSeriesObservationArtifact{DatasetID: dsID, ParentID: obs.ParentID,
-			SeriesID: obs.SeriesID, Query: obs.Query, Text: text, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+		artID, err = tx.InsertSeriesObservationArtifact(ctx, graph.NewSeriesObservationArtifact{
+			DatasetID: dsID,
+			ParentID:  obs.ParentID,
+			SeriesID:  obs.SeriesID,
+			Query:     obs.Query,
+			Text:      text,
+			SessionID: sessionID,
+			ValidAt:   ref,
+			CreatedAt: now,
+		})
 		kind = graph.ArtifactSeriesObservation
 	case part == nil:
-		artID, err = tx.InsertArtifact(ctx, dsID, kind, text, sessionID, ref, now)
+		artID, err = tx.InsertArtifact(ctx,
+			dsID,
+			kind,
+			text,
+			sessionID,
+			ref,
+			now)
 	default:
-		artID, err = tx.InsertChunkArtifact(ctx, graph.NewChunkArtifact{DatasetID: dsID, ParentID: part.ParentID, Kind: kind, Text: text,
-			SessionID: sessionID, ChunkIndex: part.Chunk.Index, StartOffset: part.Chunk.Start, EndOffset: part.Chunk.End,
-			Tokens: part.Chunk.Tokens, ValidAt: ref, CreatedAt: now})
+		artID, err = tx.InsertChunkArtifact(ctx, graph.NewChunkArtifact{
+			DatasetID:   dsID,
+			ParentID:    part.ParentID,
+			Kind:        kind,
+			Text:        text,
+			SessionID:   sessionID,
+			ChunkIndex:  part.Chunk.Index,
+			StartOffset: part.Chunk.Start,
+			EndOffset:   part.Chunk.End,
+			Tokens:      part.Chunk.Tokens,
+			ValidAt:     ref,
+			CreatedAt:   now,
+		})
 	}
 	if err != nil {
 		return nil, err
@@ -611,16 +775,23 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	// are shared across artifacts (deduplicated per dataset), so the link, not the entity row, records provenance.
 	// The same goes for the artifact's session.
 	linkEntity := func(id int64) error {
-		if err := tx.LinkEntity(ctx, id, artID); err != nil {
+		if err := tx.LinkEntity(ctx,
+			id,
+			artID); err != nil {
 			return err
 		}
 		if sessionID == "" {
 			return nil
 		}
-		return tx.LinkEntitySession(ctx, id, sessionID)
+		return tx.LinkEntitySession(ctx,
+			id,
+			sessionID)
 	}
 	upsertEntity := func(e Entity) (int64, error) {
-		id, err := tx.UpsertEntity(ctx, dsID, e, memory_core.Key(e.Name))
+		id, err := tx.UpsertEntity(ctx,
+			dsID,
+			e,
+			memory_core.Key(e.Name))
 		if err != nil {
 			return 0, err
 		}
@@ -657,10 +828,20 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		if id, ok := ids[memory_core.Key(name)]; ok {
 			return id, nil
 		}
-		id, err := tx.FindEntityID(ctx, dsID, memory_core.Key(name))
+		id, err := tx.FindEntityID(ctx,
+			dsID,
+			memory_core.Key(name))
 		if errors.Is(err, graph.ErrNotFound) {
-			if id, err = upsertEntity(Entity{Name: name, Type: "other", ModelID: ex.ModelID}); err == nil {
-				out.Entities = append(out.Entities, Entity{Name: name, Type: "other", ModelID: ex.ModelID})
+			if id, err = upsertEntity(Entity{
+				Name:    name,
+				Type:    "other",
+				ModelID: ex.ModelID,
+			}); err == nil {
+				out.Entities = append(out.Entities, Entity{
+					Name:    name,
+					Type:    "other",
+					ModelID: ex.ModelID,
+				})
 			}
 		} else if err == nil {
 			// An edge names an already stored entity that this extraction did not list: it is still mentioned here.
@@ -673,7 +854,16 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return id, nil
 	}
 	out.entityIDs = ids
-	out.Edges, out.InvalidatedEdges, err = memory_temporal.StoreEdges(ctx, tx, dsID, artID, sessionID, ref, now, ex.Edges, plan, entityID)
+	out.Edges, out.InvalidatedEdges, err = memory_temporal.StoreEdges(ctx,
+		tx,
+		dsID,
+		artID,
+		sessionID,
+		ref,
+		now,
+		ex.Edges,
+		plan,
+		entityID)
 	if err != nil {
 		return nil, err
 	}
@@ -682,7 +872,12 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	// nothing. Only for the artifact the caller sent: not for a chunk (the series go to the parent, see
 	// storeDocumentSeries) and not for the result of a web search.
 	if part == nil && web == nil && obs == nil && len(co.Series) > 0 {
-		out.Series, err = memory_timeseries.Store(ctx, tx, dsID, artID, now, co.Series)
+		out.Series, err = memory_timeseries.Store(ctx,
+			tx,
+			dsID,
+			artID,
+			now,
+			co.Series)
 		if err != nil {
 			return nil, err
 		}
@@ -691,18 +886,49 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	var chunkVec *chunkVector
 	var sumVec *summaryVector
 	if part != nil {
-		chunkVec = &chunkVector{artifactID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: text}
+		chunkVec = &chunkVector{
+			artifactID: artID,
+			parentID:   part.ParentID,
+			index:      part.Chunk.Index,
+			text:       text,
+		}
 		if s := part.Summary; s != nil {
-			sumID, err := tx.InsertChunkSummaryArtifact(ctx, graph.NewChunkSummaryArtifact{DatasetID: dsID, ParentID: artID, Text: s.Text,
-				InferenceID: s.InferenceID, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+			sumID, err := tx.InsertChunkSummaryArtifact(ctx, graph.NewChunkSummaryArtifact{
+				DatasetID:   dsID,
+				ParentID:    artID,
+				Text:        s.Text,
+				InferenceID: s.InferenceID,
+				SessionID:   sessionID,
+				ValidAt:     ref,
+				CreatedAt:   now,
+			})
 			if err != nil {
 				return nil, err
 			}
-			out.summary = &SummaryResult{ArtifactID: sumID, Text: s.Text, Model: s.Model, Reasoning: s.Reasoning, InferenceID: s.InferenceID}
-			sumVec = &summaryVector{artifactID: sumID, chunkID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: s.Text}
+			out.summary = &SummaryResult{
+				ArtifactID:  sumID,
+				Text:        s.Text,
+				Model:       s.Model,
+				Reasoning:   s.Reasoning,
+				InferenceID: s.InferenceID,
+			}
+			sumVec = &summaryVector{
+				artifactID: sumID,
+				chunkID:    artID,
+				parentID:   part.ParentID,
+				index:      part.Chunk.Index,
+				text:       s.Text,
+			}
 		}
 	}
-	pv, embedUsage, err := prepareVectors(ctx, tx, co, dsID, embedIDs, out.Edges, chunkVec, sumVec)
+	pv, embedUsage, err := prepareVectors(ctx,
+		tx,
+		co,
+		dsID,
+		embedIDs,
+		out.Edges,
+		chunkVec,
+		sumVec)
 	if err != nil {
 		return nil, err
 	}
@@ -731,5 +957,7 @@ func normType(t string) string {
 }
 
 func normRelation(r string) string {
-	return strings.ReplaceAll(strings.ToLower(strings.Join(strings.Fields(r), " ")), " ", "_")
+	return strings.ReplaceAll(strings.ToLower(strings.Join(strings.Fields(r), " ")),
+		" ",
+		"_")
 }

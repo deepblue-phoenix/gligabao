@@ -35,7 +35,9 @@ var counter atomic.Int64
 // Run calls fn as a subtest once per backend ("sqlite", and "postgres" if POSTGRES_TEST_DSN is set), each time with
 // a freshly opened, empty database. The database is closed (and, for postgres, its schema dropped) afterwards.
 // Subtests run sequentially, because packages relational, graph, training/db and evals/db route to the backend of the last Open.
-func Run(t *testing.T, fn func(t *testing.T, d *sql.DB)) {
+func Run(t *testing.T,
+	fn func(t *testing.T,
+		d *sql.DB)) {
 	t.Helper()
 	t.Run(config.DBBackendSQLite, func(t *testing.T) { fn(t, OpenSQLite(t)) })
 	t.Run(config.DBBackendPostgres, func(t *testing.T) {
@@ -76,13 +78,16 @@ func OpenSQLite(t *testing.T) *sql.DB {
 
 // OpenPostgres opens an empty PostgreSQL database: a new schema in the database at dsn, which is dropped when the
 // test ends.
-func OpenPostgres(t *testing.T, dsn string) *sql.DB {
+func OpenPostgres(t *testing.T,
+	dsn string) *sql.DB {
 	t.Helper()
 	admin, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema := fmt.Sprintf("gbtest_%d_%d", time.Now().UnixNano(), counter.Add(1))
+	schema := fmt.Sprintf("gbtest_%d_%d",
+		time.Now().UnixNano(),
+		counter.Add(1))
 	if _, err := admin.Exec(`CREATE SCHEMA ` + schema); err != nil {
 		admin.Close()
 		t.Fatal(err)
@@ -114,7 +119,8 @@ func OpenPostgres(t *testing.T, dsn string) *sql.DB {
 }
 
 // withSearchPath returns dsn (URL or key=value form) with the connection's search_path set to schema.
-func withSearchPath(dsn, schema string) string {
+func withSearchPath(dsn,
+	schema string) string {
 	if strings.Contains(dsn, "://") {
 		if u, err := url.Parse(dsn); err == nil {
 			q := u.Query()

@@ -12,7 +12,10 @@ import (
 )
 
 // run runs the CLI against a fake server (--server) and returns what it printed and the error.
-func run(t *testing.T, h http.HandlerFunc, stdin string, args ...string) (string, error) {
+func run(t *testing.T,
+	h http.HandlerFunc,
+	stdin string,
+	args ...string) (string, error) {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -28,14 +31,30 @@ func run(t *testing.T, h http.HandlerFunc, stdin string, args ...string) (string
 func TestRememberBody(t *testing.T) {
 	var got map[string]any
 	var user string
-	out, err := run(t, func(w http.ResponseWriter, r *http.Request) {
-		user = r.Header.Get("gb-user-id")
-		if r.Method != "POST" || r.URL.Path != "/v1/gb/remember" {
-			t.Errorf("%s %s", r.Method, r.URL)
-		}
-		json.NewDecoder(r.Body).Decode(&got)
-		w.Write([]byte(`{"artifact_id":1}`))
-	}, "", "remember", "Alice works at Acme.", "-d", "work", "--kind", "episode", "--session", "s1", "--model", "extract_graph=claude-x", "--web-search")
+	out, err := run(t,
+		func(w http.ResponseWriter,
+			r *http.Request) {
+			user = r.Header.Get("gb-user-id")
+			if r.Method != "POST" || r.URL.Path != "/v1/gb/remember" {
+				t.Errorf("%s %s",
+					r.Method,
+					r.URL)
+			}
+			json.NewDecoder(r.Body).Decode(&got)
+			w.Write([]byte(`{"artifact_id":1}`))
+		},
+		"",
+		"remember",
+		"Alice works at Acme.",
+		"-d",
+		"work",
+		"--kind",
+		"episode",
+		"--session",
+		"s1",
+		"--model",
+		"extract_graph=claude-x",
+		"--web-search")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,16 +72,32 @@ func TestRememberBody(t *testing.T) {
 
 func TestRememberFromStdinAndJSON(t *testing.T) {
 	var got map[string]any
-	h := func(w http.ResponseWriter, r *http.Request) {
+	h := func(w http.ResponseWriter,
+		r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&got)
 		w.Write([]byte(`{}`))
 	}
-	if _, err := run(t, h, "from stdin", "remember", "-"); err != nil || got["text"] != "from stdin" {
-		t.Errorf("stdin: %v %v", err, got)
+	if _, err := run(t,
+		h,
+		"from stdin",
+		"remember",
+		"-"); err != nil || got["text"] != "from stdin" {
+		t.Errorf("stdin: %v %v",
+			err,
+			got)
 	}
 	// The flags override the fields of --json; the user goes in the header, not in the body.
 	got = nil
-	if _, err := run(t, h, "", "--user", "u9", "remember", "--json", `{"text":"t","dataset":"a"}`, "-d", "b"); err != nil {
+	if _, err := run(t,
+		h,
+		"",
+		"--user",
+		"u9",
+		"remember",
+		"--json",
+		`{"text":"t","dataset":"a"}`,
+		"-d",
+		"b"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := got["user_id"]; ok || got["dataset"] != "b" || got["text"] != "t" {
@@ -70,26 +105,52 @@ func TestRememberFromStdinAndJSON(t *testing.T) {
 	}
 	// A file.
 	f := filepath.Join(t.TempDir(), "n.txt")
-	os.WriteFile(f, []byte("from file"), 0o644)
+	os.WriteFile(f,
+		[]byte("from file"),
+		0o644)
 	got = nil
-	if _, err := run(t, h, "", "remember", "-f", f); err != nil || got["text"] != "from file" {
-		t.Errorf("file: %v %v", err, got)
+	if _, err := run(t,
+		h,
+		"",
+		"remember",
+		"-f",
+		f); err != nil || got["text"] != "from file" {
+		t.Errorf("file: %v %v",
+			err,
+			got)
 	}
 }
 
 func TestRememberNothing(t *testing.T) {
-	_, err := run(t, func(http.ResponseWriter, *http.Request) { t.Error("called") }, "", "remember")
+	_, err := run(t,
+		func(http.ResponseWriter,
+			*http.Request) {
+			t.Error("called")
+		},
+		"",
+		"remember")
 	if codeOf(err) != exitUsage {
-		t.Errorf("err = %v, code %d", err, codeOf(err))
+		t.Errorf("err = %v, code %d",
+			err,
+			codeOf(err))
 	}
 }
 
 func TestQueryEvidenceOnlyAndRaw(t *testing.T) {
 	var got map[string]any
-	out, err := run(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&got)
-		w.Write([]byte(`{"answer":"Acme.","evidence":{}}`))
-	}, "", "query", "Where?", "--evidence-only", "--geo-radius", "80", "--raw")
+	out, err := run(t,
+		func(w http.ResponseWriter,
+			r *http.Request) {
+			json.NewDecoder(r.Body).Decode(&got)
+			w.Write([]byte(`{"answer":"Acme.","evidence":{}}`))
+		},
+		"",
+		"query",
+		"Where?",
+		"--evidence-only",
+		"--geo-radius",
+		"80",
+		"--raw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,24 +164,37 @@ func TestQueryEvidenceOnlyAndRaw(t *testing.T) {
 
 func TestExitCodes(t *testing.T) {
 	for status, want := range map[int]int{400: exitUsage, 404: exitNotFound, 409: exitConflict, 503: exitUnavailable, 502: exitUnavailable} {
-		_, err := run(t, func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(status)
-			io.WriteString(w, `{"error":"nope"}`)
-		}, "", "dataset", "ls")
+		_, err := run(t,
+			func(w http.ResponseWriter,
+				r *http.Request) {
+				w.WriteHeader(status)
+				io.WriteString(w, `{"error":"nope"}`)
+			},
+			"",
+			"dataset",
+			"ls")
 		if codeOf(err) != want || err.Error() != "nope" {
-			t.Errorf("status %d: err %v code %d, want %d", status, err, codeOf(err), want)
+			t.Errorf("status %d: err %v code %d, want %d",
+				status,
+				err,
+				codeOf(err),
+				want)
 		}
 	}
 }
 
 func TestDatasetRequests(t *testing.T) {
 	var seen []string
-	h := func(w http.ResponseWriter, r *http.Request) {
+	h := func(w http.ResponseWriter,
+		r *http.Request) {
 		seen = append(seen, r.Method+" "+r.URL.RequestURI()+" "+r.Header.Get("gb-user-id"))
 		w.Write([]byte(`{}`))
 	}
 	for _, args := range [][]string{{"dataset", "ls"}, {"dataset", "rm", "w"}, {"dataset", "graph", "w"}} {
-		if _, err := run(t, h, "", args...); err != nil {
+		if _, err := run(t,
+			h,
+			"",
+			args...); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -137,13 +211,19 @@ func TestResolveLayout(t *testing.T) {
 
 	l, err := resolveLayout("/x/gligabao.toml", false)
 	if err != nil || l.Project || l.ConfigPath != "" || l.DBPath != filepath.Join(home, "gligabao.db") {
-		t.Errorf("no config in cwd: %+v %v", l, err)
+		t.Errorf("no config in cwd: %+v %v",
+			l,
+			err)
 	}
-	os.WriteFile(filepath.Join(home, "gligabao.toml"), []byte("port = 9999\n"), 0o644)
+	os.WriteFile(filepath.Join(home, "gligabao.toml"),
+		[]byte("port = 9999\n"),
+		0o644)
 	if l, _ = resolveLayout("", false); l.ConfigPath != filepath.Join(home, "gligabao.toml") {
 		t.Errorf("home config: %+v", l)
 	}
-	os.WriteFile(filepath.Join(cwd, "gligabao.toml"), []byte("port = 9998\n"), 0o644)
+	os.WriteFile(filepath.Join(cwd, "gligabao.toml"),
+		[]byte("port = 9998\n"),
+		0o644)
 	if l, _ = resolveLayout("", false); !l.Project || l.ConfigPath != "gligabao.toml" || l.DBPath != "" {
 		t.Errorf("config in cwd: %+v", l)
 	}
@@ -153,7 +233,12 @@ func TestResolveLayout(t *testing.T) {
 }
 
 func TestDaemonArgs(t *testing.T) {
-	d := &daemon{layout: layout{ConfigPath: "c.toml", DBPath: "/h/g.db"}}
+	d := &daemon{
+		layout: layout{
+			ConfigPath: "c.toml",
+			DBPath:     "/h/g.db",
+		},
+	}
 	if got := strings.Join(d.args(), " "); got != "--config c.toml serve --host 127.0.0.1 --db /h/g.db" {
 		t.Errorf("args = %q", got)
 	}

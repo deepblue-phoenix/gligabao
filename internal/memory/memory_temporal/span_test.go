@@ -28,13 +28,20 @@ func TestFixSpan(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			e := graph.Edge{ValidAt: tc.valid, InvalidAt: tc.inval}
+			e := graph.Edge{
+				ValidAt:   tc.valid,
+				InvalidAt: tc.inval,
+			}
 			FixSpan(&e)
 			if !e.ValidAt.Equal(*tc.wantValid) {
-				t.Errorf("ValidAt = %v, want %v", e.ValidAt, tc.wantValid)
+				t.Errorf("ValidAt = %v, want %v",
+					e.ValidAt,
+					tc.wantValid)
 			}
 			if (e.InvalidAt == nil) != (tc.wantInvalid == nil) || (e.InvalidAt != nil && !e.InvalidAt.Equal(*tc.wantInvalid)) {
-				t.Errorf("InvalidAt = %v, want %v", e.InvalidAt, tc.wantInvalid)
+				t.Errorf("InvalidAt = %v, want %v",
+					e.InvalidAt,
+					tc.wantInvalid)
 			}
 		})
 	}

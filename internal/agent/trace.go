@@ -32,7 +32,9 @@ type tracer struct {
 
 // newTracer returns nil unless the agent asks for a trajectory. It records the system prompt and the user's prompt, the first steps of the
 // trajectory.
-func newTracer(a *Agent, prompt string, l *loop) *tracer {
+func newTracer(a *Agent,
+	prompt string,
+	l *loop) *tracer {
 	if !a.Trajectory {
 		return nil
 	}
@@ -44,11 +46,21 @@ func newTracer(a *Agent, prompt string, l *loop) *tracer {
 	if version == "" {
 		version = agentVersion
 	}
-	t := &tracer{b: atif.NewBuilder(atif.Agent{Name: name, Version: version, ModelName: a.Model}), dir: a.TrajectoryDir, sink: a.ErrSink}
+	t := &tracer{
+		b: atif.NewBuilder(atif.Agent{
+			Name:      name,
+			Version:   version,
+			ModelName: a.Model,
+		}),
+		dir:  a.TrajectoryDir,
+		sink: a.ErrSink,
+	}
 	if a.SessionID != "" { // the trajectories of one session share the session ID
 		t.b.SetSessionID(a.SessionID)
 	}
-	names := make([]string, 0, len(a.Tools))
+	names := make([]string,
+		0,
+		len(a.Tools))
 	for _, tool := range a.Tools {
 		names = append(names, tool.Name)
 	}
@@ -72,7 +84,8 @@ type stepRec struct {
 }
 
 // beginStep starts the record of a model call that started at started and got resp.
-func (t *tracer) beginStep(started time.Time, resp *ai.RawResponse) *stepRec {
+func (t *tracer) beginStep(started time.Time,
+	resp *ai.RawResponse) *stepRec {
 	if t == nil {
 		return nil
 	}
@@ -84,7 +97,11 @@ func (t *tracer) beginStep(started time.Time, resp *ai.RawResponse) *stepRec {
 		step: atif.Step{
 			Timestamp: started.UTC().Format(time.RFC3339Nano),
 			ModelName: resp.Model,
-			Metrics:   &atif.Metrics{PromptTokens: resp.InputTokens, CompletionTokens: resp.OutputTokens, CostUSD: resp.CostUSD},
+			Metrics: &atif.Metrics{
+				PromptTokens:     resp.InputTokens,
+				CompletionTokens: resp.OutputTokens,
+				CostUSD:          resp.CostUSD,
+			},
 			Extra: map[string]any{
 				"provider":    "anthropic",
 				"stop_reason": resp.StopReason,
@@ -95,7 +112,9 @@ func (t *tracer) beginStep(started time.Time, resp *ai.RawResponse) *stepRec {
 }
 
 // call records a tool call the model asked for.
-func (s *stepRec) call(id, name string, input json.RawMessage) {
+func (s *stepRec) call(id,
+	name string,
+	input json.RawMessage) {
 	if s == nil {
 		return
 	}
@@ -103,18 +122,31 @@ func (s *stepRec) call(id, name string, input json.RawMessage) {
 	if err := json.Unmarshal(input, &args); err != nil || args == nil {
 		args = map[string]any{"_raw": string(input)} // not an object: keep what the model sent
 	}
-	s.step.ToolCalls = append(s.step.ToolCalls, atif.ToolCall{ToolCallID: id, FunctionName: name, Arguments: args})
+	s.step.ToolCalls = append(s.step.ToolCalls, atif.ToolCall{
+		ToolCallID:   id,
+		FunctionName: name,
+		Arguments:    args,
+	})
 }
 
 // result records what a tool call returned (the error text if isErr), how long it took and what it spent on its own.
-func (s *stepRec) result(id, out string, isErr bool, took time.Duration, in, outTokens int, cost float64) {
+func (s *stepRec) result(id,
+	out string,
+	isErr bool,
+	took time.Duration,
+	in,
+	outTokens int,
+	cost float64) {
 	if s == nil {
 		return
 	}
 	if s.step.Observation == nil {
 		s.step.Observation = &atif.Observation{}
 	}
-	s.step.Observation.Results = append(s.step.Observation.Results, atif.ObservationResult{SourceCallID: id, Content: out})
+	s.step.Observation.Results = append(s.step.Observation.Results, atif.ObservationResult{
+		SourceCallID: id,
+		Content:      out,
+	})
 	if isErr {
 		s.failed = append(s.failed, id)
 	}
@@ -125,7 +157,8 @@ func (s *stepRec) result(id, out string, isErr bool, took time.Duration, in, out
 }
 
 // endStep adds the step to the trajectory, with the text the model wrote in it.
-func (t *tracer) endStep(s *stepRec, text string) {
+func (t *tracer) endStep(s *stepRec,
+	text string) {
 	if t == nil || s == nil {
 		return
 	}
@@ -146,7 +179,9 @@ func (t *tracer) endStep(s *stepRec, text string) {
 // finish ends the trajectory: it adds the run's totals (the tools' spending included, which the final metrics, the model calls only,
 // do not have) and the error if the run failed, stores it if there is a directory, and puts it in res. A failure to store it never fails
 // the run; it is tracked as a GBerror (the trajectory is lost).
-func (t *tracer) finish(ctx context.Context, res *Result, runErr error) {
+func (t *tracer) finish(ctx context.Context,
+	res *Result,
+	runErr error) {
 	if t == nil {
 		return
 	}
@@ -173,7 +208,11 @@ func (t *tracer) finish(ctx context.Context, res *Result, runErr error) {
 	path, err := atif.WriteFile(t.dir, traj)
 	if err != nil {
 		log.WithError(err).WithField("trajectory_id", traj.TrajectoryID).Error("store ATIF trajectory")
-		gberrors.New(context.WithoutCancel(ctx), t.sink, "agent.trajectory.store", err, gberrors.Meta{"trajectory_id": traj.TrajectoryID})
+		gberrors.New(context.WithoutCancel(ctx),
+			t.sink,
+			"agent.trajectory.store",
+			err,
+			gberrors.Meta{"trajectory_id": traj.TrajectoryID})
 		return
 	}
 	res.TrajectoryPath = path

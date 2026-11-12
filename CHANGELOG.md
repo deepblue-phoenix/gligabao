@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.195.3] - 2026-11-12
+
+### Changed
+- The struct, function definition and function call layout rules of `AGENTS.md` are applied to all Go code: keyed struct literals have one key/value per line; function definitions with 2 or more arguments, and calls with 3 or more, have one argument per line (the first stays on the name's line). Calls with 1 or 2 arguments stay on one line. Formatting only, no behaviour change.
+
 ## [0.195.2] - 2026-11-12
 
 ### Changed

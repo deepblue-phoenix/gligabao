@@ -8,10 +8,13 @@ import (
 	"testing"
 )
 
-func write(t *testing.T, content string) string {
+func write(t *testing.T,
+	content string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "c.toml")
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(p,
+		[]byte(content),
+		0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -186,37 +189,51 @@ func TestLoadPostgres(t *testing.T) {
 	}
 	t.Setenv(EnvPostgresDSN, "postgres://env/db")
 	if cfg, err = Load(write(t, "db_backend = \"postgres\"\n")); err != nil || cfg.PostgresDSN != "postgres://env/db" {
-		t.Fatalf("env DSN: %+v, %v", cfg, err)
+		t.Fatalf("env DSN: %+v, %v",
+			cfg,
+			err)
 	}
 }
 
 func TestLoadEval(t *testing.T) {
 	cfg, err := Load(write(t, ""))
 	if err != nil || cfg.EvalModeEnable {
-		t.Fatalf("default: %v %+v", err, cfg)
+		t.Fatalf("default: %v %+v",
+			err,
+			cfg)
 	}
 	if cfg, err = Load(write(t, "eval = true\n")); err != nil || !cfg.EvalModeEnable {
-		t.Fatalf("eval = true: %v %+v", err, cfg)
+		t.Fatalf("eval = true: %v %+v",
+			err,
+			cfg)
 	}
 }
 
 func TestLoadTraining(t *testing.T) {
 	cfg, err := Load(write(t, ""))
 	if err != nil || cfg.TrainingModeEnable {
-		t.Fatalf("default: %v %+v", err, cfg)
+		t.Fatalf("default: %v %+v",
+			err,
+			cfg)
 	}
 	if cfg, err = Load(write(t, "training = true\n")); err != nil || !cfg.TrainingModeEnable {
-		t.Fatalf("training = true: %v %+v", err, cfg)
+		t.Fatalf("training = true: %v %+v",
+			err,
+			cfg)
 	}
 }
 
 func TestTrainedModelDeployDir(t *testing.T) {
 	cfg, err := Load(write(t, ""))
 	if err != nil || cfg.TrainedModelDeployDir != "" {
-		t.Fatalf("default: %v %+v", err, cfg)
+		t.Fatalf("default: %v %+v",
+			err,
+			cfg)
 	}
 	if cfg, err = Load(write(t, `trained_model_deploy_dir = "/data/models"`+"\n")); err != nil || cfg.TrainedModelDeployDir != "/data/models" {
-		t.Fatalf("set: %v %+v", err, cfg)
+		t.Fatalf("set: %v %+v",
+			err,
+			cfg)
 	}
 }
 
@@ -247,14 +264,20 @@ func TestJevConfig(t *testing.T) {
 	t.Setenv(EnvJevBaseURL, "")
 	cfg, err := Load(write(t, ""))
 	if err != nil || cfg.JevKey != "" {
-		t.Fatalf("Jev must be off by default: %+v, %v", cfg, err)
+		t.Fatalf("Jev must be off by default: %+v, %v",
+			cfg,
+			err)
 	}
 	if cfg, err := Load(write(t, "jev_api_key = \"k\"\n")); err != nil || cfg.JevKey != "k" || cfg.JevBaseURL != "" {
-		t.Fatalf("a key alone must be enough: %+v, %v", cfg, err)
+		t.Fatalf("a key alone must be enough: %+v, %v",
+			cfg,
+			err)
 	}
 	cfg, err = Load(write(t, "jev_api_key = \"k\"\njev_base_url = \"http://jev/v1\"\njev_model = \"m\"\n"))
 	if err != nil || cfg.JevKey != "k" || cfg.JevBaseURL != "http://jev/v1" || cfg.JevModel != "m" {
-		t.Fatalf("got %+v, %v", cfg, err)
+		t.Fatalf("got %+v, %v",
+			cfg,
+			err)
 	}
 	t.Setenv(EnvJevKey, "envk")
 	t.Setenv(EnvJevBaseURL, "http://env/v1")
@@ -275,21 +298,37 @@ ontology_dirs = ["onto"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	eq := func(name string, got, want []string) {
+	eq := func(name string,
+		got,
+		want []string) {
 		t.Helper()
 		if len(got) != len(want) {
-			t.Fatalf("%s = %v, want %v", name, got, want)
+			t.Fatalf("%s = %v, want %v",
+				name,
+				got,
+				want)
 		}
 		for i := range got {
 			if got[i] != want[i] {
-				t.Fatalf("%s = %v, want %v", name, got, want)
+				t.Fatalf("%s = %v, want %v",
+					name,
+					got,
+					want)
 			}
 		}
 	}
-	eq("datasets", cfg.DatasetsTrainingDirs, []string{filepath.Join(base, "datasets"), "/abs/datasets"})
-	eq("evals_training", cfg.EvalsTrainingDirs, []string{filepath.Join(filepath.Dir(base), "evals_t")})
-	eq("evals_knowledge", cfg.EvalsKnowledgeDirs, []string{filepath.Join(base, "evals_k")})
-	eq("ontology", cfg.OntologyDirs, []string{filepath.Join(base, "onto")})
+	eq("datasets",
+		cfg.DatasetsTrainingDirs,
+		[]string{filepath.Join(base, "datasets"), "/abs/datasets"})
+	eq("evals_training",
+		cfg.EvalsTrainingDirs,
+		[]string{filepath.Join(filepath.Dir(base), "evals_t")})
+	eq("evals_knowledge",
+		cfg.EvalsKnowledgeDirs,
+		[]string{filepath.Join(base, "evals_k")})
+	eq("ontology",
+		cfg.OntologyDirs,
+		[]string{filepath.Join(base, "onto")})
 
 	if _, err := Load(write(t, `ontology_dirs = [""]`)); err == nil {
 		t.Error("an empty directory should be rejected")
@@ -320,7 +359,9 @@ func TestAgentDefsAndResearchCostCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.AgentDefsDir != filepath.Join(filepath.Dir(p), "my_agents") || cfg.ResearchMaxCostUSD != 7.5 {
-		t.Errorf("got %q %v", cfg.AgentDefsDir, cfg.ResearchMaxCostUSD)
+		t.Errorf("got %q %v",
+			cfg.AgentDefsDir,
+			cfg.ResearchMaxCostUSD)
 	}
 	if _, err := Load(write(t, "research_max_cost_usd = -1\n")); err == nil {
 		t.Error("a negative cap is invalid")

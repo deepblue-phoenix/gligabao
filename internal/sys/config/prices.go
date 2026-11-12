@@ -7,8 +7,15 @@ import "github.com/deepblue-phoenix/gligabao/internal/ai"
 func (c *Config) AIPrices() map[string]ai.Price {
 	out := make(map[string]ai.Price, len(c.Prices))
 	for model, p := range c.Prices {
-		ap := ai.Price{Input: p.Input, Output: p.Output, CacheWrite: p.Input, CacheRead: p.Input,
-			LongThreshold: p.LongThreshold, LongInput: p.LongInput, LongOutput: p.LongOutput}
+		ap := ai.Price{
+			Input:         p.Input,
+			Output:        p.Output,
+			CacheWrite:    p.Input,
+			CacheRead:     p.Input,
+			LongThreshold: p.LongThreshold,
+			LongInput:     p.LongInput,
+			LongOutput:    p.LongOutput,
+		}
 		if p.CacheWrite != nil {
 			ap.CacheWrite = *p.CacheWrite
 		}

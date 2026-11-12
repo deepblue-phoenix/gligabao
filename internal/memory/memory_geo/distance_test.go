@@ -16,13 +16,24 @@ func TestDistanceKm(t *testing.T) {
 		{90, 0, -90, 0, MaxDistanceKm, 5},                // pole to pole
 		{40.7128, -74.006, 35.6762, 139.6503, 10838, 20}, // New York - Tokyo
 	} {
-		if got := DistanceKm(c.lat1, c.lon1, c.lat2, c.lon2); math.Abs(got-c.want) > c.tol {
-			t.Errorf("DistanceKm(%v,%v,%v,%v) = %.1f, want %.1f", c.lat1, c.lon1, c.lat2, c.lon2, got, c.want)
+		if got := DistanceKm(c.lat1,
+			c.lon1,
+			c.lat2,
+			c.lon2); math.Abs(got-c.want) > c.tol {
+			t.Errorf("DistanceKm(%v,%v,%v,%v) = %.1f, want %.1f",
+				c.lat1,
+				c.lon1,
+				c.lat2,
+				c.lon2,
+				got,
+				c.want)
 		}
 	}
 }
 
-func inBox(b Box, lat, lon float64) bool {
+func inBox(b Box,
+	lat,
+	lon float64) bool {
 	if lat < b.MinLat || lat > b.MaxLat {
 		return false
 	}
@@ -40,9 +51,14 @@ func TestBoundingBox(t *testing.T) {
 	centers := [][2]float64{{0, 0}, {48.85, 2.35}, {10, 179.9}, {-10, -179.9}, {89.5, 20}, {-89.9, -100}, {70, 175}, {0, 180}, {0, -180}}
 	for _, c := range centers {
 		for _, r := range []float64{1, 50, 500, 3000, 15000, 25000} {
-			b := BoundingBox(c[0], c[1], r)
+			b := BoundingBox(c[0],
+				c[1],
+				r)
 			if len(b.Lon) == 0 || len(b.Lon) > 2 {
-				t.Fatalf("%v r=%v: %d lon ranges", c, r, len(b.Lon))
+				t.Fatalf("%v r=%v: %d lon ranges",
+					c,
+					r,
+					len(b.Lon))
 			}
 			for i := 0; i < 3000; i++ {
 				lat, lon := math.Asin(2*rng.Float64()-1)*180/math.Pi, rng.Float64()*360-180
@@ -51,16 +67,34 @@ func TestBoundingBox(t *testing.T) {
 					lat = math.Max(-90, math.Min(90, lat))
 					lon = math.Mod(lon+540, 360) - 180
 				}
-				if DistanceKm(c[0], c[1], lat, lon) <= r && !inBox(b, lat, lon) {
-					t.Fatalf("%v r=%v: (%v, %v) is %.1f km away but outside the box %+v", c, r, lat, lon, DistanceKm(c[0], c[1], lat, lon), b)
+				if DistanceKm(c[0],
+					c[1],
+					lat,
+					lon) <= r && !inBox(b,
+					lat,
+					lon) {
+					t.Fatalf("%v r=%v: (%v, %v) is %.1f km away but outside the box %+v",
+						c,
+						r,
+						lat,
+						lon,
+						DistanceKm(c[0],
+							c[1],
+							lat,
+							lon),
+						b)
 				}
 			}
 		}
 	}
-	if b := BoundingBox(10, 179.9, 50); len(b.Lon) != 2 {
+	if b := BoundingBox(10,
+		179.9,
+		50); len(b.Lon) != 2 {
 		t.Errorf("antimeridian: want two ranges, got %+v", b.Lon)
 	}
-	if b := BoundingBox(89.9, 0, 50); len(b.Lon) != 1 || b.Lon[0] != (LonRange{-180, 180}) || b.MaxLat != 90 {
+	if b := BoundingBox(89.9,
+		0,
+		50); len(b.Lon) != 1 || b.Lon[0] != (LonRange{-180, 180}) || b.MaxLat != 90 {
 		t.Errorf("pole: %+v", b)
 	}
 }

@@ -72,7 +72,8 @@ type SeriesData struct {
 
 // SeriesFetchFunc fetches the series of one entity. It returns no series and no error when it has nothing for the
 // entity (a normal outcome); an error when the fetch failed. It must honour ctx, and may be called concurrently.
-type SeriesFetchFunc func(ctx context.Context, req SeriesFetchRequest) ([]SeriesData, error)
+type SeriesFetchFunc func(ctx context.Context,
+	req SeriesFetchRequest) ([]SeriesData, error)
 
 // SeriesProvider is a source of timeseries.
 type SeriesProvider struct {
@@ -94,30 +95,53 @@ type SeriesProvider struct {
 // ResolveSeriesProviders validates the providers and returns a normalized copy (strings trimmed), sorted by name.
 func ResolveSeriesProviders(in []SeriesProvider) ([]SeriesProvider, error) {
 	if len(in) > MaxProviders {
-		return nil, fmt.Errorf("%w: at most %d providers", ErrInvalidProvider, MaxProviders)
+		return nil, fmt.Errorf("%w: at most %d providers",
+			ErrInvalidProvider,
+			MaxProviders)
 	}
-	out := make([]SeriesProvider, 0, len(in))
+	out := make([]SeriesProvider,
+		0,
+		len(in))
 	seen := map[string]bool{}
 	for i, p := range in {
 		p.Name, p.Description, p.QueryFormat = strings.TrimSpace(p.Name), strings.TrimSpace(p.Description), strings.TrimSpace(p.QueryFormat)
 		switch {
 		case p.Name == "" || len(p.Name) > MaxProviderNameLen || !providerNameRE.MatchString(p.Name):
-			return nil, fmt.Errorf("%w: providers[%d]: name %q must be 1-%d letters, digits, '_', '-' or '.'", ErrInvalidProvider, i, p.Name, MaxProviderNameLen)
+			return nil, fmt.Errorf("%w: providers[%d]: name %q must be 1-%d letters, digits, '_', '-' or '.'",
+				ErrInvalidProvider,
+				i,
+				p.Name,
+				MaxProviderNameLen)
 		case seen[p.Name]:
-			return nil, fmt.Errorf("%w: provider %q is registered twice", ErrInvalidProvider, p.Name)
+			return nil, fmt.Errorf("%w: provider %q is registered twice",
+				ErrInvalidProvider,
+				p.Name)
 		case p.Description == "":
-			return nil, fmt.Errorf("%w: provider %q needs a description (it tells the LLM when to use it)", ErrInvalidProvider, p.Name)
+			return nil, fmt.Errorf("%w: provider %q needs a description (it tells the LLM when to use it)",
+				ErrInvalidProvider,
+				p.Name)
 		case len(p.Description) > MaxProviderDescriptionLen:
-			return nil, fmt.Errorf("%w: provider %q: the description is longer than %d bytes", ErrInvalidProvider, p.Name, MaxProviderDescriptionLen)
+			return nil, fmt.Errorf("%w: provider %q: the description is longer than %d bytes",
+				ErrInvalidProvider,
+				p.Name,
+				MaxProviderDescriptionLen)
 		case len(p.QueryFormat) > MaxProviderQueryLen:
-			return nil, fmt.Errorf("%w: provider %q: the query format is longer than %d bytes", ErrInvalidProvider, p.Name, MaxProviderQueryLen)
+			return nil, fmt.Errorf("%w: provider %q: the query format is longer than %d bytes",
+				ErrInvalidProvider,
+				p.Name,
+				MaxProviderQueryLen)
 		case p.Fetch == nil:
-			return nil, fmt.Errorf("%w: provider %q has no Fetch callback", ErrInvalidProvider, p.Name)
+			return nil, fmt.Errorf("%w: provider %q has no Fetch callback",
+				ErrInvalidProvider,
+				p.Name)
 		}
 		seen[p.Name] = true
 		out = append(out, p)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i,
+		j int) bool {
+		return out[i].Name < out[j].Name
+	})
 	return out, nil
 }
 
@@ -137,7 +161,8 @@ type SeriesFetch struct {
 // checked and de-duplicated (all of them if none is named), the default window applied. It returns
 // ErrSeriesProvidersUnavailable if there is no provider, ErrInvalidSeries for an unknown name or a window out of range.
 // A nil f gives nil.
-func ResolveSeriesFetch(f *SeriesFetch, providers []SeriesProvider) (*SeriesFetch, error) {
+func ResolveSeriesFetch(f *SeriesFetch,
+	providers []SeriesProvider) (*SeriesFetch, error) {
 	if f == nil {
 		return nil, nil
 	}
@@ -150,12 +175,18 @@ func ResolveSeriesFetch(f *SeriesFetch, providers []SeriesProvider) (*SeriesFetc
 		known[p.Name] = true
 		all = append(all, p.Name)
 	}
-	out := &SeriesFetch{Before: f.Before, After: f.After}
+	out := &SeriesFetch{
+		Before: f.Before,
+		After:  f.After,
+	}
 	seen := map[string]bool{}
 	for _, n := range f.Providers {
 		n = strings.TrimSpace(n)
 		if !known[n] {
-			return nil, fmt.Errorf("%w: fetch: unknown provider %q (registered: %s)", ErrInvalidSeries, n, strings.Join(all, ", "))
+			return nil, fmt.Errorf("%w: fetch: unknown provider %q (registered: %s)",
+				ErrInvalidSeries,
+				n,
+				strings.Join(all, ", "))
 		}
 		if !seen[n] {
 			seen[n] = true

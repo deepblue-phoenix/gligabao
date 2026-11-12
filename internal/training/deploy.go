@@ -78,7 +78,8 @@ type DeployTrainedModelResult struct {
 
 // DeployTrainedModelFunc deploys one trained model. It runs synchronously: the request that asked for the deployment waits for
 // it. It must honour ctx and may be called concurrently. A returned error (or a panic) marks the deployment failed.
-type DeployTrainedModelFunc func(ctx context.Context, req DeployTrainedModelRequest) (DeployTrainedModelResult, error)
+type DeployTrainedModelFunc func(ctx context.Context,
+	req DeployTrainedModelRequest) (DeployTrainedModelResult, error)
 
 // TrainedModelDeployer is a named way of deploying trained models.
 type TrainedModelDeployer struct {
@@ -95,33 +96,53 @@ type TrainedModelDeployer struct {
 // malformed) and returns them sorted by name.
 func ResolveDeployers(list []TrainedModelDeployer) ([]TrainedModelDeployer, error) {
 	if len(list) > MaxDeployers {
-		return nil, fmt.Errorf("%w: at most %d deployers may be registered, got %d", ErrInvalidDeployer, MaxDeployers, len(list))
+		return nil, fmt.Errorf("%w: at most %d deployers may be registered, got %d",
+			ErrInvalidDeployer,
+			MaxDeployers,
+			len(list))
 	}
 	seen := map[string]bool{}
-	out := make([]TrainedModelDeployer, 0, len(list))
+	out := make([]TrainedModelDeployer,
+		0,
+		len(list))
 	for i, e := range list {
 		switch {
 		case e.Name == "" || len(e.Name) > MaxDeployerNameLen || !deployerNameRE.MatchString(e.Name):
-			return nil, fmt.Errorf("%w: deployer %d: name %q must be 1-%d letters, digits, '_', '-' or '.', starting with a letter or digit", ErrInvalidDeployer, i, e.Name, MaxDeployerNameLen)
+			return nil, fmt.Errorf("%w: deployer %d: name %q must be 1-%d letters, digits, '_', '-' or '.', starting with a letter or digit",
+				ErrInvalidDeployer,
+				i,
+				e.Name,
+				MaxDeployerNameLen)
 		case seen[e.Name]:
-			return nil, fmt.Errorf("%w: duplicate deployer name %q", ErrInvalidDeployer, e.Name)
+			return nil, fmt.Errorf("%w: duplicate deployer name %q",
+				ErrInvalidDeployer,
+				e.Name)
 		case e.Deploy == nil:
-			return nil, fmt.Errorf("%w: deployer %q has no Deploy function", ErrInvalidDeployer, e.Name)
+			return nil, fmt.Errorf("%w: deployer %q has no Deploy function",
+				ErrInvalidDeployer,
+				e.Name)
 		}
 		seen[e.Name] = true
 		out = append(out, e)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i,
+		j int) bool {
+		return out[i].Name < out[j].Name
+	})
 	return out, nil
 }
 
 // ModelFileFetcher reads the files of a trained model from where the sidecar keeps them; *sidecar.Client is one.
 type ModelFileFetcher interface {
-	DownloadModelFile(ctx context.Context, modelPath, file string, w io.Writer) (int64, error)
+	DownloadModelFile(ctx context.Context,
+		modelPath,
+		file string,
+		w io.Writer) (int64, error)
 }
 
 // ModelDir is the directory under root the files of trained model tm are fetched to: one directory per job, named after it.
-func ModelDir(root string, tm *trainingdb.TrainedModel) (string, error) {
+func ModelDir(root string,
+	tm *trainingdb.TrainedModel) (string, error) {
 	if !deployerNameRE.MatchString(tm.JobID) || strings.ContainsAny(tm.JobID, `/\`) {
 		return "", fmt.Errorf("job id %q is not usable as a directory name", tm.JobID)
 	}
@@ -138,7 +159,10 @@ var fetchLocks sync.Map // dir -> *sync.Mutex
 // FetchModelFiles makes sure dir holds the files of trained model tm, at the paths tm.Files lists, each with the recorded size and
 // sha256 (a file that is already there and matches is kept, the others are downloaded through f and verified). A file is
 // written under a temporary name and renamed when it is complete, so dir never holds a half-written file under its real name.
-func FetchModelFiles(ctx context.Context, f ModelFileFetcher, tm *trainingdb.TrainedModel, dir string) error {
+func FetchModelFiles(ctx context.Context,
+	f ModelFileFetcher,
+	tm *trainingdb.TrainedModel,
+	dir string) error {
 	if len(tm.Files) == 0 {
 		return errors.New("the trained model has no recorded files")
 	}
@@ -153,15 +177,22 @@ func FetchModelFiles(ctx context.Context, f ModelFileFetcher, tm *trainingdb.Tra
 		if fileMatches(target, file) {
 			continue
 		}
-		if err := fetchFile(ctx, f, tm.Path, file, target); err != nil {
-			return fmt.Errorf("fetch %s: %w", file.Path, err)
+		if err := fetchFile(ctx,
+			f,
+			tm.Path,
+			file,
+			target); err != nil {
+			return fmt.Errorf("fetch %s: %w",
+				file.Path,
+				err)
 		}
 	}
 	return nil
 }
 
 // fileMatches reports whether path is a file of the size and sha256 of want (the sha256 is not checked when none is recorded).
-func fileMatches(path string, want trainingdb.TrainedModelFile) bool {
+func fileMatches(path string,
+	want trainingdb.TrainedModelFile) bool {
 	st, err := os.Stat(path)
 	if err != nil || !st.Mode().IsRegular() || st.Size() != want.SizeBytes {
 		return false
@@ -181,7 +212,11 @@ func fileMatches(path string, want trainingdb.TrainedModelFile) bool {
 	return strings.EqualFold(hex.EncodeToString(h.Sum(nil)), want.SHA256)
 }
 
-func fetchFile(ctx context.Context, f ModelFileFetcher, modelPath string, file trainingdb.TrainedModelFile, target string) error {
+func fetchFile(ctx context.Context,
+	f ModelFileFetcher,
+	modelPath string,
+	file trainingdb.TrainedModelFile,
+	target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
@@ -191,7 +226,10 @@ func fetchFile(ctx context.Context, f ModelFileFetcher, modelPath string, file t
 	}
 	defer os.Remove(tmp.Name()) // a no-op once renamed
 	h := sha256.New()
-	n, err := f.DownloadModelFile(ctx, modelPath, file.Path, io.MultiWriter(tmp, h))
+	n, err := f.DownloadModelFile(ctx,
+		modelPath,
+		file.Path,
+		io.MultiWriter(tmp, h))
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
@@ -199,10 +237,14 @@ func fetchFile(ctx context.Context, f ModelFileFetcher, modelPath string, file t
 		return err
 	}
 	if n != file.SizeBytes {
-		return fmt.Errorf("got %d bytes, the model records %d", n, file.SizeBytes)
+		return fmt.Errorf("got %d bytes, the model records %d",
+			n,
+			file.SizeBytes)
 	}
 	if sum := hex.EncodeToString(h.Sum(nil)); file.SHA256 != "" && !strings.EqualFold(sum, file.SHA256) {
-		return fmt.Errorf("sha256 is %s, the model records %s", sum, file.SHA256)
+		return fmt.Errorf("sha256 is %s, the model records %s",
+			sum,
+			file.SHA256)
 	}
 	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
 		return err
@@ -234,7 +276,10 @@ func (u *deployUpdates) add(message string) {
 	if u.closed {
 		return
 	}
-	u.list = append(u.list, trainingdb.TrainedModelDeploymentUpdate{Time: time.Now().UTC(), Message: message})
+	u.list = append(u.list, trainingdb.TrainedModelDeploymentUpdate{
+		Time:    time.Now().UTC(),
+		Message: message,
+	})
 	if len(u.list) > MaxDeployUpdates {
 		u.list = u.list[len(u.list)-MaxDeployUpdates:]
 	}
@@ -276,7 +321,13 @@ type DeployRequest struct {
 // "completed". Errors are *Error: KindInvalid for an unknown deployer or bad options, KindUpstream when fetching the files or
 // the deployer fails (the deployment is recorded as failed), KindInternal. A system event training.model_deploy.completed or
 // .failed is emitted at the end.
-func DeployModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, deployers []TrainedModelDeployer, dir string, tm *trainingdb.TrainedModel, in DeployRequest) (*trainingdb.TrainedModelDeployment, error) {
+func DeployModel(ctx context.Context,
+	db *sql.DB,
+	f ModelFileFetcher,
+	deployers []TrainedModelDeployer,
+	dir string,
+	tm *trainingdb.TrainedModel,
+	in DeployRequest) (*trainingdb.TrainedModelDeployment, error) {
 	exp, err := findDeployer(deployers, in.Deployer)
 	if err != nil {
 		return nil, err
@@ -296,7 +347,13 @@ func DeployModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, deployers 
 
 	dbCtx := context.WithoutCancel(ctx) // the writes must outlive the request
 	l := log.WithFields(log.Fields{"model_id": tm.ID, "deployer": exp.Name})
-	id, err := trainingdb.RecordTrainedModelDeployment(dbCtx, db, trainingdb.TrainedModelDeployment{TrainedModelID: tm.ID, Deployer: exp.Name, Options: optionsJSON})
+	id, err := trainingdb.RecordTrainedModelDeployment(dbCtx,
+		db,
+		trainingdb.TrainedModelDeployment{
+			TrainedModelID: tm.ID,
+			Deployer:       exp.Name,
+			Options:        optionsJSON,
+		})
 	if err != nil {
 		l.WithError(err).Error("training: recording the deployment failed")
 		return nil, internalErr("failed to record the deployment", err)
@@ -309,31 +366,57 @@ func DeployModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, deployers 
 		liveDeployments.Delete(id)
 	}()
 	started := time.Now()
-	fail := func(msg string, causeErr error) error {
+	fail := func(msg string,
+		causeErr error) error {
 		updates.add("Failed: " + msg)
 		l.WithError(causeErr).Error("training: model deploy failed")
 		ms := time.Since(started).Milliseconds()
-		if err := trainingdb.FinishTrainedModelDeployment(dbCtx, db, id, trainingdb.TrainedModelDeploymentFailed, "", "", msg, ms); err != nil {
+		if err := trainingdb.FinishTrainedModelDeployment(dbCtx,
+			db,
+			id,
+			trainingdb.TrainedModelDeploymentFailed,
+			"",
+			"",
+			msg,
+			ms); err != nil {
 			l.WithError(err).Error("training: updating the deployment failed")
 		}
-		monitoring.EmitSystemEvent(dbCtx, "training.model_deploy.failed", monitoring.Event{
-			"model_id": tm.ID, "deploy_id": id, "deployer": exp.Name, "duration_ms": ms, "error": msg})
-		return &Error{KindUpstream, fmt.Sprintf("deploy %d failed: %s", id, msg), causeErr}
+		monitoring.EmitSystemEvent(dbCtx,
+			"training.model_deploy.failed",
+			monitoring.Event{
+				"model_id": tm.ID, "deploy_id": id, "deployer": exp.Name, "duration_ms": ms, "error": msg})
+		return &Error{KindUpstream, fmt.Sprintf("deploy %d failed: %s",
+			id,
+			msg), causeErr}
 	}
 
 	updates.add(fmt.Sprintf("Fetching the model's %d files from the sidecar", len(tm.Files)))
 	fctx, cancel := context.WithTimeout(ctx, FetchModelTimeout)
-	err = FetchModelFiles(fctx, f, tm, modelDir)
+	err = FetchModelFiles(fctx,
+		f,
+		tm,
+		modelDir)
 	cancel()
 	if err != nil {
 		return nil, fail("fetching the model's files failed: "+err.Error(), err)
 	}
-	if err := trainingdb.SetTrainedModelDeployDir(dbCtx, db, id, modelDir); err != nil {
+	if err := trainingdb.SetTrainedModelDeployDir(dbCtx,
+		db,
+		id,
+		modelDir); err != nil {
 		l.WithError(err).Error("training: updating the deployment failed")
 	}
 
 	updates.add(fmt.Sprintf("Files ready, running the %s deployer", exp.Name))
-	res, err := callDeployer(ctx, exp, DeployTrainedModelRequest{DeployID: id, Model: *tm, Dir: modelDir, Options: in.Options, Update: updates.add})
+	res, err := callDeployer(ctx,
+		exp,
+		DeployTrainedModelRequest{
+			DeployID: id,
+			Model:    *tm,
+			Dir:      modelDir,
+			Options:  in.Options,
+			Update:   updates.add,
+		})
 	if err != nil {
 		return nil, fail(err.Error(), err)
 	}
@@ -347,14 +430,25 @@ func DeployModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, deployers 
 	}
 	ms := time.Since(started).Milliseconds()
 	updates.add("Completed")
-	if err := trainingdb.FinishTrainedModelDeployment(dbCtx, db, id, trainingdb.TrainedModelDeploymentCompleted, res.Ref, details, "", ms); err != nil {
+	if err := trainingdb.FinishTrainedModelDeployment(dbCtx,
+		db,
+		id,
+		trainingdb.TrainedModelDeploymentCompleted,
+		res.Ref,
+		details,
+		"",
+		ms); err != nil {
 		l.WithError(err).Error("training: updating the deployment failed")
 		return nil, internalErr("the deployment completed but failed to record it", err)
 	}
-	monitoring.EmitSystemEvent(dbCtx, "training.model_deploy.completed", monitoring.Event{
-		"model_id": tm.ID, "deploy_id": id, "deployer": exp.Name, "duration_ms": ms})
+	monitoring.EmitSystemEvent(dbCtx,
+		"training.model_deploy.completed",
+		monitoring.Event{
+			"model_id": tm.ID, "deploy_id": id, "deployer": exp.Name, "duration_ms": ms})
 	l.WithFields(log.Fields{"ref": res.Ref, "duration_ms": ms}).Info("training: trained model deployed")
-	out, err := trainingdb.GetTrainedModelDeployment(dbCtx, db, id)
+	out, err := trainingdb.GetTrainedModelDeployment(dbCtx,
+		db,
+		id)
 	if err != nil {
 		return nil, internalErr("failed to read the deployment", err)
 	}
@@ -362,11 +456,14 @@ func DeployModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, deployers 
 	return out, nil
 }
 
-func findDeployer(deployers []TrainedModelDeployer, name string) (TrainedModelDeployer, error) {
+func findDeployer(deployers []TrainedModelDeployer,
+	name string) (TrainedModelDeployer, error) {
 	if len(deployers) == 0 {
 		return TrainedModelDeployer{}, invalidErr("no trained model deployer is registered")
 	}
-	names := make([]string, 0, len(deployers))
+	names := make([]string,
+		0,
+		len(deployers))
 	for _, e := range deployers {
 		if e.Name == name {
 			return e, nil
@@ -376,26 +473,40 @@ func findDeployer(deployers []TrainedModelDeployer, name string) (TrainedModelDe
 	if name == "" {
 		return TrainedModelDeployer{}, invalidErr("deployer is required: one of " + strings.Join(names, ", "))
 	}
-	return TrainedModelDeployer{}, invalidErr(fmt.Sprintf("unknown deployer %q: one of %s", name, strings.Join(names, ", ")))
+	return TrainedModelDeployer{}, invalidErr(fmt.Sprintf("unknown deployer %q: one of %s",
+		name,
+		strings.Join(names, ", ")))
 }
 
 // callDeployer runs the deployer; a panic is returned as an error.
-func callDeployer(ctx context.Context, exp TrainedModelDeployer, req DeployTrainedModelRequest) (res DeployTrainedModelResult, err error) {
+func callDeployer(ctx context.Context,
+	exp TrainedModelDeployer,
+	req DeployTrainedModelRequest) (res DeployTrainedModelResult, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("deployer %q panicked: %v", exp.Name, r)
+			err = fmt.Errorf("deployer %q panicked: %v",
+				exp.Name,
+				r)
 		}
 	}()
 	res, err = exp.Deploy(ctx, req)
 	if err != nil {
-		err = fmt.Errorf("deployer %q failed: %w", exp.Name, err)
+		err = fmt.Errorf("deployer %q failed: %w",
+			exp.Name,
+			err)
 	}
 	return res, err
 }
 
 // ListDeployments reads the deployments of trained model modelID, newest first, at most limit: a KindInternal Error if it cannot.
-func ListDeployments(ctx context.Context, db *sql.DB, modelID int64, limit int) ([]trainingdb.TrainedModelDeployment, error) {
-	list, err := trainingdb.ListTrainedModelDeployments(ctx, db, modelID, limit)
+func ListDeployments(ctx context.Context,
+	db *sql.DB,
+	modelID int64,
+	limit int) ([]trainingdb.TrainedModelDeployment, error) {
+	list, err := trainingdb.ListTrainedModelDeployments(ctx,
+		db,
+		modelID,
+		limit)
 	if err != nil {
 		log.WithError(err).Error("training: list trained model deployments failed")
 		return nil, internalErr("failed to list the deployments", err)

@@ -24,34 +24,49 @@ const (
 // ListModelsOf serves GET /v1/gb/training/models[?limit=<n>]: {"models": [...]}, the trained models,
 // newest first, at most limit (default 100, at most 500).
 func ListModelsOf(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		limit, ok := limitParam(w, r, trainedModelsDefaultLimit, trainedModelsMaxLimit)
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		limit, ok := limitParam(w,
+			r,
+			trainedModelsDefaultLimit,
+			trainedModelsMaxLimit)
 		if !ok {
 			return
 		}
-		models, err := trainingdb.ListTrainedModels(r.Context(), db, limit)
+		models, err := trainingdb.ListTrainedModels(r.Context(),
+			db,
+			limit)
 		if err != nil {
 			log.WithError(err).Error("training: list trained models failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to list the trained models")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to list the trained models")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"models": models})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"models": models})
 	}
 }
 
 // GetModelOf serves GET /v1/gb/training/models/{id}: one trained model (trainingdb.TrainedModel), 404 if unknown.
 func GetModelOf(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		m, err := core.GetModel(r.Context(), db, id)
+		m, err := core.GetModel(r.Context(),
+			db,
+			id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, m)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			m)
 	}
 }
 
@@ -63,8 +78,10 @@ func GetModelOf(db *sql.DB) http.HandlerFunc {
 // is ""). It can take minutes when the sidecar has to load the model. 404 is for an unknown model, 400 for a bad body, 503 when
 // the model has no hook and there is no sidecar, 502 when the hook or the sidecar fails (with its message when the generation
 // itself failed, e.g. the weights are gone from the sidecar's volume).
-func InferOf(db *sql.DB, router *core.InferRouter) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func InferOf(db *sql.DB,
+	router *core.InferRouter) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -74,33 +91,51 @@ func InferOf(db *sql.DB, router *core.InferRouter) http.HandlerFunc {
 			MaxTokens   int      `json:"max_tokens"`
 			Temperature *float64 `json:"temperature"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxInferBody)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
+		if err := json.NewDecoder(http.MaxBytesReader(w,
+			r.Body,
+			maxInferBody)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body")
 			return
 		}
-		req := core.InferRequest{Prompt: in.Prompt, MaxTokens: in.MaxTokens, Temperature: in.Temperature}
+		req := core.InferRequest{
+			Prompt:      in.Prompt,
+			MaxTokens:   in.MaxTokens,
+			Temperature: in.Temperature,
+		}
 		if err := req.Validate(); err != nil {
 			writeErr(w, err)
 			return
 		}
-		m, err := core.GetModel(r.Context(), db, id)
+		m, err := core.GetModel(r.Context(),
+			db,
+			id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
 		inf, hook := router.For(m)
 		if inf == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"sidecar is not active")
 			return
 		}
-		out, err := core.Infer(r.Context(), db, inf, m, req)
+		out, err := core.Infer(r.Context(),
+			db,
+			inf,
+			m,
+			req)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"id": out.ID, "model_id": out.ModelID, "response": out.Response,
-			"status": trainingdb.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens,
-			"duration_ms": out.DurationMS, "cold_start": out.ColdStart, "load_seconds": out.LoadSeconds, "hook": hook})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"id": out.ID, "model_id": out.ModelID, "response": out.Response,
+				"status": trainingdb.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens,
+				"duration_ms": out.DurationMS, "cold_start": out.ColdStart, "load_seconds": out.LoadSeconds, "hook": hook})
 	}
 }
 
@@ -108,26 +143,39 @@ func InferOf(db *sql.DB, router *core.InferRouter) http.HandlerFunc {
 // inference requests made to trained model {id} (trainingdb.TrainedModelInference: prompt, response, status, error, ...),
 // newest first, at most limit (default 100, at most 500). 404 for an unknown model.
 func ListInferencesOf(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		limit, ok := limitParam(w, r, trainedModelsDefaultLimit, trainedModelsMaxLimit)
+		limit, ok := limitParam(w,
+			r,
+			trainedModelsDefaultLimit,
+			trainedModelsMaxLimit)
 		if !ok {
 			return
 		}
-		if _, err := core.GetModel(r.Context(), db, id); err != nil {
+		if _, err := core.GetModel(r.Context(),
+			db,
+			id); err != nil {
 			writeErr(w, err)
 			return
 		}
-		list, err := trainingdb.ListTrainedModelInferences(r.Context(), db, id, limit)
+		list, err := trainingdb.ListTrainedModelInferences(r.Context(),
+			db,
+			id,
+			limit)
 		if err != nil {
 			log.WithError(err).Error("training: list inference requests failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to list the inference requests")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to list the inference requests")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"inferences": list})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"inferences": list})
 	}
 }
 
@@ -138,8 +186,12 @@ func ListInferencesOf(db *sql.DB) http.HandlerFunc {
 // status "completed", ref, details, dir, ...). The request takes as long as fetching and the deployer take, minutes for a large
 // model. 404 is for an unknown model, 400 for a bad body, an unknown deployer or none registered, 503 for a nil fetcher (no
 // sidecar), 502 when fetching the files or the deployer fails (the failed deployment is stored: see ListDeploymentsOf).
-func DeployOf(db *sql.DB, f core.ModelFileFetcher, deployers []core.TrainedModelDeployer, dir string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func DeployOf(db *sql.DB,
+	f core.ModelFileFetcher,
+	deployers []core.TrainedModelDeployer,
+	dir string) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -148,25 +200,44 @@ func DeployOf(db *sql.DB, f core.ModelFileFetcher, deployers []core.TrainedModel
 			Deployer string         `json:"deployer"`
 			Options  map[string]any `json:"options"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, core.MaxDeployOptionsBytes+1024)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
+		if err := json.NewDecoder(http.MaxBytesReader(w,
+			r.Body,
+			core.MaxDeployOptionsBytes+1024)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid JSON body")
 			return
 		}
-		m, err := core.GetModel(r.Context(), db, id)
+		m, err := core.GetModel(r.Context(),
+			db,
+			id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
 		if f == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
+			httputil.Error(w,
+				http.StatusServiceUnavailable,
+				"sidecar is not active")
 			return
 		}
-		out, err := core.DeployModel(r.Context(), db, f, deployers, dir, m, core.DeployRequest{Deployer: in.Deployer, Options: in.Options})
+		out, err := core.DeployModel(r.Context(),
+			db,
+			f,
+			deployers,
+			dir,
+			m,
+			core.DeployRequest{
+				Deployer: in.Deployer,
+				Options:  in.Options,
+			})
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -174,25 +245,36 @@ func DeployOf(db *sql.DB, f core.ModelFileFetcher, deployers []core.TrainedModel
 // (trainingdb.TrainedModelDeployment: deployer, status, ref, details, error, ...), newest first, at most limit (default 100, at most
 // 500), failed ones included. 404 for an unknown model.
 func ListDeploymentsOf(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		limit, ok := limitParam(w, r, trainedModelsDefaultLimit, trainedModelsMaxLimit)
+		limit, ok := limitParam(w,
+			r,
+			trainedModelsDefaultLimit,
+			trainedModelsMaxLimit)
 		if !ok {
 			return
 		}
-		if _, err := core.GetModel(r.Context(), db, id); err != nil {
+		if _, err := core.GetModel(r.Context(),
+			db,
+			id); err != nil {
 			writeErr(w, err)
 			return
 		}
-		list, err := core.ListDeployments(r.Context(), db, id, limit)
+		list, err := core.ListDeployments(r.Context(),
+			db,
+			id,
+			limit)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"deployments": list})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"deployments": list})
 	}
 }
 
@@ -204,12 +286,20 @@ func ListDeployersOf(deployers []core.TrainedModelDeployer) http.HandlerFunc {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
-	list := make([]deployer, 0, len(deployers))
+	list := make([]deployer,
+		0,
+		len(deployers))
 	for _, e := range deployers {
-		list = append(list, deployer{Name: e.Name, Description: e.Description})
+		list = append(list, deployer{
+			Name:        e.Name,
+			Description: e.Description,
+		})
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"deployers": list})
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"deployers": list})
 	}
 }
 
@@ -222,11 +312,20 @@ func ListInferenceHooksOf(hooks []core.TrainedModelInferenceHook) http.HandlerFu
 		Description string `json:"description"`
 		Model       string `json:"model"`
 	}
-	list := make([]hook, 0, len(hooks))
+	list := make([]hook,
+		0,
+		len(hooks))
 	for _, h := range hooks {
-		list = append(list, hook{Name: h.Name, Description: h.Description, Model: h.Model})
+		list = append(list, hook{
+			Name:        h.Name,
+			Description: h.Description,
+			Model:       h.Model,
+		})
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"hooks": list})
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"hooks": list})
 	}
 }

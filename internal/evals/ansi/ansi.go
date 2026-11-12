@@ -15,14 +15,22 @@ func New(f *os.File) Palette {
 		return Palette{}
 	}
 	if os.Getenv("FORCE_COLOR") != "" {
-		return Palette{on: true}
+		return Palette{
+			on: true,
+		}
 	}
 	st, err := f.Stat()
-	return Palette{on: err == nil && st.Mode()&os.ModeCharDevice != 0}
+	return Palette{
+		on: err == nil && st.Mode()&os.ModeCharDevice != 0,
+	}
 }
 
 // On makes a palette that always colours (for tests).
-func On() Palette { return Palette{on: true} }
+func On() Palette {
+	return Palette{
+		on: true,
+	}
+}
 
 const (
 	reset  = "\033[0m"
@@ -32,12 +40,15 @@ const (
 	dim    = "\033[2m"
 )
 
-func (p Palette) wrap(code, s string) string {
+func (p Palette) wrap(code,
+	s string) string {
 	if !p.on || s == "" {
 		return s
 	}
 	// Nested colours: after an inner reset the outer colour continues.
-	return code + strings.ReplaceAll(s, reset, reset+code) + reset
+	return code + strings.ReplaceAll(s,
+		reset,
+		reset+code) + reset
 }
 
 // Red colours s red (failures).
@@ -53,7 +64,8 @@ func (p Palette) Yellow(s string) string { return p.wrap(yellow, s) }
 func (p Palette) Dim(s string) string { return p.wrap(dim, s) }
 
 // Verdict colours s green if ok, else red.
-func (p Palette) Verdict(ok bool, s string) string {
+func (p Palette) Verdict(ok bool,
+	s string) string {
 	if ok {
 		return p.Green(s)
 	}

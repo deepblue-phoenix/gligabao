@@ -16,19 +16,41 @@ import (
 
 func TestAuditATrainedModel(t *testing.T) { audittest.Run(t, testAuditATrainedModel) }
 
-func testAuditATrainedModel(t *testing.T, d *sql.DB, ops training_audits.Ops) {
+func testAuditATrainedModel(t *testing.T,
+	d *sql.DB,
+	ops training_audits.Ops) {
 	ctx := context.Background()
-	mid := audittest.RecordModel(t, d, "jobaudit1", "mine.jsonl")
-	sc, judge := &audittest.Sidecar{Wrong: map[string]bool{"q3": true}}, &audittest.Judge{}
-	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 5)}, sc, judge)
+	mid := audittest.RecordModel(t,
+		d,
+		"jobaudit1",
+		"mine.jsonl")
+	sc, judge := &audittest.Sidecar{
+		Wrong: map[string]bool{"q3": true},
+	}, &audittest.Judge{}
+	m := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{audittest.DatasetDir(t, 5)},
+		sc,
+		judge)
 
 	temp := 0.2
-	started, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 2, JudgeModel: "my-judge", MaxTokens: 77, Temperature: &temp})
+	started, err := m.Start(ctx,
+		mid,
+		training_audits.Options{
+			BatchSize:   2,
+			JudgeModel:  "my-judge",
+			MaxTokens:   77,
+			Temperature: &temp,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if started.ID == 0 || started.Status != core.StatusRunning || started.TrainedModelID != mid || started.Dataset != "mine" || len(started.DatasetSHA256) != 64 ||
-		started.Counts != (core.Counts{Total: 5, Pending: 5}) || started.StartedAt == nil || started.FinishedAt != nil ||
+		started.Counts != (core.Counts{
+			Total:   5,
+			Pending: 5,
+		}) || started.StartedAt == nil || started.FinishedAt != nil ||
 		started.Params["batch_size"] != 2.0 || started.Params["max_tokens"] != 77.0 || started.Params["judge_model"] != "my-judge" {
 		t.Fatalf("started: %+v", started)
 	}
@@ -38,16 +60,33 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Status != core.StatusCompleted || run.FinishedAt == nil || run.Error != "" || run.Counts != (core.Counts{Total: 5, Completed: 5}) {
+	if run.Status != core.StatusCompleted || run.FinishedAt == nil || run.Error != "" || run.Counts != (core.Counts{
+		Total:     5,
+		Completed: 5,
+	}) {
 		t.Fatalf("finished: %+v", run)
 	}
-	stats := core.AuditStats{JudgeModel: "judge-model", NumAnswered: 5, NumJudged: 5, NumCorrect: 4, NumIncorrect: 1, ScoreSum: 21, NumBatches: 3,
-		JudgeCalls: 3, JudgeInputTokens: 150, JudgeOutputTokens: 60}
+	stats := core.AuditStats{
+		JudgeModel:        "judge-model",
+		NumAnswered:       5,
+		NumJudged:         5,
+		NumCorrect:        4,
+		NumIncorrect:      1,
+		ScoreSum:          21,
+		NumBatches:        3,
+		JudgeCalls:        3,
+		JudgeInputTokens:  150,
+		JudgeOutputTokens: 60,
+	}
 	if run.AuditStats != stats || run.CostUSD != 1.5 {
-		t.Fatalf("stats: %+v cost %v", run.AuditStats, run.CostUSD)
+		t.Fatalf("stats: %+v cost %v",
+			run.AuditStats,
+			run.CostUSD)
 	}
 	if fmt.Sprint(judge.Sizes) != "[2 2 1]" || judge.Model != "my-judge" {
-		t.Fatalf("judge: sizes %v, model %q", judge.Sizes, judge.Model)
+		t.Fatalf("judge: sizes %v, model %q",
+			judge.Sizes,
+			judge.Model)
 	}
 	cs := run.CaseRuns
 	if len(cs) != 5 || cs[3].Response != "wrong" || cs[3].JudgeScore == nil || *cs[3].JudgeScore != 1 || cs[0].Reference != "a0" || cs[0].JudgeReason != "because" ||
@@ -56,7 +95,9 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	}
 	for i, c := range cs {
 		if c.Idx != i {
-			t.Errorf("case run %d has idx %d", i, c.Idx)
+			t.Errorf("case run %d has idx %d",
+				i,
+				c.Idx)
 		}
 	}
 	// The model got the dataset's questions on its own weights, with the settings of the audit.
@@ -68,33 +109,65 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	// The judge's calls are recorded like the other LLM calls.
 	var n int
 	if err := d.QueryRow(`SELECT count(*) FROM gb_inferences WHERE type = 'training_audit_judge' AND stage = 'judge'`).Scan(&n); err != nil || n != 3 {
-		t.Fatalf("recorded judge calls: %d %v", n, err)
+		t.Fatalf("recorded judge calls: %d %v",
+			n,
+			err)
 	}
 
 	// The model's audits are listed, newest first, and run again.
-	second, err := m.Start(ctx, mid, training_audits.Options{Limit: 3})
+	second, err := m.Start(ctx,
+		mid,
+		training_audits.Options{
+			Limit: 3,
+		})
 	if err != nil || second.Counts.Total != 3 {
-		t.Fatalf("second audit: %+v %v", second, err)
+		t.Fatalf("second audit: %+v %v",
+			second,
+			err)
 	}
 	m.Wait()
-	list, err := m.ListRuns(ctx, mid, 10)
+	list, err := m.ListRuns(ctx,
+		mid,
+		10)
 	if err != nil || len(list) != 2 || list[0].ID != second.ID || list[0].Status != core.StatusCompleted || list[0].CaseRuns != nil || list[1].ID != started.ID {
-		t.Fatalf("list: %+v %v", list, err)
+		t.Fatalf("list: %+v %v",
+			list,
+			err)
 	}
-	if list, err = m.ListRuns(ctx, mid, 1); err != nil || len(list) != 1 {
-		t.Fatalf("limited list: %+v %v", list, err)
+	if list, err = m.ListRuns(ctx,
+		mid,
+		1); err != nil || len(list) != 1 {
+		t.Fatalf("limited list: %+v %v",
+			list,
+			err)
 	}
 }
 
 func TestAuditRefusals(t *testing.T) { audittest.Run(t, testAuditRefusals) }
 
-func testAuditRefusals(t *testing.T, d *sql.DB, ops training_audits.Ops) {
+func testAuditRefusals(t *testing.T,
+	d *sql.DB,
+	ops training_audits.Ops) {
 	ctx := context.Background()
 	dir := audittest.DatasetDir(t, 2)
-	ok := audittest.RecordModel(t, d, "j-ok", "mine.jsonl")
-	noDataset := audittest.RecordModel(t, d, "j-none", "")
-	gone := audittest.RecordModel(t, d, "j-gone", "deleted.jsonl")
-	m := training_audits.NewManager(ctx, d, ops, []string{dir}, &audittest.Sidecar{}, &audittest.Judge{})
+	ok := audittest.RecordModel(t,
+		d,
+		"j-ok",
+		"mine.jsonl")
+	noDataset := audittest.RecordModel(t,
+		d,
+		"j-none",
+		"")
+	gone := audittest.RecordModel(t,
+		d,
+		"j-gone",
+		"deleted.jsonl")
+	m := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{dir},
+		&audittest.Sidecar{},
+		&audittest.Judge{})
 
 	for _, tc := range []struct {
 		name  string
@@ -106,17 +179,29 @@ func testAuditRefusals(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 		{"unknown model", 999, training_audits.Options{}, training_audits.KindNotFound, "unknown trained model"},
 		{"default dataset", noDataset, training_audits.Options{}, training_audits.KindInvalid, "default dataset"},
 		{"dataset gone", gone, training_audits.Options{}, training_audits.KindInvalid, "not in the training datasets directory"},
-		{"bad batch size", ok, training_audits.Options{BatchSize: 99}, training_audits.KindInvalid, "batch size"},
-		{"negative limit", ok, training_audits.Options{Limit: -1}, training_audits.KindInvalid, "limit"},
-		{"too many tokens", ok, training_audits.Options{MaxTokens: 1 << 20}, training_audits.KindInvalid, "max_tokens"},
+		{"bad batch size", ok, training_audits.Options{
+			BatchSize: 99,
+		}, training_audits.KindInvalid, "batch size"},
+		{"negative limit", ok, training_audits.Options{
+			Limit: -1,
+		}, training_audits.KindInvalid, "limit"},
+		{"too many tokens", ok, training_audits.Options{
+			MaxTokens: 1 << 20,
+		}, training_audits.KindInvalid, "max_tokens"},
 	} {
-		_, err := m.Start(ctx, tc.model, tc.opts)
+		_, err := m.Start(ctx,
+			tc.model,
+			tc.opts)
 		var e *training_audits.Error
 		if !errors.As(err, &e) || e.Kind != tc.kind || !strings.Contains(e.Msg, tc.msg) {
-			t.Errorf("%s: %v", tc.name, err)
+			t.Errorf("%s: %v",
+				tc.name,
+				err)
 		}
 	}
-	if _, err := m.ListRuns(ctx, 999, 10); !isKind(err, training_audits.KindNotFound) {
+	if _, err := m.ListRuns(ctx,
+		999,
+		10); !isKind(err, training_audits.KindNotFound) {
 		t.Errorf("list of an unknown model: %v", err)
 	}
 	if _, err := m.GetRun(ctx, 999); !isKind(err, training_audits.KindNotFound) {
@@ -128,38 +213,75 @@ func testAuditRefusals(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	if _, err := m.Watch(ctx, 999); !isKind(err, training_audits.KindNotFound) {
 		t.Errorf("watch of an unknown audit: %v", err)
 	}
-	if rs, _ := ops.Store.ListAuditRuns(ctx, d, 0, 0); len(rs) != 0 {
+	if rs, _ := ops.Store.ListAuditRuns(ctx,
+		d,
+		0,
+		0); len(rs) != 0 {
 		t.Errorf("a refused audit was recorded: %+v", rs)
 	}
 
 	// Without a sidecar or an LLM nothing starts.
-	if _, err := training_audits.NewManager(ctx, d, ops, []string{dir}, nil, &audittest.Judge{}).Start(ctx, ok, training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
+	if _, err := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{dir},
+		nil,
+		&audittest.Judge{}).Start(ctx,
+		ok,
+		training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
 		t.Errorf("no sidecar: %v", err)
 	}
-	if _, err := training_audits.NewManager(ctx, d, ops, []string{dir}, &audittest.Sidecar{}, nil).Start(ctx, ok, training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
+	if _, err := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{dir},
+		&audittest.Sidecar{},
+		nil).Start(ctx,
+		ok,
+		training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
 		t.Errorf("no LLM: %v", err)
 	}
 }
 
-func isKind(err error, k training_audits.Kind) bool {
+func isKind(err error,
+	k training_audits.Kind) bool {
 	var e *training_audits.Error
 	return errors.As(err, &e) && e.Kind == k
 }
 
 func TestAuditOneAtATimeAndCancel(t *testing.T) { audittest.Run(t, testAuditOneAtATimeAndCancel) }
 
-func testAuditOneAtATimeAndCancel(t *testing.T, d *sql.DB, ops training_audits.Ops) {
+func testAuditOneAtATimeAndCancel(t *testing.T,
+	d *sql.DB,
+	ops training_audits.Ops) {
 	ctx := context.Background()
-	mid := audittest.RecordModel(t, d, "j-cancel", "mine.jsonl")
-	sc := &audittest.Sidecar{Block: make(chan struct{}), Started: make(chan struct{}, 1)}
-	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 6)}, sc, &audittest.Judge{})
+	mid := audittest.RecordModel(t,
+		d,
+		"j-cancel",
+		"mine.jsonl")
+	sc := &audittest.Sidecar{
+		Block:   make(chan struct{}),
+		Started: make(chan struct{}, 1),
+	}
+	m := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{audittest.DatasetDir(t, 6)},
+		sc,
+		&audittest.Judge{})
 
-	run, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 3})
+	run, err := m.Start(ctx,
+		mid,
+		training_audits.Options{
+			BatchSize: 3,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	<-sc.Started
-	if _, err := m.Start(ctx, mid, training_audits.Options{}); !isKind(err, training_audits.KindConflict) {
+	if _, err := m.Start(ctx,
+		mid,
+		training_audits.Options{}); !isKind(err, training_audits.KindConflict) {
 		t.Fatalf("second start while running: %v", err)
 	}
 	if _, err := m.CancelRun(ctx, run.ID); err != nil {
@@ -171,15 +293,25 @@ func testAuditOneAtATimeAndCancel(t *testing.T, d *sql.DB, ops training_audits.O
 		t.Fatalf("cancelled: %+v", got)
 	}
 	// The question in flight was reached and is kept as cancelled; the rest were never reached.
-	if want := (core.Counts{Total: 6, Pending: 5, Cancelled: 1}); got.Counts != want || len(got.CaseRuns) != 1 || got.CaseRuns[0].Status != core.StatusCancelled {
-		t.Fatalf("cancelled: counts %+v, case runs %+v", got.Counts, got.CaseRuns)
+	if want := (core.Counts{
+		Total:     6,
+		Pending:   5,
+		Cancelled: 1,
+	}); got.Counts != want || len(got.CaseRuns) != 1 || got.CaseRuns[0].Status != core.StatusCancelled {
+		t.Fatalf("cancelled: counts %+v, case runs %+v",
+			got.Counts,
+			got.CaseRuns)
 	}
 	if _, err := m.CancelRun(ctx, run.ID); !isKind(err, training_audits.KindConflict) {
 		t.Errorf("cancel of a finished audit: %v", err)
 	}
 	// The model is free again.
 	close(sc.Block)
-	again, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 3})
+	again, err := m.Start(ctx,
+		mid,
+		training_audits.Options{
+			BatchSize: 3,
+		})
 	if err != nil {
 		t.Fatalf("start after the cancel: %v", err)
 	}
@@ -191,12 +323,28 @@ func testAuditOneAtATimeAndCancel(t *testing.T, d *sql.DB, ops training_audits.O
 
 func TestAuditFailsWhenTheModelDoes(t *testing.T) { audittest.Run(t, testAuditFailsWhenTheModelDoes) }
 
-func testAuditFailsWhenTheModelDoes(t *testing.T, d *sql.DB, ops training_audits.Ops) {
+func testAuditFailsWhenTheModelDoes(t *testing.T,
+	d *sql.DB,
+	ops training_audits.Ops) {
 	ctx := context.Background()
-	mid := audittest.RecordModel(t, d, "j-fail", "mine.jsonl")
-	sc := &audittest.Sidecar{Fail: map[string]bool{"q0": true, "q1": true, "q2": true, "q3": true, "q4": true, "q5": true}}
-	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 8)}, sc, &audittest.Judge{})
-	run, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 2})
+	mid := audittest.RecordModel(t,
+		d,
+		"j-fail",
+		"mine.jsonl")
+	sc := &audittest.Sidecar{
+		Fail: map[string]bool{"q0": true, "q1": true, "q2": true, "q3": true, "q4": true, "q5": true},
+	}
+	m := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{audittest.DatasetDir(t, 8)},
+		sc,
+		&audittest.Judge{})
+	run, err := m.Start(ctx,
+		mid,
+		training_audits.Options{
+			BatchSize: 2,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,29 +353,59 @@ func testAuditFailsWhenTheModelDoes(t *testing.T, d *sql.DB, ops training_audits
 	if got.Status != core.StatusErrored || !strings.Contains(got.Error, "model failed to answer 2 batches in a row") || !strings.Contains(got.Error, "out of memory") {
 		t.Fatalf("errored: %+v", got)
 	}
-	if want := (core.Counts{Total: 8, Pending: 4, Errored: 4}); got.Counts != want || len(got.CaseRuns) != 4 || got.CaseRuns[0].Status != core.StatusErrored ||
+	if want := (core.Counts{
+		Total:   8,
+		Pending: 4,
+		Errored: 4,
+	}); got.Counts != want || len(got.CaseRuns) != 4 || got.CaseRuns[0].Status != core.StatusErrored ||
 		got.CaseRuns[0].Error != "model: out of memory" {
-		t.Fatalf("counts %+v, case runs %+v", got.Counts, got.CaseRuns)
+		t.Fatalf("counts %+v, case runs %+v",
+			got.Counts,
+			got.CaseRuns)
 	}
 }
 
 func TestAuditsInterruptedByARestart(t *testing.T) { audittest.Run(t, testAuditsInterruptedByARestart) }
 
-func testAuditsInterruptedByARestart(t *testing.T, d *sql.DB, ops training_audits.Ops) {
+func testAuditsInterruptedByARestart(t *testing.T,
+	d *sql.DB,
+	ops training_audits.Ops) {
 	ctx := context.Background()
-	mid := audittest.RecordModel(t, d, "j-restart", "mine.jsonl")
-	r := &core.AuditRun{TrainedModelID: mid, Dataset: "mine", Status: core.StatusRunning}
-	if err := ops.Store.CreateAuditRun(ctx, d, r); err != nil {
+	mid := audittest.RecordModel(t,
+		d,
+		"j-restart",
+		"mine.jsonl")
+	r := &core.AuditRun{
+		TrainedModelID: mid,
+		Dataset:        "mine",
+		Status:         core.StatusRunning,
+	}
+	if err := ops.Store.CreateAuditRun(ctx,
+		d,
+		r); err != nil {
 		t.Fatal(err)
 	}
-	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 1)}, &audittest.Sidecar{}, &audittest.Judge{})
+	m := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{audittest.DatasetDir(t, 1)},
+		&audittest.Sidecar{},
+		&audittest.Judge{})
 	got, err := m.GetRun(ctx, r.ID)
 	if err != nil || got.Status != core.StatusErrored || !strings.Contains(got.Error, "restarted") || got.FinishedAt == nil {
-		t.Fatalf("%+v %v", got, err)
+		t.Fatalf("%+v %v",
+			got,
+			err)
 	}
 	// A run that nothing runs, but that is marked running, is cancelled by the cancel.
-	r2 := &core.AuditRun{TrainedModelID: mid, Dataset: "mine", Status: core.StatusRunning}
-	if err := ops.Store.CreateAuditRun(ctx, d, r2); err != nil {
+	r2 := &core.AuditRun{
+		TrainedModelID: mid,
+		Dataset:        "mine",
+		Status:         core.StatusRunning,
+	}
+	if err := ops.Store.CreateAuditRun(ctx,
+		d,
+		r2); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.CancelRun(ctx, r2.ID); err != nil {
@@ -240,12 +418,29 @@ func testAuditsInterruptedByARestart(t *testing.T, d *sql.DB, ops training_audit
 
 func TestWatchAnAudit(t *testing.T) { audittest.Run(t, testWatchAnAudit) }
 
-func testWatchAnAudit(t *testing.T, d *sql.DB, ops training_audits.Ops) {
+func testWatchAnAudit(t *testing.T,
+	d *sql.DB,
+	ops training_audits.Ops) {
 	ctx := context.Background()
-	mid := audittest.RecordModel(t, d, "j-watch", "mine.jsonl")
-	sc := &audittest.Sidecar{Block: make(chan struct{}), Started: make(chan struct{}, 1)}
-	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 4)}, sc, &audittest.Judge{})
-	run, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 2})
+	mid := audittest.RecordModel(t,
+		d,
+		"j-watch",
+		"mine.jsonl")
+	sc := &audittest.Sidecar{
+		Block:   make(chan struct{}),
+		Started: make(chan struct{}, 1),
+	}
+	m := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{audittest.DatasetDir(t, 4)},
+		sc,
+		&audittest.Judge{})
+	run, err := m.Start(ctx,
+		mid,
+		training_audits.Options{
+			BatchSize: 2,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +451,9 @@ func testWatchAnAudit(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	}
 	defer w.Close()
 	if w.Events == nil || w.Run.ID != run.ID || len(w.CaseRuns) != 0 {
-		t.Fatalf("snapshot of an audit that just started: %+v %d", w.Run, len(w.CaseRuns))
+		t.Fatalf("snapshot of an audit that just started: %+v %d",
+			w.Run,
+			len(w.CaseRuns))
 	}
 	close(sc.Block)
 
@@ -304,6 +501,8 @@ loop:
 	}
 	defer w2.Close()
 	if w2.Events != nil || w2.Run.Status != core.StatusCompleted || len(w2.CaseRuns) != 4 || w2.CaseRuns[3].Idx != 3 {
-		t.Errorf("snapshot of a finished audit: %+v %+v", w2.Run, w2.CaseRuns)
+		t.Errorf("snapshot of a finished audit: %+v %+v",
+			w2.Run,
+			w2.CaseRuns)
 	}
 }

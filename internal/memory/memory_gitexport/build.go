@@ -101,7 +101,8 @@ type commitStats struct {
 // Write builds the repository of the dataset and writes it to sink. The repository has a root commit (a README), then one
 // commit per remember call, oldest first, and, only if some entities or facts have no source artifact (their artifact
 // was deleted), a last commit with them.
-func Write(in Input, sink Sink) (*Result, error) {
+func Write(in Input,
+	sink Sink) (*Result, error) {
 	st := newStore(sink)
 	byID := make(map[int64]graph.Artifact, len(in.Artifacts))
 	for _, a := range in.Artifacts {
@@ -132,7 +133,8 @@ func Write(in Input, sink Sink) (*Result, error) {
 			}
 		}
 	}
-	sort.Slice(roots, func(i, j int) bool {
+	sort.Slice(roots, func(i,
+		j int) bool {
 		if !roots[i].CreatedAt.Equal(roots[j].CreatedAt) {
 			return roots[i].CreatedAt.Before(roots[j].CreatedAt)
 		}
@@ -153,11 +155,17 @@ func Write(in Input, sink Sink) (*Result, error) {
 	// Entities and edges, with the commit each first shows up in.
 	ents := make(map[int64]*entState, len(in.Entities))
 	for _, e := range in.Entities {
-		ents[e.ID] = &entState{e: e, appear: orphan}
+		ents[e.ID] = &entState{
+			e:      e,
+			appear: orphan,
+		}
 	}
 	edges := make(map[int64]*edgeState, len(in.Edges))
 	for _, e := range in.Edges {
-		edges[e.ID] = &edgeState{e: e, appear: orphan}
+		edges[e.ID] = &edgeState{
+			e:      e,
+			appear: orphan,
+		}
 	}
 	entLinks := make([][]link, len(roots))
 	for _, l := range in.EntityArtifacts {
@@ -223,19 +231,24 @@ func Write(in Input, sink Sink) (*Result, error) {
 	parent := ""
 	var lastTime time.Time
 
-	commit := func(at time.Time, message string) error {
+	commit := func(at time.Time,
+		message string) error {
 		id, err := tree.write(st)
 		if err != nil {
 			return err
 		}
-		if parent, err = st.commit(id, parent, at, message); err != nil {
+		if parent, err = st.commit(id,
+			parent,
+			at,
+			message); err != nil {
 			return err
 		}
 		res.Commits++
 		lastTime = at
 		return nil
 	}
-	put := func(path, content string) error {
+	put := func(path,
+		content string) error {
 		id, err := st.put("blob", []byte(content))
 		if err != nil {
 			return err
@@ -246,8 +259,14 @@ func Write(in Input, sink Sink) (*Result, error) {
 
 	// The run logs: a remember run that stored an artifact goes into the commit of that artifact; the others, and the query
 	// runs, are commits of their own.
-	sort.SliceStable(in.RememberRuns, func(i, j int) bool { return in.RememberRuns[i].Run.ID < in.RememberRuns[j].Run.ID })
-	sort.SliceStable(in.QueryRuns, func(i, j int) bool { return in.QueryRuns[i].Run.ID < in.QueryRuns[j].Run.ID })
+	sort.SliceStable(in.RememberRuns, func(i,
+		j int) bool {
+		return in.RememberRuns[i].Run.ID < in.RememberRuns[j].Run.ID
+	})
+	sort.SliceStable(in.QueryRuns, func(i,
+		j int) bool {
+		return in.QueryRuns[i].Run.ID < in.QueryRuns[j].Run.ID
+	})
 	callRuns := make([][]int, len(roots)) // by call: the remember runs (indexes of in.RememberRuns) of its artifact
 	type single struct {
 		at    time.Time
@@ -273,15 +292,23 @@ func Write(in Input, sink Sink) (*Result, error) {
 		root   int // the call, or -1
 		single int
 	}
-	steps := make([]step, 0, len(roots)+len(singles))
+	steps := make([]step,
+		0,
+		len(roots)+len(singles))
 	for i, root := range roots {
 		steps = append(steps, step{root.CreatedAt, i, -1})
 	}
-	sort.SliceStable(singles, func(i, j int) bool { return singles[i].at.Before(singles[j].at) })
+	sort.SliceStable(singles, func(i,
+		j int) bool {
+		return singles[i].at.Before(singles[j].at)
+	})
 	for k, sg := range singles {
 		steps = append(steps, step{sg.at, -1, k})
 	}
-	sort.SliceStable(steps, func(i, j int) bool { return steps[i].at.Before(steps[j].at) })
+	sort.SliceStable(steps, func(i,
+		j int) bool {
+		return steps[i].at.Before(steps[j].at)
+	})
 
 	// The root commit.
 	first := in.CreatedAt
@@ -300,14 +327,20 @@ func Write(in Input, sink Sink) (*Result, error) {
 	flush := func() error {
 		for _, id := range sortedKeys(dirtyEnts) {
 			s := ents[id]
-			sort.Slice(s.sources, func(i, j int) bool { return s.sources[i] < s.sources[j] })
+			sort.Slice(s.sources, func(i,
+				j int) bool {
+				return s.sources[i] < s.sources[j]
+			})
 			if err := put(r.entityPath(s.e), r.entityFile(s)); err != nil {
 				return err
 			}
 		}
 		for _, id := range sortedKeys(dirtyEdges) {
 			s := edges[id]
-			sort.Slice(s.sources, func(i, j int) bool { return s.sources[i] < s.sources[j] })
+			sort.Slice(s.sources, func(i,
+				j int) bool {
+				return s.sources[i] < s.sources[j]
+			})
 			if err := put(r.edgePath(s.e), r.edgeFile(s)); err != nil {
 				return err
 			}
@@ -388,13 +421,21 @@ func Write(in Input, sink Sink) (*Result, error) {
 			case graph.EdgeConfirmed:
 				stats.confirmed++
 			case graph.EdgeEnded, graph.EdgeInvalidated, graph.EdgeSuperseded:
-				stats.changes = append(stats.changes, fmt.Sprintf("- %s edge %d: %s %s %s", ev.Event, ev.EdgeID, s.e.Source, s.e.Relation, s.e.Target))
+				stats.changes = append(stats.changes, fmt.Sprintf("- %s edge %d: %s %s %s",
+					ev.Event,
+					ev.EdgeID,
+					s.e.Source,
+					s.e.Relation,
+					s.e.Target))
 			}
 		}
 		if err := flush(); err != nil {
 			return nil, err
 		}
-		if err := commit(root.CreatedAt, r.callMessage(root, len(members[root.ID]), runIDs, stats)); err != nil {
+		if err := commit(root.CreatedAt, r.callMessage(root,
+			len(members[root.ID]),
+			runIDs,
+			stats)); err != nil {
 			return nil, err
 		}
 	}
@@ -451,15 +492,21 @@ func (s *edgeState) apply(ev graph.EdgeEvent) {
 }
 
 func sortedKeys(m map[int64]bool) []int64 {
-	ids := make([]int64, 0, len(m))
+	ids := make([]int64,
+		0,
+		len(m))
 	for id := range m {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	sort.Slice(ids, func(i,
+		j int) bool {
+		return ids[i] < ids[j]
+	})
 	return ids
 }
 
-func appendUnique(ids []int64, id int64) []int64 {
+func appendUnique(ids []int64,
+	id int64) []int64 {
 	for _, x := range ids {
 		if x == id {
 			return ids

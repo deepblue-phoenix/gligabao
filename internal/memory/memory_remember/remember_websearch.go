@@ -134,7 +134,8 @@ func (w *webPart) label() string {
 // noteKeyEntities records the entities of ex, the extraction of the artifact artifactID, as candidates for the web
 // search. It is called for every text the call stores (the text itself, or each chunk) and does nothing unless the call
 // searches the web or fetches series (see remember_seriesfetch.go). The entities of a web search result are never recorded: the search does not recurse.
-func (j *job) noteKeyEntities(ex *Extraction, artifactID int64) {
+func (j *job) noteKeyEntities(ex *Extraction,
+	artifactID int64) {
 	if !(j.co.WebSearch || j.co.SeriesFetch != nil || j.co.GeoResolver != nil) || j.web != nil || j.obs != nil {
 		return
 	}
@@ -161,7 +162,11 @@ func (j *job) noteKeyEntities(ex *Extraction, artifactID int64) {
 			}
 			continue
 		}
-		j.keyEntities[k] = &keyEntity{Entity: e, ArtifactID: artifactID, Edges: degree[k]}
+		j.keyEntities[k] = &keyEntity{
+			Entity:     e,
+			ArtifactID: artifactID,
+			Edges:      degree[k],
+		}
 		j.keyOrder = append(j.keyOrder, k)
 	}
 }
@@ -179,31 +184,45 @@ func (j *job) noteKeyEntityIDs(ids map[string]int64) {
 // inContext says where the entities of an LLM prompt of the stage are used, for the in-context counters (see
 // memory_core.CountInContext): this call's run.
 func (j *job) inContext(stage string) graph.InContextEvent {
-	return graph.InContextEvent{Pipeline: graph.PipelineRemember, Stage: stage, RunID: j.run.ID()}
+	return graph.InContextEvent{
+		Pipeline: graph.PipelineRemember,
+		Stage:    stage,
+		RunID:    j.run.ID(),
+	}
 }
 
 // countKeyEntities is the in-context counter of the key entities es, for the stage whose LLM prompt holds them (see
 // memory_core.CountInContext); call it right before the call. An entity without an ID (not stored) is not counted.
-func (j *job) countKeyEntities(ctx context.Context, stage string, es []*keyEntity) {
+func (j *job) countKeyEntities(ctx context.Context,
+	stage string,
+	es []*keyEntity) {
 	var ids []int64
 	for _, e := range es {
 		if e.ID != 0 {
 			ids = append(ids, e.ID)
 		}
 	}
-	memory_core.CountInContext(ctx, j.d, j.inContext(stage), ids, nil)
+	memory_core.CountInContext(ctx,
+		j.d,
+		j.inContext(stage),
+		ids,
+		nil)
 }
 
 // pickKeyEntities returns the entities to search the web for: those of a type that has world events (not a concept),
 // the ones in the most facts first (the entities the text is about; the order of extraction breaks ties), at most max.
-func pickKeyEntities(all []*keyEntity, max int) []*keyEntity {
+func pickKeyEntities(all []*keyEntity,
+	max int) []*keyEntity {
 	var out []*keyEntity
 	for _, e := range all { // all is in order of extraction
 		if !notSearchable[e.Type] {
 			out = append(out, e)
 		}
 	}
-	sort.SliceStable(out, func(a, b int) bool { return out[a].Edges > out[b].Edges })
+	sort.SliceStable(out, func(a,
+		b int) bool {
+		return out[a].Edges > out[b].Edges
+	})
 	if len(out) > max {
 		out = out[:max]
 	}
@@ -212,33 +231,45 @@ func pickKeyEntities(all []*keyEntity, max int) []*keyEntity {
 
 // webSearchQuery is the query issued for an entity.
 func webSearchQuery(e Entity) string {
-	return fmt.Sprintf("latest world events and news about %s (%s)", e.Name, e.Type)
+	return fmt.Sprintf("latest world events and news about %s (%s)",
+		e.Name,
+		e.Type)
 }
 
 // webSearch is the web_search stage of Remember (see webSearchStage): it searches the web for the key entities of the call and
 // stores what it finds (see the top of this file). It returns one result per entity searched for; nil if there is nothing to
 // search for. It never fails the call. The call searches the web.
 func (j *job) webSearch(ctx context.Context) (out []WebSearchResult) {
-	all := make([]*keyEntity, 0, len(j.keyOrder))
+	all := make([]*keyEntity,
+		0,
+		len(j.keyOrder))
 	for _, k := range j.keyOrder {
 		all = append(all, j.keyEntities[k])
 	}
 	picks := pickKeyEntities(all, maxWebSearchEntities)
-	names := make([]string, 0, len(picks))
+	names := make([]string,
+		0,
+		len(picks))
 	for _, p := range picks {
 		names = append(names, p.Name)
 	}
 	j.tr.Tool("Picked the key entities to search the web for: the extracted entities with the most facts (not concepts), at most "+
-		fmt.Sprint(maxWebSearchEntities)+".", "select_web_search_entities",
+		fmt.Sprint(maxWebSearchEntities)+".",
+		"select_web_search_entities",
 		map[string]any{"entities_extracted": len(all), "max": maxWebSearchEntities},
 		map[string]any{"entities": names})
-	j.run.Output(memory_core.StageWebSearch, "select_web_search_entities", "", map[string]any{"entities_extracted": len(all), "entities": names})
+	j.run.Output(memory_core.StageWebSearch,
+		"select_web_search_entities",
+		"",
+		map[string]any{"entities_extracted": len(all), "entities": names})
 	if len(picks) == 0 {
 		return nil
 	}
 
 	// IN-CONTEXT COUNTERS: each search prompt holds its entity.
-	j.countKeyEntities(ctx, memory_core.StageWebSearch, picks)
+	j.countKeyEntities(ctx,
+		memory_core.StageWebSearch,
+		picks)
 
 	// SEARCH, all entities at once: the calls are independent and slow.
 	done := make([]webSearched, len(picks))
@@ -262,33 +293,50 @@ func (j *job) webSearch(ctx context.Context) (out []WebSearchResult) {
 	wg.Wait()
 
 	// STORE, one entity at a time (the extraction and the storage use the database and the trajectory in order).
-	results := make([]WebSearchResult, 0, len(picks))
+	results := make([]WebSearchResult,
+		0,
+		len(picks))
 	for i, p := range picks {
-		results = append(results, j.storeWebSearch(ctx, p, done[i]))
+		results = append(results, j.storeWebSearch(ctx,
+			p,
+			done[i]))
 	}
 	return results
 }
 
 // webSearchPrompt is the user turn of the search for entity e.
-func webSearchPrompt(e Entity, today time.Time) string {
+func webSearchPrompt(e Entity,
+	today time.Time) string {
 	desc := e.Description
 	if desc == "" {
 		desc = "(none)"
 	}
 	return fmt.Sprintf("<today>%s</today>\n<query>%s</query>\n<entity>\nname: %s\ntype: %s\ndescription: %s\n</entity>",
-		today.UTC().Format("2006-01-02"), webSearchQuery(e), e.Name, e.Type, desc)
+		today.UTC().Format("2006-01-02"),
+		webSearchQuery(e),
+		e.Name,
+		e.Type,
+		desc)
 }
 
 // storeWebSearch processes the outcome of the search for one key entity: it records the cost, extracts the graph from the
 // briefing and stores it as an artifact of kind web_search (a child of the artifact the entity came from) with its
 // entities and edges. The returned result says what happened; nothing here fails the call.
-func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) WebSearchResult {
+func (j *job) storeWebSearch(ctx context.Context,
+	p *keyEntity,
+	ws webSearched) WebSearchResult {
 	query := webSearchQuery(p.Entity)
-	out := WebSearchResult{Entity: p.Name, EntityType: p.Type, Query: query, ParentArtifactID: p.ArtifactID}
+	out := WebSearchResult{
+		Entity:           p.Name,
+		EntityType:       p.Type,
+		Query:            query,
+		ParentArtifactID: p.ArtifactID,
+	}
 	fields := log.Fields{"stage": memory_core.StageWebSearch, "user_id": j.userID, "dataset": j.dataset, "entity": p.Name,
 		"query": query, "parent_artifact_id": p.ArtifactID, "latency_ms": ws.latency.Milliseconds()}
 	args := map[string]any{"entity": p.Name, "type": p.Type, "query": query, "parent_artifact_id": p.ArtifactID}
-	fail := func(stage string, err error) WebSearchResult {
+	fail := func(stage string,
+		err error) WebSearchResult {
 		out.Error = stage + ": " + err.Error()
 		log.WithError(err).WithFields(fields).Warn("remember: web search failed for " + stage)
 		return out
@@ -297,16 +345,36 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	//--------------------------------------
 	// THE SEARCH
 	if ws.err != nil {
-		j.tr.TimedTool("The web search for the entity failed.", memory_core.StageWebSearch, args, map[string]any{"error": ws.err.Error()},
-			memory_core.ToolTiming{Provider: ai.ProviderAnthropic, Started: ws.started, Latency: ws.latency})
-		j.run.Output(memory_core.StageWebSearch, "web_search", p.Name, map[string]any{"request": args, "error": ws.err.Error()})
+		j.tr.TimedTool("The web search for the entity failed.",
+			memory_core.StageWebSearch,
+			args,
+			map[string]any{"error": ws.err.Error()},
+			memory_core.ToolTiming{
+				Provider: ai.ProviderAnthropic,
+				Started:  ws.started,
+				Latency:  ws.latency,
+			})
+		j.run.Output(memory_core.StageWebSearch,
+			"web_search",
+			p.Name,
+			map[string]any{"request": args, "error": ws.err.Error()})
 		return fail("search", ws.err)
 	}
 	resp := ws.resp
 	// Detached from ctx so a cancelled request still records money that was spent.
-	_, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.Inference{Type: CallRemember, Stage: memory_core.StageWebSearch,
-		Model: resp.Model, Provider: resp.Provider, Kind: ai.KindOf(resp.Model), Reasoning: ai.ReasoningNone,
-		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, CostUSD: resp.CostUSD})
+	_, err := memory_core.RecordRun(context.WithoutCancel(ctx),
+		j.d,
+		relational.Inference{
+			Type:         CallRemember,
+			Stage:        memory_core.StageWebSearch,
+			Model:        resp.Model,
+			Provider:     resp.Provider,
+			Kind:         ai.KindOf(resp.Model),
+			Reasoning:    ai.ReasoningNone,
+			InputTokens:  resp.InputTokens,
+			OutputTokens: resp.OutputTokens,
+			CostUSD:      resp.CostUSD,
+		})
 	if err != nil {
 		log.WithError(err).WithFields(fields).Error("record web search call")
 	}
@@ -315,11 +383,23 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	found := briefing != "" && !strings.HasPrefix(briefing, noWebResults)
 	fields["searches"], fields["sources"], fields["cost_usd"], fields["found"] = resp.Searches, len(resp.Sources), resp.CostUSD, found
 	searched := map[string]any{"found": found, "briefing": briefing, "searches": resp.Queries, "sources": resp.Sources, "search_errors": resp.SearchErrors, "billed_searches": resp.Searches}
-	j.run.Output(memory_core.StageWebSearch, "web_search", p.Name, map[string]any{"request": args, "model": resp.Model, "cost_usd": resp.CostUSD, "result": searched})
+	j.run.Output(memory_core.StageWebSearch,
+		"web_search",
+		p.Name,
+		map[string]any{"request": args, "model": resp.Model, "cost_usd": resp.CostUSD, "result": searched})
 	j.tr.TimedTool("Searched the web with Anthropic's web search tool for the latest world events about the entity.",
-		memory_core.StageWebSearch, args, searched,
-		memory_core.ToolTiming{Model: resp.Model, Provider: resp.Provider, Started: ws.started, Latency: ws.latency,
-			PromptTokens: resp.InputTokens, CompletionTokens: resp.OutputTokens, CostUSD: resp.CostUSD})
+		memory_core.StageWebSearch,
+		args,
+		searched,
+		memory_core.ToolTiming{
+			Model:            resp.Model,
+			Provider:         resp.Provider,
+			Started:          ws.started,
+			Latency:          ws.latency,
+			PromptTokens:     resp.InputTokens,
+			CompletionTokens: resp.OutputTokens,
+			CostUSD:          resp.CostUSD,
+		})
 	if !found {
 		log.WithFields(fields).Info("remember: web search found nothing")
 		return out
@@ -330,19 +410,29 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	// now, when they were read, not from the reference time of the text that mentioned the entity.
 	wj := *j
 	wj.run = j.run.Within(memory_core.StageWebSearch) // its inferences are the web_search stage's
-	wj.web = &webPart{ParentID: p.ArtifactID, Query: query, Entity: p.Name}
+	wj.web = &webPart{
+		ParentID: p.ArtifactID,
+		Query:    query,
+		Entity:   p.Name,
+	}
 	wj.kind, wj.ref = graph.ArtifactWebSearch, j.now
 
 	// The graph is extracted from the briefing alone; the artifact keeps the sources next to it.
-	ex, err := Extract(ctx, wj.co.ModelLLM(wj.llm, memory_core.StageExtractGraph), briefing, wj.ref)
+	ex, err := Extract(ctx,
+		wj.co.ModelLLM(wj.llm, memory_core.StageExtractGraph),
+		briefing,
+		wj.ref)
 	wj.outputExtraction(wj.stepLabel(nil), ex)
 	if err != nil {
 		return fail("extract", err)
 	}
 	wj.tr.Tool("The LLM extracted these entities and edges (new facts) from the web search result, before any stored fact is considered."+wj.web.label(),
-		"extract_graph", map[string]any{"text_chars": len(briefing)},
+		"extract_graph",
+		map[string]any{"text_chars": len(briefing)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
-	res, err := wj.reconcile(ctx, webSearchArtifactText(briefing, resp.Sources), ex)
+	res, err := wj.reconcile(ctx,
+		webSearchArtifactText(briefing, resp.Sources),
+		ex)
 	if err != nil {
 		return fail("store", err)
 	}
@@ -353,7 +443,8 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 }
 
 // webSearchArtifactText is the text of a web_search artifact: the briefing, then the pages it is based on.
-func webSearchArtifactText(briefing string, sources []ai.WebSource) string {
+func webSearchArtifactText(briefing string,
+	sources []ai.WebSource) string {
 	if len(sources) == 0 {
 		return briefing
 	}

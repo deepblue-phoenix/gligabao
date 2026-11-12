@@ -19,7 +19,10 @@ type renderer struct {
 }
 
 func newRenderer(in Input) *renderer {
-	r := &renderer{in: in, classes: map[int64][]string{}}
+	r := &renderer{
+		in:      in,
+		classes: map[int64][]string{},
+	}
 	for _, c := range in.Classes {
 		r.classes[c.ArtifactID] = appendUniqueString(r.classes[c.ArtifactID], c.Class)
 	}
@@ -29,7 +32,8 @@ func newRenderer(in Input) *renderer {
 	return r
 }
 
-func appendUniqueString(list []string, s string) []string {
+func appendUniqueString(list []string,
+	s string) []string {
 	for _, x := range list {
 		if x == s {
 			return list
@@ -96,39 +100,62 @@ func kindName(a graph.Artifact) string {
 	return fmt.Sprintf("chunk-%d", a.ChunkIndex)
 }
 
-func (r *renderer) artifactPath(root int64, a graph.Artifact) string {
+func (r *renderer) artifactPath(root int64,
+	a graph.Artifact) string {
 	if a.ID == root {
 		return fmt.Sprintf("artifacts/%06d.md", a.ID)
 	}
-	return fmt.Sprintf("artifacts/%06d/%06d-%s.md", root, a.ID, kindName(a))
+	return fmt.Sprintf("artifacts/%06d/%06d-%s.md",
+		root,
+		a.ID,
+		kindName(a))
 }
 
 func (r *renderer) artifactFile(a graph.Artifact) string {
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "id: %d\nkind: %s\n", a.ID, a.Kind)
+	fmt.Fprintf(&b,
+		"id: %d\nkind: %s\n",
+		a.ID,
+		a.Kind)
 	if a.ParentID != 0 {
-		fmt.Fprintf(&b, "parent: %d\n", a.ParentID)
+		fmt.Fprintf(&b,
+			"parent: %d\n",
+			a.ParentID)
 		switch a.Kind {
 		case graph.ArtifactChunkSummary, graph.ArtifactWebSearch, graph.ArtifactSeriesObservation:
 		default: // a chunk
-			fmt.Fprintf(&b, "chunk_index: %d\nstart_offset: %d\nend_offset: %d\ntokens: %d\n", a.ChunkIndex, a.StartOffset, a.EndOffset, a.Tokens)
+			fmt.Fprintf(&b,
+				"chunk_index: %d\nstart_offset: %d\nend_offset: %d\ntokens: %d\n",
+				a.ChunkIndex,
+				a.StartOffset,
+				a.EndOffset,
+				a.Tokens)
 		}
 	}
 	if a.Query != "" {
-		fmt.Fprintf(&b, "query: %s\n", quote(a.Query))
+		fmt.Fprintf(&b,
+			"query: %s\n",
+			quote(a.Query))
 	}
 	if a.SessionID != "" {
-		fmt.Fprintf(&b, "session: %s\n", quote(a.SessionID))
+		fmt.Fprintf(&b,
+			"session: %s\n",
+			quote(a.SessionID))
 	}
 	if cs := r.classes[a.ID]; len(cs) > 0 {
 		quoted := make([]string, len(cs))
 		for i, c := range cs {
 			quoted[i] = quote(c)
 		}
-		fmt.Fprintf(&b, "classes: [%s]\n", strings.Join(quoted, ", "))
+		fmt.Fprintf(&b,
+			"classes: [%s]\n",
+			strings.Join(quoted, ", "))
 	}
-	fmt.Fprintf(&b, "valid_at: %s\ncreated_at: %s\n---\n\n", ts(a.ValidAt), ts(a.CreatedAt))
+	fmt.Fprintf(&b,
+		"valid_at: %s\ncreated_at: %s\n---\n\n",
+		ts(a.ValidAt),
+		ts(a.CreatedAt))
 	b.WriteString(a.Text)
 	if !strings.HasSuffix(a.Text, "\n") {
 		b.WriteString("\n")
@@ -137,17 +164,28 @@ func (r *renderer) artifactFile(a graph.Artifact) string {
 }
 
 func (r *renderer) entityPath(e graph.EvidenceEntity) string {
-	return fmt.Sprintf("entities/%s/%s-%d.md", slug(e.Type), slug(e.Name), e.ID)
+	return fmt.Sprintf("entities/%s/%s-%d.md",
+		slug(e.Type),
+		slug(e.Name),
+		e.ID)
 }
 
 func (r *renderer) entityFile(s *entState) string {
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "id: %d\nname: %s\ntype: %s\n", s.e.ID, quote(s.e.Name), quote(s.e.Type))
+	fmt.Fprintf(&b,
+		"id: %d\nname: %s\ntype: %s\n",
+		s.e.ID,
+		quote(s.e.Name),
+		quote(s.e.Type))
 	if s.e.ModelID != "" {
-		fmt.Fprintf(&b, "model: %s\n", quote(r.model(s.e.ModelID)))
+		fmt.Fprintf(&b,
+			"model: %s\n",
+			quote(r.model(s.e.ModelID)))
 	}
-	fmt.Fprintf(&b, "artifacts: %s\n---\n", idList(s.sources))
+	fmt.Fprintf(&b,
+		"artifacts: %s\n---\n",
+		idList(s.sources))
 	if s.e.Description != "" {
 		b.WriteString("\n" + s.e.Description + "\n")
 	}
@@ -155,31 +193,51 @@ func (r *renderer) entityFile(s *entState) string {
 }
 
 func (r *renderer) edgePath(e graph.EvidenceEdge) string {
-	return fmt.Sprintf("edges/%s/%06d.md", slug(e.Relation), e.ID)
+	return fmt.Sprintf("edges/%s/%06d.md",
+		slug(e.Relation),
+		e.ID)
 }
 
 func (r *renderer) edgeFile(s *edgeState) string {
 	e := s.e
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "id: %d\nsource: %s\nsource_id: %d\nrelation: %s\ntarget: %s\ntarget_id: %d\n",
-		e.ID, quote(e.Source), e.SourceID, quote(e.Relation), quote(e.Target), e.TargetID)
+	fmt.Fprintf(&b,
+		"id: %d\nsource: %s\nsource_id: %d\nrelation: %s\ntarget: %s\ntarget_id: %d\n",
+		e.ID,
+		quote(e.Source),
+		e.SourceID,
+		quote(e.Relation),
+		quote(e.Target),
+		e.TargetID)
 	if e.ValidAt != nil {
-		fmt.Fprintf(&b, "valid_at: %s\n", ts(*e.ValidAt))
+		fmt.Fprintf(&b,
+			"valid_at: %s\n",
+			ts(*e.ValidAt))
 	}
 	if s.invalid != nil {
-		fmt.Fprintf(&b, "invalid_at: %s\n", ts(*s.invalid))
+		fmt.Fprintf(&b,
+			"invalid_at: %s\n",
+			ts(*s.invalid))
 	}
 	if e.CreatedAt != nil {
-		fmt.Fprintf(&b, "created_at: %s\n", ts(*e.CreatedAt))
+		fmt.Fprintf(&b,
+			"created_at: %s\n",
+			ts(*e.CreatedAt))
 	}
 	if s.expired != nil {
-		fmt.Fprintf(&b, "expired_at: %s\n", ts(*s.expired))
+		fmt.Fprintf(&b,
+			"expired_at: %s\n",
+			ts(*s.expired))
 	}
 	if e.ModelID != "" {
-		fmt.Fprintf(&b, "model: %s\n", quote(r.model(e.ModelID)))
+		fmt.Fprintf(&b,
+			"model: %s\n",
+			quote(r.model(e.ModelID)))
 	}
-	fmt.Fprintf(&b, "artifacts: %s\n---\n", idList(s.sources))
+	fmt.Fprintf(&b,
+		"artifacts: %s\n---\n",
+		idList(s.sources))
 	if e.Description != "" {
 		b.WriteString("\n" + e.Description + "\n")
 	}
@@ -190,7 +248,9 @@ func (r *renderer) edgeFile(s *edgeState) string {
 
 func (r *renderer) readme() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", r.in.Name)
+	fmt.Fprintf(&b,
+		"# %s\n\n",
+		r.in.Name)
 	if r.in.Description != "" {
 		b.WriteString(r.in.Description + "\n\n")
 	}
@@ -227,8 +287,11 @@ func (r *renderer) rootMessage() string {
 }
 
 // subject is the first line of text, collapsed and cut to n runes.
-func subject(text string, n int) string {
-	line := strings.Join(strings.Fields(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0]), " ")
+func subject(text string,
+	n int) string {
+	line := strings.Join(strings.Fields(strings.SplitN(strings.TrimSpace(text),
+		"\n",
+		2)[0]), " ")
 	if line == "" {
 		return "(no text)"
 	}
@@ -238,9 +301,15 @@ func subject(text string, n int) string {
 	return line
 }
 
-func (r *renderer) callMessage(root graph.Artifact, artifacts int, runIDs []int64, st commitStats) string {
+func (r *renderer) callMessage(root graph.Artifact,
+	artifacts int,
+	runIDs []int64,
+	st commitStats) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "remember #%d: %s\n\n", root.ID, subject(root.Text, 60))
+	fmt.Fprintf(&b,
+		"remember #%d: %s\n\n",
+		root.ID,
+		subject(root.Text, 60))
 	var parts []string
 	if st.newEntities > 0 {
 		parts = append(parts, fmt.Sprintf("+%d entities", st.newEntities))
@@ -262,20 +331,33 @@ func (r *renderer) callMessage(root graph.Artifact, artifacts int, runIDs []int6
 		b.WriteString("\n" + strings.Join(st.changes, "\n") + "\n")
 	}
 	b.WriteString("\n")
-	fmt.Fprintf(&b, "Artifact-Id: %d\nKind: %s\n", root.ID, root.Kind)
+	fmt.Fprintf(&b,
+		"Artifact-Id: %d\nKind: %s\n",
+		root.ID,
+		root.Kind)
 	if root.SessionID != "" {
-		fmt.Fprintf(&b, "Session-Id: %s\n", root.SessionID)
+		fmt.Fprintf(&b,
+			"Session-Id: %s\n",
+			root.SessionID)
 	}
-	fmt.Fprintf(&b, "Valid-At: %s\n", ts(root.ValidAt))
+	fmt.Fprintf(&b,
+		"Valid-At: %s\n",
+		ts(root.ValidAt))
 	if artifacts > 1 {
-		fmt.Fprintf(&b, "Artifacts: %d\n", artifacts)
+		fmt.Fprintf(&b,
+			"Artifacts: %d\n",
+			artifacts)
 	}
 	for _, id := range runIDs {
-		fmt.Fprintf(&b, "Remember-Run-Id: %d\n", id)
+		fmt.Fprintf(&b,
+			"Remember-Run-Id: %d\n",
+			id)
 	}
 	return b.String()
 }
 
 func (r *renderer) orphanMessage(st commitStats) string {
-	return fmt.Sprintf("Entities and facts without a source artifact\n\n+%d entities, +%d edges whose artifact was deleted.", st.newEntities, st.newEdges)
+	return fmt.Sprintf("Entities and facts without a source artifact\n\n+%d entities, +%d edges whose artifact was deleted.",
+		st.newEntities,
+		st.newEdges)
 }

@@ -38,7 +38,8 @@ type Generation struct {
 }
 
 // GenerateFunc asks the trained model a prompt. Run calls it for one question at a time, never in parallel.
-type GenerateFunc func(ctx context.Context, prompt string) (Generation, error)
+type GenerateFunc func(ctx context.Context,
+	prompt string) (Generation, error)
 
 // Config says how a run goes.
 type Config struct {
@@ -105,7 +106,9 @@ func (p Progress) CorrectRate() float64 {
 
 // Sink receives the case runs of every finished batch with the progress after it. An error from it stops the run. The case runs
 // have no ID, no RunID and an Idx that counts from the first example Run was given.
-type Sink func(ctx context.Context, cases []core.AuditCaseRun, p Progress) error
+type Sink func(ctx context.Context,
+	cases []core.AuditCaseRun,
+	p Progress) error
 
 // Run puts the examples to the model and has the judge grade the answers. The examples go in batches of cfg.BatchSize: the model
 // answers the questions of a batch (one at a time: parallel calls can start more GPU containers that each load the model), then
@@ -114,19 +117,33 @@ type Sink func(ctx context.Context, cases []core.AuditCaseRun, p Progress) error
 // run that only gets failures stops with an error. When ctx ends the run stops with its error, after handing sink what it has
 // of the batch it was in: the cases it had reached, as cancelled (or errored, if they had failed already). The Progress reached
 // is returned along with any error.
-func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, judge LLM, sink Sink) (Progress, error) {
+func Run(ctx context.Context,
+	cfg Config,
+	examples []Example,
+	gen GenerateFunc,
+	judge LLM,
+	sink Sink) (Progress, error) {
 	cfg, err := cfg.Normalize()
 	if err != nil {
 		return Progress{}, err
 	}
-	p := Progress{Counts: core.Counts{Total: len(examples), Pending: len(examples)}}
+	p := Progress{
+		Counts: core.Counts{
+			Total:   len(examples),
+			Pending: len(examples),
+		},
+	}
 	var badAnswerBatches, badJudgeBatches int
 	for start, batchNo := 0, 1; start < len(examples); start, batchNo = start+cfg.BatchSize, batchNo+1 {
 		if err := ctx.Err(); err != nil {
 			return p, err
 		}
 		end := min(start+cfg.BatchSize, len(examples))
-		cases := answerBatch(ctx, examples[start:end], start, gen, cfg.OnAnswer)
+		cases := answerBatch(ctx,
+			examples[start:end],
+			start,
+			gen,
+			cfg.OnAnswer)
 		answered := 0
 		for _, it := range cases {
 			if it.Status == core.StatusRunning {
@@ -135,10 +152,18 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 		}
 		var judgeErr error
 		if ctx.Err() == nil {
-			judgeErr = judgeBatch(ctx, cfg, judge, cases, &p)
+			judgeErr = judgeBatch(ctx,
+				cfg,
+				judge,
+				cases,
+				&p)
 		}
 		if err := ctx.Err(); err != nil {
-			return p, cancelBatch(ctx, cases, &p, sink, err)
+			return p, cancelBatch(ctx,
+				cases,
+				&p,
+				sink,
+				err)
 		}
 		var lastErr string
 		for i := range cases {
@@ -165,20 +190,26 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 		p.NumAnswered += answered
 		p.NumBatches++
 		p.Counts.Pending = p.Counts.Total - p.Counts.Completed - p.Counts.Errored - p.Counts.Cancelled
-		if err := sink(ctx, cases, p); err != nil {
+		if err := sink(ctx,
+			cases,
+			p); err != nil {
 			return p, err
 		}
 
 		if answered == 0 {
 			if badAnswerBatches++; badAnswerBatches >= maxFailedAnswerBatches {
-				return p, fmt.Errorf("the model failed to answer %d batches in a row, giving up: %s", badAnswerBatches, lastErr)
+				return p, fmt.Errorf("the model failed to answer %d batches in a row, giving up: %s",
+					badAnswerBatches,
+					lastErr)
 			}
 		} else {
 			badAnswerBatches = 0
 		}
 		if answered > 0 && judgeErr != nil {
 			if badJudgeBatches++; badJudgeBatches >= maxFailedJudgeBatches {
-				return p, fmt.Errorf("the judge failed to grade %d batches in a row, giving up: %w", badJudgeBatches, judgeErr)
+				return p, fmt.Errorf("the judge failed to grade %d batches in a row, giving up: %w",
+					badJudgeBatches,
+					judgeErr)
 			}
 		} else if answered > 0 {
 			badJudgeBatches = 0
@@ -190,12 +221,22 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 // answerBatch asks the model the questions of examples (the first one is example number first), one after the other. A case whose
 // question failed is errored. When ctx ends, the case it ends in is cancelled and the questions not asked yet stay pending
 // (they are not part of the batch's outcome: see cancelBatch).
-func answerBatch(ctx context.Context, examples []Example, first int, gen GenerateFunc, onAnswer func(core.AuditCaseRun)) []core.AuditCaseRun {
+func answerBatch(ctx context.Context,
+	examples []Example,
+	first int,
+	gen GenerateFunc,
+	onAnswer func(core.AuditCaseRun)) []core.AuditCaseRun {
 	cases := make([]core.AuditCaseRun, len(examples))
 	for i, ex := range examples {
 		it := &cases[i]
-		*it = core.AuditCaseRun{Idx: first + i, Status: core.StatusPending, Instruction: ex.Instruction, Input: ex.Input,
-			Reference: ex.Output, CreatedAt: time.Now().UTC()}
+		*it = core.AuditCaseRun{
+			Idx:         first + i,
+			Status:      core.StatusPending,
+			Instruction: ex.Instruction,
+			Input:       ex.Input,
+			Reference:   ex.Output,
+			CreatedAt:   time.Now().UTC(),
+		}
 		if ctx.Err() != nil {
 			continue
 		}
@@ -222,7 +263,11 @@ func answerBatch(ctx context.Context, examples []Example, first int, gen Generat
 // first call left without a verdict), filling in their JudgeScore and JudgeReason; the ones it cannot grade become errored. The
 // judge's usage is added to p. It returns the last error of the judge if some case could not be graded because of it, nil
 // otherwise, and ctx's error if ctx ended.
-func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []core.AuditCaseRun, p *Progress) error {
+func judgeBatch(ctx context.Context,
+	cfg Config,
+	judge LLM,
+	cases []core.AuditCaseRun,
+	p *Progress) error {
 	var pending []int // indices into cases
 	for i := range cases {
 		if cases[i].Status == core.StatusRunning {
@@ -233,12 +278,20 @@ func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []core.AuditCa
 	for attempt := 0; attempt < judgeAttempts && len(pending) > 0 && ctx.Err() == nil; attempt++ {
 		send := make([]judgeCase, len(pending))
 		for k, i := range pending {
-			send[k] = judgeCase{ID: k + 1, Question: cases[i].Instruction, Reference: cases[i].Reference, Answer: cases[i].Response}
+			send[k] = judgeCase{
+				ID:        k + 1,
+				Question:  cases[i].Instruction,
+				Reference: cases[i].Reference,
+				Answer:    cases[i].Response,
+			}
 			if cases[i].Input != "" {
 				send[k].Question += "\n\n" + cases[i].Input
 			}
 		}
-		verdicts, resp, err := grade(ctx, judge, send, cfg.JudgeModel)
+		verdicts, resp, err := grade(ctx,
+			judge,
+			send,
+			cfg.JudgeModel)
 		if resp != nil {
 			p.JudgeCalls++
 			p.JudgeInputTokens += resp.InputTokens
@@ -284,7 +337,11 @@ func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []core.AuditCa
 // cancelBatch ends a batch that ctx interrupted: it hands sink the cases of the batch that were reached (the ones not asked yet
 // stay pending and are not reported), the ones that had not failed already as cancelled, without a score, and the progress,
 // which has the judge's usage so far. It returns cause, the error that ends the run.
-func cancelBatch(ctx context.Context, cases []core.AuditCaseRun, p *Progress, sink Sink, causeErr error) error {
+func cancelBatch(ctx context.Context,
+	cases []core.AuditCaseRun,
+	p *Progress,
+	sink Sink,
+	causeErr error) error {
 	var reached []core.AuditCaseRun
 	for _, it := range cases {
 		switch it.Status {
@@ -299,7 +356,9 @@ func cancelBatch(ctx context.Context, cases []core.AuditCaseRun, p *Progress, si
 		reached = append(reached, it)
 	}
 	p.Counts.Pending = p.Counts.Total - p.Counts.Completed - p.Counts.Errored - p.Counts.Cancelled
-	if err := sink(context.WithoutCancel(ctx), reached, *p); err != nil {
+	if err := sink(context.WithoutCancel(ctx),
+		reached,
+		*p); err != nil {
 		return fmt.Errorf("storing the cases of the interrupted batch: %w", err) // not wrapping cause: this one is not a cancellation
 	}
 	return causeErr

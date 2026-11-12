@@ -67,7 +67,10 @@ type prepared struct {
 
 // prepare validates the inputs and parses the document. If description is empty, the ontology's own
 // rdfs:comment is used.
-func prepare(userID, name, description string, content []byte) (userIDOut, nameOut string, p *prepared, err error) {
+func prepare(userID,
+	name,
+	description string,
+	content []byte) (userIDOut, nameOut string, p *prepared, err error) {
 	if userID, err = memory_core.ResolveUserID(userID); err != nil {
 		return
 	}
@@ -75,12 +78,16 @@ func prepare(userID, name, description string, content []byte) (userIDOut, nameO
 		return
 	}
 	if len(content) > MaxBytes {
-		err = fmt.Errorf("%w: larger than %d bytes", ErrInvalid, MaxBytes)
+		err = fmt.Errorf("%w: larger than %d bytes",
+			ErrInvalid,
+			MaxBytes)
 		return
 	}
 	o, parseErr := Parse(bytes.NewReader(content))
 	if parseErr != nil {
-		err = fmt.Errorf("%w: %v", ErrInvalid, parseErr)
+		err = fmt.Errorf("%w: %v",
+			ErrInvalid,
+			parseErr)
 		return
 	}
 	if description = strings.TrimSpace(description); description == "" {
@@ -89,19 +96,39 @@ func prepare(userID, name, description string, content []byte) (userIDOut, nameO
 	sum := sha256.Sum256(content)
 	p = &prepared{
 		meta: Meta{
-			Description: description, IRI: o.IRI, Title: o.Title,
-			Format: FormatRDFXML, SizeBytes: len(content), SHA256: hex.EncodeToString(sum[:]),
-			Classes: len(o.Classes), Properties: o.Properties(), Edges: len(o.Edges),
+			Description: description,
+			IRI:         o.IRI,
+			Title:       o.Title,
+			Format:      FormatRDFXML,
+			SizeBytes:   len(content),
+			SHA256:      hex.EncodeToString(sum[:]),
+			Classes:     len(o.Classes),
+			Properties:  o.Properties(),
+			Edges:       len(o.Edges),
 		},
 		classes: make([]graph.OntologyClass, len(o.Classes)),
 		edges:   make([]graph.OntologyEdge, len(o.Edges)),
 	}
 	for i, c := range o.Classes {
-		p.classes[i] = graph.OntologyClass{IRI: c.IRI, Name: c.Name, Label: c.Label, Comment: c.Comment, Declared: c.Declared}
+		p.classes[i] = graph.OntologyClass{
+			IRI:      c.IRI,
+			Name:     c.Name,
+			Label:    c.Label,
+			Comment:  c.Comment,
+			Declared: c.Declared,
+		}
 	}
 	for i, e := range o.Edges {
-		p.edges[i] = graph.OntologyEdge{SourceIRI: e.SourceIRI, TargetIRI: e.TargetIRI, Relation: e.Relation, Kind: e.Kind,
-			IRI: e.IRI, Label: e.Label, Comment: e.Comment, InverseOf: e.InverseOf}
+		p.edges[i] = graph.OntologyEdge{
+			SourceIRI: e.SourceIRI,
+			TargetIRI: e.TargetIRI,
+			Relation:  e.Relation,
+			Kind:      e.Kind,
+			IRI:       e.IRI,
+			Label:     e.Label,
+			Comment:   e.Comment,
+			InverseOf: e.InverseOf,
+		}
 	}
 	return userID, name, p, nil
 }
@@ -111,22 +138,38 @@ func prepare(userID, name, description string, content []byte) (userIDOut, nameO
 // ontology's own rdfs:comment is used. It returns ErrExists if the user already has an ontology with that
 // name, and ErrInvalid (wrapped) if the document cannot be parsed or defines no class. Nothing is kept
 // when loading fails.
-func Load(ctx context.Context, d *sql.DB, userID, name, description string, content []byte) (*Meta, error) {
-	userID, name, p, err := prepare(userID, name, description, content)
+func Load(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name,
+	description string,
+	content []byte) (*Meta, error) {
+	userID, name, p, err := prepare(userID,
+		name,
+		description,
+		content)
 	if err != nil {
 		return nil, err
 	}
 	p.meta.UserID, p.meta.Name = userID, name
-	meta, err := relational.CreateOntology(ctx, d, p.meta)
+	meta, err := relational.CreateOntology(ctx,
+		d,
+		p.meta)
 	if errors.Is(err, relational.ErrExists) {
 		return nil, ErrExists
 	}
 	if err != nil {
 		return nil, err
 	}
-	if err := graph.LoadOntology(ctx, d, meta.ID, p.classes, p.edges); err != nil {
+	if err := graph.LoadOntology(ctx,
+		d,
+		meta.ID,
+		p.classes,
+		p.edges); err != nil {
 		// The graph load is atomic; undo the metadata so that the name is free again.
-		if deleteErr := relational.DeleteOntology(context.WithoutCancel(ctx), d, meta.ID); deleteErr != nil {
+		if deleteErr := relational.DeleteOntology(context.WithoutCancel(ctx),
+			d,
+			meta.ID); deleteErr != nil {
 			log.WithError(deleteErr).WithField("ontology", name).Error("load ontology: cleanup after failure")
 		}
 		return nil, err
@@ -166,12 +209,24 @@ func Load(ctx context.Context, d *sql.DB, userID, name, description string, cont
 // kept from the stored ontology, whereas a replace drops them. An explicit description in the request always wins.
 //
 // If the update fails, the stored ontology is left as it was.
-func Update(ctx context.Context, d *sql.DB, userID, name, description string, content []byte, replace bool) (*Meta, error) {
-	userID, name, p, err := prepare(userID, name, description, content)
+func Update(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name,
+	description string,
+	content []byte,
+	replace bool) (*Meta, error) {
+	userID, name, p, err := prepare(userID,
+		name,
+		description,
+		content)
 	if err != nil {
 		return nil, err
 	}
-	old, err := relational.GetOntology(ctx, d, userID, name)
+	old, err := relational.GetOntology(ctx,
+		d,
+		userID,
+		name)
 	if errors.Is(err, relational.ErrNotFound) {
 		return nil, ErrNotFound
 	}
@@ -195,7 +250,9 @@ func Update(ctx context.Context, d *sql.DB, userID, name, description string, co
 		}
 		p.meta.Classes, p.meta.Properties, p.meta.Edges = old.Classes, old.Properties, old.Edges
 	}
-	meta, err := relational.UpdateOntology(ctx, d, p.meta)
+	meta, err := relational.UpdateOntology(ctx,
+		d,
+		p.meta)
 	if errors.Is(err, relational.ErrNotFound) {
 		return nil, ErrNotFound
 	}
@@ -205,13 +262,27 @@ func Update(ctx context.Context, d *sql.DB, userID, name, description string, co
 
 	var counts graph.OntologyCounts
 	if replace {
-		err = graph.LoadOntology(ctx, d, old.ID, p.classes, p.edges)
-		counts = graph.OntologyCounts{Classes: len(p.classes), Properties: p.meta.Properties, Edges: len(p.edges)}
+		err = graph.LoadOntology(ctx,
+			d,
+			old.ID,
+			p.classes,
+			p.edges)
+		counts = graph.OntologyCounts{
+			Classes:    len(p.classes),
+			Properties: p.meta.Properties,
+			Edges:      len(p.edges),
+		}
 	} else {
-		counts, err = graph.MergeOntology(ctx, d, old.ID, p.classes, p.edges)
+		counts, err = graph.MergeOntology(ctx,
+			d,
+			old.ID,
+			p.classes,
+			p.edges)
 	}
 	if err != nil {
-		if _, updateErr := relational.UpdateOntology(context.WithoutCancel(ctx), d, *old); updateErr != nil {
+		if _, updateErr := relational.UpdateOntology(context.WithoutCancel(ctx),
+			d,
+			*old); updateErr != nil {
 			log.WithError(updateErr).WithField("ontology", name).Error("update ontology: restoring metadata after failure")
 		}
 		return nil, err
@@ -220,7 +291,9 @@ func Update(ctx context.Context, d *sql.DB, userID, name, description string, co
 	// After a merge the counts are those of the merged ontology, known only now.
 	if meta.Classes != counts.Classes || meta.Properties != counts.Properties || meta.Edges != counts.Edges {
 		p.meta.Classes, p.meta.Properties, p.meta.Edges = counts.Classes, counts.Properties, counts.Edges
-		if meta, err = relational.UpdateOntology(ctx, d, p.meta); err != nil {
+		if meta, err = relational.UpdateOntology(ctx,
+			d,
+			p.meta); err != nil {
 			// The graph change is committed already; only the counts in the metadata are stale.
 			log.WithError(err).WithField("ontology", name).Error("update ontology: recording counts")
 			return nil, err
@@ -230,10 +303,14 @@ func Update(ctx context.Context, d *sql.DB, userID, name, description string, co
 }
 
 // List returns userID's ontologies, oldest first.
-func List(ctx context.Context, d *sql.DB, userID string) ([]Meta, error) {
+func List(ctx context.Context,
+	d *sql.DB,
+	userID string) ([]Meta, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	return relational.ListOntologies(ctx, d, userID)
+	return relational.ListOntologies(ctx,
+		d,
+		userID)
 }

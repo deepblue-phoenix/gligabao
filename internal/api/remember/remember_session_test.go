@@ -19,15 +19,20 @@ import (
 
 func TestRememberSession(t *testing.T) { dbtest.Run(t, testRememberSession) }
 
-func testRememberSession(t *testing.T, d *sql.DB) {
+func testRememberSession(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
 	llm := fakeLLM{`{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t,
+		d,
+		llm))
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+			"/v1/gb/remember",
+			strings.NewReader(body)))
 		return rec
 	}
 
@@ -41,7 +46,10 @@ func testRememberSession(t *testing.T, d *sql.DB) {
 	} {
 		rec := post(body)
 		if rec.Code != 200 {
-			t.Fatalf("%s: status %d: %s", body, rec.Code, rec.Body)
+			t.Fatalf("%s: status %d: %s",
+				body,
+				rec.Code,
+				rec.Body)
 		}
 		var res memory_remember.Result
 		if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
@@ -53,44 +61,92 @@ func testRememberSession(t *testing.T, d *sql.DB) {
 		t.Errorf("result session IDs: %q", sessions)
 	}
 
-	dsID, err := relational.DatasetID(ctx, d, "u1", relational.DefaultDataset)
+	dsID, err := relational.DatasetID(ctx,
+		d,
+		"u1",
+		relational.DefaultDataset)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := graph.DatasetCounts(ctx, d, dsID)
-	if err != nil || c != (graph.Counts{Artifacts: 3, Entities: 2, Edges: 1}) {
-		t.Fatalf("counts: %+v, %v", c, err)
+	c, err := graph.DatasetCounts(ctx,
+		d,
+		dsID)
+	if err != nil || c != (graph.Counts{
+		Artifacts: 3,
+		Entities:  2,
+		Edges:     1,
+	}) {
+		t.Fatalf("counts: %+v, %v",
+			c,
+			err)
 	}
-	arts, err := graph.ListArtifacts(ctx, d, dsID)
+	arts, err := graph.ListArtifacts(ctx,
+		d,
+		dsID)
 	if err != nil || len(arts) != 3 || arts[0].SessionID != "sess-a" || arts[1].SessionID != "sess-b" || arts[2].SessionID != "" {
-		t.Fatalf("artifacts: %+v, %v", arts, err)
+		t.Fatalf("artifacts: %+v, %v",
+			arts,
+			err)
 	}
 
 	// Both sessions are recorded against the entities and the edge, although session B created none of them.
-	ents, err := graph.ListEntities(ctx, d, dsID)
+	ents, err := graph.ListEntities(ctx,
+		d,
+		dsID)
 	if err != nil || len(ents) != 2 {
-		t.Fatalf("entities: %+v, %v", ents, err)
+		t.Fatalf("entities: %+v, %v",
+			ents,
+			err)
 	}
 	var wantES []graph.EntitySession
 	for _, e := range ents {
-		wantES = append(wantES, graph.EntitySession{EntityID: e.ID, SessionID: "sess-a"}, graph.EntitySession{EntityID: e.ID, SessionID: "sess-b"})
+		wantES = append(wantES,
+			graph.EntitySession{
+				EntityID:  e.ID,
+				SessionID: "sess-a",
+			},
+			graph.EntitySession{
+				EntityID:  e.ID,
+				SessionID: "sess-b",
+			})
 	}
-	es, err := graph.ListEntitySessions(ctx, d, dsID)
+	es, err := graph.ListEntitySessions(ctx,
+		d,
+		dsID)
 	if err != nil || len(es) != len(wantES) {
-		t.Fatalf("entity sessions: %+v, %v", es, err)
+		t.Fatalf("entity sessions: %+v, %v",
+			es,
+			err)
 	}
 	for i := range wantES {
 		if es[i] != wantES[i] {
-			t.Errorf("entity session[%d] = %+v, want %+v", i, es[i], wantES[i])
+			t.Errorf("entity session[%d] = %+v, want %+v",
+				i,
+				es[i],
+				wantES[i])
 		}
 	}
-	edges, err := graph.ListGraphEdges(ctx, d, dsID)
+	edges, err := graph.ListGraphEdges(ctx,
+		d,
+		dsID)
 	if err != nil || len(edges) != 1 {
-		t.Fatalf("edges: %+v, %v", edges, err)
+		t.Fatalf("edges: %+v, %v",
+			edges,
+			err)
 	}
-	gs, err := graph.ListEdgeSessions(ctx, d, dsID)
-	if err != nil || len(gs) != 2 || gs[0] != (graph.EdgeSession{EdgeID: edges[0].ID, SessionID: "sess-a"}) || gs[1] != (graph.EdgeSession{EdgeID: edges[0].ID, SessionID: "sess-b"}) {
-		t.Fatalf("edge sessions: %+v, %v", gs, err)
+	gs, err := graph.ListEdgeSessions(ctx,
+		d,
+		dsID)
+	if err != nil || len(gs) != 2 || gs[0] != (graph.EdgeSession{
+		EdgeID:    edges[0].ID,
+		SessionID: "sess-a",
+	}) || gs[1] != (graph.EdgeSession{
+		EdgeID:    edges[0].ID,
+		SessionID: "sess-b",
+	}) {
+		t.Fatalf("edge sessions: %+v, %v",
+			gs,
+			err)
 	}
 
 	// An invalid session ID is refused before anything is stored.
@@ -99,10 +155,16 @@ func testRememberSession(t *testing.T, d *sql.DB) {
 		`{"user_id":"u1","text":"x","session_id":"a\nb"}`,
 	} {
 		if rec := post(body); rec.Code != 400 {
-			t.Errorf("invalid session status = %d, want 400: %s", rec.Code, rec.Body)
+			t.Errorf("invalid session status = %d, want 400: %s",
+				rec.Code,
+				rec.Body)
 		}
 	}
-	if c, err := graph.DatasetCounts(ctx, d, dsID); err != nil || c.Artifacts != 3 {
-		t.Errorf("an invalid session stored an artifact: %+v, %v", c, err)
+	if c, err := graph.DatasetCounts(ctx,
+		d,
+		dsID); err != nil || c.Artifacts != 3 {
+		t.Errorf("an invalid session stored an artifact: %+v, %v",
+			c,
+			err)
 	}
 }

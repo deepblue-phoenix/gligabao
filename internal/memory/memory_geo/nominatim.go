@@ -50,7 +50,11 @@ type nominatim struct {
 
 // NewNominatim returns a resolver that asks a Nominatim server (OpenStreetMap geocoding) for the place.
 func NewNominatim(opts NominatimOptions) Resolver {
-	n := &nominatim{opts: opts, base: strings.TrimRight(opts.BaseURL, "/"), cl: opts.Client}
+	n := &nominatim{
+		opts: opts,
+		base: strings.TrimRight(opts.BaseURL, "/"),
+		cl:   opts.Client,
+	}
 	if n.base == "" {
 		n.base = DefaultNominatimURL
 	}
@@ -65,7 +69,9 @@ func NewNominatim(opts NominatimOptions) Resolver {
 		if t <= 0 {
 			t = 15 * time.Second
 		}
-		n.cl = &http.Client{Timeout: t}
+		n.cl = &http.Client{
+			Timeout: t,
+		}
 	}
 	return n
 }
@@ -119,7 +125,8 @@ type nominatimResult struct {
 	} `json:"address"`
 }
 
-func (n *nominatim) Resolve(ctx context.Context, q Query) (*Place, error) {
+func (n *nominatim) Resolve(ctx context.Context,
+	q Query) (*Place, error) {
 	text := strings.TrimSpace(q.Text)
 	if text == "" {
 		return nil, ErrNotFound
@@ -138,7 +145,10 @@ func (n *nominatim) Resolve(ctx context.Context, q Query) (*Place, error) {
 	if err := n.wait(ctx); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, n.base+"/search?"+v.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodGet,
+		n.base+"/search?"+v.Encode(),
+		nil)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +164,9 @@ func (n *nominatim) Resolve(ctx context.Context, q Query) (*Place, error) {
 		return nil, fmt.Errorf("geo: nominatim: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("geo: nominatim: %s: %s", resp.Status, truncate(string(body), 200))
+		return nil, fmt.Errorf("geo: nominatim: %s: %s",
+			resp.Status,
+			truncate(string(body), 200))
 	}
 	var results []nominatimResult
 	if err := json.Unmarshal(body, &results); err != nil {
@@ -171,12 +183,22 @@ func (r nominatimResult) place() (*Place, error) {
 	lat, latErr := strconv.ParseFloat(r.Lat, 64)
 	lon, lonErr := strconv.ParseFloat(r.Lon, 64)
 	if latErr != nil || lonErr != nil {
-		return nil, fmt.Errorf("geo: nominatim: bad coordinates %q, %q", r.Lat, r.Lon)
+		return nil, fmt.Errorf("geo: nominatim: bad coordinates %q, %q",
+			r.Lat,
+			r.Lon)
 	}
 	p := &Place{
-		Latitude: lat, Longitude: lon, DisplayName: r.DisplayName, Type: r.Type, Importance: r.Importance,
-		Country: r.Address.Country, CountryCode: strings.ToLower(r.Address.CountryCode),
-		Region:   firstNonEmpty(r.Address.State, r.Address.Region, r.Address.Province, r.Address.County),
+		Latitude:    lat,
+		Longitude:   lon,
+		DisplayName: r.DisplayName,
+		Type:        r.Type,
+		Importance:  r.Importance,
+		Country:     r.Address.Country,
+		CountryCode: strings.ToLower(r.Address.CountryCode),
+		Region: firstNonEmpty(r.Address.State,
+			r.Address.Region,
+			r.Address.Province,
+			r.Address.County),
 		Provider: NominatimProvider,
 		Kind:     nominatimKind(r),
 	}
@@ -239,7 +261,8 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
-func truncate(s string, n int) string {
+func truncate(s string,
+	n int) string {
 	if len(s) <= n {
 		return s
 	}

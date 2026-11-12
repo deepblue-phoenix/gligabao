@@ -106,7 +106,8 @@ type WebSearchResponse struct {
 // WebSearch runs the model with the web search tool and returns its answer, its sources and what it cost. The model
 // decides which searches to make (at most req.MaxUses). A turn that Anthropic pauses because it ran long (stop reason
 // "pause_turn") is resumed a few times; the usage of every round is summed.
-func (c *Client) WebSearch(ctx context.Context, req WebSearchRequest) (*WebSearchResponse, error) {
+func (c *Client) WebSearch(ctx context.Context,
+	req WebSearchRequest) (*WebSearchResponse, error) {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return nil, errors.New("ai: web search: empty prompt")
 	}
@@ -126,7 +127,9 @@ func (c *Client) WebSearch(ctx context.Context, req WebSearchRequest) (*WebSearc
 	// The messages are kept raw: to resume a paused turn the model's own content blocks (searches, results,
 	// encrypted contents) go back to it unchanged.
 	messages := []any{map[string]any{"role": "user", "content": req.Prompt}}
-	out := &WebSearchResponse{Provider: ProviderAnthropic}
+	out := &WebSearchResponse{
+		Provider: ProviderAnthropic,
+	}
 	var usage Usage
 	var text strings.Builder
 	cited := map[string]bool{}
@@ -173,7 +176,10 @@ func (c *Client) WebSearch(ctx context.Context, req WebSearchRequest) (*WebSearc
 				for _, ci := range b.Citations {
 					if ci.URL != "" && !cited[ci.URL] {
 						cited[ci.URL] = true
-						out.Sources = append(out.Sources, WebSource{URL: ci.URL, Title: ci.Title})
+						out.Sources = append(out.Sources, WebSource{
+							URL:   ci.URL,
+							Title: ci.Title,
+						})
 					}
 				}
 			case "server_tool_use":
@@ -233,7 +239,11 @@ func parseWebSearchResults(raw json.RawMessage) (pages []WebSource, errCode stri
 	if err := json.Unmarshal(raw, &list); err == nil {
 		for _, r := range list {
 			if r.Type == "web_search_result" && r.URL != "" {
-				pages = append(pages, WebSource{URL: r.URL, Title: r.Title, PageAge: r.PageAge})
+				pages = append(pages, WebSource{
+					URL:     r.URL,
+					Title:   r.Title,
+					PageAge: r.PageAge,
+				})
 			}
 		}
 		return pages, ""

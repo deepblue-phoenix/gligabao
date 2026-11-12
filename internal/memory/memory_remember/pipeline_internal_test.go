@@ -22,7 +22,9 @@ func TestPipelineStagesAreTheRunLogs(t *testing.T) {
 	got := memory_pipeline.Names(rememberPipeline)
 	//------------------
 	if slices.Sort(got); !reflect.DeepEqual(got, sorted(want)) {
-		t.Errorf("rememberPipeline has the stages %v, the run log %v", got, sorted(want))
+		t.Errorf("rememberPipeline has the stages %v, the run log %v",
+			got,
+			sorted(want))
 	}
 	//------------------
 	// MEMORY PIPELINE
@@ -30,18 +32,23 @@ func TestPipelineStagesAreTheRunLogs(t *testing.T) {
 	//------------------
 	got, want = without(got, StageStore), without(want, StageStore)
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("rememberPipeline = %v, want %v (without store)", got, want)
+		t.Errorf("rememberPipeline = %v, want %v (without store)",
+			got,
+			want)
 	}
 	//------------------
 	// MEMORY PIPELINE
 	if got, want := memory_pipeline.Names(reconcileSteps), []string{StageLoadCandidates, "resolve_edges", StageStore}; !reflect.DeepEqual(got, want) {
-		t.Errorf("reconcileSteps = %v, want %v", got, want)
+		t.Errorf("reconcileSteps = %v, want %v",
+			got,
+			want)
 	}
 	//------------------
 }
 
 func sorted(s []string) []string { s = slices.Clone(s); slices.Sort(s); return s }
 
-func without(s []string, name string) []string {
+func without(s []string,
+	name string) []string {
 	return slices.DeleteFunc(slices.Clone(s), func(n string) bool { return n == name })
 }

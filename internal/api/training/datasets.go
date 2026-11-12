@@ -23,31 +23,45 @@ import (
 // name again replaces the dataset's file. A dataset of that name that has a manifest of its own, naming another data file,
 // or a dataset of that name in another directory, is not replaced: 409. The sidecar is not involved. It answers 201
 // with the dataset (core.DatasetInfo). A bad file answers 400, a file over MaxDatasetBytes 413.
-func UploadDatasetOf(db *sql.DB, datasetDirs []string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func UploadDatasetOf(db *sql.DB,
+	datasetDirs []string) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		if len(datasetDirs) == 0 || datasetDirs[0] == "" {
-			httputil.Error(w, http.StatusInternalServerError, "no training dataset directory is configured")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"no training dataset directory is configured")
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, core.MaxDatasetBytes+1<<20)
+		r.Body = http.MaxBytesReader(w,
+			r.Body,
+			core.MaxDatasetBytes+1<<20)
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			var mbe *http.MaxBytesError
 			if errors.As(err, &mbe) {
-				httputil.Error(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("the dataset is over %d MB", core.MaxDatasetBytes>>20))
+				httputil.Error(w,
+					http.StatusRequestEntityTooLarge,
+					fmt.Sprintf("the dataset is over %d MB", core.MaxDatasetBytes>>20))
 				return
 			}
-			httputil.Error(w, http.StatusBadRequest, "expected a multipart form with the JSONL file in the field \"file\"")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"expected a multipart form with the JSONL file in the field \"file\"")
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
 		file, hdr, err := r.FormFile("file")
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, "the form has no \"file\" field")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"the form has no \"file\" field")
 			return
 		}
 		defer file.Close()
 		if hdr.Size > core.MaxDatasetBytes {
-			httputil.Error(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("the dataset is over %d MB", core.MaxDatasetBytes>>20))
+			httputil.Error(w,
+				http.StatusRequestEntityTooLarge,
+				fmt.Sprintf("the dataset is over %d MB", core.MaxDatasetBytes>>20))
 			return
 		}
 		filename := strings.TrimSpace(r.FormValue("filename"))
@@ -56,29 +70,43 @@ func UploadDatasetOf(db *sql.DB, datasetDirs []string) http.HandlerFunc {
 		}
 		buf := new(bytes.Buffer)
 		if _, err := buf.ReadFrom(file); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "failed to read the file")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"failed to read the file")
 			return
 		}
-		info, err := core.SaveDataset(r.Context(), db, datasetDirs, filename, buf.Bytes())
+		info, err := core.SaveDataset(r.Context(),
+			db,
+			datasetDirs,
+			filename,
+			buf.Bytes())
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusCreated, info)
+		httputil.WriteJSON(w,
+			http.StatusCreated,
+			info)
 	}
 }
 
 // ListDatasetsOf serves GET /v1/gb/training/datasets: {"datasets": [...], "problems": [...]}, the training
 // datasets (core.DatasetInfo) found in the training datasets directory by their manifests, by name, and the subdirectories with a
 // manifest that are not usable (core.DatasetProblem). It never asks the sidecar.
-func ListDatasetsOf(db *sql.DB, datasetDirs []string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ds, problems, err := core.ListDatasets(r.Context(), db, datasetDirs)
+func ListDatasetsOf(db *sql.DB,
+	datasetDirs []string) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		ds, problems, err := core.ListDatasets(r.Context(),
+			db,
+			datasetDirs)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": ds, "problems": problems})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"datasets": ds, "problems": problems})
 	}
 }
 
@@ -87,27 +115,36 @@ func ListDatasetsOf(db *sql.DB, datasetDirs []string) http.HandlerFunc {
 // "truncated"}. truncated is true if the file has more lines than returned. Only the beginning of the file is read. An
 // unknown dataset answers 404.
 func PreviewDatasetOf(datasetDirs []string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		name := q.Get("name")
 		if !core.ValidDatasetName(name) {
-			httputil.Error(w, http.StatusBadRequest, "invalid dataset name")
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid dataset name")
 			return
 		}
 		limit := core.PreviewDefaultLines
 		if v := q.Get("lines"); v != "" {
 			l, err := strconv.Atoi(v)
 			if err != nil || l < 1 || l > core.PreviewMaxLines {
-				httputil.Error(w, http.StatusBadRequest, fmt.Sprintf("lines must be between 1 and %d", core.PreviewMaxLines))
+				httputil.Error(w,
+					http.StatusBadRequest,
+					fmt.Sprintf("lines must be between 1 and %d", core.PreviewMaxLines))
 				return
 			}
 			limit = l
 		}
-		p, err := core.PreviewDataset(datasetDirs, name, limit)
+		p, err := core.PreviewDataset(datasetDirs,
+			name,
+			limit)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, p)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			p)
 	}
 }

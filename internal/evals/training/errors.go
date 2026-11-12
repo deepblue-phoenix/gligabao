@@ -24,8 +24,31 @@ type Error struct {
 func (e *Error) Error() string { return e.Msg }
 func (e *Error) Unwrap() error { return e.Err }
 
-func internalErr(msg string, err error) *Error { return &Error{KindInternal, msg, err} }
-func invalidErr(msg string) *Error             { return &Error{Kind: KindInvalid, Msg: msg} }
-func notFoundErr(msg string) *Error            { return &Error{Kind: KindNotFound, Msg: msg} }
-func conflictErr(msg string) *Error            { return &Error{Kind: KindConflict, Msg: msg} }
-func unavailableErr(msg string) *Error         { return &Error{Kind: KindUnavailable, Msg: msg} }
+func internalErr(msg string,
+	err error) *Error {
+	return &Error{KindInternal, msg, err}
+}
+func invalidErr(msg string) *Error {
+	return &Error{
+		Kind: KindInvalid,
+		Msg:  msg,
+	}
+}
+func notFoundErr(msg string) *Error {
+	return &Error{
+		Kind: KindNotFound,
+		Msg:  msg,
+	}
+}
+func conflictErr(msg string) *Error {
+	return &Error{
+		Kind: KindConflict,
+		Msg:  msg,
+	}
+}
+func unavailableErr(msg string) *Error {
+	return &Error{
+		Kind: KindUnavailable,
+		Msg:  msg,
+	}
+}

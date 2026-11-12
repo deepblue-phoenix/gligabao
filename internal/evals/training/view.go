@@ -51,9 +51,20 @@ type RunView struct {
 
 // ViewOfRun is the view of a training eval run of the eval called eval. A run whose Meta is not that of a training eval run has no
 // counters of it.
-func ViewOfRun(r *core.EvalRun, eval string) RunView {
-	v := RunView{ID: int64(r.ID), Kind: KindEval, Status: r.Status, Eval: eval, Params: json.RawMessage("{}"),
-		Counts: r.Counts, JudgeCostUSD: r.CostUSD, Error: r.Error, CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt}
+func ViewOfRun(r *core.EvalRun,
+	eval string) RunView {
+	v := RunView{
+		ID:           int64(r.ID),
+		Kind:         KindEval,
+		Status:       r.Status,
+		Eval:         eval,
+		Params:       json.RawMessage("{}"),
+		Counts:       r.Counts,
+		JudgeCostUSD: r.CostUSD,
+		Error:        r.Error,
+		CreatedAt:    r.CreatedAt,
+		FinishedAt:   r.FinishedAt,
+	}
 	if r.StartedAt != nil {
 		v.CreatedAt = *r.StartedAt
 	}
@@ -126,9 +137,25 @@ type CaseView struct {
 }
 
 // ViewOfResult is the view of a case that went through the engine (the feed's). name is that of the case.
-func ViewOfResult(runID core.EvalRunID, name string, r CaseResult) CaseView {
-	v := CaseView{RunID: int64(runID), Idx: r.Idx, Batch: r.Batch, Name: name, Instruction: r.Instruction, Input: r.Input, Reference: r.Reference,
-		Response: r.Response, Error: r.Error, Score: r.Score, Reason: r.Reason, InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, DurationMS: r.DurationMS}
+func ViewOfResult(runID core.EvalRunID,
+	name string,
+	r CaseResult) CaseView {
+	v := CaseView{
+		RunID:        int64(runID),
+		Idx:          r.Idx,
+		Batch:        r.Batch,
+		Name:         name,
+		Instruction:  r.Instruction,
+		Input:        r.Input,
+		Reference:    r.Reference,
+		Response:     r.Response,
+		Error:        r.Error,
+		Score:        r.Score,
+		Reason:       r.Reason,
+		InputTokens:  r.InputTokens,
+		OutputTokens: r.OutputTokens,
+		DurationMS:   r.DurationMS,
+	}
 	switch r.Status {
 	case CaseJudged:
 		v.Status, v.Verdict = core.StatusCompleted, verdictOfScore(r.Score)
@@ -141,8 +168,18 @@ func ViewOfResult(runID core.EvalRunID, name string, r CaseResult) CaseView {
 }
 
 // ViewOfCaseRun is the view of a stored case run: name is that of its case def and idx its position among the cases of the run.
-func ViewOfCaseRun(c *core.CaseRun, name string, idx int) CaseView {
-	v := CaseView{ID: int64(c.ID), RunID: int64(c.EvalRunID), Idx: idx, Name: name, Status: c.Status, Verdict: c.Verdict, Error: c.Error}
+func ViewOfCaseRun(c *core.CaseRun,
+	name string,
+	idx int) CaseView {
+	v := CaseView{
+		ID:      int64(c.ID),
+		RunID:   int64(c.EvalRunID),
+		Idx:     idx,
+		Name:    name,
+		Status:  c.Status,
+		Verdict: c.Verdict,
+		Error:   c.Error,
+	}
 	var m *core.TrainingCaseRunMeta
 	switch x := c.Meta.(type) {
 	case *core.TrainingCaseRunMeta:

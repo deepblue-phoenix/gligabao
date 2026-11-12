@@ -31,7 +31,8 @@ import (
 
 // Inferer runs a prompt through a trained model on the sidecar; *sidecar.Client is one.
 type Inferer interface {
-	Infer(ctx context.Context, req sidecar.InferRequest) (sidecar.InferResponse, error)
+	Infer(ctx context.Context,
+		req sidecar.InferRequest) (sidecar.InferResponse, error)
 }
 
 // Manager starts the evals of trained models and runs them in the background, one at a time per trained model. Evals that were still
@@ -61,10 +62,27 @@ type runningEval struct {
 // NewManager makes the manager of the evals of the trained models in d (which has the schema of evals.Open), whose evals are in
 // the directories evalDirs. sc answers the questions and llm judges (the callers check for nil). The evals stop when ctx is done. Evals
 // that a restart interrupted (still pending or running in the database) are marked errored.
-func NewManager(ctx context.Context, d *sql.DB, store db.Store, evalDirs []string, sc Inferer, llm memory_core.LLM) *Manager {
-	m := &Manager{DB: d, Sc: sc, LLM: llm, Store: store, dirs: evalDirs, ctx: ctx,
-		running: map[int64]*runningEval{}, feeds: map[core.EvalRunID]*Feed{}}
-	if k, err := store.FailRunning(ctx, d, core.TypeTraining, "interrupted: the server restarted while the eval ran", time.Now()); err != nil {
+func NewManager(ctx context.Context,
+	d *sql.DB,
+	store db.Store,
+	evalDirs []string,
+	sc Inferer,
+	llm memory_core.LLM) *Manager {
+	m := &Manager{
+		DB:      d,
+		Sc:      sc,
+		LLM:     llm,
+		Store:   store,
+		dirs:    evalDirs,
+		ctx:     ctx,
+		running: map[int64]*runningEval{},
+		feeds:   map[core.EvalRunID]*Feed{},
+	}
+	if k, err := store.FailRunning(ctx,
+		d,
+		core.TypeTraining,
+		"interrupted: the server restarted while the eval ran",
+		time.Now()); err != nil {
 		log.WithError(err).Warn("training evals: could not mark interrupted evals as errored")
 	} else if k > 0 {
 		log.Infof("training evals: %d eval(s) were interrupted by a restart and marked errored", k)
@@ -100,8 +118,11 @@ func (m *Manager) HasEval(name string) bool {
 }
 
 // getModel reads trained model id, as an *Error.
-func (m *Manager) getModel(ctx context.Context, id int64) (*trainingdb.TrainedModel, error) {
-	tm, err := trainingcore.GetModel(ctx, m.DB, id)
+func (m *Manager) getModel(ctx context.Context,
+	id int64) (*trainingdb.TrainedModel, error) {
+	tm, err := trainingcore.GetModel(ctx,
+		m.DB,
+		id)
 	var te *trainingcore.Error
 	switch {
 	case err == nil:
@@ -115,12 +136,20 @@ func (m *Manager) getModel(ctx context.Context, id int64) (*trainingdb.TrainedMo
 }
 
 // Generator makes the engine's GenerateFunc of trained model tm: one sidecar inference per question, with the settings of params.
-func Generator(sc Inferer, tm *trainingdb.TrainedModel, params RunParams) GenerateFunc {
-	return func(ctx context.Context, prompt string) (Generation, error) {
+func Generator(sc Inferer,
+	tm *trainingdb.TrainedModel,
+	params RunParams) GenerateFunc {
+	return func(ctx context.Context,
+		prompt string) (Generation, error) {
 		ctx, cancel := context.WithTimeout(ctx, trainingcore.InferTimeout)
 		defer cancel()
-		out, err := sc.Infer(ctx, sidecar.InferRequest{Prompt: prompt, ModelSize: tm.ModelSize, ModelPath: tm.Path,
-			MaxTokens: params.MaxTokens, Temperature: &params.Temperature})
+		out, err := sc.Infer(ctx, sidecar.InferRequest{
+			Prompt:      prompt,
+			ModelSize:   tm.ModelSize,
+			ModelPath:   tm.Path,
+			MaxTokens:   params.MaxTokens,
+			Temperature: &params.Temperature,
+		})
 		if err != nil {
 			var ie *sidecar.InferError
 			if errors.As(err, &ie) {
@@ -128,7 +157,11 @@ func Generator(sc Inferer, tm *trainingdb.TrainedModel, params RunParams) Genera
 			}
 			return Generation{}, err
 		}
-		return Generation{Response: out.Response, InputTokens: out.InputTokens, OutputTokens: out.OutputTokens}, nil
+		return Generation{
+			Response:     out.Response,
+			InputTokens:  out.InputTokens,
+			OutputTokens: out.OutputTokens,
+		}, nil
 	}
 }
 
@@ -136,7 +169,9 @@ func Generator(sc Inferer, tm *trainingdb.TrainedModel, params RunParams) Genera
 // Errors are *Error: KindInvalid for bad options, an unknown eval or case, or no eval to default to (the model has no dataset, or
 // no eval has its name), KindNotFound for an unknown model, KindConflict if the model has an eval running already, KindUnavailable
 // without a sidecar or an LLM, KindInternal.
-func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunView, error) {
+func (m *Manager) Start(ctx context.Context,
+	modelID int64,
+	opts Options) (*RunView, error) {
 	if m.Sc == nil {
 		return nil, unavailableErr("sidecar is not active")
 	}
@@ -162,7 +197,9 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunV
 			return nil, invalidErr("there is no eval named like this model's training dataset; set \"eval\" to one of: " + strings.Join(evalfileNames(evals), ", "))
 		}
 	}
-	selected, err := SelectEvals(evals, name, opts.Cases)
+	selected, err := SelectEvals(evals,
+		name,
+		opts.Cases)
 	if err != nil {
 		return nil, invalidErr(err.Error())
 	}
@@ -182,7 +219,9 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunV
 
 	// One eval at a time per model: it would otherwise compete with itself for the model's GPU container.
 	runCtx, cancel := context.WithCancel(m.ctx)
-	cur := &runningEval{cancel: cancel}
+	cur := &runningEval{
+		cancel: cancel,
+	}
 	m.mu.Lock()
 	if _, busy := m.running[tm.ID]; busy {
 		m.mu.Unlock()
@@ -216,9 +255,15 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunV
 		if len(opts.ExperimentConfig) > 0 {
 			cfgParams = core.Params(opts.ExperimentConfig)
 		}
-		xd, err := r.EnsureExperimentWith(dbCtx, x, opts.ExperimentDescription, cfgParams, []core.EvalDefID{def.ID})
+		xd, err := r.EnsureExperimentWith(dbCtx,
+			x,
+			opts.ExperimentDescription,
+			cfgParams,
+			[]core.EvalDefID{def.ID})
 		if err == nil {
-			xr, err = r.StartExperimentRun(dbCtx, xd, params.Params())
+			xr, err = r.StartExperimentRun(dbCtx,
+				xd,
+				params.Params())
 		}
 		if err != nil {
 			release()
@@ -233,7 +278,9 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunV
 	created := make(chan RunView, 1)
 	var run *core.EvalRun // the eval run the recorder keeps, set by onCreated
 	runOpts.Params = params.Params()
-	runOpts.Meta = &core.TrainingEvalRunMeta{TrainedModelID: tm.ID}
+	runOpts.Meta = &core.TrainingEvalRunMeta{
+		TrainedModelID: tm.ID,
+	}
 	runOpts.OnCreated = func(er *core.EvalRun) {
 		run = er
 		m.mu.Lock()
@@ -245,15 +292,27 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunV
 	failed := make(chan error, 1)
 
 	x := &Executor{
-		Config:   cfg,
-		Generate: Generator(m.Sc, tm, params),
-		Judge:    memory_core.WithRecording(m.LLM, m.DB, CallJudge),
+		Config: cfg,
+		Generate: Generator(m.Sc,
+			tm,
+			params),
+		Judge: memory_core.WithRecording(m.LLM,
+			m.DB,
+			CallJudge),
 	}
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		defer release()
-		m.run(runCtx, r, def, x, runOpts, xr, feed, &run, failed)
+		m.run(runCtx,
+			r,
+			def,
+			x,
+			runOpts,
+			xr,
+			feed,
+			&run,
+			failed)
 	}()
 	select {
 	case v := <-created:
@@ -265,7 +324,8 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunV
 }
 
 // selectedFull is the eval called name of evals, with all its cases.
-func selectedFull(evals []Eval, name string) Eval {
+func selectedFull(evals []Eval,
+	name string) Eval {
 	i := slices.IndexFunc(evals, func(e Eval) bool { return e.Name == name })
 	return evals[i]
 }
@@ -280,8 +340,15 @@ func evalfileNames(evals []Eval) []string {
 
 // run is the eval's goroutine: it runs the eval with the runner, which stores every finished batch, and ends the records. failed
 // gets the error if the eval run could not even be recorded.
-func (m *Manager) run(ctx context.Context, r *runner.Runner, def *core.EvalDef, x *Executor, opts runner.EvalOptions, xr *runner.ExperimentRecorder,
-	feed *Feed, run **core.EvalRun, failed chan<- error) {
+func (m *Manager) run(ctx context.Context,
+	r *runner.Runner,
+	def *core.EvalDef,
+	x *Executor,
+	opts runner.EvalOptions,
+	xr *runner.ExperimentRecorder,
+	feed *Feed,
+	run **core.EvalRun,
+	failed chan<- error) {
 	dbCtx := context.WithoutCancel(ctx) // the writes must outlive a cancelled eval
 	logf := log.WithField("eval", def.Name)
 	logf.WithField("cases", len(def.Cases)).Info("training evals: eval started")
@@ -290,21 +357,34 @@ func (m *Manager) run(ctx context.Context, r *runner.Runner, def *core.EvalDef, 
 		names[i] = c.Name
 	}
 	x.OnAnswer = func(res CaseResult) {
-		feed.Answer(ViewOfResult((*run).ID, names[res.Idx], res))
+		feed.Answer(ViewOfResult((*run).ID,
+			names[res.Idx],
+			res))
 	}
-	x.OnBatch = func(cases []CaseResult, _ Progress) {
+	x.OnBatch = func(cases []CaseResult,
+		_ Progress) {
 		views := make([]CaseView, len(cases))
 		for i, c := range cases {
-			views[i] = ViewOfResult((*run).ID, names[c.Idx], c)
+			views[i] = ViewOfResult((*run).ID,
+				names[c.Idx],
+				c)
 		}
 		feed.Batch(ViewOfRun(*run, def.Name), views)
 	}
 
-	ended, err := m.runRecovering(ctx, r, def, x, opts, run, logf)
+	ended, err := m.runRecovering(ctx,
+		r,
+		def,
+		x,
+		opts,
+		run,
+		logf)
 	if ended != nil && ended.Status == core.StatusCancelled && m.ctx.Err() != nil {
 		// Stopped by the server shutting down, not by the user.
 		ended.Status, ended.Error = core.StatusErrored, "interrupted: the server shut down while the eval ran"
-		if updateErr := m.Store.UpdateEvalRun(dbCtx, m.DB, ended); updateErr != nil {
+		if updateErr := m.Store.UpdateEvalRun(dbCtx,
+			m.DB,
+			ended); updateErr != nil {
 			logf.WithError(updateErr).Error("training evals: ending the eval failed")
 		}
 	}
@@ -326,12 +406,20 @@ func (m *Manager) run(ctx context.Context, r *runner.Runner, def *core.EvalDef, 
 	if err != nil && ended.Status == core.StatusErrored {
 		logf.WithError(err).Warn("training evals: eval failed")
 	}
-	m.publishEnd(dbCtx, feed, ended.ID, def.Name)
+	m.publishEnd(dbCtx,
+		feed,
+		ended.ID,
+		def.Name)
 }
 
 // runRecovering runs the eval with the runner; a panic ends the eval run (if it was recorded) as errored.
-func (m *Manager) runRecovering(ctx context.Context, r *runner.Runner, def *core.EvalDef, x *Executor, opts runner.EvalOptions,
-	run **core.EvalRun, logf *log.Entry) (ended *core.EvalRun, err error) {
+func (m *Manager) runRecovering(ctx context.Context,
+	r *runner.Runner,
+	def *core.EvalDef,
+	x *Executor,
+	opts runner.EvalOptions,
+	run **core.EvalRun,
+	logf *log.Entry) (ended *core.EvalRun, err error) {
 	defer func() {
 		p := recover()
 		if p == nil {
@@ -342,26 +430,39 @@ func (m *Manager) runRecovering(ctx context.Context, r *runner.Runner, def *core
 		if cur := *run; cur != nil {
 			end := time.Now().UTC().Truncate(time.Second)
 			cur.Status, cur.Error, cur.FinishedAt = core.StatusErrored, err.Error(), &end
-			if updateErr := m.Store.UpdateEvalRun(context.WithoutCancel(ctx), m.DB, cur); updateErr != nil {
+			if updateErr := m.Store.UpdateEvalRun(context.WithoutCancel(ctx),
+				m.DB,
+				cur); updateErr != nil {
 				logf.WithError(updateErr).Error("training evals: ending the eval failed")
 			}
 			ended = cur
 		}
 	}()
-	return r.RunEval(memory_core.WithStage(ctx, StageJudge), def, x, opts)
+	return r.RunEval(memory_core.WithStage(ctx, StageJudge),
+		def,
+		x,
+		opts)
 }
 
 // publishEnd announces the end of eval id on its feed, with the run as stored.
-func (m *Manager) publishEnd(ctx context.Context, f *Feed, id core.EvalRunID, eval string) {
+func (m *Manager) publishEnd(ctx context.Context,
+	f *Feed,
+	id core.EvalRunID,
+	eval string) {
 	m.mu.Lock()
 	if m.feeds[id] == f {
 		delete(m.feeds, id)
 	}
 	m.mu.Unlock()
-	if run, err := m.Store.GetEvalRun(ctx, m.DB, id); err == nil {
+	if run, err := m.Store.GetEvalRun(ctx,
+		m.DB,
+		id); err == nil {
 		f.End(ViewOfRun(run, eval))
 	} else {
 		log.WithError(err).WithField("run_id", id).Warn("training evals: read the ended eval for its feed failed")
-		f.End(RunView{ID: int64(id), Kind: KindEval})
+		f.End(RunView{
+			ID:   int64(id),
+			Kind: KindEval,
+		})
 	}
 }

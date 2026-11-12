@@ -22,26 +22,47 @@ import (
 // summaryLLM answers a summary request with a summary, and records the model and reasoning level of those requests.
 type summaryLLM struct{ models, levels, all []string }
 
-func (l *summaryLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+func (l *summaryLLM) Complete(_ context.Context,
+	req ai.Request) (*ai.Response, error) {
 	l.all = append(l.all, req.Reasoning)
 	if strings.Contains(req.System, "summarize a passage") {
 		l.models, l.levels = append(l.models, req.Model), append(l.levels, req.Reasoning)
-		return &ai.Response{Text: "A summary.", StopReason: "end_turn", Model: "sum-model", InputTokens: 7, OutputTokens: 3, CostUSD: 0.5}, nil
+		return &ai.Response{
+			Text:         "A summary.",
+			StopReason:   "end_turn",
+			Model:        "sum-model",
+			InputTokens:  7,
+			OutputTokens: 3,
+			CostUSD:      0.5,
+		}, nil
 	}
-	return &ai.Response{Text: `{"entities":[],"edges":[]}`, StopReason: "end_turn", Model: "fake-model"}, nil
+	return &ai.Response{
+		Text:       `{"entities":[],"edges":[]}`,
+		StopReason: "end_turn",
+		Model:      "fake-model",
+	}, nil
 }
 
 func TestRememberSummaryModelAndReasoning(t *testing.T) {
 	dbtest.Run(t, testRememberSummaryModelAndReasoning)
 }
 
-func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
+func testRememberSummaryModelAndReasoning(t *testing.T,
+	d *sql.DB) {
 	llm := &summaryLLM{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithChunking(memory_chunk.Config{Size: 40, OverlapPercent: 20})))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t,
+		d,
+		llm,
+		memory_core.WithChunking(memory_chunk.Config{
+			Size:           40,
+			OverlapPercent: 20,
+		})))
 	post := func(body string) int {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST",
+			"/v1/gb/remember",
+			strings.NewReader(body)))
 		return rec.Code
 	}
 	text := strings.Repeat("Alice walked along the river and talked about the weather and her plans for the summer holidays.\n\n", 6)
@@ -54,11 +75,19 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 	}
 	for i := range llm.levels {
 		if llm.models[i] != "small-model" || llm.levels[i] != "low" {
-			t.Errorf("summary request %d: model %q, reasoning %q", i, llm.models[i], llm.levels[i])
+			t.Errorf("summary request %d: model %q, reasoning %q",
+				i,
+				llm.models[i],
+				llm.levels[i])
 		}
 	}
-	dsID, _ := relational.DatasetID(context.Background(), d, "u1", "d")
-	arts, _ := graph.ListArtifacts(context.Background(), d, dsID)
+	dsID, _ := relational.DatasetID(context.Background(),
+		d,
+		"u1",
+		"d")
+	arts, _ := graph.ListArtifacts(context.Background(),
+		d,
+		dsID)
 	n := 0
 	for _, a := range arts {
 		if a.Kind == graph.ArtifactChunkSummary {
@@ -69,7 +98,9 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 		}
 	}
 	if n != len(llm.levels) {
-		t.Errorf("%d summary artifacts, %d requests", n, len(llm.levels))
+		t.Errorf("%d summary artifacts, %d requests",
+			n,
+			len(llm.levels))
 	}
 
 	// The run that wrote each summary tracks the model and the level, and the artifact references it.
@@ -77,10 +108,15 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 		if a.Kind != graph.ArtifactChunkSummary {
 			continue
 		}
-		run, err := relational.GetInference(context.Background(), d, a.InferenceID)
+		run, err := relational.GetInference(context.Background(),
+			d,
+			a.InferenceID)
 		if err != nil || run.Stage != memory_core.StageSummarizeChunk || run.Type != memory_remember.CallRemember || run.Reasoning != "low" ||
 			run.Model != "sum-model" || run.ModelID != relational.ModelID("sum-model") || run.InputTokens != 7 || run.OutputTokens != 3 || run.CostUSD != 0.5 {
-			t.Errorf("summary %d: inference %+v, %v", a.ID, run, err)
+			t.Errorf("summary %d: inference %+v, %v",
+				a.ID,
+				run,
+				err)
 		}
 	}
 
@@ -89,14 +125,24 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 	if c := post(`{"user_id":"u1","dataset":"e","text":` + jsonString(text) + `}`); c != 200 {
 		t.Fatalf("status %d", c)
 	}
-	dsID, _ = relational.DatasetID(context.Background(), d, "u1", "e")
-	arts, _ = graph.ListArtifacts(context.Background(), d, dsID)
+	dsID, _ = relational.DatasetID(context.Background(),
+		d,
+		"u1",
+		"e")
+	arts, _ = graph.ListArtifacts(context.Background(),
+		d,
+		dsID)
 	for _, a := range arts {
 		if a.Kind != graph.ArtifactChunkSummary {
 			continue
 		}
-		if run, err := relational.GetInference(context.Background(), d, a.InferenceID); err != nil || run.Reasoning != "none" {
-			t.Errorf("summary %d: inference %+v, %v", a.ID, run, err)
+		if run, err := relational.GetInference(context.Background(),
+			d,
+			a.InferenceID); err != nil || run.Reasoning != "none" {
+			t.Errorf("summary %d: inference %+v, %v",
+				a.ID,
+				run,
+				err)
 		}
 	}
 	if len(llm.levels) == 0 || len(llm.all) == 0 {
@@ -133,7 +179,9 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 		`{"user_id":"u1","image":"aGk=","reasoning":{"extract_image":"max"}}`,
 	} {
 		if c := post(body); c != 400 {
-			t.Errorf("%s: status %d, want 400", body, c)
+			t.Errorf("%s: status %d, want 400",
+				body,
+				c)
 		}
 	}
 
@@ -158,5 +206,8 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 }
 
 func jsonString(s string) string {
-	return `"` + strings.NewReplacer("\n", `\n`, `"`, `\"`).Replace(s) + `"`
+	return `"` + strings.NewReplacer("\n",
+		`\n`,
+		`"`,
+		`\"`).Replace(s) + `"`
 }

@@ -85,12 +85,17 @@ func (n Named) vectors() (vector.Store, func(), error) {
 
 // Databases serves GET /admin/api/databases: the names of the databases the UI can show, in display order.
 func Databases(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		names := make([]string, 0, len(dbs))
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		names := make([]string,
+			0,
+			len(dbs))
 		for _, d := range dbs {
 			names = append(names, d.Name)
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"databases": names})
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string]any{"databases": names})
 	}
 }
 
@@ -101,14 +106,17 @@ func OverviewOf(dbs []Named) http.HandlerFunc {
 	for _, d := range dbs {
 		handlers[d.Name] = Overview(d.DB)
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
 		}
 		h, ok := handlers[name]
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
 		h(w, r)
@@ -118,20 +126,33 @@ func OverviewOf(dbs []Named) http.HandlerFunc {
 // Overview serves GET /admin/api/overview[?include_deleted=true]: the datasets of all users, each with its
 // artifact/entity/edge counts, plus the totals over the listed datasets.
 func Overview(d *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		ctx := r.Context()
-		list, err := relational.ListAllDatasets(ctx, d, r.URL.Query().Get("include_deleted") == "true")
+		list, err := relational.ListAllDatasets(ctx,
+			d,
+			r.URL.Query().Get("include_deleted") == "true")
 		if err != nil {
 			log.WithError(err).Error("admin: list datasets failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to list datasets")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to list datasets")
 			return
 		}
-		out := overview{Datasets: make([]datasetView, 0, len(list))}
+		out := overview{
+			Datasets: make([]datasetView,
+				0,
+				len(list)),
+		}
 		for _, ds := range list {
-			c, err := graph.DatasetCounts(ctx, d, ds.ID)
+			c, err := graph.DatasetCounts(ctx,
+				d,
+				ds.ID)
 			if err != nil {
 				log.WithError(err).WithField("dataset_id", ds.ID).Error("admin: dataset counts failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to count dataset contents")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to count dataset contents")
 				return
 			}
 			out.Datasets = append(out.Datasets, datasetView{ds, Counts{c.Artifacts, c.Entities, c.Edges}})
@@ -139,7 +160,9 @@ func Overview(d *sql.DB) http.HandlerFunc {
 			out.Totals.Entities += c.Entities
 			out.Totals.Edges += c.Edges
 		}
-		httputil.WriteJSON(w, http.StatusOK, out)
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			out)
 	}
 }
 
@@ -150,14 +173,17 @@ func GraphOf(dbs []Named) http.HandlerFunc {
 	for _, d := range dbs {
 		handlers[d.Name] = Graph(d.DB)
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
 		}
 		h, ok := handlers[name]
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"unknown database")
 			return
 		}
 		h(w, r)
@@ -167,25 +193,41 @@ func GraphOf(dbs []Named) http.HandlerFunc {
 // Graph serves GET /admin/api/graph?user_id=...&dataset=...: the entities and edges of the dataset, and in_context: how many times each
 // went into the context of an LLM call, per pipeline (see graphView).
 func Graph(d *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
-		g, err := memory.ExportGraph(r.Context(), d, q.Get("user_id"), q.Get("dataset"))
+		g, err := memory.ExportGraph(r.Context(),
+			d,
+			q.Get("user_id"),
+			q.Get("dataset"))
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidUser):
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
 		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
-			httputil.Error(w, http.StatusNotFound, "dataset not found")
+			httputil.Error(w,
+				http.StatusNotFound,
+				"dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: export graph failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to export graph")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to export graph")
 		default:
-			v, err := withInContext(r.Context(), d, g)
+			v, err := withInContext(r.Context(),
+				d,
+				g)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: in-context counts failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to count the in-context use")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to count the in-context use")
 				return
 			}
-			httputil.WriteJSON(w, http.StatusOK, v)
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				v)
 		}
 	}
 }
@@ -193,7 +235,8 @@ func Graph(d *sql.DB) http.HandlerFunc {
 // DeleteDatasetOf serves DELETE /admin/api/datasets?db=<name>&user_id=...&dataset=... for one of dbs (the first
 // without db): a soft delete of the dataset (see memory_dataset.DeleteDataset).
 func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		name := q.Get("db")
 		if name == "" && len(dbs) > 0 {
@@ -206,35 +249,50 @@ func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 			vectors, release, err := n.vectors()
 			if err != nil {
 				log.WithError(err).Error("admin: open vector store failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to open vector store")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to open vector store")
 				return
 			}
 			defer release()
 			//------------------
 			// MEMORY DATASET
-			err = memory_dataset.DeleteDataset(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
+			err = memory_dataset.DeleteDataset(r.Context(),
+				n.DB,
+				vectors,
+				q.Get("user_id"),
+				q.Get("dataset"))
 			//------------------
 			switch {
 			case errors.Is(err, memory_core.ErrInvalidUser):
-				httputil.Error(w, http.StatusBadRequest, err.Error())
+				httputil.Error(w,
+					http.StatusBadRequest,
+					err.Error())
 			case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
-				httputil.Error(w, http.StatusNotFound, "dataset not found")
+				httputil.Error(w,
+					http.StatusNotFound,
+					"dataset not found")
 			case err != nil:
 				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: delete dataset failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to delete dataset")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to delete dataset")
 			default:
 				w.WriteHeader(http.StatusNoContent)
 			}
 			return
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }
 
 // VectorsOf serves GET /admin/api/vectors?db=<name>&user_id=...&dataset=... for one of dbs (the first without db):
 // the vector statistics of a live dataset, per index (see memory.VectorStats).
 func VectorsOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		q := r.URL.Query()
 		name := q.Get("db")
 		if name == "" && len(dbs) > 0 {
@@ -247,32 +305,49 @@ func VectorsOf(dbs []Named) http.HandlerFunc {
 			vectors, release, err := n.vectors()
 			if err != nil {
 				log.WithError(err).Error("admin: open vector store failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to open vector store")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to open vector store")
 				return
 			}
 			defer release()
-			st, err := memory.VectorStats(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
+			st, err := memory.VectorStats(r.Context(),
+				n.DB,
+				vectors,
+				q.Get("user_id"),
+				q.Get("dataset"))
 			switch {
 			case errors.Is(err, memory_core.ErrInvalidUser):
-				httputil.Error(w, http.StatusBadRequest, err.Error())
+				httputil.Error(w,
+					http.StatusBadRequest,
+					err.Error())
 			case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
-				httputil.Error(w, http.StatusNotFound, "dataset not found")
+				httputil.Error(w,
+					http.StatusNotFound,
+					"dataset not found")
 			case err != nil:
 				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: vector stats failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read vector stats")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read vector stats")
 			default:
-				httputil.WriteJSON(w, http.StatusOK, st)
+				httputil.WriteJSON(w,
+					http.StatusOK,
+					st)
 			}
 			return
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }
 
 // VectorsAllOf serves GET /admin/api/vectors/all?db=<name> for one of dbs (the first without db): the vector statistics
 // of every live memory dataset, per index (see memory.VectorStatsAll), as {"datasets": [...]}.
 func VectorsAllOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
@@ -284,20 +359,30 @@ func VectorsAllOf(dbs []Named) http.HandlerFunc {
 			vectors, release, err := n.vectors()
 			if err != nil {
 				log.WithError(err).Error("admin: open vector store failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to open vector store")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to open vector store")
 				return
 			}
 			defer release()
-			list, err := memory.VectorStatsAll(r.Context(), n.DB, vectors)
+			list, err := memory.VectorStatsAll(r.Context(),
+				n.DB,
+				vectors)
 			if err != nil {
 				log.WithError(err).Error("admin: vector stats of all datasets failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read vector stats")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read vector stats")
 				return
 			}
-			httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": list})
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				map[string]any{"datasets": list})
 			return
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }
 
@@ -324,7 +409,8 @@ type imagesView struct {
 // ImagesOf serves GET /admin/api/images[?db=<name>] for one of dbs (the first without db): statistics of the image
 // store: the image artifacts and extractions in the database, and the files in the image directory.
 func ImagesOf(dbs []Named) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
 		name := r.URL.Query().Get("db")
 		if name == "" && len(dbs) > 0 {
 			name = dbs[0].Name
@@ -336,30 +422,43 @@ func ImagesOf(dbs []Named) http.HandlerFunc {
 			st, err := graph.ImageStatistics(r.Context(), n.DB)
 			if err != nil {
 				log.WithError(err).Error("admin: image stats failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read image statistics")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read image statistics")
 				return
 			}
-			out := imagesView{ImageStats: st}
+			out := imagesView{
+				ImageStats: st,
+			}
 			if n.ImageDir != "" {
 				out.Disk = scanImageDir(n.ImageDir, st.Paths)
 			}
-			httputil.WriteJSON(w, http.StatusOK, out)
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				out)
 			return
 		}
-		httputil.Error(w, http.StatusNotFound, "unknown database")
+		httputil.Error(w,
+			http.StatusNotFound,
+			"unknown database")
 	}
 }
 
 // scanImageDir walks dir and compares its files with the paths the database tracks (relative to dir, slash-separated).
-func scanImageDir(dir string, tracked []string) *imageDisk {
-	d := &imageDisk{Dir: dir}
+func scanImageDir(dir string,
+	tracked []string) *imageDisk {
+	d := &imageDisk{
+		Dir: dir,
+	}
 	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
 		d.Missing = len(tracked)
 		return d
 	}
 	d.Exists = true
 	onDisk := map[string]bool{}
-	filepath.WalkDir(dir, func(p string, e os.DirEntry, err error) error {
+	filepath.WalkDir(dir, func(p string,
+		e os.DirEntry,
+		err error) error {
 		if err != nil || e.IsDir() {
 			return nil // unreadable entries are skipped
 		}

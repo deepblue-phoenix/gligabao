@@ -100,7 +100,8 @@ Rules:
 func (r GeoResult) errText() string { return r.Error }
 
 // pickGeoCandidates returns the entities that may be a place, in order of extraction, at most max.
-func pickGeoCandidates(all []*keyEntity, max int) []*keyEntity {
+func pickGeoCandidates(all []*keyEntity,
+	max int) []*keyEntity {
 	var out []*keyEntity
 	for _, e := range all {
 		if !notGeoTypes[e.Type] {
@@ -122,7 +123,12 @@ func detectGeoPrompt(cands []*keyEntity) string {
 		if desc == "" {
 			desc = "(none)"
 		}
-		fmt.Fprintf(&b, "[%d] %s | %s | %s\n", i, c.Name, c.Type, desc)
+		fmt.Fprintf(&b,
+			"[%d] %s | %s | %s\n",
+			i,
+			c.Name,
+			c.Type,
+			desc)
 	}
 	b.WriteString("</entities>")
 	return b.String()
@@ -130,7 +136,8 @@ func detectGeoPrompt(cands []*keyEntity) string {
 
 // parseGeoPlaces decodes the LLM's answer and keeps the valid, distinct places, in the order given: those naming an entity
 // of cands. A kind that is not one of geo.Kinds becomes "place"; an empty query becomes the entity's name.
-func parseGeoPlaces(text string, cands []*keyEntity) ([]geoPlace, error) {
+func parseGeoPlaces(text string,
+	cands []*keyEntity) ([]geoPlace, error) {
 	js, err := memory_core.JSONObject(text)
 	if err != nil {
 		return nil, err
@@ -163,7 +170,11 @@ func parseGeoPlaces(text string, cands []*keyEntity) ([]geoPlace, error) {
 		if len(q) > maxGeoQueryLen {
 			q = cands[p.Entity].Name
 		}
-		res = append(res, geoPlace{Entity: cands[p.Entity], Kind: kind, Query: q})
+		res = append(res, geoPlace{
+			Entity: cands[p.Entity],
+			Kind:   kind,
+			Query:  q,
+		})
 	}
 	return res, nil
 }
@@ -177,7 +188,9 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	resolver := j.co.GeoResolver
 	fields := log.Fields{"stage": memory_core.StageDetectGeo, "user_id": j.userID, "dataset": j.dataset, "resolver": resolver.Name()}
 
-	all := make([]*keyEntity, 0, len(j.keyOrder))
+	all := make([]*keyEntity,
+		0,
+		len(j.keyOrder))
 	for _, k := range j.keyOrder {
 		all = append(all, j.keyEntities[k])
 	}
@@ -188,27 +201,40 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	ids, cands, err := j.geoUnresolved(ctx, cands)
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("remember: looking up the stored geo metadata failed")
-		return []GeoResult{{Error: "load: " + err.Error()}}
+		return []GeoResult{{
+			Error: "load: " + err.Error(),
+		}}
 	}
-	names := make([]string, 0, len(cands))
+	names := make([]string,
+		0,
+		len(cands))
 	for _, c := range cands {
 		names = append(names, c.Name)
 	}
 	j.tr.Tool("Picked the entities that may be places: the extracted entities of a type that can be a place (not a person, concept, "+
-		"product or event), without the ones that already have geo metadata, at most "+fmt.Sprint(maxGeoCandidates)+".", "select_geo_entities",
+		"product or event), without the ones that already have geo metadata, at most "+fmt.Sprint(maxGeoCandidates)+".",
+		"select_geo_entities",
 		map[string]any{"entities_extracted": len(all), "max": maxGeoCandidates, "resolver": resolver.Name()},
 		map[string]any{"entities": names})
-	j.run.Output(StageResolveGeo, "select_geo_entities", "", map[string]any{"entities_extracted": len(all), "entities": names})
+	j.run.Output(StageResolveGeo,
+		"select_geo_entities",
+		"",
+		map[string]any{"entities_extracted": len(all), "entities": names})
 	if len(cands) == 0 {
 		return nil
 	}
 
 	//--------------------------------------
 	// DETECT: the LLM says which candidates are places, and what to ask the resolver
-	j.countKeyEntities(ctx, memory_core.StageDetectGeo, cands) // IN-CONTEXT COUNTERS: the prompt lists the entities
+	j.countKeyEntities(ctx,
+		memory_core.StageDetectGeo,
+		cands) // IN-CONTEXT COUNTERS: the prompt lists the entities
 	resp, err := j.co.ModelLLM(j.llm, memory_core.StageDetectGeo).Complete(ctx, ai.Request{
-		System:    detectGeoSystemPrompt,
-		Messages:  []ai.Message{{Role: ai.RoleUser, Content: detectGeoPrompt(cands)}},
+		System: detectGeoSystemPrompt,
+		Messages: []ai.Message{{
+			Role:    ai.RoleUser,
+			Content: detectGeoPrompt(cands),
+		}},
 		MaxTokens: 2048,
 	})
 	var places []geoPlace
@@ -224,11 +250,16 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 		if err != nil {
 			out["error"] = err.Error()
 		}
-		j.run.Output(StageResolveGeo, "detect_geo", "", out)
+		j.run.Output(StageResolveGeo,
+			"detect_geo",
+			"",
+			out)
 	}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("remember: detecting the places among the entities failed")
-		return []GeoResult{{Error: "detect: " + err.Error()}}
+		return []GeoResult{{
+			Error: "detect: " + err.Error(),
+		}}
 	}
 	if len(places) > maxGeoResolves {
 		places = places[:maxGeoResolves]
@@ -236,52 +267,107 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	for i := range places {
 		places[i].ID = ids[places[i].Entity]
 	}
-	found := make([]map[string]any, 0, len(places))
+	found := make([]map[string]any,
+		0,
+		len(places))
 	for _, p := range places {
 		found = append(found, map[string]any{"entity": p.Entity.Name, "kind": p.Kind, "query": p.Query})
 	}
 	j.tr.Tool("The LLM decided which of the entities are places (cities, countries, regions, landmarks, ...) and what to ask the geo resolver for each.",
-		"detect_geo", map[string]any{"entities": len(cands)}, map[string]any{"places": found})
+		"detect_geo",
+		map[string]any{"entities": len(cands)},
+		map[string]any{"places": found})
 	if len(places) == 0 {
 		return nil
 	}
 
 	//--------------------------------------
 	// RESOLVE, one at a time: the resolver may be rate-limited
-	results := make([]GeoResult, 0, len(places))
+	results := make([]GeoResult,
+		0,
+		len(places))
 	var upserts []graph.NewEntityGeo
 	for _, p := range places {
-		r := GeoResult{Entity: p.Entity.Name, EntityType: p.Entity.Type, EntityID: p.ID, Kind: p.Kind, Query: p.Query}
+		r := GeoResult{
+			Entity:     p.Entity.Name,
+			EntityType: p.Entity.Type,
+			EntityID:   p.ID,
+			Kind:       p.Kind,
+			Query:      p.Query,
+		}
 		args := map[string]any{"entity": p.Entity.Name, "type": p.Entity.Type, "kind": p.Kind, "query": p.Query, "resolver": resolver.Name()}
 		started := time.Now()
-		place, err := callGeoResolver(ctx, resolver, memory_geo.Query{Text: p.Query, Kind: p.Kind})
-		timing := memory_core.ToolTiming{Provider: resolver.Name(), Started: started, Latency: time.Since(started)}
+		place, err := callGeoResolver(ctx,
+			resolver,
+			memory_geo.Query{
+				Text: p.Query,
+				Kind: p.Kind,
+			})
+		timing := memory_core.ToolTiming{
+			Provider: resolver.Name(),
+			Started:  started,
+			Latency:  time.Since(started),
+		}
 		switch {
 		case errors.Is(err, memory_geo.ErrNotFound):
 			log.WithFields(fields).WithField("entity", p.Entity.Name).Info("remember: the geo resolver does not know the place")
-			j.tr.TimedTool("The geo resolver does not know the place.", "resolve_geo", args, map[string]any{"found": false}, timing)
-			j.run.Output(StageResolveGeo, "resolve_geo", p.Entity.Name, map[string]any{"request": args, "found": false})
+			j.tr.TimedTool("The geo resolver does not know the place.",
+				"resolve_geo",
+				args,
+				map[string]any{"found": false},
+				timing)
+			j.run.Output(StageResolveGeo,
+				"resolve_geo",
+				p.Entity.Name,
+				map[string]any{"request": args, "found": false})
 		case err != nil:
 			r.Error = "resolve: " + err.Error()
 			log.WithError(err).WithFields(fields).WithField("entity", p.Entity.Name).Warn("remember: the geo resolver failed")
-			j.tr.TimedTool("The geo resolver failed.", "resolve_geo", args, map[string]any{"error": r.Error}, timing)
-			j.run.Output(StageResolveGeo, "resolve_geo", p.Entity.Name, map[string]any{"request": args, "error": r.Error})
+			j.tr.TimedTool("The geo resolver failed.",
+				"resolve_geo",
+				args,
+				map[string]any{"error": r.Error},
+				timing)
+			j.run.Output(StageResolveGeo,
+				"resolve_geo",
+				p.Entity.Name,
+				map[string]any{"request": args, "error": r.Error})
 		default:
 			r.Resolved, r.Latitude, r.Longitude, r.DisplayName = true, place.Latitude, place.Longitude, place.DisplayName
 			r.Country, r.CountryCode, r.Region, r.Provider = place.Country, place.CountryCode, place.Region, place.Provider
 			if r.Provider == "" {
 				r.Provider = resolver.Name()
 			}
-			j.tr.TimedTool("The geo resolver found the place.", "resolve_geo", args, map[string]any{"found": true, "latitude": place.Latitude,
-				"longitude": place.Longitude, "display_name": place.DisplayName, "country": place.Country}, timing)
-			j.run.Output(StageResolveGeo, "resolve_geo", p.Entity.Name, map[string]any{"request": args, "found": true, "place": map[string]any{"latitude": place.Latitude, "longitude": place.Longitude,
-				"kind": place.Kind, "display_name": place.DisplayName, "country": place.Country, "country_code": place.CountryCode,
-				"region": place.Region, "type": place.Type, "bbox": place.BBox, "importance": place.Importance, "provider": r.Provider, "ref": place.Ref}})
+			j.tr.TimedTool("The geo resolver found the place.",
+				"resolve_geo",
+				args,
+				map[string]any{"found": true, "latitude": place.Latitude,
+					"longitude": place.Longitude, "display_name": place.DisplayName, "country": place.Country},
+				timing)
+			j.run.Output(StageResolveGeo,
+				"resolve_geo",
+				p.Entity.Name,
+				map[string]any{"request": args, "found": true, "place": map[string]any{"latitude": place.Latitude, "longitude": place.Longitude,
+					"kind": place.Kind, "display_name": place.DisplayName, "country": place.Country, "country_code": place.CountryCode,
+					"region": place.Region, "type": place.Type, "bbox": place.BBox, "importance": place.Importance, "provider": r.Provider, "ref": place.Ref}})
 			if p.ID != 0 {
-				upserts = append(upserts, graph.NewEntityGeo{EntityID: p.ID, Kind: p.Kind, Query: p.Query, Latitude: place.Latitude,
-					Longitude: place.Longitude, DisplayName: place.DisplayName, Country: place.Country, CountryCode: place.CountryCode,
-					Region: place.Region, PlaceType: place.Type, BBox: place.BBox, Importance: place.Importance,
-					Provider: r.Provider, ProviderRef: place.Ref, Now: j.now})
+				upserts = append(upserts, graph.NewEntityGeo{
+					EntityID:    p.ID,
+					Kind:        p.Kind,
+					Query:       p.Query,
+					Latitude:    place.Latitude,
+					Longitude:   place.Longitude,
+					DisplayName: place.DisplayName,
+					Country:     place.Country,
+					CountryCode: place.CountryCode,
+					Region:      place.Region,
+					PlaceType:   place.Type,
+					BBox:        place.BBox,
+					Importance:  place.Importance,
+					Provider:    r.Provider,
+					ProviderRef: place.Ref,
+					Now:         j.now,
+				})
 			}
 		}
 		results = append(results, r)
@@ -300,13 +386,24 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 					results[i].Resolved, results[i].Error = false, "store: "+err.Error()
 				}
 			}
-			j.tr.Tool("Storing the geo metadata failed.", "store_geo", map[string]any{"places": len(upserts)}, map[string]any{"error": err.Error()})
-			j.run.Output(StageResolveGeo, "store_geo", "", map[string]any{"places": len(upserts), "error": err.Error()})
+			j.tr.Tool("Storing the geo metadata failed.",
+				"store_geo",
+				map[string]any{"places": len(upserts)},
+				map[string]any{"error": err.Error()})
+			j.run.Output(StageResolveGeo,
+				"store_geo",
+				"",
+				map[string]any{"places": len(upserts), "error": err.Error()})
 			return results
 		}
-		j.tr.Tool("Stored the geo metadata (coordinates and where the place lies) of the places, keyed by their entities.", "store_geo",
-			map[string]any{"user_id": j.userID, "dataset": j.dataset, "places": len(upserts)}, map[string]any{"stored": len(upserts)})
-		j.run.Output(StageResolveGeo, "store_geo", "", map[string]any{"places": len(upserts), "stored": len(upserts)})
+		j.tr.Tool("Stored the geo metadata (coordinates and where the place lies) of the places, keyed by their entities.",
+			"store_geo",
+			map[string]any{"user_id": j.userID, "dataset": j.dataset, "places": len(upserts)},
+			map[string]any{"stored": len(upserts)})
+		j.run.Output(StageResolveGeo,
+			"store_geo",
+			"",
+			map[string]any{"places": len(upserts), "stored": len(upserts)})
 	}
 	for i := range results { // a place whose entity could not be found has nothing to be stored against
 		if results[i].Resolved && results[i].EntityID == 0 {
@@ -321,12 +418,16 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 }
 
 // callGeoResolver runs the resolver with a timeout; a panic in it (the code of the embedding program) is an error, not a crash.
-func callGeoResolver(ctx context.Context, r memory_geo.Resolver, q memory_geo.Query) (p *memory_geo.Place, err error) {
+func callGeoResolver(ctx context.Context,
+	r memory_geo.Resolver,
+	q memory_geo.Query) (p *memory_geo.Place, err error) {
 	ctx, cancel := context.WithTimeout(ctx, geoResolveTimeout)
 	defer cancel()
 	defer func() {
 		if rec := recover(); rec != nil {
-			p, err = nil, fmt.Errorf("geo resolver %q panicked: %v", r.Name(), rec)
+			p, err = nil, fmt.Errorf("geo resolver %q panicked: %v",
+				r.Name(),
+				rec)
 		}
 	}()
 	p, err = r.Resolve(ctx, q)
@@ -341,12 +442,16 @@ func callGeoResolver(ctx context.Context, r memory_geo.Resolver, q memory_geo.Qu
 
 // geoUnresolved returns the entities of cands (in order) that exist in the dataset and have no geo metadata yet, with the
 // ID of each in gb_entities.
-func (j *job) geoUnresolved(ctx context.Context, cands []*keyEntity) (map[*keyEntity]int64, []*keyEntity, error) {
+func (j *job) geoUnresolved(ctx context.Context,
+	cands []*keyEntity) (map[*keyEntity]int64, []*keyEntity, error) {
 	ids := map[*keyEntity]int64{}
 	if len(cands) == 0 {
 		return ids, nil, nil
 	}
-	dsID, err := relational.EnsureDataset(ctx, j.d, j.userID, j.dataset)
+	dsID, err := relational.EnsureDataset(ctx,
+		j.d,
+		j.userID,
+		j.dataset)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -357,7 +462,10 @@ func (j *job) geoUnresolved(ctx context.Context, cands []*keyEntity) (map[*keyEn
 	defer tx.Rollback()
 	var out []*keyEntity
 	for _, c := range cands {
-		id, err := tx.FindEntity(ctx, dsID, memory_core.Key(c.Name), c.Type)
+		id, err := tx.FindEntity(ctx,
+			dsID,
+			memory_core.Key(c.Name),
+			c.Type)
 		if errors.Is(err, graph.ErrNotFound) {
 			continue
 		}
@@ -376,7 +484,8 @@ func (j *job) geoUnresolved(ctx context.Context, cands []*keyEntity) (map[*keyEn
 }
 
 // storeGeo writes the geo metadata in one transaction.
-func (j *job) storeGeo(ctx context.Context, geos []graph.NewEntityGeo) error {
+func (j *job) storeGeo(ctx context.Context,
+	geos []graph.NewEntityGeo) error {
 	tx, err := graph.Begin(ctx, j.d)
 	if err != nil {
 		return err
@@ -392,7 +501,9 @@ func (j *job) storeGeo(ctx context.Context, geos []graph.NewEntityGeo) error {
 
 // geoPlacesOutput is how the places the LLM picked are filed in the run log (see runLog.Output).
 func geoPlacesOutput(places []geoPlace) []map[string]any {
-	out := make([]map[string]any, 0, len(places))
+	out := make([]map[string]any,
+		0,
+		len(places))
 	for _, p := range places {
 		out = append(out, map[string]any{"entity": p.Entity.Name, "kind": p.Kind, "query": p.Query})
 	}

@@ -13,5 +13,9 @@ func DefaultTrainedModelName(m TrainedModel) string {
 	if len(id) > 8 {
 		id = id[:8]
 	}
-	return fmt.Sprintf("%s-%s-%dsteps-%s", m.ModelSize, dataset, m.NumTrainSteps, id)
+	return fmt.Sprintf("%s-%s-%dsteps-%s",
+		m.ModelSize,
+		dataset,
+		m.NumTrainSteps,
+		id)
 }
