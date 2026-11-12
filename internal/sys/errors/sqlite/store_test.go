@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
-	gbdb "github.com/deepblue-phoenix/gligabao/internal/sys/errors/db"
 
 	_ "modernc.org/sqlite"
 )
@@ -19,10 +18,10 @@ func TestInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	if err := gbdb.Open("sqlite", d); err != nil {
+	if err := gberrors.Init("sqlite", d); err != nil {
 		t.Fatal(err)
 	}
-	sink, err := gbdb.Sink("sqlite", d)
+	sink, err := gberrors.SinkFor("sqlite", d)
 	if err != nil {
 		t.Fatal(err)
 	}

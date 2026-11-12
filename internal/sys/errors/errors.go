@@ -1,6 +1,6 @@
 // Package errors is the unified way to create the errors of gligabao that are key to track: a GBerror holds where the error
 // happened (package, function, stack trace), what failed (Op) and a small map of the parameters that help debugging later (Meta),
-// and New stores it in the database (tables gb_errors, see the sqlite and postgres subpackages; package db applies the schema).
+// and New stores it in the database (table gb_errors, see the sqlite and postgres subpackages). Init creates the table; package db calls it when the databases are opened, so it is always set up.
 //
 // Create a GBerror only for the most important errors, the ones that are key to be tracked (see AGENTS.md); an ordinary error is
 // still a plain error wrapped with fmt.Errorf.

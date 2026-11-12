@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db/sqlite"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 )
 
 // Ops is what the Manager needs of the world around it that depends on the database: the functions that store and read the runs and
@@ -20,13 +21,26 @@ type Ops struct {
 	Store db.Store
 	// Investigate makes the store of the investigative loop (frontier, notes, claims, challenges) on the database.
 	Investigate func(*sql.DB) investigate_core.Store
+	// ErrSink makes the sink that stores the GBerrors of the agents in the database (nil: they are not stored).
+	ErrSink func(*sql.DB) gberrors.Sink
 }
 
 // The Ops of each backend.
 var (
-	SQLiteOps   = Ops{Store: sqlite.Store, Investigate: sqlite.NewInvestigateStore}
-	PostgresOps = Ops{Store: postgres.Store, Investigate: postgres.NewInvestigateStore}
+	SQLiteOps   = Ops{Store: sqlite.Store, Investigate: sqlite.NewInvestigateStore, ErrSink: errSink(config.DBBackendSQLite)}
+	PostgresOps = Ops{Store: postgres.Store, Investigate: postgres.NewInvestigateStore, ErrSink: errSink(config.DBBackendPostgres)}
 )
+
+// errSink returns the function that makes the GBerror sink of the backend on a database.
+func errSink(backend string) func(*sql.DB) gberrors.Sink {
+	return func(d *sql.DB) gberrors.Sink {
+		sink, err := gberrors.SinkFor(backend, d)
+		if err != nil {
+			return nil
+		}
+		return sink
+	}
+}
 
 // OpsFor returns the Ops of a database backend (config.DBBackendSQLite or config.DBBackendPostgres; empty is sqlite).
 func OpsFor(backend string) (Ops, error) {
@@ -41,7 +55,7 @@ func OpsFor(backend string) (Ops, error) {
 
 // postgresSchemaLock is the advisory lock key that serializes the starters that apply the schema (CREATE ... IF NOT EXISTS can
 // still race in PostgreSQL). Others in use: 0x67620001 to 0x67620004 (relational, graph, evals, training), 0x67620007 (training
-// audits), 0x67620008 (evals).
+// audits), 0x67620008 (evals), 0x6762000a (errors).
 const postgresSchemaLock = 0x67620009
 
 // Open applies the schema of the research agent tables (gb_agent_research_runs and gb_agent_research_states) to d, the relational

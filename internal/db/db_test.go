@@ -101,3 +101,15 @@ func TestModelIDDeterministic(t *testing.T) {
 		t.Errorf("ModelID: %q", a)
 	}
 }
+
+func TestOpenCreatesErrorsTable(t *testing.T) {
+	d, err := Open(Config{SQLitePath: filepath.Join(t.TempDir(), "t.db"), VectorDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	var n int
+	if err := d.Relational.QueryRow(`SELECT COUNT(*) FROM gb_errors`).Scan(&n); err != nil {
+		t.Fatalf("gb_errors: %v", err)
+	}
+}

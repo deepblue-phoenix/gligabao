@@ -21,6 +21,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -139,11 +140,20 @@ func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client, opts
 		return m
 	}
 	if k, err := ops.Store.FailActive(ctx, d, "interrupted: the server stopped while the agent worked"); err != nil {
+		gberrors.New(ctx, m.errSink(), "research.recover", err, gberrors.Meta{})
 		log.WithError(err).Warn("agent research: could not mark interrupted runs as failed")
 	} else if k > 0 {
 		log.Infof("agent research: %d run(s) were interrupted by a restart and marked failed", k)
 	}
 	return m
+}
+
+// errSink is the sink of the GBerrors of the runs: the database of the manager (nil if the Ops have none).
+func (m *Manager) errSink() gberrors.Sink {
+	if m.Ops.ErrSink == nil || m.DB == nil {
+		return nil
+	}
+	return m.Ops.ErrSink(m.DB)
 }
 
 // UseMemory gives the agents started from now on the internal knowledge base: the tools remember and query, besides web_search and
@@ -339,6 +349,7 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 	})
 	if err != nil {
 		release()
+		gberrors.New(dbCtx, m.errSink(), "research.create", err, gberrors.Meta{"user_id": userID, "topic": truncate(opts.Topic, 100), "agent": def.Name})
 		log.WithError(err).WithField("user_id", userID).Error("agent research: recording the run failed")
 		return nil, internalErr("failed to record the research", err)
 	}

@@ -30,6 +30,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -256,6 +257,7 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 		if cancelErr := remote.Cancel(cancelCtx, jobID); cancelErr != nil {
 			log.WithError(cancelErr).WithField("job_id", jobID).Warn("agent research: could not cancel the job of a run that was not recorded")
 		}
+		gberrors.New(context.WithoutCancel(ctx), m.errSink(), "research.remote.create", err, gberrors.Meta{"user_id": userID, "topic": truncate(opts.Topic, 100), "job_id": jobID})
 		log.WithError(err).WithField("user_id", userID).Error("agent research: recording the run failed")
 		return nil, internalErr("failed to record the research", err)
 	}
@@ -309,6 +311,7 @@ func (rr *remoteRun) work() {
 	defer func() {
 		if p := recover(); p != nil {
 			rr.logf.Errorf("agent research: following the job panicked: %v", p)
+			gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.panic", fmt.Errorf("%v", p), rr.meta())
 			rr.finish(core.StatusFailed, "", fmt.Sprintf("internal error: %v", p))
 		}
 	}()
@@ -320,6 +323,7 @@ func (rr *remoteRun) work() {
 	for !rr.final {
 		if time.Now().After(deadline) {
 			rr.cancelJob()
+			gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.timeout", nil, rr.meta())
 			rr.finish(core.StatusFailed, "", fmt.Sprintf("the job in Modal did not end within %s", remoteWatchLimit))
 			return
 		}
@@ -348,6 +352,7 @@ func (rr *remoteRun) work() {
 			if time.Since(lastContact) > remoteLostAfter {
 				rr.logf.WithError(err).Warn("agent research: lost the job in Modal")
 				rr.cancelJob()
+				gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.lost", err, rr.meta())
 				rr.finish(core.StatusFailed, "", truncate(fmt.Sprintf("lost contact with the job in Modal: %v", err), maxTextLen))
 				return
 			}
@@ -597,6 +602,11 @@ func usageOfRemote(u RemoteUsage) db.Usage {
 	return db.Usage{Steps: u.Steps, ToolCalls: u.ToolCalls, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, CostUSD: u.CostUSD}
 }
 
+// meta is the debugging parameters common to the GBerrors of the run.
+func (rr *remoteRun) meta() gberrors.Meta {
+	return gberrors.Meta{"run_id": rr.run.ID, "user_id": rr.run.UserID, "job_id": rr.jobID, "events": rr.from, "agent": rr.run.AgentName}
+}
+
 // finish ends the run's record, like researcher.finish.
 func (rr *remoteRun) finish(status core.Status, report, errText string) {
 	err := rr.tx(func(q db.Execer) error {
@@ -607,6 +617,7 @@ func (rr *remoteRun) finish(status core.Status, report, errText string) {
 		return err
 	})
 	if err != nil {
+		gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.finish", err, gberrors.Meta{"run_id": rr.run.ID, "status": string(status)})
 		rr.logf.WithError(err).Error("agent research: ending the run failed")
 	}
 	rr.logf.WithField("status", status).Info("agent research: ended")

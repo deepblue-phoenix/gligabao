@@ -232,7 +232,7 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 
 ## ERRORS
 
-Table of the tracked errors (`internal/sys/errors`, the `GBerror`; applied by `dbfull.Open`).
+Table of the tracked errors (`internal/sys/errors`, the `GBerror`; created by `errors.Init`, which `db.Open` calls, so every program that opens the databases has it).
 
 - `gb_errors`
 

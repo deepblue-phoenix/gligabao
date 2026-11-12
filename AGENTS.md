@@ -32,7 +32,7 @@ never `e`, `perr`, `err1`, `boom`, etc. Package-level sentinel errors keep the G
 
 ## GBerror: tracked errors
 
-`internal/sys/errors` has `GBerror`, the unified error for failures that must be tracked: it holds the package, function and stack trace where it happened, an `Op` (symbolic name of the failed operation, one word or several separated by `.`, e.g. `remember.extract`) and a small `Meta` map (unique failure parameters and arguments that help debugging; keep it small). `errors.New(ctx, sink, op, cause, meta)` creates it and stores it in the table `gb_errors` (`Sink` from `internal/sys/errors/db`).
+`internal/sys/errors` has `GBerror`, the unified error for failures that must be tracked: it holds the package, function and stack trace where it happened, an `Op` (symbolic name of the failed operation, one word or several separated by `.`, e.g. `remember.extract`) and a small `Meta` map (unique failure parameters and arguments that help debugging; keep it small). `errors.New(ctx, sink, op, cause, meta)` creates it and stores it in the table `gb_errors` (`errors.SinkFor`; the table is created by `errors.Init`, which `db.Open` calls, so every main cmd has it).
 
 **Create a GBerror only for the most important errors, the ones that are key to be tracked** (a failure of a core pipeline, data loss or corruption, something an operator must see later). Do not use it for ordinary, expected or easily recovered errors (validation, not found, user mistakes, retries that succeed); those stay plain `error`s wrapped with `fmt.Errorf("...: %w", err)`.
 

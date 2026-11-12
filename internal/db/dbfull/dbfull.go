@@ -7,14 +7,13 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
-	errdb "github.com/deepblue-phoenix/gligabao/internal/sys/errors/db"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 )
 
 // Schemas are the schemas of every feature, in the order they must be created: the training tables come before the evals', which
 // reference the trained models.
-var Schemas = []db.Schema{errdb.Open, trainingdb.Open, evals.Open, training_audits.Open, agent_research.Open}
+var Schemas = []db.Schema{trainingdb.Open, evals.Open, training_audits.Open, agent_research.Open}
 
 // Open is db.Open with Schemas added to cfg.Schemas.
 func Open(cfg db.Config) (*db.DB, error) {

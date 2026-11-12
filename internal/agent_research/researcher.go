@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -155,6 +156,7 @@ func (r *researcher) work() {
 	defer func() {
 		if p := recover(); p != nil {
 			r.logf.Errorf("agent research: the agent panicked: %v", p)
+			gberrors.New(r.dbCtx, r.mgr.errSink(), "research.panic", fmt.Errorf("%v", p), r.meta())
 			r.finish(core.StatusFailed, "", fmt.Sprintf("internal error: %v", p))
 		}
 	}()
@@ -182,6 +184,7 @@ func (r *researcher) work() {
 	case r.runCtx.Err() != nil:
 		r.finish(core.StatusFailed, "", "cancelled: the agent that spawned it ended")
 	case err != nil:
+		gberrors.New(r.dbCtx, r.mgr.errSink(), "research.agent", err, r.meta())
 		r.logf.WithError(err).Warn("agent research: the agent failed")
 		r.finish(core.StatusFailed, "", truncate(err.Error(), maxTextLen))
 	case r.agent.Terminal != "" && (res == nil || res.Final == nil):
@@ -286,6 +289,12 @@ func (r *researcher) saveUsage(t agent.Result) {
 	}
 }
 
+// meta is the debugging parameters common to the GBerrors of the run.
+func (r *researcher) meta() gberrors.Meta {
+	return gberrors.Meta{"run_id": r.run.ID, "user_id": r.run.UserID, "agent": r.run.AgentName, "depth": r.depth, "steps": r.total.Steps,
+		"cost_usd": r.total.CostUSD, "model": r.run.Model, "topic": truncate(r.run.Topic, 100)}
+}
+
 // finish ends the run's record: the final usage, the status, the report or the error, and the terminal state.
 func (r *researcher) finish(status core.Status, report, errText string) {
 	r.out = outcome{status: status, report: report, err: errText}
@@ -297,6 +306,7 @@ func (r *researcher) finish(status core.Status, report, errText string) {
 		return err
 	})
 	if err != nil {
+		gberrors.New(r.dbCtx, r.mgr.errSink(), "research.finish", err, gberrors.Meta{"run_id": r.run.ID, "status": string(status)})
 		r.logf.WithError(err).Error("agent research: ending the run failed")
 	}
 	r.logf.WithField("status", status).Info("agent research: ended")

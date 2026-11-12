@@ -25,6 +25,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -189,6 +190,10 @@ func Open(cfg Config) (*DB, error) {
 			log.WithField("backend", cfg.Backend).Warn("geo is on but the database has no geo index: the PostGIS extension is not enabled " +
 				"(run CREATE EXTENSION postgis, then restart); the places are stored, but proximity queries cannot use an index")
 		}
+	}
+	if err := gberrors.Init(cfg.Backend, rel); err != nil { // the GBerrors are always set up
+		rel.Close()
+		return nil, err
 	}
 	for _, schema := range cfg.Schemas {
 		if err := schema(cfg.Backend, rel); err != nil {

@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.194.0] - 2026-11-13
+
+### Added
+- The research agents (`internal/agent_research`) now record a `GBerror` in `gb_errors` for their key failures: `research.create` and `research.remote.create` (the run could not be recorded), `research.recover` (restart cleanup failed), `research.agent` (the agent ended with an error), `research.panic`, `research.finish` (the run's end could not be written), and for runs in Modal `research.remote.panic`, `.timeout`, `.lost` and `.finish`. `Ops` has a new `ErrSink`.
+
+### Changed
+- The `gb_errors` table is now created by `errors.Init` (package `internal/sys/errors`), called by `db.Open`, so the server, `gligabao_agent`, `gligabao_worker` and the eval runners always have it. `errors.SinkFor(backend, db)` makes the sink. The subpackage `internal/sys/errors/db` (`Open`, `Sink`) is removed, and the `Insert` of the backends takes a `Row` instead of a `*GBerror`.
+
+### Fixed
+- The Postgres schema lock of the `gb_errors` table no longer shares its key (`0x67620008`) with the evals schema; it is `0x6762000a`.
+
 ## [0.193.0] - 2026-11-13
 
 ### Added
