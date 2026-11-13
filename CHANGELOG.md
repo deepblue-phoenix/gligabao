@@ -5,7 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
-## [0.199.0] - 2026-11-13
+## [0.201.0] - 2026-11-13
+
+### Added
+- **Keenable is a fetch provider.** `fetch_provider = "keenable"` (request field, `--fetch-provider`, `research_fetch_provider`) reads pages with Keenable's `GET /v1/fetch`: the page as markdown, navigation and boilerplate stripped, cut to the page limit (sent as `max_chars`). Keyless calls go to `/v1/fetch/public`; with a key (`web.Deps.KeenableKey`) to `/v1/fetch`, which bills the call (paid credits only, as for search). The domain lists are checked on the requested host before the call and on the final host after the redirects, so text from a blocked site is never returned. The config does not read a Keenable key yet.
+
+## [0.200.0] - 2026-11-13
+
+### Added
+- **Keenable is a search provider.** `search_provider = "keenable"` (request field, `--search-provider`, `research_search_provider`) runs `web_search` on Keenable's `POST /v1/search`, with the results and their text (no written answer; snippets capped at 2000 characters, the cards of Keenable left out so that the cited URLs keep working). Without a key it uses the keyless `/v1/search/public` endpoint, which is rate limited per IP address; `KeenableKey` in `web.Deps` switches to the keyed endpoint (the config does not read a Keenable key yet). `allowed_domains` become the `site` of the search (one domain) or `site:` operators of the query (several), `blocked_domains` become `exclude_domains` (at most 1000). The cost is what a paid credit costs at the list price ($0.004 each); the free allowance and keyless calls cost nothing. Keenable fetch is not available yet.
+
+### Fixed
+- `web.Search` with the `local` provider reports that search is not implemented, instead of an unknown provider.
+
 
 ### Changed
 - The Linkup key is part of the config like the other API keys: `linkup_api_key` in the TOML file or `LINKUP_API_KEY` (the file wins). `web.Deps` no longer reads the environment. The server and `gligabao_agent` pass it to the research agents; a start (or the config, for `research_*_provider`) that names the `linkup` provider without a key is refused.

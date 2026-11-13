@@ -824,7 +824,7 @@ func TestFromDefUsesTheChosenWebProviders(t *testing.T) {
 		client,
 		nil,
 		nil,
-		WithWebProviders(web.Keenable, web.Keenable))
+		WithWebProviders(web.Local, web.Anthropic))
 	for _, tool := range a.Tools {
 		var input string
 		switch tool.Name {

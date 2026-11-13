@@ -26,7 +26,7 @@ const (
 	Anthropic Provider = "anthropic"
 	// Linkup is the Linkup API (Search and Fetch).
 	Linkup Provider = "linkup"
-	// Keenable is the Keenable API (not implemented yet).
+	// Keenable is the Keenable API (Search and Fetch).
 	Keenable Provider = "keenable"
 	// Local reads a page with a plain HTTP GET from this process, no third party (Fetch only).
 	Local Provider = "local"
@@ -47,6 +47,9 @@ type Deps struct {
 	HTTP *http.Client
 	// LinkupKey is the Linkup API key (from the config). LinkupBaseURL overrides the API root (tests).
 	LinkupKey, LinkupBaseURL string
+	// KeenableKey is the Keenable API key. Empty means keyless calls (the /public endpoint, rate limited per IP address).
+	// KeenableBaseURL overrides the API root (tests).
+	KeenableKey, KeenableBaseURL string
 }
 
 // Location is the approximate place a search is made from. Country is an ISO 3166-1 alpha-2 code, Timezone an IANA name.
@@ -114,8 +117,8 @@ type FetchResponse struct {
 
 // implementedSearch and implementedFetch are the providers that have code for the operation (the others return ErrNotImplemented).
 var (
-	implementedSearch = []Provider{Anthropic, Linkup}
-	implementedFetch  = []Provider{Local, Linkup}
+	implementedSearch = []Provider{Anthropic, Linkup, Keenable}
+	implementedFetch  = []Provider{Local, Linkup, Keenable}
 )
 
 // ParseSearch reads the name of a search provider (case and spaces do not matter); an empty name is def. A name that is not a provider, or a
@@ -163,6 +166,8 @@ func Search(ctx context.Context,
 	case Linkup:
 		return searchLinkup(ctx, d, req)
 	case Keenable:
+		return searchKeenable(ctx, d, req)
+	case Local:
 		return nil, fmt.Errorf("%w: %s search", ErrNotImplemented, p)
 	}
 	return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, p)
@@ -178,7 +183,9 @@ func Fetch(ctx context.Context,
 		return fetchLocal(ctx, d, req)
 	case Linkup:
 		return fetchLinkup(ctx, d, req)
-	case Anthropic, Keenable:
+	case Keenable:
+		return fetchKeenable(ctx, d, req)
+	case Anthropic:
 		return nil, fmt.Errorf("%w: %s fetch", ErrNotImplemented, p)
 	}
 	return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, p)

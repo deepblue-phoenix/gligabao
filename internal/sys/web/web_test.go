@@ -24,11 +24,11 @@ func TestHostMatches(t *testing.T) {
 
 func TestProvidersNotImplementedOrUnknown(t *testing.T) {
 	ctx := context.Background()
-	if _, err := Search(ctx, Keenable, Deps{}, SearchRequest{Query: "q"}); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("search keenable: %v", err)
+	if _, err := Search(ctx, Local, Deps{}, SearchRequest{Query: "q"}); !errors.Is(err, ErrNotImplemented) {
+		t.Errorf("search local: %v", err)
 	}
-	if _, err := Fetch(ctx, Keenable, Deps{}, FetchRequest{URL: "https://a.example"}); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("fetch keenable: %v", err)
+	if _, err := Fetch(ctx, Anthropic, Deps{}, FetchRequest{URL: "https://a.example"}); !errors.Is(err, ErrNotImplemented) {
+		t.Errorf("fetch anthropic: %v", err)
 	}
 	if _, err := Search(ctx, "nope", Deps{}, SearchRequest{}); !errors.Is(err, ErrUnknownProvider) {
 		t.Errorf("unknown: %v", err)

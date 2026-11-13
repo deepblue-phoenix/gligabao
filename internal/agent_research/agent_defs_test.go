@@ -295,11 +295,11 @@ dataset_locked = true
 			},
 			"search provider not available yet": {
 				Topic:          "t",
-				SearchProvider: "keenable",
+				SearchProvider: "local",
 			},
 			"fetch provider not available yet": {
 				Topic:         "t",
-				FetchProvider: "keenable",
+				FetchProvider: "anthropic",
 			},
 			"too many steps": {
 				Topic:    "t",

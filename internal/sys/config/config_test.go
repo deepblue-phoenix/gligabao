@@ -357,7 +357,7 @@ func TestResearchWebProviders(t *testing.T) {
 	if err != nil || cfg.ResearchSearchProvider != "anthropic" || cfg.ResearchFetchProvider != "local" {
 		t.Fatalf("got %+v, %v", cfg, err)
 	}
-	for _, body := range []string{"research_search_provider = \"nope\"\n", "research_search_provider = \"keenable\"\n", "research_fetch_provider = \"anthropic\"\n"} {
+	for _, body := range []string{"research_search_provider = \"nope\"\n", "research_search_provider = \"local\"\n", "research_fetch_provider = \"anthropic\"\n"} {
 		if _, err := Load(write(t, body)); err == nil {
 			t.Errorf("%q must be invalid", body)
 		}
