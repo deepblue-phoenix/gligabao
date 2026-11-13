@@ -45,6 +45,10 @@ A built binary reports the version via `gligabao --version`, `gligabao version` 
 A variable, argument or struct field of type `error` is named `err` or ends with `Err` (`parseErr`, `closeErr`, `causeErr`),
 never `e`, `perr`, `err1`, `boom`, etc. Package-level sentinel errors keep the Go prefix (`ErrNotFound`, `errBadName`).
 
+## Naming of Go test files
+
+Every Go test file is named `t_<name>_test.go` (the `t_` prefix groups the test files together in directory listings). Keep the `_test.go` suffix, which `go test` needs. Never use a `_` prefix (`_<name>_test.go`): Go ignores files starting with `_`, so those tests silently never run.
+
 ## GBerror: tracked errors
 
 `internal/sys/errors` has `GBerror`, the unified error for failures that must be tracked: it holds the package, function and stack trace where it happened, an `Op` (symbolic name of the failed operation, one word or several separated by `.`, e.g. `remember.extract`) and a small `Meta` map (unique failure parameters and arguments that help debugging; keep it small). `errors.New(ctx, sink, op, cause, meta)` creates it and stores it in the table `gb_errors` (`errors.SinkFor`; the table is created by `errors.Init`, which `db.Open` calls, so every main cmd has it).

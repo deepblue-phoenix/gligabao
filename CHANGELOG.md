@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.202.1] - 2026-11-13
+
+### Changed
+- Every Go test file is named `t_<name>_test.go`, so the test files group together in directory listings. Test behaviour is unchanged. `AGENTS.md` documents the rule.
+
 ## [0.202.0] - 2026-11-13
 
 ### Added
