@@ -3,6 +3,9 @@
 // It is public so that a program embedding gligabao gets every flag of the gligabao CLI without redefining them: build the
 // command tree with New, then add only what the program has on top (its own flags, commands, ServeOptions). A flag added
 // to the gligabao CLI later is then in the embedding program too, with no change there.
+//
+// This package is outside internal/ on purpose so that embedding programs can import it (Go's internal/ rule would
+// stop them).
 package cli
 
 import (
