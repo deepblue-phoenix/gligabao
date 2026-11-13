@@ -174,6 +174,65 @@ func Graph(d *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ArtifactGraph serves GET /v1/gb/datasets/{name}/artifacts/{id}/graph[?include_children=false]: the graph of one artifact
+// (the entities it mentions and the edges it stated, expired ones included). By default the graph of its chunks is
+// included, since the extraction of a long text runs on the chunks.
+func ArtifactGraph(d *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		id, idErr := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		withChunks, boolErr := parseBoolDefault(r.URL.Query().Get("include_children"), true)
+		if idErr != nil || id <= 0 || boolErr != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"invalid artifact id or include_children")
+			return
+		}
+		g, err := memory.ExportArtifactGraph(r.Context(),
+			d,
+			httputil.UserID(r),
+			r.PathValue("name"),
+			id,
+			withChunks)
+		switch {
+		case errors.Is(err, memory_core.ErrInvalidUser):
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
+			httputil.Error(w,
+				http.StatusNotFound,
+				"dataset not found")
+		case errors.Is(err, memory.ErrArtifactNotFound):
+			httputil.Error(w,
+				http.StatusNotFound,
+				"artifact not found")
+		case err != nil:
+			log.WithError(err).WithFields(log.Fields{
+				"user_id":     httputil.UserID(r),
+				"dataset":     r.PathValue("name"),
+				"artifact_id": id,
+			}).Error("export artifact graph failed")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to export artifact graph")
+		default:
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				g)
+		}
+	}
+}
+
+// parseBoolDefault parses s as a bool; empty gives def.
+func parseBoolDefault(s string,
+	def bool) (bool, error) {
+	if s == "" {
+		return def, nil
+	}
+	return strconv.ParseBool(s)
+}
+
 // maxTopClasses is the largest n the classes endpoint accepts; defaultTopClasses is used when n is absent.
 const (
 	defaultTopClasses = 10

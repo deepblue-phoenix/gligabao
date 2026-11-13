@@ -20,6 +20,7 @@ gligabao is a small, self-hosted MCP/HTTP/CLI server that gives an AI applicatio
 | `POST /v1/gb/query` | Answer a question from the graph, with evidence | [docs/query/query.md](docs/query/query.md), [docs/pipeline.md](docs/pipeline.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets`, `DELETE /v1/gb/datasets/{name}` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
+| `GET /v1/gb/datasets/{name}/artifacts/{id}/graph` | Export the graph of one artifact (its entities and edges) as JSON | [docs/graph.md](docs/graph.md#graph-of-one-artifact) |
 | `GET /v1/gb/datasets/{name}/classes?n=N` | Top N classes of the artifact graphs of a dataset, with counts | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/git` | Export a dataset as a git repository (one commit per `remember` call) | [docs/git-export.md](docs/git-export.md) |
 | `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | Load an OWL ontology (RDF/XML) under a name, or update the one stored under it (merge or replace) | [docs/ontologies.md](docs/ontologies.md) |

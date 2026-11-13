@@ -971,6 +971,52 @@ func ListEdgeSessions(ctx context.Context,
 	return nil, unsupported()
 }
 
+// ArtifactEntities returns the entities linked to the artifact of the dataset and, with withChunks, to its chunks, by ID.
+func ArtifactEntities(ctx context.Context,
+	d *sql.DB,
+	dsID,
+	artifactID int64,
+	withChunks bool) ([]EvidenceEntity, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ArtifactEntities(ctx,
+			d,
+			dsID,
+			artifactID,
+			withChunks)
+	case config.DBBackendPostgres:
+		return postgres.ArtifactEntities(ctx,
+			d,
+			dsID,
+			artifactID,
+			withChunks)
+	}
+	return nil, unsupported()
+}
+
+// ArtifactEdges returns the edges linked to the artifact of the dataset and, with withChunks, to its chunks, by ID.
+func ArtifactEdges(ctx context.Context,
+	d *sql.DB,
+	dsID,
+	artifactID int64,
+	withChunks bool) ([]EvidenceEdge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ArtifactEdges(ctx,
+			d,
+			dsID,
+			artifactID,
+			withChunks)
+	case config.DBBackendPostgres:
+		return postgres.ArtifactEdges(ctx,
+			d,
+			dsID,
+			artifactID,
+			withChunks)
+	}
+	return nil, unsupported()
+}
+
 // ListEntities returns the entities of the dataset by ID.
 func ListEntities(ctx context.Context,
 	d *sql.DB,

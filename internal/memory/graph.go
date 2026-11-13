@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -148,4 +149,91 @@ func TopClasses(ctx context.Context,
 		d,
 		dsID,
 		n)
+}
+
+// ErrArtifactNotFound is returned when the artifact does not exist in the dataset.
+var ErrArtifactNotFound = errors.New("artifact not found")
+
+// ArtifactGraphExport is the graph of one artifact: the entities it mentions and the edges (facts) it stated.
+type ArtifactGraphExport struct {
+	Dataset    string `json:"dataset"`
+	ArtifactID int64  `json:"artifact_id"`
+	// WithChunks says that the graph also covers the chunks of the artifact (the extraction runs on the chunks of a long text).
+	WithChunks bool                   `json:"include_children"`
+	Entities   []graph.EvidenceEntity `json:"entities"`
+	Edges      []graph.EvidenceEdge   `json:"edges"`
+	Models     []relational.Model     `json:"models"`
+}
+
+// ExportArtifactGraph returns the graph of the artifact of userID's live dataset called name: the entities linked to it and
+// the edges (expired ones included) it created or restated, and with withChunks those of its chunks too. It returns
+// ErrDatasetNotFound if there is no such dataset and ErrArtifactNotFound if the dataset has no such artifact.
+func ExportArtifactGraph(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string,
+	artifactID int64,
+	withChunks bool) (*ArtifactGraphExport, error) {
+	userID, err := memory_core.ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	name, err = memory_core.ResolveDatasetName(name)
+	if err != nil {
+		return nil, err
+	}
+	dsID, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		name)
+	if err != nil {
+		return nil, err
+	}
+	found, err := graph.ArtifactsByID(ctx,
+		d,
+		dsID,
+		[]int64{artifactID})
+	if err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, ErrArtifactNotFound
+	}
+	entities, err := graph.ArtifactEntities(ctx,
+		d,
+		dsID,
+		artifactID,
+		withChunks)
+	if err != nil {
+		return nil, err
+	}
+	edges, err := graph.ArtifactEdges(ctx,
+		d,
+		dsID,
+		artifactID,
+		withChunks)
+	if err != nil {
+		return nil, err
+	}
+	if entities == nil {
+		entities = []graph.EvidenceEntity{}
+	}
+	if edges == nil {
+		edges = []graph.EvidenceEdge{}
+	}
+	models, err := referencedModels(ctx,
+		d,
+		entities,
+		edges)
+	if err != nil {
+		return nil, err
+	}
+	return &ArtifactGraphExport{
+		Dataset:    name,
+		ArtifactID: artifactID,
+		WithChunks: withChunks,
+		Entities:   entities,
+		Edges:      edges,
+		Models:     models,
+	}, nil
 }

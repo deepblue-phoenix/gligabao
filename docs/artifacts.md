@@ -61,6 +61,8 @@ With `timeseries.observations`, `remember` derives a text from the stats of each
 
 ## Provenance links
 
+The graph of one artifact is served by `GET /v1/gb/datasets/{name}/artifacts/{id}/graph`, see [graph.md](graph.md#graph-of-one-artifact).
+
 Entities and edges point back to their artifacts in three ways:
 
 | Link | Cardinality | Records |

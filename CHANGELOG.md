@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.202.0] - 2026-11-13
+
+### Added
+- **`GET /v1/gb/datasets/{name}/artifacts/{id}/graph`** returns the graph of one artifact: the entities linked to it and the edges it created or restated (expired ones included), with the models that inferred them. For a long text, the graph of its chunks is included by default (`include_children=false` returns only what is linked to the artifact itself). 404 for an unknown dataset or an artifact that is not in it.
+
 ## [0.201.0] - 2026-11-13
 
 ### Added

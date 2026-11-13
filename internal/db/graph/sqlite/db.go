@@ -622,6 +622,74 @@ func ListEdgeSessions(ctx context.Context,
 	return out, rows.Err()
 }
 
+// ArtifactEntities returns the entities linked to the artifact (gb_entity_artifacts) and, with withChunks, to its chunks
+// (the artifacts whose parent it is and that have a chunk_index), by ID. An entity linked to several of them is returned once.
+func ArtifactEntities(ctx context.Context,
+	d *sql.DB,
+	dsID,
+	artifactID int64,
+	withChunks bool) ([]model.EvidenceEntity, error) {
+	rows, err := d.QueryContext(ctx,
+		`
+		SELECT en.id, en.name, en.type, en.description, COALESCE(en.model_id, '')
+		FROM gb_entities en
+		WHERE en.dataset_id = ? AND en.id IN (
+			SELECT ea.entity_id
+			FROM gb_entity_artifacts ea
+			JOIN gb_artifacts a ON a.id = ea.artifact_id
+			WHERE a.dataset_id = ? AND (a.id = ? OR (? AND a.parent_id = ? AND a.chunk_index IS NOT NULL)))
+		ORDER BY en.id`,
+		dsID,
+		dsID,
+		artifactID,
+		withChunks,
+		artifactID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.EvidenceEntity
+	for rows.Next() {
+		var e model.EvidenceEntity
+		if err := rows.Scan(&e.ID,
+			&e.Name,
+			&e.Type,
+			&e.Description,
+			&e.ModelID); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// ArtifactEdges returns the edges (expired ones included) linked to the artifact (gb_edge_artifacts: the ones it created and
+// the ones it restated) and, with withChunks, to its chunks, by ID. An edge linked to several of them is returned once.
+func ArtifactEdges(ctx context.Context,
+	d *sql.DB,
+	dsID,
+	artifactID int64,
+	withChunks bool) ([]model.EvidenceEdge, error) {
+	rows, err := d.QueryContext(ctx,
+		`
+		SELECT`+evidenceEdgeColumns+evidenceEdgeFrom+`
+		WHERE e.dataset_id = ? AND e.id IN (
+			SELECT ea.edge_id
+			FROM gb_edge_artifacts ea
+			JOIN gb_artifacts a ON a.id = ea.artifact_id
+			WHERE a.dataset_id = ? AND (a.id = ? OR (? AND a.parent_id = ? AND a.chunk_index IS NOT NULL)))
+		ORDER BY e.id`,
+		dsID,
+		dsID,
+		artifactID,
+		withChunks,
+		artifactID)
+	if err != nil {
+		return nil, err
+	}
+	return scanEvidenceEdges(rows)
+}
+
 // ListEntities returns the entities of the dataset by ID.
 func ListEntities(ctx context.Context,
 	d *sql.DB,

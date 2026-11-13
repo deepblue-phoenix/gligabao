@@ -108,3 +108,14 @@ Errors are `{"error": "..."}`.
 ```
 curl -H 'gb-user-id: u1' 'http://localhost:7878/v1/gb/datasets/main/graph' > graph.json
 ```
+
+## Graph of one artifact
+
+`GET /v1/gb/datasets/{name}/artifacts/{id}/graph[?include_children=false]` (header `gb-user-id`) returns the part of the graph that one [artifact](artifacts.md) is the source of, in the same shape as above (`dataset`, `entities`, `edges`, `models`) plus `artifact_id` and `include_children`:
+
+- **entities**: those linked to the artifact in `gb_entity_artifacts` (created by it or already known and mentioned again);
+- **edges**: those linked in `gb_edge_artifacts`, i.e. the facts the artifact created and the ones it restated (merged duplicates). Expired edges are included, with their bi-temporal fields. Edges that the artifact contradicted are not linked to it, so they are not returned.
+
+The extraction of a long text runs on its chunks, so the parent artifact has no links of its own. By default (`include_children=true`) the graph of its chunks is included; `include_children=false` returns only what is linked to the artifact itself. Web searches, series observations and chunk summaries are other artifacts and are never included. Every edge endpoint is among the returned entities. It makes no LLM call.
+
+`400` for an invalid `{id}`, `include_children` or user; `404` for an unknown dataset or an artifact that is not in the dataset.
