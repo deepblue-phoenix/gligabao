@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
@@ -22,6 +23,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -40,6 +42,9 @@ type Manager struct {
 	// MaxCostUSD is the most one research may spend, all its agents together, whatever the definition and the request say (0: no ceiling
 	// of the server). Set it before starting any agent.
 	MaxCostUSD float64
+	// SearchProvider and FetchProvider are the providers of web_search and fetch_url when a request names none (the server's config:
+	// research_search_provider, research_fetch_provider); empty: web.Anthropic and web.Local. Set them before starting any agent.
+	SearchProvider, FetchProvider web.Provider
 	// NotesDir is the directory of the notes files of the investigative loop (config.DefaultResearchNotesDirName if ""). Set it before starting any agent.
 	NotesDir string
 	// NotesS3, if set, mirrors the notes files to the research S3 bucket, under a subdirectory per user. Set it before starting any agent.
@@ -291,6 +296,11 @@ func (m *Manager) applyDef(opts Options,
 	} else if opts.Investigate != nil {
 		return opts, invalidErr(fmt.Sprintf("the investigate options only take effect with the investigative loop, and the agent %q runs the simple one", def.Name))
 	}
+	opts.SearchProvider = string(firstProvider(web.Provider(opts.SearchProvider), m.SearchProvider, web.Anthropic))
+	opts.FetchProvider = string(firstProvider(web.Provider(opts.FetchProvider), m.FetchProvider, web.Local))
+	if opts.Runner == core.RunnerModal && (opts.SearchProvider != string(web.Anthropic) || opts.FetchProvider != string(web.Local)) {
+		return opts, invalidErr("the modal runner supports only the anthropic search provider and the local fetch provider")
+	}
 	if opts.Model == "" {
 		opts.Model = def.Model
 	}
@@ -314,6 +324,21 @@ func (m *Manager) applyDef(opts Options,
 		opts.MaxCostUSD,
 		m.MaxCostUSD)
 	return opts, nil
+}
+
+// firstProvider is the first of the providers that is set.
+func firstProvider(ps ...web.Provider) web.Provider {
+	for _, p := range ps {
+		if p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+// webProviders are the options of agent.FromDef for the providers of a research.
+func (o Options) webProviders() agent.FromDefOption {
+	return agent.WithWebProviders(web.Provider(o.SearchProvider), web.Provider(o.FetchProvider))
 }
 
 // lowestCap is the smallest of the caps that are set (positive); 0 if none is.

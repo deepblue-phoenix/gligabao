@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.197.0] - 2026-11-13
+
+### Added
+- **The web tools of the research agents have a provider each.** `web_search` and `fetch_url` now go through one wrapper, the new package `internal/sys/web` (`web.Search`, `web.Fetch`, both taking a `web.Provider`). Search: `anthropic` (Anthropic's cloud web search, the default). Fetch: `local` (a plain HTTP GET with the domain lists, the default). `linkup` and `keenable` are named in the code but not implemented yet (see `leftover_tasks/2026-11-13-web-providers-linkup-keenable.md`); choosing them is a `400`.
+- `POST /v1/gb/research` (and the MCP tool `research_start`, `gligabao research start`, `gligabao_agent`) take `search_provider` and `fetch_provider` (`--search-provider`, `--fetch-provider`); the sub-agents use the same. The `modal` runner supports only the defaults.
+- Server config `research_search_provider` and `research_fetch_provider` set the defaults for requests that name none (an invalid or unavailable value stops the server at start).
+
+### Changed
+- `fetch_url` counts a call against `max_calls` before its domain check (a blocked URL used to cost no call).
+- `agent.FromDef` and `agent.FromDefInvestigative` take an optional `agent.WithWebProviders(search, fetch)`.
+
 ## [0.196.3] - 2026-11-13
 
 ### Changed

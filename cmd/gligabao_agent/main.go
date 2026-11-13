@@ -123,6 +123,12 @@ func run(ctx context.Context,
 		maxCost = fs.Float64("max-cost-usd",
 			0,
 			"cap on what the whole research may spend in USD, sub-agents included; it lowers the caps of the agent's definition (0: only those apply)")
+		searchProv = fs.String("search-provider",
+			"",
+			"which service runs web_search: anthropic (the default)")
+		fetchProv = fs.String("fetch-provider",
+			"",
+			"which service reads pages for fetch_url: local (the default, a plain HTTP GET)")
 		model = fs.String("model",
 			"",
 			"model to run on; it must support Anthropic's web search tool (default: the built-in default)")
@@ -338,6 +344,9 @@ Flags:
 			Dataset:    datasetName,
 			Agent:      agentToRun,
 			MaxCostUSD: *maxCost,
+
+			SearchProvider: *searchProv,
+			FetchProvider:  *fetchProv,
 		},
 		onState,
 		onUsage)

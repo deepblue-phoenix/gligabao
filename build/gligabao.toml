@@ -117,6 +117,11 @@ agent_defs_dir = "agent_defs"
 # When it is reached the agents write their reports and say so. 0 (default): no cap of the server.
 # research_max_cost_usd = 5.0
 
+# The default services of the research agents' web tools, when the request names none (search_provider, fetch_provider of POST /v1/gb/research).
+# Search: "anthropic" (default, Anthropic's cloud web search). Fetch: "local" (default, a plain HTTP GET from the server). Others come later.
+# research_search_provider = "anthropic"
+# research_fetch_provider = "local"
+
 # Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored with each inference in gb_inferences).
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.

@@ -59,15 +59,17 @@ type QueryInput struct {
 
 // ResearchStartInput is the input of the research_start tool: the body of POST /v1/gb/research.
 type ResearchStartInput struct {
-	UserID       string  `json:"user_id" jsonschema:"the user that owns the research"`
-	Topic        string  `json:"topic" jsonschema:"what to research: a question, or a subject to write a report on (at most 2000 characters)"`
-	MaxSteps     int     `json:"max_steps,omitempty" jsonschema:"the most model calls the agent makes, the last of which writes the report (default 20, at most 40); more steps research more and cost more"`
-	Model        string  `json:"model,omitempty" jsonschema:"the model the agent runs on, one that supports Anthropic's web search tool (default: the agent's, else the server's)"`
-	Agent        string  `json:"agent,omitempty" jsonschema:"the agent definition to run: its prompt, tools, search and knowledge settings, cost caps and sub-agents (default: default, the built-in research agent)"`
-	AgentVersion string  `json:"agent_version,omitempty" jsonschema:"a constraint the agent's version must meet, e.g. 1.2.0, >=1.0 or ^1.2"`
-	MaxCostUSD   float64 `json:"max_cost_usd,omitempty" jsonschema:"a cap in USD on what the whole research may spend, sub-agents included; when it is reached the agents write their reports and say so"`
-	Dataset      string  `json:"dataset,omitempty" jsonschema:"the dataset of the user's knowledge base the agent queries and remembers into (default main)"`
-	Runner       string  `json:"runner,omitempty" jsonschema:"where the agent runs: local (default, in the server) or modal (the gligabao_agent binary in a Modal container, through the sidecar; its knowledge base is the container's own, not the user's)"`
+	UserID         string  `json:"user_id" jsonschema:"the user that owns the research"`
+	Topic          string  `json:"topic" jsonschema:"what to research: a question, or a subject to write a report on (at most 2000 characters)"`
+	MaxSteps       int     `json:"max_steps,omitempty" jsonschema:"the most model calls the agent makes, the last of which writes the report (default 20, at most 40); more steps research more and cost more"`
+	Model          string  `json:"model,omitempty" jsonschema:"the model the agent runs on, one that supports Anthropic's web search tool (default: the agent's, else the server's)"`
+	Agent          string  `json:"agent,omitempty" jsonschema:"the agent definition to run: its prompt, tools, search and knowledge settings, cost caps and sub-agents (default: default, the built-in research agent)"`
+	AgentVersion   string  `json:"agent_version,omitempty" jsonschema:"a constraint the agent's version must meet, e.g. 1.2.0, >=1.0 or ^1.2"`
+	MaxCostUSD     float64 `json:"max_cost_usd,omitempty" jsonschema:"a cap in USD on what the whole research may spend, sub-agents included; when it is reached the agents write their reports and say so"`
+	Dataset        string  `json:"dataset,omitempty" jsonschema:"the dataset of the user's knowledge base the agent queries and remembers into (default main)"`
+	SearchProvider string  `json:"search_provider,omitempty" jsonschema:"which service runs the agent's web search: anthropic (default, Anthropic's cloud search; the server's config can change the default)"`
+	FetchProvider  string  `json:"fetch_provider,omitempty" jsonschema:"which service reads the pages the agent fetches: local (default, a plain HTTP GET from the server; the server's config can change the default)"`
+	Runner         string  `json:"runner,omitempty" jsonschema:"where the agent runs: local (default, in the server) or modal (the gligabao_agent binary in a Modal container, through the sidecar; its knowledge base is the container's own, not the user's)"`
 }
 
 // ResearchListInput is the input of the research_list tool: the query of GET /v1/gb/research.

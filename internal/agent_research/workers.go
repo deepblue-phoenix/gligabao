@@ -285,6 +285,9 @@ func (m *Manager) startWorker(parent *researcher,
 		Model:    parent.opts.Model,
 		Dataset:  parent.opts.Dataset,
 		Agent:    def.Name,
+
+		SearchProvider: parent.opts.SearchProvider,
+		FetchProvider:  parent.opts.FetchProvider,
 	}
 	sub := newResearcher(m,
 		run,
@@ -322,7 +325,8 @@ func workerAgent(r *researcher,
 	a := agent.FromDef(workerDef(r.def),
 		r.client,
 		r.http,
-		kb)
+		kb,
+		r.opts.webProviders())
 	a.ErrSink = r.mgr.errSink()
 	a = withWorkerCode(r, a)
 	a.Tools = append(a.Tools, agent.SubmitFindingsTool(investigate_core.FindingsSchema(), func(raw json.RawMessage) error {

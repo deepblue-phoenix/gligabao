@@ -141,7 +141,8 @@ func newResearcher(m *Manager,
 		r.agent = agent.FromDefInvestigative(def,
 			r.client,
 			r.http,
-			kb)
+			kb,
+			opts.webProviders())
 		r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
 		agent.AddSkills(r.agent, def.Skills)
 		return r
@@ -149,7 +150,8 @@ func newResearcher(m *Manager,
 	r.agent = agent.FromDef(def,
 		r.client,
 		r.http,
-		kb)
+		kb,
+		opts.webProviders())
 	r.agent.Model, r.agent.MaxSteps, r.agent.ErrSink = opts.Model, opts.MaxSteps, m.errSink()
 	agent.AddSkills(r.agent, def.Skills)
 	r.watch()

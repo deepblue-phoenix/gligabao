@@ -352,6 +352,18 @@ func TestMCP(t *testing.T) {
 	}
 }
 
+func TestResearchWebProviders(t *testing.T) {
+	cfg, err := Load(write(t, "research_search_provider = \"anthropic\"\nresearch_fetch_provider = \"local\"\n"))
+	if err != nil || cfg.ResearchSearchProvider != "anthropic" || cfg.ResearchFetchProvider != "local" {
+		t.Fatalf("got %+v, %v", cfg, err)
+	}
+	for _, body := range []string{"research_search_provider = \"nope\"\n", "research_search_provider = \"linkup\"\n", "research_fetch_provider = \"anthropic\"\n"} {
+		if _, err := Load(write(t, body)); err == nil {
+			t.Errorf("%q must be invalid", body)
+		}
+	}
+}
+
 func TestAgentDefsAndResearchCostCap(t *testing.T) {
 	p := write(t, "agent_defs_dir = \"my_agents\"\nresearch_max_cost_usd = 7.5\n")
 	cfg, err := Load(p)

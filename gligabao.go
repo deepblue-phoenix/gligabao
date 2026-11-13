@@ -410,7 +410,10 @@ func serverOptions(cfg *Config,
 		OntologyDirs:       ontologyDirs,
 		AgentDefsDir:       agentDefsDir,
 		ResearchMaxCostUSD: cfg.ResearchMaxCostUSD,
-		ResearchNotesDir:   cfg.ResearchNotesDirOrDefault(),
+
+		ResearchSearchProvider: cfg.ResearchSearchProvider,
+		ResearchFetchProvider:  cfg.ResearchFetchProvider,
+		ResearchNotesDir:       cfg.ResearchNotesDirOrDefault(),
 		Monty: code_sandbox.Config{
 			Python:          cfg.MontyPython,
 			Bin:             cfg.MontyBin,

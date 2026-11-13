@@ -5,22 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync/atomic"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
-)
-
-const (
-	// maxPageChars is how much of a page the model gets.
-	maxPageChars = 15000
-	// maxPageBytes is how much of a page is downloaded.
-	maxPageBytes = 1 << 20
+	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 )
 
 // Research runs a deep-research agent on the question and returns its report. The agent has two tools: web_search
@@ -64,6 +56,26 @@ func ResearchAgent(client *llm.Client,
 		kb)
 }
 
+// fromDefOptions are what FromDef takes besides the definition; the defaults are Anthropic's search and the local fetch.
+type fromDefOptions struct{ search, fetch web.Provider }
+
+// FromDefOption changes how FromDef builds the agent.
+type FromDefOption func(fromDefOptions) fromDefOptions
+
+// WithWebProviders sets the providers of the web_search and the fetch_url tools; an empty one keeps the default.
+func WithWebProviders(search,
+	fetch web.Provider) FromDefOption {
+	return func(o fromDefOptions) fromDefOptions {
+		if search != "" {
+			o.search = search
+		}
+		if fetch != "" {
+			o.fetch = fetch
+		}
+		return o
+	}
+}
+
 // FromDef builds the agent of a definition (package agent_defs): its model, limits, tools, search settings and system prompt, made of the
 // base prompt of the definition, its search preferences and the part for the knowledge base. What is left to the caller is what depends on
 // the place of the agent in a research: the skills
@@ -72,7 +84,15 @@ func ResearchAgent(client *llm.Client,
 func FromDef(def *agent_defs.Def,
 	client *llm.Client,
 	httpClient *http.Client,
-	kb Knowledge) *Agent {
+	kb Knowledge,
+	opts ...FromDefOption) *Agent {
+	o := fromDefOptions{
+		search: web.Anthropic,
+		fetch:  web.Local,
+	}
+	for _, opt := range opts {
+		o = opt(o)
+	}
 	if httpClient == nil {
 		httpClient = NewHTTPClient()
 	}
@@ -94,11 +114,11 @@ func FromDef(def *agent_defs.Def,
 	}
 	system := []string{def.SystemPrompt, prompts.Search(prefs)}
 	if def.HasTool(agent_defs.ToolWebSearch) {
-		a.Tools = append(a.Tools, webSearchTool(client, def.Search))
+		a.Tools = append(a.Tools, webSearchTool(client, def.Search, o.search))
 	}
 	if def.HasTool(agent_defs.ToolFetchURL) {
 		f := def.Search.Fetch
-		a.Tools = append(a.Tools, fetchURLTool(httpClient, f))
+		a.Tools = append(a.Tools, fetchURLTool(httpClient, f, o.fetch))
 		// The domains of fetch_url are not those of web_search: say them too.
 		if len(f.AllowedDomains) > 0 {
 			system = append(system, "fetch_url reads pages only of these sites: "+strings.Join(f.AllowedDomains, ", ")+".")
@@ -173,7 +193,8 @@ func (c *callCounter) allow() bool {
 }
 
 func webSearchTool(client *llm.Client,
-	cfg agent_defs.Search) Tool {
+	cfg agent_defs.Search,
+	provider web.Provider) Tool {
 	counter := &callCounter{
 		limit: cfg.MaxCalls,
 	}
@@ -185,9 +206,9 @@ func webSearchTool(client *llm.Client,
 		Language:     cfg.Language,
 		Instructions: cfg.Instructions,
 	}))
-	var location *llm.WebSearchLocation
+	var location *web.Location
 	if l := cfg.Location; l != nil {
-		location = &llm.WebSearchLocation{
+		location = &web.Location{
 			Country:  l.Country,
 			Region:   l.Region,
 			City:     l.City,
@@ -211,9 +232,9 @@ func webSearchTool(client *llm.Client,
 			if !counter.allow() {
 				return "", errToolLimit("web_search", counter.limit)
 			}
-			r, err := client.WebSearch(ctx, llm.WebSearchRequest{
+			r, err := web.Search(ctx, provider, web.Deps{LLM: client}, web.SearchRequest{
+				Query:          query,
 				System:         system,
-				Prompt:         query,
 				MaxTokens:      1024,
 				MaxUses:        maxUses,
 				AllowedDomains: cfg.AllowedDomains,
@@ -228,9 +249,9 @@ func webSearchTool(client *llm.Client,
 				r.OutputTokens,
 				r.CostUSD)
 			var sb strings.Builder
-			sb.WriteString(r.Text)
+			sb.WriteString(r.Answer)
 			sb.WriteString("\n\nSources:")
-			for _, s := range r.Sources {
+			for _, s := range r.Results {
 				fmt.Fprintf(&sb,
 					"\n- %s (%s)",
 					s.URL,
@@ -241,49 +262,15 @@ func webSearchTool(client *llm.Client,
 	}
 }
 
-// hostMatches reports whether host is one of the listed hosts or a subdomain of one.
-func hostMatches(host string,
-	list []string) bool {
-	host = strings.ToLower(strings.TrimSuffix(host, "."))
-	for _, h := range list {
-		if host == h || strings.HasSuffix(host, "."+h) {
-			return true
-		}
-	}
-	return false
-}
-
-// checkDomain refuses a host that the allowed and blocked lists of fetch_url do not let through.
-func checkDomain(host string,
-	cfg agent_defs.Fetch) error {
-	switch {
-	case hostMatches(host, cfg.BlockedDomains):
-		return fmt.Errorf("%s is blocked: you may not read pages of that site", host)
-	case len(cfg.AllowedDomains) > 0 && !hostMatches(host, cfg.AllowedDomains):
-		return fmt.Errorf("%s is not allowed: you may read pages only of %s",
-			host,
-			strings.Join(cfg.AllowedDomains, ", "))
-	}
-	return nil
-}
-
 func fetchURLTool(httpClient *http.Client,
-	cfg agent_defs.Fetch) Tool {
+	cfg agent_defs.Fetch,
+	provider web.Provider) Tool {
 	counter := &callCounter{
 		limit: cfg.MaxCalls,
 	}
 	maxChars := cfg.MaxPageChars
 	if maxChars <= 0 {
 		maxChars = agent_defs.DefaultMaxPageChars
-	}
-	// A redirect may not leave the allowed sites. The client is the agent's own; a copy carries the check.
-	client := *httpClient
-	client.CheckRedirect = func(req *http.Request,
-		via []*http.Request) error {
-		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
-		}
-		return checkDomain(req.URL.Hostname(), cfg)
 	}
 	return Tool{
 		Name:        "fetch_url",
@@ -298,57 +285,21 @@ func fetchURLTool(httpClient *http.Client,
 			if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 				return "", errors.New("url must start with http:// or https://")
 			}
-			req, err := http.NewRequestWithContext(ctx,
-				http.MethodGet,
-				url,
-				nil)
-			if err != nil {
-				return "", err
-			}
-			if err := checkDomain(req.URL.Hostname(), cfg); err != nil {
-				return "", err
-			}
 			if !counter.allow() {
 				return "", errToolLimit("fetch_url", counter.limit)
 			}
-			resp, err := client.Do(req)
+			r, err := web.Fetch(ctx, provider, web.Deps{HTTP: httpClient}, web.FetchRequest{
+				URL:            url,
+				MaxChars:       maxChars,
+				AllowedDomains: cfg.AllowedDomains,
+				BlockedDomains: cfg.BlockedDomains,
+			})
 			if err != nil {
 				return "", err
 			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				return "", fmt.Errorf("%s: status %d",
-					url,
-					resp.StatusCode)
-			}
-			body, err := io.ReadAll(io.LimitReader(resp.Body, maxPageBytes))
-			if err != nil {
-				return "", err
-			}
-			return pageTextMax(string(body), maxChars), nil
+			return r.Text, nil
 		},
 	}
-}
-
-var (
-	reInvisible = regexp.MustCompile(`(?is)<(script|style|noscript)\b.*?</(script|style|noscript)>`)
-	reTag       = regexp.MustCompile(`(?s)<[^>]*>`)
-	reSpace     = regexp.MustCompile(`\s+`)
-)
-
-// pageText turns HTML into plain text, cut to maxPageChars characters. It is crude on purpose.
-func pageText(html string) string { return pageTextMax(html, maxPageChars) }
-
-// pageTextMax is pageText cut to max characters.
-func pageTextMax(html string,
-	max int) string {
-	s := reInvisible.ReplaceAllString(html, " ")
-	s = reTag.ReplaceAllString(s, " ")
-	s = strings.TrimSpace(reSpace.ReplaceAllString(s, " "))
-	if r := []rune(s); len(r) > max {
-		s = string(r[:max])
-	}
-	return s
 }
 
 // objectSchema is the schema of a tool whose input is {"<name>": "<string>"}.
@@ -386,11 +337,13 @@ const ToolFetchPage = "fetch_page"
 func FromDefInvestigative(def *agent_defs.Def,
 	client *llm.Client,
 	httpClient *http.Client,
-	kb Knowledge) *Agent {
+	kb Knowledge,
+	opts ...FromDefOption) *Agent {
 	a := FromDef(def,
 		client,
 		httpClient,
-		kb)
+		kb,
+		opts...)
 	for i, t := range a.Tools {
 		if t.Name == agent_defs.ToolFetchURL {
 			a.Tools[i].Name = ToolFetchPage

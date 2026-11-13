@@ -16,6 +16,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 )
 
 // FileName is the default config file name.
@@ -184,6 +185,11 @@ type Config struct {
 	// ResearchMaxCostUSD is the most one research (all its agents together) may spend, in USD, whatever its agent definition and its
 	// request say: they can only lower it. 0 (default): no cap of the server.
 	ResearchMaxCostUSD float64 `toml:"research_max_cost_usd"`
+	// ResearchSearchProvider and ResearchFetchProvider are the providers of the web_search and fetch_url tools of the research agents when
+	// a request names none (search_provider, fetch_provider of POST /v1/gb/research). Search: "anthropic" (default). Fetch: "local"
+	// (default, a plain HTTP GET).
+	ResearchSearchProvider string `toml:"research_search_provider"`
+	ResearchFetchProvider  string `toml:"research_fetch_provider"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`
@@ -318,6 +324,12 @@ func (c *Config) Validate() error {
 	}
 	if c.ResearchMaxCostUSD < 0 || math.IsNaN(c.ResearchMaxCostUSD) || math.IsInf(c.ResearchMaxCostUSD, 0) {
 		return fmt.Errorf("config: research_max_cost_usd %v must be 0 (no cap) or a positive number of USD", c.ResearchMaxCostUSD)
+	}
+	if _, err := web.ParseSearch(c.ResearchSearchProvider, web.Anthropic); err != nil {
+		return fmt.Errorf("config: research_search_provider: %w", err)
+	}
+	if _, err := web.ParseFetch(c.ResearchFetchProvider, web.Local); err != nil {
+		return fmt.Errorf("config: research_fetch_provider: %w", err)
 	}
 	if err := c.Chunking().Validate(); err != nil {
 		return fmt.Errorf("config: chunk_size / chunk_overlap_percent: %w", err)

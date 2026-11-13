@@ -38,6 +38,8 @@ func (c *CLI) researchStartCmd() *cobra.Command {
 		dataset    string
 		noRemember bool
 		runner     string
+		searchProv string
+		fetchProv  string
 		agent      string
 		agentVer   string
 		maxCost    float64
@@ -111,6 +113,12 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 					return usageErr("--runner must be local or modal")
 				}
 				b.set("runner", runner)
+			}
+			if cmd.Flags().Changed("search-provider") {
+				b.set("search_provider", searchProv)
+			}
+			if cmd.Flags().Changed("fetch-provider") {
+				b.set("fetch_provider", fetchProv)
 			}
 			cl, err := c.client(cmd)
 			if err != nil {
@@ -211,6 +219,14 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 		"runner",
 		"",
 		`where the agent runs: "local" (default: in the server) or "modal" (the gligabao_agent binary in a Modal container, through the sidecar)`)
+	f.StringVar(&searchProv,
+		"search-provider",
+		"",
+		`the service that runs the agent's web search: "anthropic" (default; the server's config can change the default)`)
+	f.StringVar(&fetchProv,
+		"fetch-provider",
+		"",
+		`the service that reads the pages the agent fetches: "local" (default, a plain HTTP GET; the server's config can change the default)`)
 	f.BoolVar(&wait,
 		"wait",
 		false,

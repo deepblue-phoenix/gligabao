@@ -44,6 +44,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 	coretraining "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
@@ -120,6 +121,8 @@ type Options struct {
 	AgentDefsDir string
 	// ResearchMaxCostUSD is the most one research may spend, all its agents together (0: no cap of the server).
 	ResearchMaxCostUSD float64
+	// ResearchSearchProvider and ResearchFetchProvider are the default providers of web_search and fetch_url ("": anthropic, local).
+	ResearchSearchProvider, ResearchFetchProvider string
 	// ResearchNotesDir is the directory of the notes files of the investigative research loop ("": research_notes in the working directory).
 	ResearchNotesDir string
 	// Monty is where the code sandbox of the investigative agents is (see agent_research.Manager.Monty).
@@ -1107,6 +1110,8 @@ func prepare(ctx context.Context,
 		lm)
 	research.MaxCostUSD = opts.ResearchMaxCostUSD
 	research.NotesDir = opts.ResearchNotesDir
+	research.SearchProvider = web.Provider(opts.ResearchSearchProvider)
+	research.FetchProvider = web.Provider(opts.ResearchFetchProvider)
 	research.InitSandbox(opts.Monty)
 	if opts.ResearchNotesS3.Bucket != "" {
 		notesS3, err := investigate.NewNotesS3(ctx, opts.ResearchNotesS3)

@@ -61,6 +61,8 @@ Unknown keys are errors. Every field but `name`, `version`, `description` and th
 
 ### `[search]`: web preferences
 
+Which service runs the search and the fetch is not set here: it is chosen per research and by the server config, see [../web-providers.md](../web-providers.md).
+
 ```toml
 [search]
 allowed_domains   = []                       # HARD: only these sites (web_search and fetch_url)

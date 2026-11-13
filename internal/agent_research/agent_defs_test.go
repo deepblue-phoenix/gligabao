@@ -289,6 +289,18 @@ dataset_locked = true
 				Topic:      "t",
 				MaxCostUSD: -1,
 			},
+			"unknown search provider": {
+				Topic:          "t",
+				SearchProvider: "nope",
+			},
+			"search provider not available yet": {
+				Topic:          "t",
+				SearchProvider: "linkup",
+			},
+			"fetch provider not available yet": {
+				Topic:         "t",
+				FetchProvider: "keenable",
+			},
 			"too many steps": {
 				Topic:    "t",
 				Agent:    "scout",

@@ -56,7 +56,7 @@ All three routes are user routes: the user is the `gb-user-id` header (required;
 Starts an agent. Body:
 
 ```json
-{"topic": "How do solid-state batteries compare with lithium-ion?", "agent": "default", "max_steps": 20, "model": "", "max_cost_usd": 0, "dataset": "main", "runner": "local"}
+{"topic": "How do solid-state batteries compare with lithium-ion?", "agent": "default", "max_steps": 20, "model": "", "max_cost_usd": 0, "dataset": "main", "runner": "local", "search_provider": "anthropic", "fetch_provider": "local"}
 ```
 
 - `topic` (required, at most 2000 characters): what to research. A question, or a subject to write a report on.
@@ -67,6 +67,7 @@ Starts an agent. Body:
 - `dataset` (optional, default `main`): the dataset of the user's knowledge base the agent queries and remembers into ([below](#the-knowledge-base)). It is created by the first `remember` if it does not exist; a bad name is a `400`. It is not stored with the run. With the `modal` runner it is the dataset the agent's knowledge lands in when the agent ends ([below](#what-comes-back-the-import)).
 - `no_remember` (optional, default `false`): with the [investigative loop](deep-research-loop.md), when the root agent has written the final report, the run makes one explicit, waiting `remember` call with it (titled with the topic) into `dataset`, through the remember pipeline, so that knowledge builds up (the run is in the state `remembering` meanwhile). `true` turns that call off. A failed call is logged and does not fail the research. The agent's `remember` tool is not affected, and the call is skipped for agents without a knowledge base. The `modal` runner does not use the investigative loop.
 - `investigate` (optional): the knobs of the [investigative loop](#the-investigative-loop) (`max_iterations`, `max_total_tokens`, `min_sources`, ... the same names as the `[investigate]` table of the [agent definition](agent-defs.md#loop-and-investigate-the-investigative-loop)), over those of the definition. Only for an agent with `loop = "investigative"`: with the simple loop they are a `400`. With that loop `max_steps` is a `400` too (`max_iterations` replaces it), and so is `runner: "modal"`.
+- `search_provider` and `fetch_provider` (optional): the service that runs the agents' `web_search` tool and the one that reads the pages of `fetch_url` (the sub-agents use the same). The built-in defaults are `anthropic` for search (Anthropic's cloud web search) and `local` for fetch (a plain HTTP GET from the server); `research_search_provider` and `research_fetch_provider` in `gligabao.toml` change those defaults, and a request overrides them. The two are chosen independently. `linkup` and `keenable` are named but not available yet: they are a `400`, like any other unknown name. The `modal` runner supports only `anthropic` and `local` (a `400` otherwise). The providers are not stored with the run. Details: [../web-providers.md](../web-providers.md). CLI: `--search-provider`, `--fetch-provider` (also of `gligabao_agent`); MCP: the same names as here.
 - `runner` (optional, default `local`): where the agent runs, `local` (in the server, as always) or `modal` (the `gligabao_agent` binary in a Modal container, see [below](#where-the-agent-runs-the-runner)). Any other value is a `400`. The run says which one it has (`runner`).
 
 Answers `202` with the run (`status` `running`, `state` `starting`); the agent goes on in the background. `400` for a bad body, `409` if the user already has 3 agents working (wait for one to end), `503` without an Anthropic API key (for `local`), or, for `modal`, when the sidecar cannot start the job (it is down, or the Modal app has no agent: the message says which).
@@ -113,7 +114,7 @@ To follow a run, poll this route (or `research_get`, or `gligabao research get`)
 ## CLI
 
 ```
-gligabao research start TOPIC [--agent NAME] [--agent-version V] [--max-cost USD] [--max-steps N] [--model M] [-d DATASET] [--no-remember] [--runner local|modal] [--wait [--raw]] [--json BODY]
+gligabao research start TOPIC [--agent NAME] [--agent-version V] [--max-cost USD] [--max-steps N] [--model M] [-d DATASET] [--no-remember] [--runner local|modal] [--search-provider P] [--fetch-provider P] [--wait [--raw]] [--json BODY]
 gligabao research ls [--active] [--status S] [--limit N]
 gligabao research get ID [--raw]
 gligabao research agents

@@ -8,6 +8,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 )
 
 // Options are what a research is started with. Its JSON is the body of POST /v1/gb/research (the user is the gb-user-id header).
@@ -39,6 +40,12 @@ type Options struct {
 	// the gligabao_agent binary in a Modal container, started through the sidecar, see Manager.UseRemote). With "modal" the agent works
 	// with a knowledge base of its own in the container, not the user's (so Dataset has no effect there).
 	Runner string `json:"runner,omitempty"`
+	// SearchProvider and FetchProvider say which service runs the web_search and the fetch_url tools of the agent and of its sub-agents
+	// (package sys/web): "anthropic" (Anthropic's cloud search) for search and "local" (a plain HTTP GET) for fetch are the built-in
+	// defaults, which the server's config (research_search_provider, research_fetch_provider) can change; empty uses the default. A
+	// provider that is not available yet is a 400. Not stored with the run.
+	SearchProvider string `json:"search_provider,omitempty"`
+	FetchProvider  string `json:"fetch_provider,omitempty"`
 	// Investigate are the knobs of the investigative loop (max_iterations, max_total_tokens, min_sources, ...; see agent_defs.Investigate), over
 	// those of the definition. They only take effect for an agent with loop = "investigative"; with another loop they are an error. With that
 	// loop max_iterations replaces max_steps (which is then not allowed) and max_cost_usd caps the cost as always.
@@ -84,6 +91,8 @@ func (o Options) resolve() (Options, error) {
 	o.Topic = strings.TrimSpace(o.Topic)
 	o.Model = strings.TrimSpace(o.Model)
 	o.Runner = strings.ToLower(strings.TrimSpace(o.Runner))
+	o.SearchProvider = strings.ToLower(strings.TrimSpace(o.SearchProvider))
+	o.FetchProvider = strings.ToLower(strings.TrimSpace(o.FetchProvider))
 	o.Agent, o.AgentVersion = strings.TrimSpace(o.Agent), strings.TrimSpace(o.AgentVersion)
 	o.datasetGiven = strings.TrimSpace(o.Dataset) != ""
 	if o.Runner == "" {
@@ -94,6 +103,12 @@ func (o Options) resolve() (Options, error) {
 		return o, invalidErr(err.Error())
 	}
 	o.Dataset = dataset
+	if _, err := web.ParseSearch(o.SearchProvider, web.Anthropic); err != nil {
+		return o, invalidErr("search_provider: " + err.Error())
+	}
+	if _, err := web.ParseFetch(o.FetchProvider, web.Local); err != nil {
+		return o, invalidErr("fetch_provider: " + err.Error())
+	}
 	switch {
 	case o.Topic == "":
 		return o, invalidErr("topic is required")

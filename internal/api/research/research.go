@@ -66,6 +66,8 @@ func user(w http.ResponseWriter,
 //   - max_steps: the most model calls the agent makes, the last of which writes the report (default: the agent's, 20 for the default one; at most 40)
 //   - model: the model it runs on, one that supports Anthropic's web search tool (default: the model of the agent, else the server's default)
 //   - agent, agent_version: the agent definition to run (see Agents; default "default"), and a constraint on its version
+//   - search_provider, fetch_provider: the service that runs the web_search tool ("anthropic") and the fetch_url tool ("local") of the agents; empty is the
+//     server's default (research_search_provider, research_fetch_provider of the config), else those; a provider that is not available is a 400
 //   - max_cost_usd: a cap on what the whole research may spend, sub-agents included (it lowers the caps of the agent and the server)
 //
 // 400 for a bad body, 409 when the user has 3 agents working already, 503 without an Anthropic API key.
