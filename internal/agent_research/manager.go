@@ -45,6 +45,8 @@ type Manager struct {
 	// SearchProvider and FetchProvider are the providers of web_search and fetch_url when a request names none (the server's config:
 	// research_search_provider, research_fetch_provider); empty: web.Anthropic and web.Local. Set them before starting any agent.
 	SearchProvider, FetchProvider web.Provider
+	// LinkupKey is the Linkup API key (config: linkup_api_key), for the agents whose search or fetch provider is linkup. Set it before starting any agent.
+	LinkupKey string
 	// NotesDir is the directory of the notes files of the investigative loop (config.DefaultResearchNotesDirName if ""). Set it before starting any agent.
 	NotesDir string
 	// NotesS3, if set, mirrors the notes files to the research S3 bucket, under a subdirectory per user. Set it before starting any agent.
@@ -300,6 +302,9 @@ func (m *Manager) applyDef(opts Options,
 	opts.FetchProvider = string(firstProvider(web.Provider(opts.FetchProvider), m.FetchProvider, web.Local))
 	if opts.Runner == core.RunnerModal && (opts.SearchProvider != string(web.Anthropic) || opts.FetchProvider != string(web.Local)) {
 		return opts, invalidErr("the modal runner supports only the anthropic search provider and the local fetch provider")
+	}
+	if m.LinkupKey == "" && (opts.SearchProvider == string(web.Linkup) || opts.FetchProvider == string(web.Linkup)) {
+		return opts, invalidErr("the linkup provider needs a key: set LINKUP_API_KEY or linkup_api_key in the config")
 	}
 	if opts.Model == "" {
 		opts.Model = def.Model

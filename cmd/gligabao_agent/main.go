@@ -125,10 +125,10 @@ func run(ctx context.Context,
 			"cap on what the whole research may spend in USD, sub-agents included; it lowers the caps of the agent's definition (0: only those apply)")
 		searchProv = fs.String("search-provider",
 			"",
-			"which service runs web_search: anthropic (the default)")
+			"which service runs web_search: anthropic (the default) or linkup (needs LINKUP_API_KEY or linkup_api_key)")
 		fetchProv = fs.String("fetch-provider",
 			"",
-			"which service reads pages for fetch_url: local (the default, a plain HTTP GET)")
+			"which service reads pages for fetch_url: local (the default, a plain HTTP GET) or linkup (needs LINKUP_API_KEY or linkup_api_key)")
 		model = fs.String("model",
 			"",
 			"model to run on; it must support Anthropic's web search tool (default: the built-in default)")
@@ -183,7 +183,7 @@ Each run costs money (model calls and web searches, workers included).
 
 It works with the knowledge base (the memory of gligabao) in process, through its remember and query tools, and records every run
 and its states in the database, as the research jobs of the server do: the database is opened here (SQLite file, or PostgreSQL with
---config), and nothing needs to be running. That needs %s and %s (embeddings) in the environment or the config file.
+--config), and nothing needs to be running. That needs %s and %s (embeddings) in the environment or the config file; the linkup provider of --search-provider / --fetch-provider also needs %s.
 
 --export FILE keeps what the agent learned when its storage is not kept: it writes the local state (every table of the SQLite database,
 the embeddings of the Chromem vector store, the images, the trajectory) to one ZIP archive, JSON lines inside, that another gligabao
@@ -192,7 +192,8 @@ can load. A PostgreSQL database or a Pinecone index persists its data itself, so
 Flags:
 `,
 			config.EnvAnthropicKey,
-			config.EnvOpenAIKey)
+			config.EnvOpenAIKey,
+			config.EnvLinkupKey)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

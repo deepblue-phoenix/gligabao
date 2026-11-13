@@ -2,7 +2,7 @@
 
 The research agents' two web tools, `web_search` and `fetch_url` (called `fetch_page` in the [investigative loop](agents/deep-research-loop.md)), do not call a service directly: they go through one wrapper, the package `internal/sys/web`, which takes the **provider** that does the work. Search and fetch have a provider each, chosen independently.
 
-Code: `internal/sys/web/` (`web.go`, `anthropic.go`, `local.go`), the tools in `internal/agent/research.go` (`webSearchTool`, `fetchURLTool`), the choice in `internal/agent_research/` (`Options`, `Manager`).
+Code: `internal/sys/web/` (`web.go`, `anthropic.go`, `local.go`, `linkup.go`), the tools in `internal/agent/research.go` (`webSearchTool`, `fetchURLTool`), the choice in `internal/agent_research/` (`Options`, `Manager`).
 
 ## Providers
 
@@ -10,13 +10,15 @@ Code: `internal/sys/web/` (`web.go`, `anthropic.go`, `local.go`), the tools in `
 |---|---|---|---|
 | `anthropic` | yes (default) | no | Anthropic's cloud web search |
 | `local` | no | yes (default) | a plain HTTP GET from the server |
-| `linkup` | planned | planned | not implemented |
+| `linkup` | yes | yes | Linkup's `/v1/search` and `/v1/fetch` |
 | `keenable` | planned | planned | not implemented |
 
-A provider that is named but cannot do the operation (`linkup`, `keenable`, `anthropic` for fetch, `local` for search) is rejected as soon as it is chosen, not when the agent first uses the tool.
+A provider that is named but cannot do the operation (`keenable`, `anthropic` for fetch, `local` for search) is rejected as soon as it is chosen, not when the agent first uses the tool.
 
 - **`anthropic` (search).** A *server tool*: gligabao sends one Messages API request (model, system prompt, the query) and Anthropic runs the searches in its cloud; what comes back is the model's written answer with its sources. It needs the Anthropic API key and a model that supports the tool. It costs the tokens plus a fee per search (`llm.WebSearchRequestUSD`).
 - **`local` (fetch).** gligabao itself downloads the page (at most 1 MiB, up to 10 redirects) and turns the HTML into text (scripts, styles and tags removed, spaces collapsed; crude on purpose), cut to the page limit (`max_page_chars` of the [definition](agents/agent-defs.md), default 15000). It needs no key and costs nothing.
+- **`linkup` (search).** `POST {base}/v1/search` with `depth` standard (one agentic iteration) and `outputType` sourcedAnswer: the answer with inline citations, and the sources (`name`, `url`, `snippet`, mapped to `Title`, `URL`, `Snippet`). `AllowedDomains` / `BlockedDomains` become `includeDomains` / `excludeDomains` (first 100 each); the location is ignored. Key: `linkup_api_key` / `LINKUP_API_KEY` of the config (`Deps.LinkupKey`). It costs $0.006 per call (`CostUSD`, no tokens).
+- **`linkup` (fetch).** `POST {base}/v1/fetch` with `mode` standard and `renderJs` true; the markdown of the page (HTML or PDF) is cut to the page limit. The key is `linkup_api_key` / `LINKUP_API_KEY` of the config (`Deps.LinkupKey`, `agent.WithLinkupKey`); choosing `linkup` without a key is refused (config validation, research start). It costs $0.005 per call (`CostUSD`). Linkup follows redirects itself, so the domain lists are checked on the requested host only.
 
 ## Choosing the providers
 
@@ -68,9 +70,9 @@ page, err := web.Fetch(ctx, web.Local, web.Deps{HTTP: httpClient}, web.FetchRequ
 })
 ```
 
-`SearchResponse` is the same whichever provider ran: `Answer` (a written summary; empty for a provider that only returns results), `Results` (`URL`, `Title`, `PageAge`, `Snippet`), `Queries`, `Searches`, the tokens and `CostUSD`. `FetchResponse` has `URL`, `Text` and `CostUSD`. `web.ParseSearch` / `web.ParseFetch` read and validate a provider name (empty gives a default); `ErrNotImplemented` and `ErrUnknownProvider` are returned by `Search` and `Fetch`. `Deps` holds what a provider needs (the Anthropic client, the HTTP client).
+`SearchResponse` is the same whichever provider ran: `Answer` (a written summary; empty for a provider that only returns results), `Results` (`URL`, `Title`, `PageAge`, `Snippet`), `Queries`, `Searches`, the tokens and `CostUSD`. `FetchResponse` has `URL`, `Text` and `CostUSD`. `web.ParseSearch` / `web.ParseFetch` read and validate a provider name (empty gives a default); `ErrNotImplemented` and `ErrUnknownProvider` are returned by `Search` and `Fetch`. `Deps` holds what a provider needs (the Anthropic client, the HTTP client, the Linkup key and base URL).
 
-To make `linkup` or `keenable` available, implement them in this package and add them to `implementedSearch` / `implementedFetch`: the request, the config and the CLI validate against those lists. The open work is in `leftover_tasks/2026-11-13-web-providers-linkup-keenable.md`.
+To make `keenable` available, implement them in this package and add them to `implementedSearch` / `implementedFetch`: the request, the config and the CLI validate against those lists. The open work is in `leftover_tasks/2026-11-13-web-providers-linkup-keenable.md`.
 
 ## Not covered
 

@@ -24,7 +24,7 @@ type Provider string
 const (
 	// Anthropic is Anthropic's cloud web search (Search only for now: see Fetch).
 	Anthropic Provider = "anthropic"
-	// Linkup is the Linkup API (not implemented yet).
+	// Linkup is the Linkup API (Search and Fetch).
 	Linkup Provider = "linkup"
 	// Keenable is the Keenable API (not implemented yet).
 	Keenable Provider = "keenable"
@@ -45,6 +45,8 @@ type Deps struct {
 	LLM *llm.Client
 	// HTTP reads pages (Local fetch). Nil uses a client of its own with the default transport.
 	HTTP *http.Client
+	// LinkupKey is the Linkup API key (from the config). LinkupBaseURL overrides the API root (tests).
+	LinkupKey, LinkupBaseURL string
 }
 
 // Location is the approximate place a search is made from. Country is an ISO 3166-1 alpha-2 code, Timezone an IANA name.
@@ -112,8 +114,8 @@ type FetchResponse struct {
 
 // implementedSearch and implementedFetch are the providers that have code for the operation (the others return ErrNotImplemented).
 var (
-	implementedSearch = []Provider{Anthropic}
-	implementedFetch  = []Provider{Local}
+	implementedSearch = []Provider{Anthropic, Linkup}
+	implementedFetch  = []Provider{Local, Linkup}
 )
 
 // ParseSearch reads the name of a search provider (case and spaces do not matter); an empty name is def. A name that is not a provider, or a
@@ -158,7 +160,9 @@ func Search(ctx context.Context,
 	switch p {
 	case Anthropic:
 		return searchAnthropic(ctx, d, req)
-	case Linkup, Keenable:
+	case Linkup:
+		return searchLinkup(ctx, d, req)
+	case Keenable:
 		return nil, fmt.Errorf("%w: %s search", ErrNotImplemented, p)
 	}
 	return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, p)
@@ -172,7 +176,9 @@ func Fetch(ctx context.Context,
 	switch p {
 	case Local:
 		return fetchLocal(ctx, d, req)
-	case Anthropic, Linkup, Keenable:
+	case Linkup:
+		return fetchLinkup(ctx, d, req)
+	case Anthropic, Keenable:
 		return nil, fmt.Errorf("%w: %s fetch", ErrNotImplemented, p)
 	}
 	return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, p)

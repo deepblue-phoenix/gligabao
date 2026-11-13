@@ -357,10 +357,26 @@ func TestResearchWebProviders(t *testing.T) {
 	if err != nil || cfg.ResearchSearchProvider != "anthropic" || cfg.ResearchFetchProvider != "local" {
 		t.Fatalf("got %+v, %v", cfg, err)
 	}
-	for _, body := range []string{"research_search_provider = \"nope\"\n", "research_search_provider = \"linkup\"\n", "research_fetch_provider = \"anthropic\"\n"} {
+	for _, body := range []string{"research_search_provider = \"nope\"\n", "research_search_provider = \"keenable\"\n", "research_fetch_provider = \"anthropic\"\n"} {
 		if _, err := Load(write(t, body)); err == nil {
 			t.Errorf("%q must be invalid", body)
 		}
+	}
+}
+
+func TestLinkupKey(t *testing.T) {
+	t.Setenv(EnvLinkupKey, "")
+	if _, err := Load(write(t, "research_fetch_provider = \"linkup\"\n")); err == nil {
+		t.Error("linkup without a key must be invalid")
+	}
+	cfg, err := Load(write(t, "research_search_provider = \"linkup\"\nlinkup_api_key = \"k\"\n"))
+	if err != nil || cfg.LinkupKey != "k" {
+		t.Fatalf("got %+v, %v", cfg, err)
+	}
+	t.Setenv(EnvLinkupKey, "env")
+	cfg, err = Load(write(t, "research_fetch_provider = \"linkup\"\n"))
+	if err != nil || cfg.LinkupKey != "env" {
+		t.Fatalf("env: %+v, %v", cfg, err)
 	}
 }
 

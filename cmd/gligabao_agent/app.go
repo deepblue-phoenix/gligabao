@@ -21,6 +21,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -94,6 +95,9 @@ func openApp(ctx context.Context,
 		ops,
 		lm,
 		agent_research.KeepActiveRuns())
+	a.research.LinkupKey = cfg.LinkupKey
+	a.research.SearchProvider = web.Provider(cfg.ResearchSearchProvider)
+	a.research.FetchProvider = web.Provider(cfg.ResearchFetchProvider)
 	a.research.InitSandbox(code_sandbox.Config{}) // env: GLIGABAO_MONTY_PYTHON, MONTY_BIN
 	a.research.UseMemory(a.mem)
 	return a, nil

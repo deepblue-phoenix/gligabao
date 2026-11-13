@@ -127,7 +127,7 @@ func TestFetchURLTool(t *testing.T) {
 		w.Write([]byte("<p>page</p>"))
 	}))
 	defer srv.Close()
-	tool := fetchURLTool(srv.Client(), agent_defs.Fetch{}, web.Local)
+	tool := fetchURLTool(srv.Client(), agent_defs.Fetch{}, web.Local, "")
 	out, err := tool.Run(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil || out != "page" {
 		t.Fatalf("got %q, %v",
@@ -447,7 +447,7 @@ func TestFetchURLToolDomains(t *testing.T) {
 	// The test server is 127.0.0.1: nothing of the lists matches it but a list that has it.
 	blocked := fetchURLTool(srv.Client(), agent_defs.Fetch{
 		BlockedDomains: []string{"127.0.0.1"},
-	}, web.Local)
+	}, web.Local, "")
 	if _, err := fetchOf(t,
 		blocked,
 		srv.URL); err == nil || !strings.Contains(err.Error(), "blocked") {
@@ -455,7 +455,7 @@ func TestFetchURLToolDomains(t *testing.T) {
 	}
 	allowedOther := fetchURLTool(srv.Client(), agent_defs.Fetch{
 		AllowedDomains: []string{"example.com"},
-	}, web.Local)
+	}, web.Local, "")
 	if _, err := fetchOf(t,
 		allowedOther,
 		srv.URL); err == nil || !strings.Contains(err.Error(), "not allowed") {
@@ -463,7 +463,7 @@ func TestFetchURLToolDomains(t *testing.T) {
 	}
 	allowed := fetchURLTool(srv.Client(), agent_defs.Fetch{
 		AllowedDomains: []string{"127.0.0.1"},
-	}, web.Local)
+	}, web.Local, "")
 	if out, err := fetchOf(t,
 		allowed,
 		srv.URL); err != nil || out != "page" {
@@ -488,7 +488,7 @@ func TestFetchURLToolCallLimitAndPageSize(t *testing.T) {
 	tool := fetchURLTool(srv.Client(), agent_defs.Fetch{
 		MaxCalls:     2,
 		MaxPageChars: 1000,
-	}, web.Local)
+	}, web.Local, "")
 	for i := 0; i < 2; i++ {
 		out, err := fetchOf(t,
 			tool,
@@ -530,7 +530,7 @@ func TestWebSearchToolSendsTheDomainsAndLocationAndCountsCalls(t *testing.T) {
 			City:    "Munich",
 		},
 		Instructions: "Primary sources first.",
-	}, web.Anthropic)
+	}, web.Anthropic, "")
 	if _, err := tool.Run(context.Background(), json.RawMessage(`{"query":"q"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -824,7 +824,7 @@ func TestFromDefUsesTheChosenWebProviders(t *testing.T) {
 		client,
 		nil,
 		nil,
-		WithWebProviders(web.Linkup, web.Keenable))
+		WithWebProviders(web.Keenable, web.Keenable))
 	for _, tool := range a.Tools {
 		var input string
 		switch tool.Name {

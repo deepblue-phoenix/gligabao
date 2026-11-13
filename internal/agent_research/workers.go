@@ -326,7 +326,8 @@ func workerAgent(r *researcher,
 		r.client,
 		r.http,
 		kb,
-		r.opts.webProviders())
+		r.opts.webProviders(),
+		agent.WithLinkupKey(r.mgr.LinkupKey))
 	a.ErrSink = r.mgr.errSink()
 	a = withWorkerCode(r, a)
 	a.Tools = append(a.Tools, agent.SubmitFindingsTool(investigate_core.FindingsSchema(), func(raw json.RawMessage) error {

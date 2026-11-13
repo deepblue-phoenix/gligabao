@@ -295,7 +295,7 @@ dataset_locked = true
 			},
 			"search provider not available yet": {
 				Topic:          "t",
-				SearchProvider: "linkup",
+				SearchProvider: "keenable",
 			},
 			"fetch provider not available yet": {
 				Topic:         "t",

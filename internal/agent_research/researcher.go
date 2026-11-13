@@ -142,7 +142,8 @@ func newResearcher(m *Manager,
 			r.client,
 			r.http,
 			kb,
-			opts.webProviders())
+			opts.webProviders(),
+			agent.WithLinkupKey(m.LinkupKey))
 		r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
 		agent.AddSkills(r.agent, def.Skills)
 		return r
@@ -151,7 +152,8 @@ func newResearcher(m *Manager,
 		r.client,
 		r.http,
 		kb,
-		opts.webProviders())
+		opts.webProviders(),
+		agent.WithLinkupKey(m.LinkupKey))
 	r.agent.Model, r.agent.MaxSteps, r.agent.ErrSink = opts.Model, opts.MaxSteps, m.errSink()
 	agent.AddSkills(r.agent, def.Skills)
 	r.watch()

@@ -92,6 +92,8 @@ type Options struct {
 	DB db.Config
 	// AnthropicKey is the Anthropic API key. If empty, LLM endpoints return 503.
 	AnthropicKey string
+	// LinkupKey is the Linkup API key (research agents with the linkup provider).
+	LinkupKey string
 	// OpenAIKey is the OpenAI API key used to embed entities (dimensions: DB.EmbeddingDimensions). If empty,
 	// remember stores no embeddings.
 	OpenAIKey string
@@ -1110,6 +1112,7 @@ func prepare(ctx context.Context,
 		lm)
 	research.MaxCostUSD = opts.ResearchMaxCostUSD
 	research.NotesDir = opts.ResearchNotesDir
+	research.LinkupKey = opts.LinkupKey
 	research.SearchProvider = web.Provider(opts.ResearchSearchProvider)
 	research.FetchProvider = web.Provider(opts.ResearchFetchProvider)
 	research.InitSandbox(opts.Monty)

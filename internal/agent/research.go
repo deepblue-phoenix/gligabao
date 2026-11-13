@@ -57,10 +57,21 @@ func ResearchAgent(client *llm.Client,
 }
 
 // fromDefOptions are what FromDef takes besides the definition; the defaults are Anthropic's search and the local fetch.
-type fromDefOptions struct{ search, fetch web.Provider }
+type fromDefOptions struct {
+	search, fetch web.Provider
+	linkupKey     string
+}
 
 // FromDefOption changes how FromDef builds the agent.
 type FromDefOption func(fromDefOptions) fromDefOptions
+
+// WithLinkupKey sets the Linkup API key, for the tools whose provider is web.Linkup.
+func WithLinkupKey(key string) FromDefOption {
+	return func(o fromDefOptions) fromDefOptions {
+		o.linkupKey = key
+		return o
+	}
+}
 
 // WithWebProviders sets the providers of the web_search and the fetch_url tools; an empty one keeps the default.
 func WithWebProviders(search,
@@ -114,11 +125,11 @@ func FromDef(def *agent_defs.Def,
 	}
 	system := []string{def.SystemPrompt, prompts.Search(prefs)}
 	if def.HasTool(agent_defs.ToolWebSearch) {
-		a.Tools = append(a.Tools, webSearchTool(client, def.Search, o.search))
+		a.Tools = append(a.Tools, webSearchTool(client, def.Search, o.search, o.linkupKey))
 	}
 	if def.HasTool(agent_defs.ToolFetchURL) {
 		f := def.Search.Fetch
-		a.Tools = append(a.Tools, fetchURLTool(httpClient, f, o.fetch))
+		a.Tools = append(a.Tools, fetchURLTool(httpClient, f, o.fetch, o.linkupKey))
 		// The domains of fetch_url are not those of web_search: say them too.
 		if len(f.AllowedDomains) > 0 {
 			system = append(system, "fetch_url reads pages only of these sites: "+strings.Join(f.AllowedDomains, ", ")+".")
@@ -194,7 +205,8 @@ func (c *callCounter) allow() bool {
 
 func webSearchTool(client *llm.Client,
 	cfg agent_defs.Search,
-	provider web.Provider) Tool {
+	provider web.Provider,
+	linkupKey string) Tool {
 	counter := &callCounter{
 		limit: cfg.MaxCalls,
 	}
@@ -232,7 +244,7 @@ func webSearchTool(client *llm.Client,
 			if !counter.allow() {
 				return "", errToolLimit("web_search", counter.limit)
 			}
-			r, err := web.Search(ctx, provider, web.Deps{LLM: client}, web.SearchRequest{
+			r, err := web.Search(ctx, provider, web.Deps{LLM: client, LinkupKey: linkupKey}, web.SearchRequest{
 				Query:          query,
 				System:         system,
 				MaxTokens:      1024,
@@ -264,7 +276,8 @@ func webSearchTool(client *llm.Client,
 
 func fetchURLTool(httpClient *http.Client,
 	cfg agent_defs.Fetch,
-	provider web.Provider) Tool {
+	provider web.Provider,
+	linkupKey string) Tool {
 	counter := &callCounter{
 		limit: cfg.MaxCalls,
 	}
@@ -288,7 +301,7 @@ func fetchURLTool(httpClient *http.Client,
 			if !counter.allow() {
 				return "", errToolLimit("fetch_url", counter.limit)
 			}
-			r, err := web.Fetch(ctx, provider, web.Deps{HTTP: httpClient}, web.FetchRequest{
+			r, err := web.Fetch(ctx, provider, web.Deps{HTTP: httpClient, LinkupKey: linkupKey}, web.FetchRequest{
 				URL:            url,
 				MaxChars:       maxChars,
 				AllowedDomains: cfg.AllowedDomains,

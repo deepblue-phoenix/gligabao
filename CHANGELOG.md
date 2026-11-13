@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.199.0] - 2026-11-13
+
+### Changed
+- The Linkup key is part of the config like the other API keys: `linkup_api_key` in the TOML file or `LINKUP_API_KEY` (the file wins). `web.Deps` no longer reads the environment. The server and `gligabao_agent` pass it to the research agents; a start (or the config, for `research_*_provider`) that names the `linkup` provider without a key is refused.
+
+### Added
+- **Linkup is a search provider.** `search_provider = "linkup"` (request field, `--search-provider`, `research_search_provider`) runs `web_search` on Linkup's `POST /v1/search` with depth `standard` and output `sourcedAnswer`: a cited answer plus the sources with a snippet each ($0.006 per call, returned as `CostUSD`). `allowed_domains` / `blocked_domains` map to `includeDomains` / `excludeDomains` (at most 100 each); the location is not used. The key is `linkup_api_key` / `LINKUP_API_KEY`, as for fetch.
+
+## [0.198.0] - 2026-11-13
+
+### Added
+- **Linkup is a fetch provider.** `fetch_provider = "linkup"` (request field, `--fetch-provider`, `research_fetch_provider`) reads pages with Linkup's `POST /v1/fetch`: clean markdown of HTML and PDF pages, JavaScript rendered (`mode` standard, `renderJs` true; $0.005 per call, returned as `CostUSD`). The key is read from `LINKUP_API_KEY` (a missing key is an error at the first fetch). The allowed/blocked domain lists are checked on the requested host (Linkup follows redirects on its side). Linkup search is still not implemented.
+
 ## [0.197.0] - 2026-11-13
 
 ### Added
