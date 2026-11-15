@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.206.1] - 2026-11-17
+
+### Changed
+- **Docs: states of a research run.** New page `docs/agents/states.md` explains the states of a research (what each state means, the investigative-loop states, the columns of `gb_agent_research_states`, how to read them over REST, MCP, the CLI, the SSE stream and the progress events, and how they differ from frontier questions). `docs/agents/research.md` links to it.
+
 ## [0.206.0] - 2026-11-17
 
 ### Added

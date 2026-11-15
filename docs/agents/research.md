@@ -23,7 +23,7 @@ A **run** (`gb_agent_research_runs`) is one execution of the agent on a topic. I
 
 A run left `running` by a process that died is marked `failed` ("interrupted") when the server starts again (the job of a run in Modal is not followed again after a restart: see [the runner](#where-the-agent-runs-the-runner)).
 
-A **state** (`gb_agent_research_states`) is one stage of its work. A row is inserted every time the agent moves from one state to the next; the table is append-only (a state is only ended, never rewritten), and `state` of the run is always the last row's. The states of a run:
+A **state** (`gb_agent_research_states`) is one stage of its work (the full guide is [states.md](states.md)). A row is inserted every time the agent moves from one state to the next; the table is append-only (a state is only ended, never rewritten), and `state` of the run is always the last row's. The states of a run:
 
 | `state` | What the agent is doing | `detail` |
 | ------- | ----------------------- | -------- |
