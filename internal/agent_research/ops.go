@@ -81,7 +81,8 @@ func Open(backend string,
 		for _, u := range sqlite.Upgrade {
 			var n int
 			if err := d.QueryRowContext(ctx,
-				`SELECT COUNT(*) FROM pragma_table_info('gb_agent_research_runs') WHERE name = ?`,
+				`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`,
+				u.Table,
 				u.Column).Scan(&n); err != nil {
 				return fmt.Errorf("agent research: upgrade schema: %w", err)
 			}

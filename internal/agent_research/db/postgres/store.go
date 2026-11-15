@@ -81,8 +81,8 @@ func CreateRun(ctx context.Context,
 	if err := q.QueryRowContext(ctx,
 		`
 		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason,
-			steps, tool_calls, input_tokens, output_tokens, cost_usd, report, error, created_at, finished_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+			steps, tool_calls, input_tokens, output_tokens, search_tokens, cost_usd, report, error, created_at, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 		RETURNING id`,
 		r.UserID,
 		r.ParentID,
@@ -104,6 +104,7 @@ func CreateRun(ctx context.Context,
 		r.ToolCalls,
 		r.InputTokens,
 		r.OutputTokens,
+		r.SearchTokens,
 		r.CostUSD,
 		r.Report,
 		r.Error,
@@ -173,11 +174,13 @@ func EnterState(ctx context.Context,
 func CloseState(ctx context.Context,
 	q db.Execer,
 	stateID int64,
-	errText string) error {
+	errText string,
+	tokens int) error {
 	res, err := q.ExecContext(ctx,
-		`UPDATE gb_agent_research_states SET finished_at = $1, error = $2 WHERE id = $3 AND finished_at IS NULL`,
+		`UPDATE gb_agent_research_states SET finished_at = $1, error = $2, tokens = $3 WHERE id = $4 AND finished_at IS NULL`,
 		now(),
 		errText,
+		tokens,
 		stateID)
 	if err != nil {
 		return fmt.Errorf("close agent research state %d: %w",
@@ -202,11 +205,12 @@ func UpdateUsage(ctx context.Context,
 	u db.Usage) error {
 	res, err := q.ExecContext(ctx,
 		`
-		UPDATE gb_agent_research_runs SET steps = $1, tool_calls = $2, input_tokens = $3, output_tokens = $4, cost_usd = $5 WHERE id = $6`,
+		UPDATE gb_agent_research_runs SET steps = $1, tool_calls = $2, input_tokens = $3, output_tokens = $4, search_tokens = $5, cost_usd = $6 WHERE id = $7`,
 		u.Steps,
 		u.ToolCalls,
 		u.InputTokens,
 		u.OutputTokens,
+		u.SearchTokens,
 		u.CostUSD,
 		runID)
 	if err != nil {
@@ -349,7 +353,7 @@ func FailActive(ctx context.Context,
 	return n, nil
 }
 
-const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason, steps, tool_calls, input_tokens, output_tokens, cost_usd,
+const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason, steps, tool_calls, input_tokens, output_tokens, search_tokens, cost_usd,
 	report, error, created_at, finished_at`
 
 func scanRun(s scanner) (*core.Run, error) {
@@ -379,6 +383,7 @@ func scanRun(s scanner) (*core.Run, error) {
 		&r.ToolCalls,
 		&r.InputTokens,
 		&r.OutputTokens,
+		&r.SearchTokens,
 		&r.CostUSD,
 		&r.Report,
 		&r.Error,
@@ -523,7 +528,7 @@ func ListStates(ctx context.Context,
 	runID int64) ([]core.State, error) {
 	rows, err := q.QueryContext(ctx,
 		`
-		SELECT id, run_id, seq, state, step, detail, error, started_at, finished_at
+		SELECT id, run_id, seq, state, step, detail, error, tokens, started_at, finished_at
 		FROM gb_agent_research_states WHERE run_id = $1 ORDER BY seq`,
 		runID)
 	if err != nil {
@@ -544,6 +549,7 @@ func ListStates(ctx context.Context,
 			&s.Step,
 			&s.Detail,
 			&s.Error,
+			&s.Tokens,
 			&started,
 			&finished); err != nil {
 			return nil, fmt.Errorf("list states of agent research run %d: %w",

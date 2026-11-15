@@ -47,10 +47,12 @@ type Run struct {
 	StopReason string `json:"stop_reason,omitempty"`
 	// Steps is the number of model calls made so far and ToolCalls the number of tool runs; they, the tokens and the cost are
 	// updated as the run goes. CostUSD includes the model calls of the tools (the web searches).
-	Steps        int     `json:"steps"`
-	ToolCalls    int     `json:"tool_calls"`
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
+	Steps        int `json:"steps"`
+	ToolCalls    int `json:"tool_calls"`
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	// SearchTokens is the part of OutputTokens spent by the web search tool (Anthropic's, which charges per token; 0 for other providers).
+	SearchTokens int     `json:"search_tokens"`
 	CostUSD      float64 `json:"cost_usd"`
 	// Report is the answer of the agent, written when the run completes ("" until then). Error is why a failed run failed, or who
 	// stopped a stopped one.
@@ -78,7 +80,10 @@ type State struct {
 	Detail string `json:"detail"`
 	// Error is why the work of the state failed ("" if it did not). A tool that fails does not fail the run: the model is told and
 	// goes on, so a run that completed can have failed states; the last state of a failed run holds the error of the run.
-	Error      string     `json:"error"`
+	Error string `json:"error"`
+	// Tokens are the output tokens the work of the state spent: for a searching state, those of the Anthropic web search (0 for the
+	// other providers and states).
+	Tokens     int        `json:"tokens"`
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
 }

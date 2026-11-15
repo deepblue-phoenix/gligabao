@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	tool_calls    BIGINT NOT NULL DEFAULT 0,
 	input_tokens  BIGINT NOT NULL DEFAULT 0,
 	output_tokens BIGINT NOT NULL DEFAULT 0,
+	search_tokens BIGINT NOT NULL DEFAULT 0,
 	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
 	report        TEXT NOT NULL DEFAULT '',
 	error         TEXT NOT NULL DEFAULT '',
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_states (
 	step        BIGINT NOT NULL DEFAULT 0 CHECK (step >= 0),
 	detail      TEXT NOT NULL DEFAULT '',
 	error       TEXT NOT NULL DEFAULT '',
+	tokens      BIGINT NOT NULL DEFAULT 0 CHECK (tokens >= 0),
 	started_at  TIMESTAMPTZ NOT NULL,
 	finished_at TIMESTAMPTZ,
 	UNIQUE (run_id, seq)

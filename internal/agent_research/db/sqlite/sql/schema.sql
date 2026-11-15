@@ -25,6 +25,8 @@
 --                   the SHA-256 of its content (a file can change without a version bump); '' for a run made before definitions existed
 --   steps, tool_calls, input_tokens, output_tokens, cost_usd  what it has spent so far, updated as it goes; the cost includes the
 --                   model calls of the web searches
+--   search_tokens   the part of output_tokens that the web searches spent: the output tokens of Anthropic's web search tool, which charges
+--                   per token (0 for the other search providers, which do not report it)
 --   report          the answer of the agent, set when it completes
 --   error           why it failed, or who stopped it; '' if it did not fail
 --   created_at, finished_at  when it started and ended (finished_at is NULL while it runs)
@@ -50,6 +52,7 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	tool_calls    INTEGER NOT NULL DEFAULT 0,
 	input_tokens  INTEGER NOT NULL DEFAULT 0,
 	output_tokens INTEGER NOT NULL DEFAULT 0,
+	search_tokens INTEGER NOT NULL DEFAULT 0,
 	cost_usd      REAL NOT NULL DEFAULT 0,
 	report        TEXT NOT NULL DEFAULT '',
 	error         TEXT NOT NULL DEFAULT '',
@@ -76,6 +79,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_status ON gb_agent_researc
 --   step         the model call the agent was on (from 1; 0 for the state a run starts in or ends in)
 --   detail       what the state is about: the query searched, the URL read, the tool used, 'step 3 of 20'
 --   error        why the work of the state failed ('' if not); a failed tool is a failed state, not a failed run
+--   tokens       the output tokens the state spent, written when it is closed: for a 'searching' state, those of the Anthropic web search
+--                (0 for the other states and the other search providers)
 --   started_at, finished_at  when the state was entered and left (finished_at is NULL for the state the run is in; the terminal
 --                states are finished as they are entered)
 CREATE TABLE IF NOT EXISTS gb_agent_research_states (
@@ -86,6 +91,7 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_states (
 	step        INTEGER NOT NULL DEFAULT 0 CHECK (step >= 0),
 	detail      TEXT NOT NULL DEFAULT '',
 	error       TEXT NOT NULL DEFAULT '',
+	tokens      INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0),
 	started_at  DATETIME NOT NULL,
 	finished_at DATETIME,
 	UNIQUE (run_id, seq)

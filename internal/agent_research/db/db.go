@@ -41,7 +41,8 @@ type Store struct {
 	CloseState func(ctx context.Context,
 		q Execer,
 		stateID int64,
-		errText string) error
+		errText string,
+		tokens int) error
 	UpdateUsage func(ctx context.Context,
 		q Execer,
 		runID int64,
@@ -85,5 +86,7 @@ type Store struct {
 type Usage struct {
 	Steps, ToolCalls          int
 	InputTokens, OutputTokens int
-	CostUSD                   float64
+	// SearchTokens is the part of OutputTokens spent by the web search (Anthropic's; 0 for other providers).
+	SearchTokens int
+	CostUSD      float64
 }

@@ -92,19 +92,22 @@ func testStore(t *testing.T,
 	if err := st.CloseState(ctx,
 		d,
 		s2.ID,
-		"boom"); err != nil {
+		"boom",
+		42); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.CloseState(ctx,
 		d,
 		s2.ID,
-		"again"); err != nil { // already closed: left as it is
+		"again",
+		7); err != nil { // already closed: left as it is
 		t.Fatal(err)
 	}
 	if err := st.CloseState(ctx,
 		d,
 		999999,
-		""); !errors.Is(err, db.ErrNotFound) {
+		"",
+		0); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("close unknown: %v", err)
 	}
 	if _, err := st.EnterState(ctx,
@@ -123,6 +126,7 @@ func testStore(t *testing.T,
 			ToolCalls:    1,
 			InputTokens:  30,
 			OutputTokens: 7,
+			SearchTokens: 5,
 			CostUSD:      0.25,
 		}); err != nil {
 		t.Fatal(err)
@@ -141,7 +145,7 @@ func testStore(t *testing.T,
 		t.Fatal(err)
 	}
 	if got.State != core.StateThinking || got.Status != core.StatusRunning || got.Steps != 2 || got.ToolCalls != 1 || got.InputTokens != 30 ||
-		got.OutputTokens != 7 || got.CostUSD != 0.25 || got.Model != "m1" || got.MaxSteps != 5 || got.FinishedAt != nil ||
+		got.OutputTokens != 7 || got.SearchTokens != 5 || got.CostUSD != 0.25 || got.Model != "m1" || got.MaxSteps != 5 || got.FinishedAt != nil ||
 		!got.CreatedAt.Equal(run.CreatedAt) {
 		t.Fatalf("run: %+v", got)
 	}
@@ -151,7 +155,7 @@ func testStore(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stateNames(states) != "starting,searching,thinking" || states[0].FinishedAt == nil || states[1].FinishedAt == nil || states[1].Error != "boom" ||
+	if stateNames(states) != "starting,searching,thinking" || states[0].FinishedAt == nil || states[1].FinishedAt == nil || states[1].Error != "boom" || states[1].Tokens != 42 || states[0].Tokens != 0 ||
 		states[1].Detail != "solid state" || states[1].Step != 1 || states[2].FinishedAt != nil || states[0].FinishedAt.Before(states[0].StartedAt) {
 		t.Fatalf("states: %+v", states)
 	}

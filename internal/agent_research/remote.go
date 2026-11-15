@@ -718,7 +718,8 @@ func (rr *remoteRun) closeCurrent(errText string) {
 	if err := rr.m.Ops.Store.CloseState(rr.dbCtx,
 		rr.m.DB,
 		rr.cur.ID,
-		truncate(errText, maxTextLen)); err != nil {
+		truncate(errText, maxTextLen),
+		0); err != nil {
 		rr.logf.WithError(err).Warn("agent research: ending the state failed")
 	}
 }

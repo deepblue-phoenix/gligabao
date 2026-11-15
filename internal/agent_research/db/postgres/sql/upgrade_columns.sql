@@ -9,3 +9,5 @@ ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_hash TEXT NOT 
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS notes_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS phase TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS stop_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS search_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE gb_agent_research_states ADD COLUMN IF NOT EXISTS tokens BIGINT NOT NULL DEFAULT 0 CHECK (tokens >= 0);

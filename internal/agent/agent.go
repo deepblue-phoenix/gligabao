@@ -152,6 +152,9 @@ type Result struct {
 	InputTokens  int
 	OutputTokens int
 	CostUSD      float64
+	// SearchTokens is the part of OutputTokens that the tools' own model calls spent (the output tokens of the Anthropic web search; 0 for
+	// providers that have no model).
+	SearchTokens int
 	// Final is the input of the call of Agent.Terminal that ended the run (nil if it did not end that way).
 	Final json.RawMessage
 	// OutOfBudget is why the run was cut short by Agent.OutOfBudget ("" if it was not): the last call was made early, without tools.
@@ -332,6 +335,7 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 					cost)
 				res.InputTokens += in
 				res.OutputTokens += outTokens
+				res.SearchTokens += outTokens
 				res.CostUSD += cost
 				if obs.AfterTool != nil {
 					obs.AfterTool(res.Steps,

@@ -22,7 +22,7 @@ type runner struct {
 	ls     investigate_core.LoopState
 	report string
 	// toolCalls and in/out are the totals not kept by the loop state (the state has the tokens and the cost).
-	toolCalls, in, out int
+	toolCalls, in, out, search int
 	// workers is how many workers the run has started; workerCost what they spent (it is in the loop state for the breakers, not in the
 	// totals of the run's own row: a worker's run has its own).
 	workers    int
@@ -56,7 +56,9 @@ type ModelFunc func(ctx context.Context,
 // Totals are what the run has spent so far.
 type Totals struct {
 	Turns, ToolCalls, InputTokens, OutputTokens int
-	CostUSD                                     float64
+	// SearchTokens is the part of OutputTokens that the tools' model calls (the web search) spent.
+	SearchTokens int
+	CostUSD      float64
 }
 
 // Hooks tell the caller about the progress of the run (all optional). They run on the goroutine of the loop, one at a time.
@@ -162,6 +164,7 @@ func (r *runner) totals() Totals {
 		ToolCalls:    r.toolCalls,
 		InputTokens:  r.in,
 		OutputTokens: r.out,
+		SearchTokens: r.search,
 		CostUSD:      r.ls.CostUSD - r.workerCost,
 	}
 }
@@ -588,7 +591,7 @@ func (r *runner) runExternal(ctx context.Context,
 	r.ls = r.ls.Spend(in,
 		o,
 		cost)
-	r.in, r.out = r.in+in, r.out+o
+	r.in, r.out, r.search = r.in+in, r.out+o, r.search+o
 	if err != nil {
 		out, c.IsErr = err.Error(), true
 	}

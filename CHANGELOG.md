@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.206.0] - 2026-11-17
+
+### Added
+- **Tokens spent by the web search of a deep research.** Anthropic's web search tool charges per token, so the output tokens it spends are now recorded: `tokens` on every state of a run (`gb_agent_research_states.tokens`, in `states[]` of `GET /v1/gb/research/{id}`; non-zero for the `searching` states) and `search_tokens` on the run (`gb_agent_research_runs.search_tokens`, the part of `output_tokens` the searches spent). The other search providers do not report tokens, so they stay 0. Existing databases get the two columns with `ALTER TABLE` at start. Runs of the Modal runner do not report them yet (0).
+
 ## [0.205.0] - 2026-11-16
 
 ### Added

@@ -214,6 +214,7 @@ func totalsOf(t investigate.Totals) agent.Result {
 		ToolCalls:    t.ToolCalls,
 		InputTokens:  t.InputTokens,
 		OutputTokens: t.OutputTokens,
+		SearchTokens: t.SearchTokens,
 		CostUSD:      t.CostUSD,
 	}
 }

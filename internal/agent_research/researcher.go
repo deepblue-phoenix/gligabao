@@ -338,7 +338,8 @@ func (r *researcher) afterTool(_ int,
 		if err := r.store.CloseState(r.dbCtx,
 			r.db,
 			r.cur.ID,
-			errText); err != nil {
+			errText,
+			t.SearchTokens-r.total.SearchTokens); err != nil {
 			r.logf.WithError(err).Warn("agent research: ending the state failed")
 		}
 	}
@@ -456,6 +457,7 @@ func usageOf(r agent.Result) db.Usage {
 		ToolCalls:    r.ToolCalls,
 		InputTokens:  r.InputTokens,
 		OutputTokens: r.OutputTokens,
+		SearchTokens: r.SearchTokens,
 		CostUSD:      r.CostUSD,
 	}
 }
