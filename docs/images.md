@@ -2,7 +2,7 @@
 
 `POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own, separate from the text pipeline ([remember/remember.md](remember/remember.md)): a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
 
-For now nothing is added to the graph: no entities, edges or vectors come out of an image, and `query` does not see it. Grounding the extractions in the rest of the graph is planned; the extraction tables are the input for it.
+The model also describes what the image shows and how its parts relate (the links of a graph or diagram, what a plot or chart says). That **description** is then remembered as a text artifact (kind `knowledge`) by the text pipeline, so the graph of the image (entities, edges, vectors, sessions) is extracted and stored like that of any text, and `query` sees it. See [The graph of an image](#the-graph-of-an-image).
 
 Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/image_prompts.go`, `internal/api/remember/remember.go` (the handler), `internal/memory/memory_image/image_store.go` (the files), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
 
@@ -43,6 +43,10 @@ gb-user-id: u1
   "created_at": "2025-01-31T09:00:05Z",
   "theme": "plot",
   "title": "Revenue by year",
+  "description": "The plot shows revenue by year for the EU.",
+  "artifact_id": 7,
+  "entities": [{"name": "EU", "type": "region"}],
+  "edges": [],
   "text": "Revenue by year\nYear\nEU",
   "text_blocks": [
     {"kind": "title", "text": "Revenue by year"},
@@ -78,7 +82,7 @@ In an eval trajectory a repeat is a single `find_existing_image` step instead of
 One LLM call (`Complete` with the image as an image content block, max 8192 output tokens) with the default model, `claude-haiku-5-5` (or the `extract_image` model of the request's `models`), whose price is in the built-in price table. It is asked for only JSON:
 
 ```json
-{"theme": "...", "title": "...", "text_blocks": [{"kind": "...", "text": "..."}]}
+{"theme": "...", "title": "...", "description": "...", "text_blocks": [{"kind": "...", "text": "..."}]}
 ```
 
 Code fences or prose around the JSON are tolerated. Then it is normalized:
@@ -86,9 +90,16 @@ Code fences or prose around the JSON are tolerated. Then it is normalized:
 - `theme` is lowercased and must be one of `plot` (a data plot with axes), `chart` (pie, donut, ...), `graph` (nodes and links), `diagram`, `table`, `document`, `screenshot`, `slide`, `map`, `photo`, `illustration` or `other`; anything else becomes `other`.
 - `title` is the image's own title, `""` if it has none. If the model gave none but returned a block of kind `title`, that block's text is used.
 - `text_blocks` are the text regions in reading order, each with a `kind`: `title`, `subtitle`, `heading`, `paragraph`, `caption`, `label` (a drawn element's text), `axis`, `legend`, `annotation`, `table` (a row, cells joined by ` | `) or `other` (the fallback for an unknown kind). Blank blocks are dropped.
+- `description` is plain prose with the facts the image shows: every entity named as labelled in the image and every relationship between them, one sentence each (every link of a graph or diagram; what is measured, the series and the main values of a plot or chart; what the rows of a table say). `""` if there is nothing to relate (a photo of a scene, an abstract illustration). It is trimmed; it is stored in `gb_image_graphs`.
 - `text` is not asked of the model: it is the blocks joined by newlines.
 
 The call is recorded in `gb_inferences` with type `remember_image` (stage `extract_image`, with the reasoning level it ran with: low unless the request sets `reasoning.extract_image`) (the text pipeline's calls are `remember`), even if a later step fails.
+
+## The graph of an image
+
+When the extraction has a `description`, `RememberImage` calls the text pipeline (`memory_remember.Remember`, kind `knowledge`) with the text `Image (<theme>): <title>` followed by the description, with the same options as the call (session, models, reasoning, vectors, ...; the `extract_graph` model of `models` picks the model of the graph step). The text pipeline extracts the entities and edges, reconciles them with the dataset's graph, stores them and embeds them, exactly as for a text, and the artifact it creates (a row of `gb_artifacts`) owns them: `gb_entity_artifacts` and `gb_edge_artifacts` link them to it, so `GET /v1/gb/datasets/{name}/artifacts/{id}/graph` returns the graph of the image by its `artifact_id`. `gb_image_graphs` links the extraction to that artifact.
+
+The response of a new image carries `artifact_id`, `description` and the `entities` and `edges` just extracted (the same shape as for a text). Their LLM calls are recorded as the text pipeline's (`remember`, stages `extract_graph`, ...). A repeated image ([Repeated images](#repeated-images)) returns `artifact_id` and `description` but no `entities` or `edges` (read the artifact graph). If the graph step fails after the image was stored (`502`), the image and its extraction stay stored and a repeat of the request retries only the graph step. An image without a description has no graph step and no `artifact_id`. The graph is not classified (`classify_graph` does not apply to an image), and `web_search`, `timeseries` and `graph_index` still do not apply.
 
 ## Where the files are
 
@@ -106,16 +117,18 @@ Created on startup in the same database as the other tables (`internal/db/graph/
 | ----- | ------- |
 | `gb_image_artifacts` | `id`, `dataset_id` → `gb_datasets`, `session_id` (NULL if none), `media_type`, `sha256`, `size_bytes`, `path` (the file, relative to the image directory), `valid_at`, `created_at` |
 | `gb_image_extractions` | `id`, `image_artifact_id` → `gb_image_artifacts` (cascade), `provider`, `model`, `theme`, `title`, `text`, `raw_output` (the model's reply as received), `input_tokens`, `output_tokens`, `cost_usd`, `created_at` |
+| `gb_image_graphs` | `extraction_id` → `gb_image_extractions` (primary key, cascade), `description`, `artifact_id` → `gb_artifacts` (NULL until the graph is stored; set NULL if the artifact is deleted) |
 | `gb_image_text_blocks` | `id`, `extraction_id` → `gb_image_extractions` (cascade), `position` (reading order from 0), `kind`, `text`; unique (`extraction_id`, `position`) |
 
-Both rows and all blocks of a call are written in one transaction, after the LLM call: if it fails nothing is stored (and a dataset that did not exist is not created). Each new image adds one image artifact (a repeat adds nothing, see above); an artifact can have several extractions (for example from different models) but `remember` makes one. Image artifacts are not in `gb_artifacts` and do not show up in the [graph export](graph.md).
+The image rows (artifact, extraction, text blocks and the `gb_image_graphs` row with the description) of a call are written in one transaction, after the LLM call: if it fails nothing is stored (and a dataset that did not exist is not created). Each new image adds one image artifact (a repeat adds nothing, see above); an artifact can have several extractions (for example from different models) but `remember` makes one. Image artifacts are not in `gb_artifacts`; the text artifact of the description is, and its graph shows up in the [graph export](graph.md).
 
-Go access, in package `graph`: `InsertImage`, `ListImageArtifacts`, `GetImageArtifact`, `ListImageExtractions`.
+Go access, in package `graph`: `InsertImage`, `ListImageArtifacts`, `GetImageArtifact`, `ListImageExtractions`, `GetImageGraph`, `SetImageGraphArtifact`.
 
 ## Limitations
 
 - No endpoint reads, lists or deletes image artifacts or extractions yet; use the database.
-- Not grounded: entities, edges and embeddings are not derived from the extraction, and `query` ignores images.
+- The graph is only as good as the description: it is one LLM read of the image, and the entities are extracted from the prose, not from the pixels (no node positions or geometry). Images of a graph with many nodes may exceed the output limit.
+- A text artifact made from a description is a normal `knowledge` artifact: nothing in `gb_artifacts` says it came from an image (follow `gb_image_graphs.artifact_id`).
 - The files are on the local file system only (no object storage), and nothing deletes them: deleting a dataset (a soft delete) keeps its image rows and files, and there is no endpoint to remove an image.
 - The theme is the model's single best guess; there is no confidence value and no bounding boxes for the text blocks.
 - Huge images are not resized, and a dense image can exceed the output limit (`502`).

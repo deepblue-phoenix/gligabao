@@ -257,6 +257,17 @@ CREATE TABLE IF NOT EXISTS gb_image_text_blocks (
 	UNIQUE (extraction_id, position)
 );
 
+-- The graph of an image extraction (see docs/images.md): the description is the LLM's prose account of what the image shows,
+-- including how its elements relate (the links of a graph or diagram, what a plot or chart says). It is what gets remembered
+-- as text (kind knowledge) to build the graph, and artifact_id is the gb_artifacts row of that text, which owns the
+-- entities and edges (gb_entity_artifacts, gb_edge_artifacts, so the usual artifact graph endpoints serve them). One row per
+-- extraction that has a description; artifact_id is NULL until the graph is stored (or if the artifact was deleted).
+CREATE TABLE IF NOT EXISTS gb_image_graphs (
+	extraction_id INTEGER PRIMARY KEY REFERENCES gb_image_extractions(id) ON DELETE CASCADE,
+	description   TEXT NOT NULL,
+	artifact_id   INTEGER REFERENCES gb_artifacts(id) ON DELETE SET NULL
+);
+
 -- Timeseries (see docs/timeseries.md), kept apart from gb_artifacts and the graph like the images.
 --
 -- A series is identified inside its dataset by (provider, key, field): key is the caller's identifier ("AAPL.close"),

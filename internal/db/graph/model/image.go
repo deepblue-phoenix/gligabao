@@ -27,6 +27,7 @@ type NewImageExtraction struct {
 	Title           string           // the image's own title, if it has one
 	Text            string           // all the text in the image, in reading order
 	TextBlocks      []ImageTextBlock // the text regions, in reading order
+	Description     string           // prose account of what the image shows and how its elements relate; "" if none (stored in gb_image_graphs)
 	Raw             string           // the model's output as received
 	InputTokens     int
 	OutputTokens    int
@@ -66,6 +67,13 @@ type ImageExtraction struct {
 	OutputTokens    int
 	CostUSD         float64
 	CreatedAt       time.Time
+}
+
+// ImageGraph is the graph record of an extraction (gb_image_graphs): the description that is remembered as text and
+// the artifact that text became. ArtifactID is 0 until the graph is stored.
+type ImageGraph struct {
+	Description string
+	ArtifactID  int64
 }
 
 // ImageGroup is a number of images (or extractions) sharing a name (a media type or a theme), with their total size.

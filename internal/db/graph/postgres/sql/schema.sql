@@ -164,6 +164,12 @@ CREATE TABLE IF NOT EXISTS gb_image_text_blocks (
 	UNIQUE (extraction_id, position)
 );
 
+CREATE TABLE IF NOT EXISTS gb_image_graphs (
+	extraction_id BIGINT PRIMARY KEY REFERENCES gb_image_extractions(id) ON DELETE CASCADE,
+	description   TEXT NOT NULL,
+	artifact_id   BIGINT REFERENCES gb_artifacts(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS gb_onto_classes (
 	id          BIGSERIAL PRIMARY KEY,
 	ontology_id BIGINT NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,

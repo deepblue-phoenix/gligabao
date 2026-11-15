@@ -5,8 +5,10 @@ package memory_image
 // image by a theme ("graph", "plot", ...). The image file is kept in the image directory (ImageDir, see package
 // image_store.go), tracked by an image artifact row (gb_image_artifacts: metadata and the file's path, never the bytes),
 // and what the model read is stored as an image extraction with its text blocks (gb_image_extractions,
-// gb_image_text_blocks). Nothing is
-// added to the graph (entities, edges, vectors) yet: grounding the extraction in the graph comes later.
+// gb_image_text_blocks). The model also describes what the image shows and how its elements relate (the links of a graph
+// or diagram, what a plot says); that description is then remembered as a text artifact by the text pipeline
+// (memory_remember.Remember), which extracts and stores the graph of the image (entities, edges, vectors) like for any
+// text. gb_image_graphs links the extraction to that artifact.
 
 import (
 	"context"
@@ -25,6 +27,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -98,6 +101,9 @@ type ImageExtraction struct {
 	Title      string           `json:"title"`       // the image's own title; "" if it has none
 	Text       string           `json:"text"`        // all the text, the blocks joined by newlines
 	TextBlocks []ImageTextBlock `json:"text_blocks"` // in reading order
+	// Description is a prose account of what the image shows and how its elements relate; "" if there is nothing to
+	// relate (e.g. a photo, or an image with only text). It is what the graph of the image is extracted from.
+	Description string `json:"description"`
 
 	// The call that produced it.
 	Provider     string  `json:"provider,omitempty"`
@@ -148,9 +154,10 @@ func parseImageExtraction(s string) (*ImageExtraction, error) {
 		return nil, err
 	}
 	var raw struct {
-		Theme      string `json:"theme"`
-		Title      string `json:"title"`
-		TextBlocks []struct {
+		Theme       string `json:"theme"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		TextBlocks  []struct {
 			Kind string `json:"kind"`
 			Text string `json:"text"`
 		} `json:"text_blocks"`
@@ -162,8 +169,9 @@ func parseImageExtraction(s string) (*ImageExtraction, error) {
 		Theme: oneOf(raw.Theme,
 			ImageThemes,
 			ThemeOther),
-		Title:      strings.TrimSpace(raw.Title),
-		TextBlocks: []ImageTextBlock{},
+		Title:       strings.TrimSpace(raw.Title),
+		Description: strings.TrimSpace(raw.Description),
+		TextBlocks:  []ImageTextBlock{},
 	}
 	var texts []string
 	for _, b := range raw.TextBlocks {
@@ -223,6 +231,13 @@ type ImageResult struct {
 	ValidAt   time.Time `json:"valid_at"`   // event time of the image
 	CreatedAt time.Time `json:"created_at"` // ingestion time
 	ImageExtraction
+	// ArtifactID is the text artifact (gb_artifacts) the description was remembered as, which owns the graph of the
+	// image (Entities and Edges, and the artifact graph endpoints); 0 (omitted) if the image has no description.
+	ArtifactID int64 `json:"artifact_id,omitempty"`
+	// Entities and Edges are the graph just extracted from the image; omitted for a Cached result (read the graph of
+	// ArtifactID instead).
+	Entities []memory_remember.Entity `json:"entities,omitempty"`
+	Edges    []memory_remember.Edge   `json:"edges,omitempty"`
 	// TrajectoryID and Trajectory: see Result.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
 	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
@@ -273,6 +288,7 @@ func RememberImage(ctx context.Context,
 	ref = relational.Normalize(ref)
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
+	baseLM := lm // Remember records and stages its own calls: the graph step gets the LLM unwrapped
 	lm = memory_core.WithRecording(lm,
 		d,
 		CallRememberImage)
@@ -314,6 +330,15 @@ func RememberImage(ctx context.Context,
 				dataset,
 				art,
 				ext)
+			if err := rememberGraphOfCached(ctx,
+				d,
+				baseLM,
+				res,
+				ext.ID,
+				ref,
+				opts...); err != nil {
+				return nil, err
+			}
 			tr.Tool("The dataset already holds this image (same SHA-256): returned its stored extraction, without calling the LLM.",
 				"find_existing_image",
 				map[string]any{"sha256": hash},
@@ -373,6 +398,7 @@ func RememberImage(ctx context.Context,
 				Title:        x.Title,
 				Text:         x.Text,
 				TextBlocks:   x.TextBlocks,
+				Description:  x.Description,
 				Raw:          x.Raw,
 				InputTokens:  x.InputTokens,
 				OutputTokens: x.OutputTokens,
@@ -391,7 +417,7 @@ func RememberImage(ctx context.Context,
 		"image_store",
 		map[string]any{"user_id": userID, "dataset": dataset},
 		map[string]any{"image_artifact_id": artID, "extraction_id": extID, "path": path, "text_blocks": len(x.TextBlocks)})
-	return &ImageResult{
+	res = &ImageResult{
 		UserID:          userID,
 		Dataset:         dataset,
 		Pipeline:        PipelineImage,
@@ -405,7 +431,99 @@ func RememberImage(ctx context.Context,
 		ValidAt:         ref.UTC(),
 		CreatedAt:       now.UTC(),
 		ImageExtraction: *x,
-	}, nil
+	}
+	if x.Description != "" {
+		// The image is stored: if this fails, a repeat of the call finds it and tries the graph again (Cached).
+		if err := rememberGraph(ctx,
+			d,
+			baseLM,
+			res,
+			extID,
+			ref,
+			opts...); err != nil {
+			return nil, err
+		}
+		tr.Tool("Remembered the description of the image as a text artifact, which extracted its graph.",
+			"image_graph",
+			map[string]any{"extraction_id": extID},
+			map[string]any{"artifact_id": res.ArtifactID, "entities": len(res.Entities), "edges": len(res.Edges)})
+	}
+	return res, nil
+}
+
+// graphText is the text that the graph of an image is extracted from: a header with the theme and title, then the
+// model's description of the image.
+func graphText(x ImageExtraction) string {
+	head := "Image (" + x.Theme + ")"
+	if x.Title != "" {
+		head += ": " + x.Title
+	}
+	return head + "\n\n" + x.Description
+}
+
+// rememberGraph remembers the description of the extraction extID as a text artifact with the text pipeline (the
+// graph of the image: entities and edges, vectors, sessions as for any text), links it to the extraction
+// (gb_image_graphs) and sets ArtifactID, Entities and Edges of res. lm is the unwrapped LLM: Remember records and
+// stages its own calls.
+func rememberGraph(ctx context.Context,
+	d *sql.DB,
+	lm memory_core.LLM,
+	res *ImageResult,
+	extID int64,
+	ref time.Time,
+	opts ...memory_core.Option) error {
+	r, err := memory_remember.Remember(ctx,
+		d,
+		lm,
+		res.UserID,
+		res.Dataset,
+		graph.ArtifactKnowledge,
+		graphText(res.ImageExtraction),
+		ref,
+		opts...)
+	if err != nil {
+		return fmt.Errorf("remember the graph of the image: %w", err)
+	}
+	if err := graph.SetImageGraphArtifact(ctx,
+		d,
+		extID,
+		r.ArtifactID); err != nil {
+		return err
+	}
+	res.ArtifactID, res.Entities, res.Edges = r.ArtifactID, r.Entities, r.Edges
+	return nil
+}
+
+// rememberGraphOfCached completes a Cached result: it sets ArtifactID from the stored graph record, and if the image has
+// a description but its graph was never stored (the earlier call failed after storing the image), it extracts the graph now.
+func rememberGraphOfCached(ctx context.Context,
+	d *sql.DB,
+	lm memory_core.LLM,
+	res *ImageResult,
+	extID int64,
+	ref time.Time,
+	opts ...memory_core.Option) error {
+	g, err := graph.GetImageGraph(ctx,
+		d,
+		extID)
+	if errors.Is(err, graph.ErrNotFound) {
+		return nil // no description: nothing to build a graph from
+	}
+	if err != nil {
+		return err
+	}
+	res.Description = g.Description
+	if g.ArtifactID != 0 {
+		res.ArtifactID = g.ArtifactID
+		return nil
+	}
+	return rememberGraph(ctx,
+		d,
+		lm,
+		res,
+		extID,
+		ref,
+		opts...)
 }
 
 // newImageResult builds the result for a stored image and extraction.

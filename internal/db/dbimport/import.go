@@ -126,7 +126,7 @@ var (
 		"gb_artifacts": true, "gb_entities": true, "gb_edges": true, "gb_edge_artifacts": true, "gb_edge_events": true,
 		"gb_artifact_classes": true, "gb_entity_artifacts": true, "gb_entity_sessions": true, "gb_edge_sessions": true,
 		"gb_graph_in_ctx_counters": true, "gb_entity_geo": true,
-		"gb_image_artifacts": true, "gb_image_extractions": true, "gb_image_text_blocks": true,
+		"gb_image_artifacts": true, "gb_image_extractions": true, "gb_image_text_blocks": true, "gb_image_graphs": true,
 		"gb_series": true, "gb_series_points": true, "gb_series_anchors": true,
 		"gb_remember_runs": true, "gb_remember_run_stages": true, "gb_remember_run_stage_outputs": true, "gb_query_runs": true,
 		tableRuns: true, tableStates: true,

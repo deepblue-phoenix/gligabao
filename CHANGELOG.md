@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.203.0] - 2026-11-15
+
+### Added
+- **The graph of an image.** The vision model of the image pipeline now also writes a `description` of what the image shows and how its parts relate (every link of a graph or diagram, what a plot or chart says). That description is remembered as a `knowledge` text artifact by the text pipeline, so the entities, edges and vectors of the image are extracted, reconciled and stored like those of any text (same session, models, reasoning and vector options as the call). The response of `POST /v1/gb/remember` with an `image` gains `description`, `artifact_id` (the text artifact that owns the graph; `GET /v1/gb/datasets/{name}/artifacts/{id}/graph` returns it) and, for a new image, `entities` and `edges`. A repeated image returns `artifact_id` and `description`; if an earlier call stored the image but failed on the graph step, the repeat retries just the graph step.
+- New table `gb_image_graphs` (extraction, description, artifact), created on startup in both backends, and imported by `dbimport`. `graph.GetImageGraph` and `graph.SetImageGraphArtifact` read and write it.
+
+### Changed
+- The image system prompt asks for the `description`; an image with nothing to relate (a photo of a scene) has an empty one and no graph step. `query` now sees the graph of images.
+
 ## [0.202.1] - 2026-11-13
 
 ### Changed

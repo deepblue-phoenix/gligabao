@@ -62,6 +62,16 @@ func InsertImage(ctx context.Context,
 	if extractionID, err = res.LastInsertId(); err != nil {
 		return 0, 0, err
 	}
+	if x.Description != "" {
+		if _, err := tx.ExecContext(ctx,
+			`
+			INSERT INTO gb_image_graphs (extraction_id, description)
+			VALUES (?, ?)`,
+			extractionID,
+			x.Description); err != nil {
+			return 0, 0, fmt.Errorf("insert image graph: %w", err)
+		}
+	}
 	for i, b := range x.TextBlocks {
 		if _, err := tx.ExecContext(ctx,
 			`

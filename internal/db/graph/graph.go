@@ -77,6 +77,7 @@ type (
 	ImageTextBlock               = model.ImageTextBlock
 	ImageArtifact                = model.ImageArtifact
 	ImageExtraction              = model.ImageExtraction
+	ImageGraph                   = model.ImageGraph
 	ImageStats                   = model.ImageStats
 	ImageGroup                   = model.ImageGroup
 	Counts                       = model.Counts
@@ -1223,4 +1224,43 @@ func ListOntologyEdges(ctx context.Context,
 			ontologyID)
 	}
 	return nil, unsupported()
+}
+
+// GetImageGraph returns the graph record of an image extraction: the description that is remembered as text, and the
+// artifact it became (ArtifactID 0 while the graph is not stored). It returns ErrNotFound if the extraction has no
+// description.
+func GetImageGraph(ctx context.Context,
+	d *sql.DB,
+	extractionID int64) (*ImageGraph, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GetImageGraph(ctx,
+			d,
+			extractionID)
+	case config.DBBackendPostgres:
+		return postgres.GetImageGraph(ctx,
+			d,
+			extractionID)
+	}
+	return nil, unsupported()
+}
+
+// SetImageGraphArtifact records the artifact that the description of an image extraction was remembered as.
+func SetImageGraphArtifact(ctx context.Context,
+	d *sql.DB,
+	extractionID,
+	artifactID int64) error {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.SetImageGraphArtifact(ctx,
+			d,
+			extractionID,
+			artifactID)
+	case config.DBBackendPostgres:
+		return postgres.SetImageGraphArtifact(ctx,
+			d,
+			extractionID,
+			artifactID)
+	}
+	return unsupported()
 }

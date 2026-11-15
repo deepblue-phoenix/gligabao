@@ -25,6 +25,7 @@
 - `gb_image_artifacts`
 - `gb_image_extractions`
 - `gb_image_text_blocks`
+- `gb_image_graphs`
 - `gb_entity_geo`
 - `gb_series`
 - `gb_series_points`
@@ -63,6 +64,7 @@
 | `gb_image_artifacts`          | ingested images (media type, SHA-256, size, file path), kept apart from the graph; the bytes live on the file system.                           |
 | `gb_image_extractions`        | what an LLM read from an image (theme, title, text), with the raw output, tokens and cost.                                                      |
 | `gb_image_text_blocks`        | the text regions of an image extraction in reading order, each with a role (title, caption, label, ...).                                        |
+| `gb_image_graphs`             | the description of an image extraction (what it shows and how its parts relate), and the text artifact it was remembered as, which owns the graph of the image. |
 | `gb_entity_geo`               | geo metadata of an entity that is a place (coordinates, kind, display name, country, bounding box, provider), one row per entity.                |
 | `gb_series`                   | timeseries identified by (provider, key, field) in a dataset, with a summary and stats of all their points.                                     |
 | `gb_series_points`            | the timestamped values of a series.                                                                                                             |
@@ -101,6 +103,7 @@
 | `gb_image_artifacts`          | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_image_extractions`        | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_image_text_blocks`        | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_image_graphs`             | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_entity_geo`               | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_series`                   | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_series_points`            | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
