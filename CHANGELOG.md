@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.205.0] - 2026-11-16
+
+### Added
+- **`GET /v1/gb/research/{id}/stream`** follows a research over Server-Sent Events: a `snapshot` event (the run with its states and report, its sub-agents and its investigation) at once and again whenever something changed, then `done` when the run ends (a finished research is replayed). The research of another user is a 404. Documented in `docs/agents/research.md`.
+
+### Changed
+- The admin investigation route shares its reading code with the stream (`admin.LoadInvestigation`, `admin.ResearchInvestigation`); its response is unchanged.
+
 ## [0.204.0] - 2026-11-16
 
 ### Added

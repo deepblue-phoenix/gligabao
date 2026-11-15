@@ -109,7 +109,17 @@ Reads one run with its `states`, in the order they were entered. The `report` is
  ]}
 ```
 
-To follow a run, poll this route (or `research_get`, or `gligabao research get`).
+To follow a run, poll this route (or `research_get`, or `gligabao research get`), or stream it ([below](#get-v1gbresearchidstream)).
+
+### `GET /v1/gb/research/{id}/stream`
+
+Server-Sent Events that follow a research until it ends; for a finished one they replay it (one snapshot, then `done`). The route is the same for the research of any user's own id; the research of another user is a plain `404` (before the stream starts).
+
+- `snapshot`: everything a UI shows about the research, as of one moment: `{"run": {...}, "subagents": [...], "investigation": {...}}`. `run` is the run as `GET /v1/gb/research/{id}` returns it (with its `states` and, once completed, its `report`), `subagents` the workers of the investigative loop in the order they were started (runs, without states), `investigation` what the investigative loop built (`phase`, `stop_reason`, the `questions` of the frontier, the `challenges` and the latest `notes`, as in the admin UI) and `null` for a run of the simple loop. The first one is sent at once, then one each time something changed (the server reads the run once a second).
+- `done`: `{"status": "completed"|"failed"|"stopped"}`, after the last snapshot, when the run is not active any more. The stream ends.
+- `error`: `{"error": "..."}` if the run cannot be read any more. The stream ends.
+
+A comment line (`: ping`) is written every 10 seconds of silence to keep proxies from closing the stream. Implementation: `internal/api/research/stream.go`.
 
 ## CLI
 

@@ -856,7 +856,7 @@ type InvestigationChallenge struct {
 	ResultClaimID   string   `json:"result_claim_id"`
 }
 
-type researchInvestigationResponse struct {
+type ResearchInvestigation struct {
 	RunID      int64                    `json:"run_id"`
 	Phase      string                   `json:"phase"`
 	StopReason string                   `json:"stop_reason"`
@@ -886,14 +886,9 @@ func ResearchInvestigationOf(m *agent_research.Manager) http.HandlerFunc {
 				"read the research agent")
 			return
 		}
-		out := researchInvestigationResponse{
-			RunID:      id,
-			Phase:      run.Phase,
-			StopReason: run.StopReason,
-			Questions:  []InvestigationQuestion{},
-			Challenges: []InvestigationChallenge{},
-		}
-		loaded, err := m.Ops.Investigate(m.DB).Load(ctx, id)
+		out, err := LoadInvestigation(ctx,
+			m,
+			run)
 		if err != nil {
 			log.WithError(err).WithField("run_id", id).Error("admin: research investigation failed")
 			httputil.Error(w,
@@ -901,41 +896,61 @@ func ResearchInvestigationOf(m *agent_research.Manager) http.HandlerFunc {
 				"failed to read the investigation")
 			return
 		}
-		out.Notes = loaded.NotesText
-		for _, q := range loaded.Frontier.Questions {
-			out.Questions = append(out.Questions, InvestigationQuestion{
-				ID:        q.ID,
-				ParentID:  q.ParentID,
-				Depth:     q.Depth,
-				Kind:      string(q.Kind),
-				Question:  q.Question,
-				Rationale: q.Rationale,
-				Priority:  q.Priority,
-				Status:    string(q.Status),
-				Answer:    q.Answer,
-				DependsOn: append([]string{}, q.DependsOn...),
-				Attempts:  q.AttemptCount(),
-			})
-		}
-		for _, c := range loaded.Challenges {
-			out.Challenges = append(out.Challenges, InvestigationChallenge{
-				ID:              c.ID,
-				QuestionID:      c.QuestionID,
-				TargetType:      string(c.TargetType),
-				TargetID:        c.TargetID,
-				Negation:        c.Negation,
-				Strategy:        string(c.Strategy),
-				ExpectedIfFalse: c.ExpectedIfFalse,
-				Query:           c.Query,
-				Status:          string(c.Status),
-				Outcome:         string(c.Outcome),
-				Evidence:        c.Evidence,
-				SourceIDs:       append([]string{}, c.SourceIDs...),
-				ResultClaimID:   c.ResultClaimID,
-			})
-		}
 		httputil.WriteJSON(w,
 			http.StatusOK,
 			out)
 	}
+}
+
+// LoadInvestigation reads what the investigative loop built for run: its phase and stop reason, the frontier of questions, the challenges and the
+// latest notes. A run of the simple loop gives empty lists.
+func LoadInvestigation(ctx context.Context,
+	m *agent_research.Manager,
+	run *core.Run) (ResearchInvestigation, error) {
+	out := ResearchInvestigation{
+		RunID:      run.ID,
+		Phase:      run.Phase,
+		StopReason: run.StopReason,
+		Questions:  []InvestigationQuestion{},
+		Challenges: []InvestigationChallenge{},
+	}
+	loaded, err := m.Ops.Investigate(m.DB).Load(ctx,
+		run.ID)
+	if err != nil {
+		return out, err
+	}
+	out.Notes = loaded.NotesText
+	for _, q := range loaded.Frontier.Questions {
+		out.Questions = append(out.Questions, InvestigationQuestion{
+			ID:        q.ID,
+			ParentID:  q.ParentID,
+			Depth:     q.Depth,
+			Kind:      string(q.Kind),
+			Question:  q.Question,
+			Rationale: q.Rationale,
+			Priority:  q.Priority,
+			Status:    string(q.Status),
+			Answer:    q.Answer,
+			DependsOn: append([]string{}, q.DependsOn...),
+			Attempts:  q.AttemptCount(),
+		})
+	}
+	for _, c := range loaded.Challenges {
+		out.Challenges = append(out.Challenges, InvestigationChallenge{
+			ID:              c.ID,
+			QuestionID:      c.QuestionID,
+			TargetType:      string(c.TargetType),
+			TargetID:        c.TargetID,
+			Negation:        c.Negation,
+			Strategy:        string(c.Strategy),
+			ExpectedIfFalse: c.ExpectedIfFalse,
+			Query:           c.Query,
+			Status:          string(c.Status),
+			Outcome:         string(c.Outcome),
+			Evidence:        c.Evidence,
+			SourceIDs:       append([]string{}, c.SourceIDs...),
+			ResultClaimID:   c.ResultClaimID,
+		})
+	}
+	return out, nil
 }

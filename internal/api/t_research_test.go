@@ -187,6 +187,35 @@ func testResearchRoutes(t *testing.T,
 	}
 	m.Wait()
 
+	// The stream replays a finished research: a snapshot with the states and the report, then "done". Another user gets a 404.
+	streamPath := "/v1/gb/research/" + strconv.FormatInt(started.ID, 10) + "/stream"
+	rec = do("key-alice",
+		"GET",
+		streamPath,
+		``)
+	if body := rec.Body.String(); rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") ||
+		!strings.Contains(body, "event: snapshot\ndata: ") || !strings.Contains(body, `"report":"the report"`) ||
+		!strings.Contains(body, "event: done\ndata: {\"status\":\"completed\"}") {
+		t.Fatalf("stream: %d %s",
+			rec.Code,
+			body)
+	}
+	if rec := do("key-bob",
+		"GET",
+		streamPath,
+		``); rec.Code != 404 {
+		t.Fatalf("stream of another user: %d %s",
+			rec.Code,
+			rec.Body)
+	}
+	if rec := do("",
+		"GET",
+		streamPath,
+		``); rec.Code != 401 {
+		t.Fatalf("stream without a key: %d",
+			rec.Code)
+	}
+
 	type run struct {
 		ID     int64  `json:"id"`
 		Status string `json:"status"`
