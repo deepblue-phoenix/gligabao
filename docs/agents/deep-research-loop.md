@@ -376,7 +376,7 @@ Goal: write the report from the notes and the frontier, with **no new research**
 
 The report has the same shape as today (summary first, then details, then the source list) plus a section on **gaps and assumptions** taken from `unresolvable` questions, and the verification status of key claims. Every statement is traceable to claim and source ids, rendered as URLs.
 
-**`finalize_report`** is the completion tool. It is the only normal way for a run to complete. It is called only in the synthesis loop; the text passed is the report stored in `gb_agent_research_runs.report`.
+**`finalize_report`** is the completion tool. It is the only normal way for a run to complete. It is called only in the synthesis loop; the text passed is the report stored in `gb_agent_research_reports.report` (a table of its own since 0.207.0, with the `summary`; see [research.md](research.md#the-report-and-its-summary)).
 
 ### Finalization gate
 

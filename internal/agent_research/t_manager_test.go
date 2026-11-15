@@ -29,6 +29,24 @@ type fakeAnthropic struct {
 	status int
 	// bodies are the request bodies of the calls of the agent, in order.
 	bodies []string
+	// summary, if not empty, is the text the model answers to the call that summarizes the report (it is not a call of the agent); with
+	// none that call fails, so the report has no summary. summaries counts those calls.
+	summary   string
+	summaries int
+}
+
+// summaryMarker is in the system prompt of the call that summarizes a report (summarySystemPrompt).
+const summaryMarker = "You summarize research reports"
+
+// summaryAnswer is what a fake model answers to the summary call with the text summary ("" fails the call).
+func summaryAnswer(w http.ResponseWriter,
+	summary string) {
+	if summary == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"type":"error","error":{"type":"api_error","message":"no summary in this test"}}`)
+		return
+	}
+	io.WriteString(w, `{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"`+summary+`"}],"usage":{"input_tokens":3,"output_tokens":2}}`)
 }
 
 const (
@@ -48,6 +66,14 @@ func (f *fakeAnthropic) start(t *testing.T) *llm.Client {
 		b, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(b), "web_search_20250305") {
 			w.Write([]byte(searchAnswer))
+			return
+		}
+		if strings.Contains(string(b), summaryMarker) {
+			f.mu.Lock()
+			f.summaries++
+			summary := f.summary
+			f.mu.Unlock()
+			summaryAnswer(w, summary)
 			return
 		}
 		f.mu.Lock()
@@ -129,7 +155,8 @@ func testResearch(t *testing.T,
 	}))
 	defer page.Close()
 	fake := &fakeAnthropic{
-		main: []string{toolUseSearch, toolUseFetch(page.URL + "/gone"), finalReport},
+		main:    []string{toolUseSearch, toolUseFetch(page.URL + "/gone"), finalReport},
+		summary: "Batteries are good.",
 	}
 	m := agent_research.NewManager(ctx,
 		d,
@@ -158,12 +185,13 @@ func testResearch(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Status != core.StatusCompleted || run.State != core.StateCompleted || run.Report != "# Report\nBatteries are good." || run.Error != "" ||
+	if run.Status != core.StatusCompleted || run.State != core.StateCompleted || run.Report != "# Report\nBatteries are good." || run.Summary != "Batteries are good." || run.Error != "" ||
 		run.FinishedAt == nil || run.Steps != 3 || run.ToolCalls != 2 {
 		t.Fatalf("finished: %+v", run)
 	}
 	// 10+12+20 tokens of the agent and 7 of the search; the search cost is the only cost (the model has no known price).
-	if run.InputTokens != 49 || run.OutputTokens != 21 || run.CostUSD != llm.WebSearchRequestUSD {
+	// (the summary call adds 3 and 2 tokens)
+	if run.InputTokens != 52 || run.OutputTokens != 23 || run.CostUSD != llm.WebSearchRequestUSD {
 		t.Fatalf("usage: in %d out %d cost %v",
 			run.InputTokens,
 			run.OutputTokens,

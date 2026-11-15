@@ -129,7 +129,7 @@ var (
 		"gb_image_artifacts": true, "gb_image_extractions": true, "gb_image_text_blocks": true, "gb_image_graphs": true,
 		"gb_series": true, "gb_series_points": true, "gb_series_anchors": true,
 		"gb_remember_runs": true, "gb_remember_run_stages": true, "gb_remember_run_stage_outputs": true, "gb_query_runs": true,
-		tableRuns: true, tableStates: true,
+		tableRuns: true, tableStates: true, tableReports: true,
 	}
 	notImported = map[string]bool{
 		tableDatasets:   true, // matched by name, before the rows
@@ -143,6 +143,7 @@ const (
 	tableModels    = "gb_models"
 	tableRuns      = "gb_agent_research_runs"
 	tableStates    = "gb_agent_research_states"
+	tableReports   = "gb_agent_research_reports"
 	tableEntities  = "gb_entities"
 	tableEdges     = "gb_edges"
 	tableArtifacts = "gb_artifacts"
@@ -238,7 +239,9 @@ func Import(ctx context.Context,
 	return im.res, nil
 }
 
-func runTable(name string) bool { return name == tableRuns || name == tableStates }
+func runTable(name string) bool {
+	return name == tableRuns || name == tableStates || name == tableReports
+}
 
 // level orders the tables beyond the order of their foreign keys (the manifest's, which each level keeps): the agent runs come first,
 // because the sessions of every other row are renamed to the IDs of the runs they were mapped to; the runs of the pipelines, which
@@ -246,7 +249,7 @@ func runTable(name string) bool { return name == tableRuns || name == tableState
 // outputs of their stages, the log of what went into prompts) last.
 func level(name string) int {
 	switch name {
-	case tableRuns, tableStates:
+	case tableRuns, tableStates, tableReports:
 		return 0
 	case tableRemember, tableQuery:
 		return 2
@@ -505,7 +508,8 @@ func (im *importer) before(table string,
 				im.o.RootRunID)
 			return true, nil
 		}
-	case tableStates:
+	case tableStates, tableReports:
+		// The states and the report of the main agent are the caller's: it records them itself (the report comes in its final event).
 		run, _ := asInt(vals["run_id"])
 		return im.roots[run], nil
 	case tableModels:

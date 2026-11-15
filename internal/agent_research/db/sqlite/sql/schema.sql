@@ -2,7 +2,7 @@
 -- gb_agent_research_runs: ONE ROW PER EXECUTION OF THE DEEP-RESEARCH AGENT (core.Run). A research a user starts is a run; so is each
 -- sub-agent (worker) the investigative loop starts for a question.
 --   What it is for: who asked, on what topic, with which agent definition and model, where it runs, its status, what it has spent
---                   so far, and its outcome (the report or the error).
+--                   so far, and its outcome (the error; the report is in gb_agent_research_reports).
 --   What it enables: listing and following agents by user, status and parent; stopping one; the caps on steps and cost (enforced from
 --                   these counters); the sub-agent tree (parent_id); recovery after a crash (a run left 'running' is failed at start).
 --   Main users: agent_research (Manager and researcher: manager.go, researcher.go, and the investigative loop in investigative.go);
@@ -27,7 +27,6 @@
 --                   model calls of the web searches
 --   search_tokens   the part of output_tokens that the web searches spent: the output tokens of Anthropic's web search tool, which charges
 --                   per token (0 for the other search providers, which do not report it)
---   report          the answer of the agent, set when it completes
 --   error           why it failed, or who stopped it; '' if it did not fail
 --   created_at, finished_at  when it started and ended (finished_at is NULL while it runs)
 CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
@@ -54,13 +53,35 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	output_tokens INTEGER NOT NULL DEFAULT 0,
 	search_tokens INTEGER NOT NULL DEFAULT 0,
 	cost_usd      REAL NOT NULL DEFAULT 0,
-	report        TEXT NOT NULL DEFAULT '',
 	error         TEXT NOT NULL DEFAULT '',
 	created_at    DATETIME NOT NULL,
 	finished_at   DATETIME
 );
 CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_user ON gb_agent_research_runs(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_status ON gb_agent_research_runs(status);
+
+-- gb_agent_research_reports: ONE ROW PER FINISHED REPORT OF A RESEARCH RUN (0 or 1 per run): the text an agent ended with, and a short summary of it.
+--   What it is for: the result of a run, apart from the run's bookkeeping, so that listing runs does not need the (long) text and the
+--                   text can have a summary next to it.
+--   What it enables: reading the report of a run (GET /v1/gb/research/{id}, the admin UI details, the CLI --raw); showing the summary
+--                   of a report where the whole text is too long.
+--   Main users: agent_research (FinishRun of the store writes the row when a run completes; summary.go makes the summary; migrate_reports.go
+--               filled the table from the old gb_agent_research_runs.report column); internal/api/research, internal/api/admin/research.go
+--               and cli (through core.Run.Report and core.Run.Summary, which GetRun and ListRuns fill from this table).
+-- The columns, one by one:
+--   run_id      the run (gb_agent_research_runs), also the key: a run has at most one report. Deleting the run deletes its report.
+--   report      what the agent ended with. For a research (a run without parent) the report in Markdown; for a worker of the investigative
+--               loop its findings, as the JSON its supervisor reads.
+--   summary     a shorter, higher-level summary of the report, written at the end of the research by one separate LLM call, outside the
+--               reasoning of the agent. '' when there is none: a worker (its findings are not summarized), a report whose summary call
+--               failed (it is logged; the report is kept), or a run made by a server that had no LLM client for it.
+--   created_at  when the row was written (the end of the run; for a report migrated from the old column, the end of its run)
+CREATE TABLE IF NOT EXISTS gb_agent_research_reports (
+	run_id     INTEGER PRIMARY KEY REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
+	report     TEXT NOT NULL CHECK (report <> ''),
+	summary    TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL
+);
 
 -- gb_agent_research_states: ONE ROW EACH TIME A RUN ENTERS A STATE (core.State): the timeline of an agent.
 --   What it is for: the step-by-step history of a run (what it was doing, on which step, with which detail, and where it failed).

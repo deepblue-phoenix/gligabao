@@ -236,12 +236,20 @@ func agentArchive(t *testing.T) string {
 
 	ex(t,
 		d,
-		`INSERT INTO gb_agent_research_runs (user_id, topic, status, state, runner, report, created_at, finished_at) VALUES ('agent', 'the topic', 'completed', 'completed', 'local', 'REPORT', ?, ?)`,
+		`INSERT INTO gb_agent_research_runs (user_id, topic, status, state, runner, created_at, finished_at) VALUES ('agent', 'the topic', 'completed', 'completed', 'local', ?, ?)`,
 		ts,
 		ts)
 	ex(t,
 		d,
 		`INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, runner, created_at) VALUES ('agent', 1, 'worker', 'why', 'the sub-task', 'running', 'searching', 'local', ?)`,
+		ts)
+	ex(t,
+		d,
+		`INSERT INTO gb_agent_research_reports (run_id, report, summary, created_at) VALUES (1, 'REPORT', 'SUMMARY', ?)`,
+		ts)
+	ex(t,
+		d,
+		`INSERT INTO gb_agent_research_reports (run_id, report, summary, created_at) VALUES (2, 'sub report', '', ?)`,
 		ts)
 	ex(t,
 		d,
@@ -754,6 +762,15 @@ func TestImport(t *testing.T) {
 			`SELECT detail FROM gb_agent_research_states WHERE run_id = ?`,
 			sub) != "sub state" {
 			t.Error("states")
+		}
+		// the report of the sub-agent comes with it; the one of the main agent does not (the server writes it when the run ends)
+		if one[int](t,
+			d,
+			`SELECT COUNT(*) FROM gb_agent_research_reports`) != 1 || one[string](t,
+			d,
+			`SELECT report FROM gb_agent_research_reports WHERE run_id = ?`,
+			sub) != "sub report" {
+			t.Error("reports")
 		}
 		if one[string](t,
 			d,

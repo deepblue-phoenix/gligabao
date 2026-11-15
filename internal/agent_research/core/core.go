@@ -54,10 +54,12 @@ type Run struct {
 	// SearchTokens is the part of OutputTokens spent by the web search tool (Anthropic's, which charges per token; 0 for other providers).
 	SearchTokens int     `json:"search_tokens"`
 	CostUSD      float64 `json:"cost_usd"`
-	// Report is the answer of the agent, written when the run completes ("" until then). Error is why a failed run failed, or who
-	// stopped a stopped one.
-	Report string `json:"report"`
-	Error  string `json:"error"`
+	// Report is the answer of the agent, written when the run completes ("" until then), and Summary a shorter, higher-level summary of it
+	// that one separate model call wrote at the end of the research ("" if there is none). Both are stored in gb_agent_research_reports,
+	// not with the run. Error is why a failed run failed, or who stopped a stopped one.
+	Report  string `json:"report"`
+	Summary string `json:"summary"`
+	Error   string `json:"error"`
 	// CreatedAt is when the run was started; FinishedAt when it ended (nil while it is active).
 	CreatedAt  time.Time  `json:"created_at"`
 	FinishedAt *time.Time `json:"finished_at"`

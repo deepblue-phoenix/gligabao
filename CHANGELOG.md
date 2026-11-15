@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.207.0] - 2026-11-18
+
+### Added
+- **Summary of the report of a research.** `GET /v1/gb/research/{id}` (and the list, the stream, the admin routes) now has `summary` next to `report`: a shorter, higher-level text that one separate model call, with no tools and none of the agent's context, writes at the end of a research that completed (also for the `modal` runner). Its tokens and cost are added to the run's totals. If the call fails the run completes with an empty summary.
+- **Table `gb_agent_research_reports`** (`run_id`, `report`, `summary`, `created_at`) holds the report of a run (a worker's findings too). New in both schema files.
+
+### Changed
+- **The report is no longer a column of `gb_agent_research_runs`.** `report` is gone from the runs table of new databases. In an existing database a one-off migration (`internal/agent_research/migrate_reports.go`, started in the background by `NewManager`) runs while the column exists: it copies every report into the new table, makes the summary of each research with the model, and drops the column. It needs the Anthropic client (without one it waits for the next start), and stops without dropping the column if a summary call fails. The REST, MCP and CLI outputs keep `report`. Go: `db.Store.FinishRun` takes a `summary` argument; `core.Run` has `Summary`.
+- The importer of the research agent's export (`dbimport`) imports `gb_agent_research_reports` (the report of the main agent stays the server's own).
+
 ## [0.206.1] - 2026-11-17
 
 ### Changed

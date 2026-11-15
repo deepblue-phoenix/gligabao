@@ -753,6 +753,7 @@ func (rr *remoteRun) meta() gberrors.Meta {
 func (rr *remoteRun) finish(status core.Status,
 	report,
 	errText string) {
+	summary := rr.summarize(status, report)
 	err := rr.tx(func(q db.Execer) error {
 		if err := rr.m.Ops.Store.UpdateUsage(rr.dbCtx,
 			q,
@@ -765,6 +766,7 @@ func (rr *remoteRun) finish(status core.Status,
 			rr.run.ID,
 			status,
 			report,
+			summary,
 			errText)
 		return err
 	})
@@ -777,6 +779,28 @@ func (rr *remoteRun) finish(status core.Status,
 		rr.logf.WithError(err).Error("agent research: ending the run failed")
 	}
 	rr.logf.WithField("status", status).Info("agent research: ended")
+}
+
+// summarize makes the summary of the report of a research that completed, like researcher.summarize (the server makes it: the container
+// ran the agent only). What the call spends is added to the usage of the run.
+func (rr *remoteRun) summarize(status core.Status,
+	report string) string {
+	if status != core.StatusCompleted || strings.TrimSpace(report) == "" {
+		return ""
+	}
+	sum, err := summarizeReport(rr.runCtx,
+		rr.m.Client,
+		rr.run.Model,
+		rr.run.Topic,
+		report)
+	rr.usage.InputTokens += sum.InputTokens
+	rr.usage.OutputTokens += sum.OutputTokens
+	rr.usage.CostUSD += sum.CostUSD
+	if err != nil {
+		rr.logf.WithError(err).Warn("agent research: the summary of the report could not be made")
+		return ""
+	}
+	return sum.Text
 }
 
 func (rr *remoteRun) tx(fn func(q db.Execer) error) error {

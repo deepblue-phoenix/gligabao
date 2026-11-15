@@ -18,7 +18,9 @@ import (
 // Ops is what the Manager needs of the world around it that depends on the database: the functions that store and read the runs and
 // their states (the backend).
 type Ops struct {
-	Store db.Store
+	// Backend is the database backend, config.DBBackendSQLite or config.DBBackendPostgres.
+	Backend string
+	Store   db.Store
 	// Investigate makes the store of the investigative loop (frontier, notes, claims, challenges) on the database.
 	Investigate func(*sql.DB) investigate_core.Store
 	// ErrSink makes the sink that stores the GBerrors of the agents in the database (nil: they are not stored).
@@ -28,11 +30,13 @@ type Ops struct {
 // The Ops of each backend.
 var (
 	SQLiteOps = Ops{
+		Backend:     config.DBBackendSQLite,
 		Store:       sqlite.Store,
 		Investigate: sqlite.NewInvestigateStore,
 		ErrSink:     errSink(config.DBBackendSQLite),
 	}
 	PostgresOps = Ops{
+		Backend:     config.DBBackendPostgres,
 		Store:       postgres.Store,
 		Investigate: postgres.NewInvestigateStore,
 		ErrSink:     errSink(config.DBBackendPostgres),

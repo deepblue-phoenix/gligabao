@@ -155,6 +155,7 @@ func NewManager(ctx context.Context,
 		runs:    map[int64]*researcher{},
 		remotes: map[int64]*remoteRun{},
 	}
+	m.migrateReports() // MIGRATION "reports table": remove with migrate_reports.go
 	if o.keepActive {
 		return m
 	}

@@ -383,10 +383,11 @@ func (r *researcher) meta() gberrors.Meta {
 		"cost_usd": r.total.CostUSD, "model": r.run.Model, "topic": truncate(r.run.Topic, 100)}
 }
 
-// finish ends the run's record: the final usage, the status, the report or the error, and the terminal state.
+// finish ends the run's record: the final usage, the status, the report (with its summary) or the error, and the terminal state.
 func (r *researcher) finish(status core.Status,
 	report,
 	errText string) {
+	summary := r.summarize(status, report)
 	r.out = outcome{
 		status: status,
 		report: report,
@@ -404,6 +405,7 @@ func (r *researcher) finish(status core.Status,
 			r.run.ID,
 			status,
 			report,
+			summary,
 			errText)
 		return err
 	})
@@ -486,6 +488,29 @@ func (r *researcher) outOfBudget() string {
 		return ""
 	}
 	return r.budgetReason
+}
+
+// summarize makes the summary of the report of a research that completed ("" for anything else: a failed or stopped run, a worker, whose
+// report is its findings, and a report that is empty). It is one model call separate from the agent (see summarizeReport), made when the
+// agent has ended; what it spends is added to the totals of the run. A call that fails is logged and the run completes without a summary.
+func (r *researcher) summarize(status core.Status,
+	report string) string {
+	if status != core.StatusCompleted || r.parent != nil || strings.TrimSpace(report) == "" {
+		return ""
+	}
+	sum, err := summarizeReport(r.runCtx,
+		r.client,
+		r.run.Model,
+		r.run.Topic,
+		report)
+	r.total.InputTokens += sum.InputTokens
+	r.total.OutputTokens += sum.OutputTokens
+	r.total.CostUSD += sum.CostUSD
+	if err != nil {
+		r.logf.WithError(err).Warn("agent research: the summary of the report could not be made")
+		return ""
+	}
+	return sum.Text
 }
 
 // capNote is the sentence added to the report of an agent that a cost cap cut short, so that whoever reads it knows it may be

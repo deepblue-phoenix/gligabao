@@ -160,7 +160,7 @@ Stop reasons written to `gb_agent_research_runs.stop_reason`: `finalized`, `fron
 - Input: the objective, the notes (verified claims, datapoints, sources, contradictions, assumptions and gaps), the frontier summary with the `unresolvable` and `pruned` questions and their reasons. No search tool is offered.
 - Tools: `notes_read`, `frontier_view`, `finalize_report(report)`, and `reopen_question` (only to send the run back to exploration, at most `max_reopens` times).
 - `finalize_report` runs the finalization gate (pure, `gates.go`): the report cites only existing source ids (checked by ids in the text, not by text analysis of the claims); every `unresolvable` question appears under gaps; nothing in the report cites a `REFUTED` claim (checked by claim-id references). A failure is returned to the model as the list of problems.
-- A passing `finalize_report` stores the report text in `gb_agent_research_runs.report`, sets `stop_reason = finalized` and ends the run.
+- A passing `finalize_report` stores the report text in `gb_agent_research_reports` (until 0.207.0: the column `gb_agent_research_runs.report`), sets `stop_reason = finalized` and ends the run.
 - The report shape is the design's: summary first, then details, the source list as URLs, a section on gaps and assumptions, and the verification status of key claims. Every statement is traceable to claim and source ids, rendered as URLs.
 
 ### 10. Run options, agent-definition knobs and selection of the loop

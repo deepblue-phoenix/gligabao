@@ -2,7 +2,7 @@
 -- gb_agent_research_runs: ONE ROW PER EXECUTION OF THE DEEP-RESEARCH AGENT (core.Run). A research a user starts is a run; so is each
 -- sub-agent (worker) the investigative loop starts for a question. Column-by-column notes: the sqlite schema.
 --   What it is for: who asked, on what topic, with which agent definition and model, where it runs, its status, what it has spent
---                   so far, and its outcome (the report or the error).
+--                   so far, and its outcome (the error; the report is in gb_agent_research_reports).
 --   What it enables: listing and following agents by user, status and parent; stopping one; the caps on steps and cost (enforced from
 --                   these counters); the sub-agent tree (parent_id); recovery after a crash (a run left 'running' is failed at start).
 --   Main users: agent_research (Manager and researcher: manager.go, researcher.go, and the investigative loop in investigative.go);
@@ -32,13 +32,20 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	output_tokens BIGINT NOT NULL DEFAULT 0,
 	search_tokens BIGINT NOT NULL DEFAULT 0,
 	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
-	report        TEXT NOT NULL DEFAULT '',
 	error         TEXT NOT NULL DEFAULT '',
 	created_at    TIMESTAMPTZ NOT NULL,
 	finished_at   TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_user ON gb_agent_research_runs(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_status ON gb_agent_research_runs(status);
+
+-- gb_agent_research_reports: the report of a run and its summary. Column-by-column notes: the sqlite schema.
+CREATE TABLE IF NOT EXISTS gb_agent_research_reports (
+	run_id     BIGINT PRIMARY KEY REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
+	report     TEXT NOT NULL CHECK (report <> ''),
+	summary    TEXT NOT NULL DEFAULT '',
+	created_at TIMESTAMPTZ NOT NULL
+);
 
 -- gb_agent_research_states: ONE ROW EACH TIME A RUN ENTERS A STATE (core.State): the timeline of an agent. Append-only; column notes
 -- in the sqlite schema.

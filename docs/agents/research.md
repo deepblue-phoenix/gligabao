@@ -17,9 +17,17 @@ A **run** (`gb_agent_research_runs`) is one execution of the agent on a topic. I
 | `status` | Meaning |
 | -------- | ------- |
 | `running` | the agent is working (an **active** agent) |
-| `completed` | it ended with a report (`report`) |
+| `completed` | it ended with a report (`report`, with its `summary`) |
 | `failed` | it could not finish: a model call failed, or the server stopped (`error` says why) |
 | `stopped` | somebody stopped it before it ended (from the [admin UI](#admin-ui)); `error` says who, and there is no report |
+
+### The report and its summary
+
+The report of a run is not a column of the run: it is a row of **`gb_agent_research_reports`** (`run_id`, `report`, `summary`, `created_at`; at most one per run), written in the same transaction that ends the run. `GET /v1/gb/research/{id}`, the list, the stream, the CLI and the admin UI show both as `report` and `summary` of the run. A worker's row holds its findings (JSON) and has no summary; a failed or stopped run has no row.
+
+The **`summary`** is shorter and at a higher level than the report (one to three paragraphs, at most about 150 words: the question, the main conclusions, how reliable they are). It is made at the end of a research that completed, by **one separate model call** (`internal/agent_research/summary.go`): no tools and none of the agent's context, only the topic and the finished report, on the model of the run. It is not part of the agent's reasoning, and it is not a step of the run; what it costs (tokens and USD) is added to the totals of the run, and it applies to runs of the `modal` runner too (the server makes it). If the call fails the run still completes, with the report and an empty `summary` (a warning is logged).
+
+**Migration (0.207.0).** Before it the report was the column `gb_agent_research_runs.report`. When the manager starts it checks whether that column still exists; if it does, in the background it copies every report into `gb_agent_research_reports` (with the summary of each research, made by the same call; the findings of workers get none) and then drops the column, so the migration never runs again. Without an LLM client it waits for the next start; a failed summary stops it without dropping the column, and the next start goes on. Reports that were not migrated yet are not shown until then. The code is all in `internal/agent_research/migrate_reports.go`, marked as a one-off to remove.
 
 A run left `running` by a process that died is marked `failed` ("interrupted") when the server starts again (the job of a run in Modal is not followed again after a restart: see [the runner](#where-the-agent-runs-the-runner)).
 
@@ -74,7 +82,7 @@ Answers `202` with the run (`status` `running`, `state` `starting`); the agent g
 
 ```json
 {"id": 7, "user_id": "u1", "topic": "...", "status": "running", "state": "starting", "model": "", "max_steps": 20, "runner": "local", "agent_name": "default", "agent_version": "1.0.0", "agent_hash": "9f2c...",
- "steps": 0, "tool_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0, "report": "", "error": "",
+ "steps": 0, "tool_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0, "report": "", "summary": "", "error": "",
  "created_at": "2026-11-01T10:00:00.120Z", "finished_at": null}
 ```
 
@@ -95,10 +103,10 @@ Sub-agents are runs like any other and are in the list too, with `parent_id`, `n
 
 ### `GET /v1/gb/research/{id}`
 
-Reads one run with its `states`, in the order they were entered. The `report` is in it once `status` is `completed`.
+Reads one run with its `states`, in the order they were entered. The `report` and its `summary` are in it once `status` is `completed`.
 
 ```json
-{"id": 7, "status": "completed", "state": "completed", "steps": 5, "tool_calls": 6, "cost_usd": 0.13, "report": "# ...",
+{"id": 7, "status": "completed", "state": "completed", "steps": 5, "tool_calls": 6, "cost_usd": 0.13, "report": "# ...", "summary": "...",
  "states": [
    {"seq": 1, "state": "starting", "step": 0, "detail": "", "error": "", "started_at": "...", "finished_at": "..."},
    {"seq": 2, "state": "thinking", "step": 1, "detail": "step 1 of 20", "error": "", "started_at": "...", "finished_at": "..."},

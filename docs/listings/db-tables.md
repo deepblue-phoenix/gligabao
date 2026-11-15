@@ -187,6 +187,7 @@ All of them are in `internal/evals/db/sqlite/sql/schema.sql` (SQLite) and `inter
 Tables of the research agents (`internal/agent_research`, see `docs/agents/research.md`; applied by `dbfull.Open` (`internal/db/dbfull`)).
 
 - `gb_agent_research_runs`
+- `gb_agent_research_reports`
 - `gb_agent_research_states`
 - `gb_agent_frontier_questions`
 - `gb_agent_frontier_deps`
@@ -203,7 +204,8 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 
 | Table                          | Description                                                                                                                                      |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gb_agent_research_runs`   | one row per research agent started on a topic, with its status, the state it is in, steps, tokens and cost so far, the report or the error, and (investigative loop) its phase and stop reason. |
+| `gb_agent_research_runs`   | one row per research agent started on a topic, with its status, the state it is in, steps, tokens and cost so far, the error, and (investigative loop) its phase and stop reason. |
+| `gb_agent_research_reports` | the report of a finished run (for a worker, its findings) and `summary`, a shorter, higher-level summary of it that one separate model call writes at the end of the research. At most one row per run. |
 | `gb_agent_research_states` | one row per state the agent went through while working (starting, thinking, searching, reading, ...), append-only, with its detail, error and times. |
 | `gb_agent_frontier_questions` | one row per question of a run's deep-research frontier (a node of the question graph), with its parent, depth, priority, current status and answer. |
 | `gb_agent_frontier_deps` | the edges "question depends on question" of the frontier (a DAG). |
@@ -221,6 +223,7 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 | Table                          | SQLite                                          | Postgres                                          |
 | ------------------------------ | ----------------------------------------------- | ------------------------------------------------- |
 | `gb_agent_research_runs`   | `internal/agent_research/db/sqlite/sql/schema.sql`   | `internal/agent_research/db/postgres/sql/schema.sql`   |
+| `gb_agent_research_reports` | `internal/agent_research/db/sqlite/sql/schema.sql`   | `internal/agent_research/db/postgres/sql/schema.sql`   |
 | `gb_agent_research_states` | `internal/agent_research/db/sqlite/sql/schema.sql`   | `internal/agent_research/db/postgres/sql/schema.sql`   |
 | `gb_agent_frontier_questions` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
 | `gb_agent_frontier_deps` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |

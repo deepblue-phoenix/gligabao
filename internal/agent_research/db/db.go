@@ -58,6 +58,7 @@ type Store struct {
 		id int64,
 		status core.Status,
 		report,
+		summary,
 		errText string) (bool, error)
 	FailActive func(ctx context.Context,
 		q Execer,

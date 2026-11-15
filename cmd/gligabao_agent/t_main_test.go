@@ -378,7 +378,7 @@ func TestResearchWithKnowledgeBase(t *testing.T) {
 		t.Errorf("rows per table: %v", rows)
 	}
 	var reports []string
-	if err := r.Rows("gb_agent_research_runs", func(row dbexport.Row) error {
+	if err := r.Rows("gb_agent_research_reports", func(row dbexport.Row) error {
 		reports = append(reports, fmt.Sprint(row["report"]))
 		return nil
 	}); err != nil {

@@ -166,6 +166,7 @@ func testStore(t *testing.T,
 		run.ID,
 		core.StatusCompleted,
 		"the report",
+		"the summary",
 		"")
 	if err != nil || !ok {
 		t.Fatalf("finish: %v %v",
@@ -177,6 +178,7 @@ func testStore(t *testing.T,
 		run.ID,
 		core.StatusFailed,
 		"",
+		"",
 		"late"); err != nil || ok {
 		t.Fatalf("second finish: %v %v",
 			ok,
@@ -187,6 +189,7 @@ func testStore(t *testing.T,
 		999999,
 		core.StatusFailed,
 		"",
+		"",
 		"x"); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("finish unknown: %v", err)
 	}
@@ -195,13 +198,14 @@ func testStore(t *testing.T,
 		run.ID,
 		core.StatusRunning,
 		"",
+		"",
 		""); err == nil {
 		t.Fatal("finishing with a status that is not final should fail")
 	}
 	got, _ = st.GetRun(ctx,
 		d,
 		run.ID)
-	if got.Status != core.StatusCompleted || got.State != core.StateCompleted || got.Report != "the report" || got.Error != "" || got.FinishedAt == nil {
+	if got.Status != core.StatusCompleted || got.State != core.StateCompleted || got.Report != "the report" || got.Summary != "the summary" || got.Error != "" || got.FinishedAt == nil {
 		t.Fatalf("finished run: %+v", got)
 	}
 	states, _ = st.ListStates(ctx,
@@ -232,6 +236,7 @@ func testStore(t *testing.T,
 		d,
 		failed.ID,
 		core.StatusFailed,
+		"",
 		"",
 		"model down"); err != nil || !ok {
 		t.Fatalf("finish failed: %v %v",

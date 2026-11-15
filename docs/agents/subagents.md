@@ -80,7 +80,7 @@ The final check of the loop still queues the claims that are `UNVERIFIED` behind
 
 ## Tracking
 
-A worker is tracked like every other agent. It is a run in `gb_agent_research_runs` with its own states (`gb_agent_research_states`), status, usage (steps, tokens, `cost_usd`), `report` and `error`, owned by the same user as its supervisor, so that it shows in the list and get endpoints, the CLI, the MCP tools and the admin UI like any run. What is new on a run:
+A worker is tracked like every other agent. It is a run in `gb_agent_research_runs` with its own states (`gb_agent_research_states`), status, usage (steps, tokens, `cost_usd`), `error` and its report (its findings, a row of `gb_agent_research_reports`), owned by the same user as its supervisor, so that it shows in the list and get endpoints, the CLI, the MCP tools and the admin UI like any run. What is new on a run:
 
 | Field / column | Meaning |
 | -------------- | ------- |

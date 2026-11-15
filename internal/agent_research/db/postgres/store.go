@@ -81,8 +81,8 @@ func CreateRun(ctx context.Context,
 	if err := q.QueryRowContext(ctx,
 		`
 		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason,
-			steps, tool_calls, input_tokens, output_tokens, search_tokens, cost_usd, report, error, created_at, finished_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+			steps, tool_calls, input_tokens, output_tokens, search_tokens, cost_usd, error, created_at, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		RETURNING id`,
 		r.UserID,
 		r.ParentID,
@@ -106,7 +106,6 @@ func CreateRun(ctx context.Context,
 		r.OutputTokens,
 		r.SearchTokens,
 		r.CostUSD,
-		r.Report,
 		r.Error,
 		r.CreatedAt,
 		ptr(r.FinishedAt)).Scan(&id); err != nil {
@@ -246,7 +245,8 @@ func SetPhase(ctx context.Context,
 	return nil
 }
 
-// FinishRun ends a running run: its status (completed, failed or stopped), report and error, and its finished_at (now); it ends the state the
+// FinishRun ends a running run: its status (completed, failed or stopped), error and finished_at (now), and stores its report and the summary of
+// the report in gb_agent_research_reports (no row for an empty report; summary may be empty); it ends the state the
 // run is in (with the error, if it has none of its own) and adds the terminal state (completed or failed, with the error). It
 // returns false, and writes nothing, if the run was finished already; db.ErrNotFound if there is no such run. Run it in a
 // transaction to make the writes one.
@@ -255,6 +255,7 @@ func FinishRun(ctx context.Context,
 	id int64,
 	status core.Status,
 	report,
+	summary,
 	errText string) (bool, error) {
 	if status.Active() || status == "" {
 		return false, fmt.Errorf("finish agent research run %d: status %q is not a final one",
@@ -264,11 +265,10 @@ func FinishRun(ctx context.Context,
 	at := now()
 	res, err := q.ExecContext(ctx,
 		`
-		UPDATE gb_agent_research_runs SET status = $1, state = $2, report = $3, error = $4, finished_at = $5
-		WHERE id = $6 AND status = 'running'`,
+		UPDATE gb_agent_research_runs SET status = $1, state = $2, error = $3, finished_at = $4
+		WHERE id = $5 AND status = 'running'`,
 		string(status),
 		string(status),
-		report,
 		errText,
 		at,
 		id)
@@ -285,6 +285,18 @@ func FinishRun(ctx context.Context,
 			return false, db.ErrNotFound
 		}
 		return false, nil
+	}
+	if report != "" {
+		if _, err := q.ExecContext(ctx,
+			`INSERT INTO gb_agent_research_reports (run_id, report, summary, created_at) VALUES ($1, $2, $3, $4)`,
+			id,
+			report,
+			summary,
+			at); err != nil {
+			return false, fmt.Errorf("store the report of agent research run %d: %w",
+				id,
+				err)
+		}
 	}
 	if _, err := q.ExecContext(ctx,
 		`
@@ -342,6 +354,7 @@ func FailActive(ctx context.Context,
 			id,
 			core.StatusFailed,
 			"",
+			"",
 			reason)
 		if err != nil {
 			return n, err
@@ -353,8 +366,12 @@ func FailActive(ctx context.Context,
 	return n, nil
 }
 
-const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason, steps, tool_calls, input_tokens, output_tokens, search_tokens, cost_usd,
-	report, error, created_at, finished_at`
+// runColumns are the columns of a run as scanRun reads them, and runFrom its source: the report and its summary are in their own table
+// (gb_agent_research_reports), which a run that has no report lacks.
+const runColumns = `r.id, r.user_id, r.parent_id, r.name, r.reason, r.topic, r.status, r.state, r.model, r.max_steps, r.runner, r.agent_name, r.agent_version, r.agent_hash, r.notes_id, r.phase, r.stop_reason, r.steps, r.tool_calls, r.input_tokens, r.output_tokens, r.search_tokens, r.cost_usd,
+	COALESCE(p.report, ''), COALESCE(p.summary, ''), r.error, r.created_at, r.finished_at`
+
+const runFrom = `gb_agent_research_runs r LEFT JOIN gb_agent_research_reports p ON p.run_id = r.id`
 
 func scanRun(s scanner) (*core.Run, error) {
 	var r core.Run
@@ -386,6 +403,7 @@ func scanRun(s scanner) (*core.Run, error) {
 		&r.SearchTokens,
 		&r.CostUSD,
 		&r.Report,
+		&r.Summary,
 		&r.Error,
 		&created,
 		&finished); err != nil {
@@ -404,7 +422,7 @@ func GetRun(ctx context.Context,
 	q db.Execer,
 	id int64) (*core.Run, error) {
 	r, err := scanRun(q.QueryRowContext(ctx,
-		`SELECT `+runColumns+` FROM gb_agent_research_runs WHERE id = $1`,
+		`SELECT `+runColumns+` FROM `+runFrom+` WHERE r.id = $1`,
 		id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, db.ErrNotFound
@@ -495,7 +513,7 @@ func ListRuns(ctx context.Context,
 	f core.RunFilter,
 	limit int) ([]core.Run, error) {
 	w, args := where(f)
-	query := `SELECT ` + runColumns + ` FROM gb_agent_research_runs` + w + ` ORDER BY id DESC`
+	query := `SELECT ` + runColumns + ` FROM ` + runFrom + w + ` ORDER BY r.id DESC`
 	if limit > 0 {
 		args = append(args, limit)
 		query += fmt.Sprintf(` LIMIT $%d`, len(args))

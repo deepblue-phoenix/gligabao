@@ -39,6 +39,10 @@ func (f *teamFake) startWith(t *testing.T,
 			io.WriteString(w, searchAnswer)
 			return
 		}
+		if strings.Contains(body, summaryMarker) {
+			summaryAnswer(w, "")
+			return
+		}
 		key := "root"
 		if m := workerKey.FindStringSubmatch(body); m != nil {
 			key = m[1]

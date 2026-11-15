@@ -158,6 +158,7 @@ func testCounts(t *testing.T,
 		other.ID,
 		core.StatusStopped,
 		"",
+		"",
 		"stopped by me"); err != nil || !ok {
 		t.Fatalf("finish stopped: %v %v",
 			ok,
@@ -266,6 +267,7 @@ func TestOpenRebuildsAnOldSQLiteStatusCheck(t *testing.T) {
 		d,
 		2,
 		core.StatusStopped,
+		"",
 		"",
 		"stopped by me"); err != nil || !ok {
 		t.Fatalf("stopped is still refused: %v %v",

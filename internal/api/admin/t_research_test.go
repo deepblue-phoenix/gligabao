@@ -70,6 +70,7 @@ func testResearchAdmin(t *testing.T,
 		failed.ID,
 		core.StatusFailed,
 		"",
+		"",
 		"the model said no"); err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +79,7 @@ func testResearchAdmin(t *testing.T,
 		kid.ID,
 		core.StatusCompleted,
 		"kid report",
+		"",
 		""); err != nil {
 		t.Fatal(err)
 	}
