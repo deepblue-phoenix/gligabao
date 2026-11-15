@@ -306,6 +306,8 @@ func RememberImage(ctx context.Context,
 		input["models"] = co.Models
 	}
 	tr.Input(input)
+	co.Report("received_image", "info", fmt.Sprintf("received a %s image of %d bytes", mediaType, len(data)),
+		map[string]any{"media_type": mediaType, "size_bytes": len(data)})
 
 	// Seen before in this dataset? Then the stored result is the answer (a dataset that does not exist has none).
 	if dsID, err := relational.DatasetID(ctx,
@@ -318,6 +320,7 @@ func RememberImage(ctx context.Context,
 			hash)
 		switch {
 		case err == nil:
+			co.Report("find_existing_image", "succeeded", "this image was extracted before: using the stored result", nil)
 			// Same content, so the same file name: this only writes the file if it is gone.
 			if _, _, err := saveFile(imageDir(co),
 				dsID,
@@ -351,13 +354,19 @@ func RememberImage(ctx context.Context,
 		return nil, err
 	}
 
+	co.Report("extract_image", "started", "the LLM is reading the image", nil)
 	x, err := ExtractImage(ctx,
 		co.ModelLLM(lm, memory_core.StageExtractImage),
 		mediaType,
 		data)
 	if err != nil {
+		co.Report("extract_image", "failed", err.Error(), nil)
 		return nil, err
 	}
+	co.Report("extract_image", "succeeded", "the LLM read the image",
+		map[string]any{"theme": x.Theme, "title": x.Title, "text_blocks": len(x.TextBlocks), "model": x.Model,
+			"input_tokens": x.InputTokens, "output_tokens": x.OutputTokens})
+	co.Report("image_store", "started", "storing the image", nil)
 	tr.Tool("The LLM read the image: its theme, title and text blocks.",
 		"extract_image",
 		map[string]any{"media_type": mediaType, "size_bytes": len(data)},
@@ -413,6 +422,7 @@ func RememberImage(ctx context.Context,
 		}
 		return nil, err
 	}
+	co.Report("image_store", "succeeded", "stored the image and its extraction", nil)
 	tr.Tool("Stored the image file and tracked it with an image artifact and its extraction.",
 		"image_store",
 		map[string]any{"user_id": userID, "dataset": dataset},
@@ -433,6 +443,7 @@ func RememberImage(ctx context.Context,
 		ImageExtraction: *x,
 	}
 	if x.Description != "" {
+		co.Report("image_graph", "started", "extracting the graph of the image description", nil)
 		// The image is stored: if this fails, a repeat of the call finds it and tries the graph again (Cached).
 		if err := rememberGraph(ctx,
 			d,
@@ -441,8 +452,11 @@ func RememberImage(ctx context.Context,
 			extID,
 			ref,
 			opts...); err != nil {
+			co.Report("image_graph", "failed", err.Error(), nil)
 			return nil, err
 		}
+		co.Report("image_graph", "succeeded", "extracted the graph of the image",
+			map[string]any{"entities": len(res.Entities), "edges": len(res.Edges)})
 		tr.Tool("Remembered the description of the image as a text artifact, which extracted its graph.",
 			"image_graph",
 			map[string]any{"extraction_id": extID},

@@ -472,6 +472,7 @@ func Remember(ctx context.Context,
 		dataset,
 		kind,
 		input)
+	run.report = co.Report
 	defer func() {
 		run.Finish(err)
 		if res != nil {

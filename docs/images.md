@@ -20,6 +20,7 @@ gb-user-id: u1
 - `dataset` (optional, default `main`, created if missing) and `reference_time` (optional, RFC 3339, default now: when the image was captured or observed) work as for text.
 - `session_id` (optional) works as for text ([sessions.md](sessions.md)): it is stored on the new image artifact (`gb_image_artifacts.session_id`) and echoed as `session_id` in the response. Images add no entities or edges, so there are no session links beyond it. `400` if it is too long or has control characters.
 - `models` (optional): `{"extract_image": "<model>"}` picks the vision model that reads the image; without it the default model is used (see [remember/remember.md](remember/remember.md#choosing-the-model-of-each-stage)). A repeated image is answered from its stored extraction without an LLM call, so the model reported is the one that made it.
+- `stream` (optional, default `false`): answer with a Server-Sent Events stream of the steps of the pipeline instead of one JSON body: see [Streaming progress](#streaming-progress).
 - `text` and `kind` must not be given together with `image` (`400`): an image is not a text artifact.
 
 ## Response
@@ -68,6 +69,18 @@ gb-user-id: u1
 | 400 | Invalid JSON body; `image` is not base64, is empty, larger than 5 MiB, or not a JPEG, PNG, GIF or WebP; `text` or `kind` given with it; `reference_time` is not RFC 3339; or `session_id` is invalid |
 | 502 | The LLM call failed, or its output could not be parsed or was truncated (nothing stored) |
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
+
+## Streaming progress
+
+With `"stream": true` the response is `200` with `content-type: text/event-stream` and the call can be watched while it runs. Request errors (`400`, as above) are still a plain JSON response, sent before the stream starts. The stream sends:
+
+- `progress` events: one step of the pipeline, `{"step", "status", "message", "data", "at"}`. `status` is `started`, `succeeded`, `failed`, `skipped` or `info`; `message` and `data` are optional.
+- one `result` event, with the response documented above, when the call succeeds.
+- one `error` event, `{"error": "..."}`, if the pipeline failed after the stream started (the HTTP status is already `200` then). The stream closes after `result` or `error`.
+
+The comment line `: connected` is sent first. The steps are, in order: `received_image` (`info`: media type and size), then either `find_existing_image` (the image is [repeated](#repeated-images)) or `extract_image` (`started`; `succeeded` with `theme`, `title`, `text_blocks`, `model` and the tokens), `image_store`, and `image_graph` (only if the image has a [description](#the-graph-of-an-image)). The stages of the text pipeline that builds the graph (`extract_graph`, `resolve_edges`, `store`, ... see [remember.md](remember/remember.md#how-the-pipeline-is-declared)) are reported too, between `started` and `succeeded` of `image_graph`, as `started`, `succeeded`, `failed` or `skipped` events named after the stage; they come from the [run log](remember/remember.md#run-log).
+
+Progress is not replayed: a client that reconnects starts a new call (the same image is then answered from its stored extraction), so close the connection when the stream ends (a browser `EventSource` otherwise reconnects by itself). From Go: `memory_core.WithProgress(func(memory_core.ProgressEvent))` is an option of `memory_image.RememberImage`; it may be called from several goroutines.
 
 ## Repeated images
 

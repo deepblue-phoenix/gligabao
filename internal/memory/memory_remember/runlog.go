@@ -57,6 +57,9 @@ type runState struct {
 	// call is recorded too.
 	ctx context.Context
 
+	// report, if set, is told of every stage change (see memory_core.WithProgress).
+	report func(step, status, message string, data map[string]any)
+
 	mu  sync.Mutex // guards run, and serializes the writes so that the last state wins
 	run relational.RememberRun
 }
@@ -166,6 +169,7 @@ func (r *runLog) Start(stages ...string) {
 				st.StartedAt = &now
 			}
 			r.run.Stages[name] = *st
+			r.say(name, "started", nil)
 		}
 	}
 	r.save()
@@ -184,6 +188,7 @@ func (r *runLog) Skip(stages ...string) {
 		if st := r.stage(name); st != nil && st.Status == relational.RememberNotStarted {
 			st.Status = relational.RememberSkipped
 			r.run.Stages[name] = *st
+			r.say(name, "skipped", nil)
 		}
 	}
 	r.save()
@@ -205,9 +210,21 @@ func (r *runLog) Done(err error,
 				err,
 				now)
 			r.run.Stages[name] = *st
+			if err != nil {
+				r.say(name, "failed", map[string]any{"error": err.Error()})
+			} else {
+				r.say(name, "succeeded", nil)
+			}
 		}
 	}
 	r.save()
+}
+
+// say reports a stage change to the progress function, if there is one.
+func (r *runLog) say(stage, status string, data map[string]any) {
+	if r.report != nil {
+		r.report(stage, status, "", data)
+	}
 }
 
 //------------------

@@ -121,6 +121,10 @@ type CallOptions struct {
 	// request is queued, so that the caller has the ID right away.
 	RememberRunID int64
 
+	// Progress, if set by WithProgress, is told of each step the call takes (see ProgressEvent). It may be called from
+	// several goroutines and must not block for long.
+	Progress func(ProgressEvent)
+
 	// ErrSink stores the GBerrors that Remember and Query create for their key failures (a failed pipeline, a failed commit,
 	// vectors that could not be written), set by WithErrSink; nil (the default) stores none (the errors are still returned).
 	ErrSink gberrors.Sink
@@ -153,6 +157,25 @@ func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID
 // WithRememberRunID makes Remember log the call in the existing run log row with that ID (created when the request was
 // queued, see memory_remember.Manager) instead of creating one. Without it (or with 0) Remember creates the row itself.
 func WithRememberRunID(id int64) Option { return func(o *CallOptions) { o.RememberRunID = id } }
+
+// ProgressEvent is one step of a call that is in progress: what the pipeline is doing, for a client that watches it.
+type ProgressEvent struct {
+	Step    string         `json:"step"`              // e.g. "extract_image", "extract_graph"
+	Status  string         `json:"status"`            // "started", "succeeded", "failed", "skipped" or "info"
+	Message string         `json:"message,omitempty"` // human readable
+	Data    map[string]any `json:"data,omitempty"`
+	At      time.Time      `json:"at"`
+}
+
+// WithProgress makes the call report its steps to f as it goes (RememberImage and the stages of the text pipeline it runs).
+func WithProgress(f func(ProgressEvent)) Option { return func(o *CallOptions) { o.Progress = f } }
+
+// Report tells the Progress function of the options (if any) of a step.
+func (o CallOptions) Report(step, status, message string, data map[string]any) {
+	if o.Progress != nil {
+		o.Progress(ProgressEvent{Step: step, Status: status, Message: message, Data: data, At: time.Now().UTC()})
+	}
+}
 
 // WithErrSink sets where the GBerrors of the call are stored (see CallOptions.ErrSink).
 func WithErrSink(s gberrors.Sink) Option { return func(o *CallOptions) { o.ErrSink = s } }

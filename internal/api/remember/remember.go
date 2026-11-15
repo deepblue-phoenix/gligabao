@@ -36,6 +36,10 @@ type rememberRequest struct {
 	// Image (optional) is a base64-encoded JPEG, PNG, GIF or WebP, up to memory_image.MaxImageBytes: instead of text, an
 	// image to remember with the image pipeline (see memory_image.RememberImage). It excludes Text and Kind.
 	Image string `json:"image"`
+	// Stream (optional, image only) answers with a Server-Sent Events stream instead of one JSON body: an "progress" event
+	// (a memory_core.ProgressEvent) for every step of the pipeline, then a "result" event holding the usual response, or
+	// an "error" event ({"error": "..."}) if the pipeline failed. Errors in the request itself are still a plain 4xx.
+	Stream bool `json:"stream"`
 	// Kind is the artifact kind: "knowledge" (default; not strictly episodic) or "episode" (a Graphiti-style episode,
 	// anchored in time).
 	Kind string `json:"kind"`
@@ -524,6 +528,17 @@ func rememberImage(w http.ResponseWriter,
 		return
 	}
 	start := time.Now()
+	var sse *sseWriter
+	if req.Stream {
+		if sse = newSSEWriter(w); sse == nil {
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"streaming is not supported")
+			return
+		}
+		opts = append(opts[:len(opts):len(opts)],
+			memory_core.WithProgress(func(ev memory_core.ProgressEvent) { sse.send("progress", ev) }))
+	}
 	res, err := memory_image.RememberImage(r.Context(),
 		d,
 		llm,
@@ -551,11 +566,16 @@ func rememberImage(w http.ResponseWriter,
 				"duration_ms": time.Since(start).Milliseconds(),
 				"error":       err.Error(),
 			})
+		msg := failureMessage("failed to process image",
+			err,
+			memory_core.NewCallOptions(opts).Eval)
+		if sse != nil { // the status is already sent
+			sse.send("error", map[string]string{"error": msg})
+			return
+		}
 		httputil.Error(w,
 			http.StatusBadGateway,
-			failureMessage("failed to process image",
-				err,
-				memory_core.NewCallOptions(opts).Eval))
+			msg)
 		return
 	}
 	log.WithFields(log.Fields{
@@ -581,6 +601,10 @@ func rememberImage(w http.ResponseWriter,
 			"text_blocks":       len(res.TextBlocks),
 			"duration_ms":       time.Since(start).Milliseconds(),
 		})
+	if sse != nil {
+		sse.send("result", res)
+		return
+	}
 	httputil.WriteJSON(w,
 		http.StatusOK,
 		res)

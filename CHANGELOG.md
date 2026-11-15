@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.204.0] - 2026-11-16
+
+### Added
+- **Streaming progress of an image call.** `POST /v1/gb/remember` with an `image` and `"stream": true` answers with Server-Sent Events: a `progress` event for every step of the pipeline (`received_image`, `find_existing_image`, `extract_image`, `image_store`, `image_graph`, and the stages of the text pipeline that builds the graph), then a `result` event with the usual response, or an `error` event. Go: `memory_core.WithProgress`, `memory_core.ProgressEvent` and `CallOptions.Report`. Documented in `docs/images.md`.
+
 ## [0.203.0] - 2026-11-15
 
 ### Added
