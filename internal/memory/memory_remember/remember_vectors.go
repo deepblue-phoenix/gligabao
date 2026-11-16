@@ -18,6 +18,39 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// similarEntity is a stored entity found by similarity for an endpoint of a new fact.
+type similarEntity struct {
+	endpoint string // the name the new fact uses
+	name     string // the stored entity's name
+	typ      string
+	score    float32
+}
+
+// pendingVectors are the embeddings of a Store call, computed before its transaction commits and written after it.
+type pendingVectors struct {
+	store vector.Store
+	// byDataset are the vectors to write, per vector store dataset (index).
+	byDataset map[string][]vector.Vector
+	entities  int
+	edges     int
+	chunks    int
+	summaries int
+}
+
+// chunkVector is the chunk whose text prepareVectors embeds next to the entities and edges of a Store call.
+type chunkVector struct {
+	artifactID, parentID int64
+	index                int
+	text                 string
+}
+
+// summaryVector is the summary of a chunk whose text prepareVectors embeds next to the chunk's.
+type summaryVector struct {
+	artifactID, chunkID, parentID int64
+	index                         int
+	text                          string
+}
+
 // candidates are the stored facts a Remember call compares its new facts with (see memory_temporal.Candidates), and what the
 // search for similar entities found while looking for them.
 type candidates struct {
@@ -68,39 +101,6 @@ func loadCandidates(ctx context.Context,
 		return nil, err
 	}
 	return out, nil
-}
-
-// similarEntity is a stored entity found by similarity for an endpoint of a new fact.
-type similarEntity struct {
-	endpoint string // the name the new fact uses
-	name     string // the stored entity's name
-	typ      string
-	score    float32
-}
-
-// pendingVectors are the embeddings of a Store call, computed before its transaction commits and written after it.
-type pendingVectors struct {
-	store vector.Store
-	// byDataset are the vectors to write, per vector store dataset (index).
-	byDataset map[string][]vector.Vector
-	entities  int
-	edges     int
-	chunks    int
-	summaries int
-}
-
-// chunkVector is the chunk whose text prepareVectors embeds next to the entities and edges of a Store call.
-type chunkVector struct {
-	artifactID, parentID int64
-	index                int
-	text                 string
-}
-
-// summaryVector is the summary of a chunk whose text prepareVectors embeds next to the chunk's.
-type summaryVector struct {
-	artifactID, chunkID, parentID int64
-	index                         int
-	text                          string
 }
 
 // entityText is the text that is embedded for an entity.

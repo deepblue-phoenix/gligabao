@@ -11,6 +11,13 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
+type state struct {
+	items []int
+	i     int
+	ran   []string
+	off   bool
+}
+
 // events is an Observer that notes what it was told.
 type events struct {
 	mu  sync.Mutex
@@ -37,13 +44,6 @@ func (e *events) AddInference(stage string,
 		stage,
 		" ",
 		id))
-}
-
-type state struct {
-	items []int
-	i     int
-	ran   []string
-	off   bool
 }
 
 func stage(name string,

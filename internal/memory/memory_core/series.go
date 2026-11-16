@@ -12,55 +12,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 )
 
-// The timeseries a caller supplies, to be anchored to what a remember call stores (see docs/timeseries.md). The types
-// are the JSON of the request; ResolveSeries validates and normalizes them.
-
-// ErrInvalidSeries means a supplied timeseries is malformed.
-var ErrInvalidSeries = errors.New("invalid timeseries")
-
-// The limits of a supplied timeseries.
-const (
-	MaxSeriesPerCall     = 20      // series in one request
-	MaxSeriesPoints      = 100_000 // points in one series
-	MaxSeriesAnchors     = 20      // anchors of one series
-	MaxSeriesKeyLen      = 256     // bytes of key, name and the names in a selector
-	MaxSeriesLabelLen    = 64      // bytes of field, unit, frequency and role
-	DefaultSeriesField   = "value"
-	OnUnmatchedCreate    = "create"
-	OnUnmatchedIgnore    = "ignore"
-	OnUnmatchedError     = "error"
-	defaultOnUnmatchedID = OnUnmatchedError
-)
-
 // SeriesPoint is one value at a time. In JSON it is a pair: ["2025-01-29T00:00:00Z", 235.1].
 type SeriesPoint struct {
 	TS    time.Time
 	Value float64
-}
-
-func (p SeriesPoint) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]any{relational.FormatTime(p.TS), p.Value})
-}
-
-func (p *SeriesPoint) UnmarshalJSON(b []byte) error {
-	var pair []json.RawMessage
-	if err := json.Unmarshal(b, &pair); err != nil || len(pair) != 2 {
-		return errors.New(`a point must be a pair [time, value]`)
-	}
-	var ts string
-	if err := json.Unmarshal(pair[0], &ts); err != nil {
-		return errors.New("the time of a point must be an RFC 3339 string")
-	}
-	t, err := relational.ParseTimeStrict(ts)
-	if err != nil {
-		return fmt.Errorf("the time %q of a point must be RFC 3339, e.g. 2025-01-31T09:00:00Z", ts)
-	}
-	var v float64
-	if err := json.Unmarshal(pair[1], &v); err != nil {
-		return errors.New("the value of a point must be a number")
-	}
-	p.TS, p.Value = t, v
-	return nil
 }
 
 // SeriesEntity selects an entity by name and, optionally, type (any type if empty).
@@ -103,28 +58,6 @@ type SeriesAnchor struct {
 	WindowEnd   *time.Time `json:"-"`
 }
 
-// Describe names the anchor for messages.
-func (a SeriesAnchor) Describe() string {
-	switch {
-	case a.Artifact:
-		return "the artifact"
-	case a.ArtifactID != 0:
-		return fmt.Sprintf("artifact %d", a.ArtifactID)
-	case a.Entity != nil:
-		return fmt.Sprintf("entity %q", a.Entity.Name)
-	case a.EntityID != 0:
-		return fmt.Sprintf("entity %d", a.EntityID)
-	case a.Edge != nil:
-		return fmt.Sprintf("fact %s -%s-> %s",
-			a.Edge.Source,
-			a.Edge.Relation,
-			a.Edge.Target)
-	case a.EdgeID != 0:
-		return fmt.Sprintf("edge %d", a.EdgeID)
-	}
-	return "nothing"
-}
-
 // SeriesSpec is a timeseries the caller supplies.
 type SeriesSpec struct {
 	// Key identifies the series in the dataset (with Field): sending the same key again adds to the series, and a
@@ -146,6 +79,73 @@ type SeriesSpec struct {
 	// name, and JSON that says how it was fetched. A series is identified by (Provider, Key, Field).
 	Provider   string `json:"-"`
 	Definition string `json:"-"`
+}
+
+// The timeseries a caller supplies, to be anchored to what a remember call stores (see docs/timeseries.md). The types
+// are the JSON of the request; ResolveSeries validates and normalizes them.
+
+// ErrInvalidSeries means a supplied timeseries is malformed.
+var ErrInvalidSeries = errors.New("invalid timeseries")
+
+// The limits of a supplied timeseries.
+const (
+	MaxSeriesPerCall     = 20      // series in one request
+	MaxSeriesPoints      = 100_000 // points in one series
+	MaxSeriesAnchors     = 20      // anchors of one series
+	MaxSeriesKeyLen      = 256     // bytes of key, name and the names in a selector
+	MaxSeriesLabelLen    = 64      // bytes of field, unit, frequency and role
+	DefaultSeriesField   = "value"
+	OnUnmatchedCreate    = "create"
+	OnUnmatchedIgnore    = "ignore"
+	OnUnmatchedError     = "error"
+	defaultOnUnmatchedID = OnUnmatchedError
+)
+
+func (p SeriesPoint) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]any{relational.FormatTime(p.TS), p.Value})
+}
+
+func (p *SeriesPoint) UnmarshalJSON(b []byte) error {
+	var pair []json.RawMessage
+	if err := json.Unmarshal(b, &pair); err != nil || len(pair) != 2 {
+		return errors.New(`a point must be a pair [time, value]`)
+	}
+	var ts string
+	if err := json.Unmarshal(pair[0], &ts); err != nil {
+		return errors.New("the time of a point must be an RFC 3339 string")
+	}
+	t, err := relational.ParseTimeStrict(ts)
+	if err != nil {
+		return fmt.Errorf("the time %q of a point must be RFC 3339, e.g. 2025-01-31T09:00:00Z", ts)
+	}
+	var v float64
+	if err := json.Unmarshal(pair[1], &v); err != nil {
+		return errors.New("the value of a point must be a number")
+	}
+	p.TS, p.Value = t, v
+	return nil
+}
+
+// Describe names the anchor for messages.
+func (a SeriesAnchor) Describe() string {
+	switch {
+	case a.Artifact:
+		return "the artifact"
+	case a.ArtifactID != 0:
+		return fmt.Sprintf("artifact %d", a.ArtifactID)
+	case a.Entity != nil:
+		return fmt.Sprintf("entity %q", a.Entity.Name)
+	case a.EntityID != 0:
+		return fmt.Sprintf("entity %d", a.EntityID)
+	case a.Edge != nil:
+		return fmt.Sprintf("fact %s -%s-> %s",
+			a.Edge.Source,
+			a.Edge.Relation,
+			a.Edge.Target)
+	case a.EdgeID != 0:
+		return fmt.Sprintf("edge %d", a.EdgeID)
+	}
+	return "nothing"
 }
 
 // ResolveSeries validates the series a caller supplied and returns a normalized copy: strings trimmed, defaults

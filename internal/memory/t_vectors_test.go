@@ -16,6 +16,12 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
+// fakeEmbedder embeds every text as [len, 1].
+type fakeEmbedder struct{ texts []string }
+
+// aliasLLM extracts "Alicia lives in Berlin": an alias of the stored Alice, and a fact about no stored entity.
+type aliasLLM struct{}
+
 type extractLLM struct{}
 
 func (extractLLM) Complete(context.Context,
@@ -26,9 +32,6 @@ func (extractLLM) Complete(context.Context,
 	"edges":[{"source":"Alice","target":"Acme","relation":"works at"},{"source":"Alice","target":"Paris","relation":"lives in"}]}`,
 	}, nil
 }
-
-// fakeEmbedder embeds every text as [len, 1].
-type fakeEmbedder struct{ texts []string }
 
 func (f *fakeEmbedder) EmbedBatchUsage(_ context.Context,
 	texts []string) ([][]float32, *llm.EmbedUsage, error) {
@@ -245,9 +248,6 @@ func testRememberTracesEmbedding(t *testing.T,
 		t.Errorf("tool steps = %s", got)
 	}
 }
-
-// aliasLLM extracts "Alicia lives in Berlin": an alias of the stored Alice, and a fact about no stored entity.
-type aliasLLM struct{}
 
 func (aliasLLM) Complete(context.Context,
 	llm.Request) (*llm.Response, error) {

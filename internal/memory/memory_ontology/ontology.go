@@ -20,20 +20,6 @@ import (
 	"strings"
 )
 
-// Edge kinds.
-const (
-	KindSubClassOf      = "subclass_of"
-	KindEquivalentClass = "equivalent_class"
-	KindDisjointWith    = "disjoint_with"
-	KindProperty        = "property"
-)
-
-const (
-	iriSubClassOf      = nsRDFS + "subClassOf"
-	iriEquivalentClass = nsOWL + "equivalentClass"
-	iriDisjointWith    = nsOWL + "disjointWith"
-)
-
 // Class is a named class of the ontology.
 type Class struct {
 	IRI     string
@@ -66,6 +52,26 @@ type Ontology struct {
 	Classes []Class
 	Edges   []Edge
 }
+
+type graphIndex struct {
+	order  []string             // subjects in order of first appearance
+	seen   map[string]bool      //
+	values map[[2]string][]term // (subject, predicate) -> objects
+}
+
+// Edge kinds.
+const (
+	KindSubClassOf      = "subclass_of"
+	KindEquivalentClass = "equivalent_class"
+	KindDisjointWith    = "disjoint_with"
+	KindProperty        = "property"
+)
+
+const (
+	iriSubClassOf      = nsRDFS + "subClassOf"
+	iriEquivalentClass = nsOWL + "equivalentClass"
+	iriDisjointWith    = nsOWL + "disjointWith"
+)
 
 // Properties returns the number of distinct properties that became edges.
 func (o *Ontology) Properties() int {
@@ -116,12 +122,6 @@ var objectPropertyTypes = map[string]bool{
 }
 
 var titlePredicates = []string{nsRDFS + "label", "http://purl.org/dc/elements/1.1/title", "http://purl.org/dc/terms/title"}
-
-type graphIndex struct {
-	order  []string             // subjects in order of first appearance
-	seen   map[string]bool      //
-	values map[[2]string][]term // (subject, predicate) -> objects
-}
 
 func newIndex(ts []triple) *graphIndex {
 	g := &graphIndex{

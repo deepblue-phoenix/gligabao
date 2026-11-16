@@ -15,6 +15,23 @@ import (
 	"strings"
 )
 
+// term is the object of a triple: an IRI, a blank node ("_:" prefix) or a literal.
+type term struct {
+	v   string
+	lit bool
+}
+
+type triple struct {
+	s, p string
+	o    term
+}
+
+type rdfParser struct {
+	dec     *xml.Decoder
+	triples []triple
+	nBlank  int
+}
+
 const (
 	nsRDF   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 	nsRDFS  = "http://www.w3.org/2000/01/rdf-schema#"
@@ -29,25 +46,8 @@ const (
 	rdfNil   = nsRDF + "nil"
 )
 
-// term is the object of a triple: an IRI, a blank node ("_:" prefix) or a literal.
-type term struct {
-	v   string
-	lit bool
-}
-
 func (t term) isBlank() bool { return !t.lit && strings.HasPrefix(t.v, "_:") }
 func (t term) isIRI() bool   { return !t.lit && !strings.HasPrefix(t.v, "_:") }
-
-type triple struct {
-	s, p string
-	o    term
-}
-
-type rdfParser struct {
-	dec     *xml.Decoder
-	triples []triple
-	nBlank  int
-}
 
 // parseRDFXML reads an RDF/XML document into triples, in document order.
 func parseRDFXML(r io.Reader) ([]triple, error) {

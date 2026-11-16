@@ -23,6 +23,28 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// job is the state of one Query call, after its setup (validation, options, trace): what the stages of the pipeline share.
+type job struct {
+	d *sql.DB
+	// lm records every call as an inference (and a step of the trajectory); each stage runs it on the model and the reasoning
+	// level the call sets for it (WithModels, WithReasoning), or the default ones (see CallOptions.ModelLLM).
+	lm        memory_core.LLM
+	tr        *memory_core.Trace
+	run       *runLog
+	co        memory_core.CallOptions
+	userID    string
+	dataset   string // already resolved
+	dsID      int64
+	sessionID string
+	radiusKm  float64 // the radius of the proximity search (see geoRadius)
+	query     string
+
+	// What the stages leave for the next ones.
+	rc     *queryContext // retrieve_graph
+	places []QueryPlace  // detect_geo
+	result *QueryResult  // query (or retrieve_graph, if there is nothing to answer from)
+}
+
 // Evidence lists the entities, edges and passages the answer is based on.
 type Evidence struct {
 	Entities []EvidenceEntity  `json:"entities"`
@@ -231,28 +253,6 @@ func Query(ctx context.Context,
 }
 
 //---------------------------------------------------------------------------------------------
-
-// job is the state of one Query call, after its setup (validation, options, trace): what the stages of the pipeline share.
-type job struct {
-	d *sql.DB
-	// lm records every call as an inference (and a step of the trajectory); each stage runs it on the model and the reasoning
-	// level the call sets for it (WithModels, WithReasoning), or the default ones (see CallOptions.ModelLLM).
-	lm        memory_core.LLM
-	tr        *memory_core.Trace
-	run       *runLog
-	co        memory_core.CallOptions
-	userID    string
-	dataset   string // already resolved
-	dsID      int64
-	sessionID string
-	radiusKm  float64 // the radius of the proximity search (see geoRadius)
-	query     string
-
-	// What the stages leave for the next ones.
-	rc     *queryContext // retrieve_graph
-	places []QueryPlace  // detect_geo
-	result *QueryResult  // query (or retrieve_graph, if there is nothing to answer from)
-}
 
 // countInContext is the in-context counter of the entities and edges of g, for the stage that gives them as context (see
 // memory_core.CountInContext): one event each, of this run.

@@ -13,6 +13,33 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 )
 
+// IndexStats is the state of one vector index of a dataset.
+type IndexStats struct {
+	//------------------
+	// MEMORY DATASET
+	Index memory_dataset.VectorIndex `json:"index"`
+	//------------------
+	// VectorDataset is the dataset's name in the vector store.
+	VectorDataset string `json:"vector_dataset"`
+	// Expected is the number of rows (entities, edges, chunk artifacts) that should have a vector in this index.
+	Expected int `json:"expected"`
+	vector.Stats
+}
+
+// DatasetVectorStats is the state of all the vector indexes of a dataset.
+type DatasetVectorStats struct {
+	// Backend is "" if there is no vector store, or it cannot report statistics.
+	Backend string       `json:"backend"`
+	Indexes []IndexStats `json:"indexes"`
+}
+
+// DatasetVectors is the vector state of one live dataset, in the list of VectorStatsAll.
+type DatasetVectors struct {
+	UserID  string `json:"user_id"`
+	Dataset string `json:"dataset"`
+	DatasetVectorStats
+}
+
 // WithVectors makes Remember embed the entities, edges and chunks it stores and write the embeddings to store, into the
 // dataset's vector datasets (one per index, see VectorDataset). Without it (or if either argument is nil)
 // Remember does not touch vectors.
@@ -50,26 +77,6 @@ func SummaryVectorID(artifactID int64) string {
 
 //---------------------------------------------------------------------------------------------
 
-// IndexStats is the state of one vector index of a dataset.
-type IndexStats struct {
-	//------------------
-	// MEMORY DATASET
-	Index memory_dataset.VectorIndex `json:"index"`
-	//------------------
-	// VectorDataset is the dataset's name in the vector store.
-	VectorDataset string `json:"vector_dataset"`
-	// Expected is the number of rows (entities, edges, chunk artifacts) that should have a vector in this index.
-	Expected int `json:"expected"`
-	vector.Stats
-}
-
-// DatasetVectorStats is the state of all the vector indexes of a dataset.
-type DatasetVectorStats struct {
-	// Backend is "" if there is no vector store, or it cannot report statistics.
-	Backend string       `json:"backend"`
-	Indexes []IndexStats `json:"indexes"`
-}
-
 // VectorStats reports, for every vector index of userID's live dataset name, the vectors the store holds next to the
 // number of rows that should have one. vectors may be nil (no indexes are listed then).
 // It returns ErrDatasetNotFound if there is no such dataset.
@@ -97,13 +104,6 @@ func VectorStats(ctx context.Context,
 		d,
 		vectors,
 		id)
-}
-
-// DatasetVectors is the vector state of one live dataset, in the list of VectorStatsAll.
-type DatasetVectors struct {
-	UserID  string `json:"user_id"`
-	Dataset string `json:"dataset"`
-	DatasetVectorStats
 }
 
 // VectorStatsAll is VectorStats for every live dataset (of all users) of the database d, oldest dataset first: what

@@ -20,15 +20,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// The most of a graph the LLM is shown: a larger graph is cut (its first entities and facts).
-const (
-	classifyMaxEntities = 150
-	classifyMaxEdges    = 300
-	// classifyKnownClasses is how many of the classes the dataset already uses the LLM is told of.
-	classifyKnownClasses = 30
-	classifyMaxTokens    = 256
-)
-
 // artifactGraph is the graph of one artifact the call stored: what the text (or the chunk) yielded, in its stored state.
 type artifactGraph struct {
 	ArtifactID int64
@@ -60,6 +51,15 @@ type ClassResult struct {
 	// Error is why the artifact has no classes: the LLM call failed, its answer was no use, or storing it failed.
 	Error string `json:"error,omitempty"`
 }
+
+// The most of a graph the LLM is shown: a larger graph is cut (its first entities and facts).
+const (
+	classifyMaxEntities = 150
+	classifyMaxEdges    = 300
+	// classifyKnownClasses is how many of the classes the dataset already uses the LLM is told of.
+	classifyKnownClasses = 30
+	classifyMaxTokens    = 256
+)
 
 // noteGraph keeps the graph of an artifact the call stored (res is what store returned for it), for classify_graph. An artifact that
 // yielded no entity and no fact has no graph.

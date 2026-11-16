@@ -17,15 +17,39 @@ import (
 	"time"
 )
 
+// DirSink writes the repository into a directory (created if needed).
+type DirSink struct{ Dir string }
+
+// TarGzSink writes the repository as a gzip-compressed tar archive, every entry under the directory Prefix
+// (e.g. "main.git"). The archive is deterministic: fixed times, owners and modes. Close it to finish the archive.
+type TarGzSink struct {
+	Prefix string
+	gz     *gzip.Writer
+	tw     *tar.Writer
+}
+
+// store writes git objects (as loose, zlib-compressed objects) to a sink, once each.
+type store struct {
+	sink Sink
+	seen map[string]bool
+	buf  bytes.Buffer
+}
+
+// dir is a directory of the repository's tree. Only the directories on the path of a changed file are rewritten
+// (dirty); the others keep the tree ID of the last commit.
+type dir struct {
+	files map[string]string // file name -> blob ID
+	dirs  map[string]*dir
+	id    string // tree ID, valid when !dirty
+	dirty bool
+}
+
 // Sink receives the files of a bare git repository: "HEAD", "config", "refs/heads/main" and the loose objects
 // "objects/ab/cdef...". Paths use "/" and are relative to the repository.
 type Sink interface {
 	WriteFile(path string,
 		data []byte) error
 }
-
-// DirSink writes the repository into a directory (created if needed).
-type DirSink struct{ Dir string }
 
 // WriteFile implements Sink.
 func (s DirSink) WriteFile(path string,
@@ -37,14 +61,6 @@ func (s DirSink) WriteFile(path string,
 	return os.WriteFile(full,
 		data,
 		0o644)
-}
-
-// TarGzSink writes the repository as a gzip-compressed tar archive, every entry under the directory Prefix
-// (e.g. "main.git"). The archive is deterministic: fixed times, owners and modes. Close it to finish the archive.
-type TarGzSink struct {
-	Prefix string
-	gz     *gzip.Writer
-	tw     *tar.Writer
 }
 
 // NewTarGzSink returns a TarGzSink that writes to w.
@@ -88,13 +104,6 @@ func (s *TarGzSink) Close() error {
 }
 
 //---------------------------------------------------------------------------------------------
-
-// store writes git objects (as loose, zlib-compressed objects) to a sink, once each.
-type store struct {
-	sink Sink
-	seen map[string]bool
-	buf  bytes.Buffer
-}
 
 func newStore(sink Sink) *store {
 	return &store{
@@ -152,15 +161,6 @@ func (s *store) commit(tree,
 }
 
 //---------------------------------------------------------------------------------------------
-
-// dir is a directory of the repository's tree. Only the directories on the path of a changed file are rewritten
-// (dirty); the others keep the tree ID of the last commit.
-type dir struct {
-	files map[string]string // file name -> blob ID
-	dirs  map[string]*dir
-	id    string // tree ID, valid when !dirty
-	dirty bool
-}
 
 func newDir() *dir {
 	return &dir{

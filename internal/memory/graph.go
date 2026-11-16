@@ -10,6 +10,17 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
+// ArtifactGraphExport is the graph of one artifact: the entities it mentions and the edges (facts) it stated.
+type ArtifactGraphExport struct {
+	Dataset    string `json:"dataset"`
+	ArtifactID int64  `json:"artifact_id"`
+	// WithChunks says that the graph also covers the chunks of the artifact (the extraction runs on the chunks of a long text).
+	WithChunks bool                   `json:"include_children"`
+	Entities   []graph.EvidenceEntity `json:"entities"`
+	Edges      []graph.EvidenceEdge   `json:"edges"`
+	Models     []relational.Model     `json:"models"`
+}
+
 // GraphExport is a whole dataset graph: its entities (nodes) and every edge (facts, expired ones included).
 type GraphExport struct {
 	Dataset  string                 `json:"dataset"`
@@ -153,17 +164,6 @@ func TopClasses(ctx context.Context,
 
 // ErrArtifactNotFound is returned when the artifact does not exist in the dataset.
 var ErrArtifactNotFound = errors.New("artifact not found")
-
-// ArtifactGraphExport is the graph of one artifact: the entities it mentions and the edges (facts) it stated.
-type ArtifactGraphExport struct {
-	Dataset    string `json:"dataset"`
-	ArtifactID int64  `json:"artifact_id"`
-	// WithChunks says that the graph also covers the chunks of the artifact (the extraction runs on the chunks of a long text).
-	WithChunks bool                   `json:"include_children"`
-	Entities   []graph.EvidenceEntity `json:"entities"`
-	Edges      []graph.EvidenceEdge   `json:"edges"`
-	Models     []relational.Model     `json:"models"`
-}
 
 // ExportArtifactGraph returns the graph of the artifact of userID's live dataset called name: the entities linked to it and
 // the edges (expired ones included) it created or restated, and with withChunks those of its chunks too. It returns

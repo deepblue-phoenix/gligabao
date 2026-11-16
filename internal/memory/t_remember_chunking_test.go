@@ -21,14 +21,14 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
-var personRe = regexp.MustCompile(`Person(\d+) works at Acme`)
-
 // personLLM extracts "PersonN works at Acme" for every such sentence of the text it is given (the <text> of an
 // extraction request; the other requests, which compare facts, are not expected here) and counts its extractions.
 type personLLM struct {
 	calls  int
 	failOn int // the 1-based call that fails; 0 = none
 }
+
+var personRe = regexp.MustCompile(`Person(\d+) works at Acme`)
 
 func (l *personLLM) Complete(_ context.Context,
 	req llm.Request) (*llm.Response, error) {

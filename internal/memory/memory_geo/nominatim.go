@@ -13,14 +13,6 @@ import (
 	"time"
 )
 
-// DefaultNominatimURL is the public Nominatim instance of OpenStreetMap. Its usage policy
-// (https://operations.osmfoundation.org/policies/nominatim/) allows at most one request per second and requires an
-// identifying User-Agent; Nominatim does both. For more than light use run your own instance (NominatimOptions.BaseURL).
-const DefaultNominatimURL = "https://nominatim.openstreetmap.org"
-
-// NominatimProvider is the name of the Nominatim resolver.
-const NominatimProvider = "nominatim"
-
 // NominatimOptions configures Nominatim; the zero value is the public instance with its policy kept.
 type NominatimOptions struct {
 	// BaseURL of the Nominatim server, without a trailing path; "" for DefaultNominatimURL.
@@ -47,6 +39,38 @@ type nominatim struct {
 	mu   sync.Mutex // serializes the requests, to keep the interval between them
 	last time.Time
 }
+
+// nominatimResult is one element of Nominatim's "jsonv2" search answer.
+type nominatimResult struct {
+	PlaceID     int64    `json:"place_id"`
+	OSMType     string   `json:"osm_type"`
+	OSMID       int64    `json:"osm_id"`
+	Lat         string   `json:"lat"`
+	Lon         string   `json:"lon"`
+	Category    string   `json:"category"`
+	Type        string   `json:"type"`
+	AddressType string   `json:"addresstype"`
+	PlaceRank   int      `json:"place_rank"`
+	Importance  float64  `json:"importance"`
+	DisplayName string   `json:"display_name"`
+	BoundingBox []string `json:"boundingbox"` // south, north, west, east
+	Address     struct {
+		Country     string `json:"country"`
+		CountryCode string `json:"country_code"`
+		State       string `json:"state"`
+		Region      string `json:"region"`
+		Province    string `json:"province"`
+		County      string `json:"county"`
+	} `json:"address"`
+}
+
+// DefaultNominatimURL is the public Nominatim instance of OpenStreetMap. Its usage policy
+// (https://operations.osmfoundation.org/policies/nominatim/) allows at most one request per second and requires an
+// identifying User-Agent; Nominatim does both. For more than light use run your own instance (NominatimOptions.BaseURL).
+const DefaultNominatimURL = "https://nominatim.openstreetmap.org"
+
+// NominatimProvider is the name of the Nominatim resolver.
+const NominatimProvider = "nominatim"
 
 // NewNominatim returns a resolver that asks a Nominatim server (OpenStreetMap geocoding) for the place.
 func NewNominatim(opts NominatimOptions) Resolver {
@@ -99,30 +123,6 @@ func (n *nominatim) wait(ctx context.Context) error {
 	}
 	n.last = time.Now()
 	return nil
-}
-
-// nominatimResult is one element of Nominatim's "jsonv2" search answer.
-type nominatimResult struct {
-	PlaceID     int64    `json:"place_id"`
-	OSMType     string   `json:"osm_type"`
-	OSMID       int64    `json:"osm_id"`
-	Lat         string   `json:"lat"`
-	Lon         string   `json:"lon"`
-	Category    string   `json:"category"`
-	Type        string   `json:"type"`
-	AddressType string   `json:"addresstype"`
-	PlaceRank   int      `json:"place_rank"`
-	Importance  float64  `json:"importance"`
-	DisplayName string   `json:"display_name"`
-	BoundingBox []string `json:"boundingbox"` // south, north, west, east
-	Address     struct {
-		Country     string `json:"country"`
-		CountryCode string `json:"country_code"`
-		State       string `json:"state"`
-		Region      string `json:"region"`
-		Province    string `json:"province"`
-		County      string `json:"county"`
-	} `json:"address"`
 }
 
 func (n *nominatim) Resolve(ctx context.Context,

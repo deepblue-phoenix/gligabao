@@ -2,6 +2,17 @@ package memory_geo
 
 import "math"
 
+// LonRange is a range of longitudes in degrees, Min <= Max, both within -180..180.
+type LonRange struct{ Min, Max float64 }
+
+// Box is the bounding box of a circle: the latitudes MinLat..MaxLat and one or two longitude ranges (two when the circle crosses
+// the antimeridian: -180 and 180 are the same meridian). A circle that contains a pole, or is wider than the Earth, has the one
+// range -180..180.
+type Box struct {
+	MinLat, MaxLat float64
+	Lon            []LonRange
+}
+
 // EarthRadiusKm is the mean radius of the Earth, which the distances below use (a sphere: the error against WGS 84 is under 0.5%).
 const EarthRadiusKm = 6371.0088
 
@@ -17,17 +28,6 @@ func DistanceKm(lat1,
 	dp, dl := p2-p1, (lon2-lon1)*math.Pi/180
 	a := math.Sin(dp/2)*math.Sin(dp/2) + math.Cos(p1)*math.Cos(p2)*math.Sin(dl/2)*math.Sin(dl/2)
 	return 2 * EarthRadiusKm * math.Asin(math.Min(1, math.Sqrt(a)))
-}
-
-// LonRange is a range of longitudes in degrees, Min <= Max, both within -180..180.
-type LonRange struct{ Min, Max float64 }
-
-// Box is the bounding box of a circle: the latitudes MinLat..MaxLat and one or two longitude ranges (two when the circle crosses
-// the antimeridian: -180 and 180 are the same meridian). A circle that contains a pole, or is wider than the Earth, has the one
-// range -180..180.
-type Box struct {
-	MinLat, MaxLat float64
-	Lon            []LonRange
 }
 
 // BoundingBox returns the smallest box that contains every point within radiusKm of (lat, lon). It is a prefilter for a proximity

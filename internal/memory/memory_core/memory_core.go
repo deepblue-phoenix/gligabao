@@ -15,6 +15,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// recordingLLM wraps an LLM and stores a gb_inferences row (model, thinking level, tokens, cost) for every successful call.
+// Runs are recorded as the calls happen, so cost is kept even if a later step of the operation fails.
+type recordingLLM struct {
+	LLM
+	db   *sql.DB
+	kind string
+}
+
+type inferenceSinkKey struct{}
+
 //---------------------------------------------------------------------------------------------
 
 // LLM is the subset of llm.Client used here.
@@ -31,14 +41,6 @@ type WebSearcher interface {
 }
 
 //---------------------------------------------------------------------------------------------
-
-// recordingLLM wraps an LLM and stores a gb_inferences row (model, thinking level, tokens, cost) for every successful call.
-// Runs are recorded as the calls happen, so cost is kept even if a later step of the operation fails.
-type recordingLLM struct {
-	LLM
-	db   *sql.DB
-	kind string
-}
 
 // WithRecording returns llm with every successful call stored in gb_inferences as a run of an operation of the given
 // kind (the type of the run). The stage comes from the context (see WithStage) and the thinking level is the one the call
@@ -131,8 +133,6 @@ func NoteInference(ctx context.Context,
 		sink(id)
 	}
 }
-
-type inferenceSinkKey struct{}
 
 // WithInferenceSink returns ctx that makes RecordRun pass the ID of every inference it records to sink, replacing the sink of
 // ctx if it had one. The pipeline runner (package memory_pipeline) sets it for each stage, so that the run log of the call

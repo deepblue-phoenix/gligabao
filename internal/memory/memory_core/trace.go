@@ -22,31 +22,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TrajectoryDir is where Remember, Query and RememberImage store their ATIF trajectories (one pretty-printed JSON
-// file per call, named <trajectory_id>.json). It is read on every call; set it once at startup, or override it per
-// call with WithTrajectoryDir.
-var TrajectoryDir = "build/atif"
-
-const agentVersion = "0.1"
-
-//---------------------------------------------------------------------------------------------
-
-// Embedder turns texts into embeddings (see llm.Embedder), one per text and in the same order, and reports the usage.
-type Embedder interface {
-	EmbedBatchUsage(ctx context.Context,
-		texts []string) ([][]float32, *llm.EmbedUsage, error)
-}
-
-// Classifier is Jev (see package jev), the system 1 model, as far as the pipelines need it. *jev.Client implements it.
-type Classifier interface {
-	// Classify judges how many entities a text will yield. The jev.Call is valid even when the error is not nil.
-	Classify(ctx context.Context,
-		text string) (*jev.Classification, jev.Call, error)
-}
-
-// Option customizes a single Remember, Query or RememberImage call. Without WithEval no trajectory is generated.
-type Option func(*CallOptions)
-
 // CallOptions are the settings of one call, built from Options by NewCallOptions. Each pipeline reads the fields
 // it uses and ignores the others.
 type CallOptions struct {
@@ -132,6 +107,68 @@ type CallOptions struct {
 	ErrSink gberrors.Sink
 }
 
+// ProgressEvent is one step of a call that is in progress: what the pipeline is doing, for a client that watches it.
+type ProgressEvent struct {
+	Step    string         `json:"step"`              // e.g. "extract_image", "extract_graph"
+	Status  string         `json:"status"`            // "started", "succeeded", "failed", "skipped" or "info"
+	Message string         `json:"message,omitempty"` // human readable
+	Data    map[string]any `json:"data,omitempty"`
+	At      time.Time      `json:"at"`
+}
+
+// Trace records one Remember/Query/RememberImage call as an ATIF trajectory. A nil *Trace (eval not requested) is
+// valid and records nothing, so callers need no checks.
+type Trace struct {
+	b   *atif.Builder
+	dir string
+
+	mu       sync.Mutex
+	warnings []string
+}
+
+// ToolTiming is what TimedTool records about a step besides its arguments and result: which model ran it, when it
+// started and how long it took, and its tokens (0 if unknown; the cost is not known for models outside the price table).
+type ToolTiming struct {
+	Model, Provider  string
+	Started          time.Time
+	Latency          time.Duration
+	PromptTokens     int
+	CompletionTokens int
+	CostUSD          float64
+}
+
+// tracingLLM records each LLM call: the system prompt and input messages, then the model's output with its metrics.
+type tracingLLM struct {
+	LLM
+	b *atif.Builder
+	t *Trace
+}
+
+// TrajectoryDir is where Remember, Query and RememberImage store their ATIF trajectories (one pretty-printed JSON
+// file per call, named <trajectory_id>.json). It is read on every call; set it once at startup, or override it per
+// call with WithTrajectoryDir.
+var TrajectoryDir = "build/atif"
+
+const agentVersion = "0.1"
+
+//---------------------------------------------------------------------------------------------
+
+// Embedder turns texts into embeddings (see llm.Embedder), one per text and in the same order, and reports the usage.
+type Embedder interface {
+	EmbedBatchUsage(ctx context.Context,
+		texts []string) ([][]float32, *llm.EmbedUsage, error)
+}
+
+// Classifier is Jev (see package jev), the system 1 model, as far as the pipelines need it. *jev.Client implements it.
+type Classifier interface {
+	// Classify judges how many entities a text will yield. The jev.Call is valid even when the error is not nil.
+	Classify(ctx context.Context,
+		text string) (*jev.Classification, jev.Call, error)
+}
+
+// Option customizes a single Remember, Query or RememberImage call. Without WithEval no trajectory is generated.
+type Option func(*CallOptions)
+
 // NewCallOptions applies opts on top of the defaults.
 func NewCallOptions(opts []Option) CallOptions {
 	o := CallOptions{
@@ -159,15 +196,6 @@ func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID
 // WithRememberRunID makes Remember log the call in the existing run log row with that ID (created when the request was
 // queued, see memory_remember.Manager) instead of creating one. Without it (or with 0) Remember creates the row itself.
 func WithRememberRunID(id int64) Option { return func(o *CallOptions) { o.RememberRunID = id } }
-
-// ProgressEvent is one step of a call that is in progress: what the pipeline is doing, for a client that watches it.
-type ProgressEvent struct {
-	Step    string         `json:"step"`              // e.g. "extract_image", "extract_graph"
-	Status  string         `json:"status"`            // "started", "succeeded", "failed", "skipped" or "info"
-	Message string         `json:"message,omitempty"` // human readable
-	Data    map[string]any `json:"data,omitempty"`
-	At      time.Time      `json:"at"`
-}
 
 // WithProgress makes the call report its steps to f as it goes (RememberImage and the stages of the text pipeline it runs).
 func WithProgress(f func(ProgressEvent)) Option { return func(o *CallOptions) { o.Progress = f } }
@@ -222,16 +250,6 @@ func WithTrace(tr *Trace) Option { return func(o *CallOptions) { o.Trace = tr } 
 func WithTrajectoryDir(dir string) Option { return func(o *CallOptions) { o.Dir = dir } }
 
 //---------------------------------------------------------------------------------------------
-
-// Trace records one Remember/Query/RememberImage call as an ATIF trajectory. A nil *Trace (eval not requested) is
-// valid and records nothing, so callers need no checks.
-type Trace struct {
-	b   *atif.Builder
-	dir string
-
-	mu       sync.Mutex
-	warnings []string
-}
 
 // Warn records something the operator should know about the call although it succeeded (e.g. a model that did not take the
 // thinking level asked for). The warnings are kept in the "warnings" of the trajectory's extra, once each. A nil Trace ignores it.
@@ -372,17 +390,6 @@ func (t *Trace) EmbedStep(message,
 		string(b))
 }
 
-// ToolTiming is what TimedTool records about a step besides its arguments and result: which model ran it, when it
-// started and how long it took, and its tokens (0 if unknown; the cost is not known for models outside the price table).
-type ToolTiming struct {
-	Model, Provider  string
-	Started          time.Time
-	Latency          time.Duration
-	PromptTokens     int
-	CompletionTokens int
-	CostUSD          float64
-}
-
 // TimedTool is Tool for a step that took measurable time (a call to a model other than the LLM client's): the step's
 // timestamp is the start of the call, and its extra holds latency_ms, started_at and the provider, so latency can be
 // compared across runs.
@@ -436,13 +443,6 @@ func describeImages(images []llm.Image) string {
 			len(im.Data))
 	}
 	return sb.String()
-}
-
-// tracingLLM records each LLM call: the system prompt and input messages, then the model's output with its metrics.
-type tracingLLM struct {
-	LLM
-	b *atif.Builder
-	t *Trace
 }
 
 func (l *tracingLLM) Complete(ctx context.Context,

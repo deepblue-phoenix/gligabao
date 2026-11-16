@@ -15,6 +15,43 @@ import (
 	"strings"
 )
 
+// Query is what a Resolver is asked for.
+type Query struct {
+	// Text is what to look for: the name of the place, with whatever disambiguates it ("Paris, France", "Springfield, Illinois").
+	Text string
+	// Kind is what the place is (see the Kind constants); "" if not known. A resolver may use it to prefer a result of that kind.
+	Kind string
+	// CountryCode (ISO 3166-1 alpha-2) restricts the search to a country; "" for anywhere.
+	CountryCode string
+}
+
+// Place is a place a Resolver found.
+type Place struct {
+	// Latitude and Longitude are in degrees (WGS 84).
+	Latitude, Longitude float64
+	// Kind is what the place is (see the Kind constants), as far as the resolver can tell; "" if it cannot.
+	Kind string
+	// DisplayName is the full name of the place ("Paris, Île-de-France, Metropolitan France, France").
+	DisplayName string
+	// Country (the name), CountryCode (ISO 3166-1 alpha-2, lowercase) and Region (state, province, ...) the place lies in; "" if unknown.
+	Country, CountryCode, Region string
+	// Type is the resolver's own type of the place ("city", "administrative", "peak", ...); "" if it has none.
+	Type string
+	// BBox is the bounding box of the place, south, west, north, east in degrees; nil if the resolver gives none.
+	BBox *[4]float64
+	// Importance is how prominent the place is, 0..1; 0 if the resolver does not say.
+	Importance float64
+	// Provider is the name of the resolver; Ref is the ID of the place there (e.g. "node/12345"), "" if it has none.
+	Provider, Ref string
+}
+
+// Func adapts a function to a Resolver.
+type Func struct {
+	ResolverName string
+	Fn           func(ctx context.Context,
+		q Query) (*Place, error)
+}
+
 // The kinds of place. A kind says what the place is, not how it is mapped: a country is a country whatever the source calls it.
 const (
 	KindCountry = "country"
@@ -48,36 +85,6 @@ var NotPlaceTypes = map[string]bool{"person": true, "concept": true, "product": 
 // ErrNotFound means the resolver knows no place for the query. It is an answer, not a failure of the resolver.
 var ErrNotFound = errors.New("geo: place not found")
 
-// Query is what a Resolver is asked for.
-type Query struct {
-	// Text is what to look for: the name of the place, with whatever disambiguates it ("Paris, France", "Springfield, Illinois").
-	Text string
-	// Kind is what the place is (see the Kind constants); "" if not known. A resolver may use it to prefer a result of that kind.
-	Kind string
-	// CountryCode (ISO 3166-1 alpha-2) restricts the search to a country; "" for anywhere.
-	CountryCode string
-}
-
-// Place is a place a Resolver found.
-type Place struct {
-	// Latitude and Longitude are in degrees (WGS 84).
-	Latitude, Longitude float64
-	// Kind is what the place is (see the Kind constants), as far as the resolver can tell; "" if it cannot.
-	Kind string
-	// DisplayName is the full name of the place ("Paris, Île-de-France, Metropolitan France, France").
-	DisplayName string
-	// Country (the name), CountryCode (ISO 3166-1 alpha-2, lowercase) and Region (state, province, ...) the place lies in; "" if unknown.
-	Country, CountryCode, Region string
-	// Type is the resolver's own type of the place ("city", "administrative", "peak", ...); "" if it has none.
-	Type string
-	// BBox is the bounding box of the place, south, west, north, east in degrees; nil if the resolver gives none.
-	BBox *[4]float64
-	// Importance is how prominent the place is, 0..1; 0 if the resolver does not say.
-	Importance float64
-	// Provider is the name of the resolver; Ref is the ID of the place there (e.g. "node/12345"), "" if it has none.
-	Provider, Ref string
-}
-
 // Validate says whether the place has usable coordinates.
 func (p Place) Validate() error {
 	switch {
@@ -98,13 +105,6 @@ type Resolver interface {
 	// Resolve returns the best place for the query, or ErrNotFound if there is none. Any other error means the resolver failed
 	// (network, quota, ...): the query may succeed later. It must be safe for concurrent use.
 	Resolve(ctx context.Context,
-		q Query) (*Place, error)
-}
-
-// Func adapts a function to a Resolver.
-type Func struct {
-	ResolverName string
-	Fn           func(ctx context.Context,
 		q Query) (*Place, error)
 }
 

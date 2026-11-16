@@ -12,24 +12,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// The graph embedder hook: a callback of the program that embeds gligabao (gligabao.ServeOptions.GraphEmbedder, see docs/hooks.md) that
-// turns a graph (the entities and facts of a remember call, or the context a query is answered from) into ONE embedding of the graph
-// as a whole, which is different from the text embeddings of the entities, edges and chunks that the pipelines already write to the
-// vector store (WithVectors). The embedding is meant to come from a custom model that is trained for graphs.
-//
-// IMPORTANT: the embeddings that the hook returns are NOT stored anywhere yet. For now gligabao calls the hook and discards the
-// result. They MUST be stored in the vector store (CallOptions.Vectors, in a vector dataset of their own) before anything relies on them;
-// until then the hook is only a place where the call happens, and nothing can be searched by it. Every call site below (and the docs)
-// repeats this on purpose, so that it is not forgotten when the hook starts to do real work.
-
-// Graph embedding events: which pipeline the graph is from (the values of graph.InContextEvent.Pipeline).
-const (
-	// GraphEmbedRemember: the graph a Remember call made, once it is fully constructed.
-	GraphEmbedRemember = graph.PipelineRemember
-	// GraphEmbedQuery: the graph context a Query call fetched for the question, before the answer is made from it.
-	GraphEmbedQuery = graph.PipelineQuery
-)
-
 // GraphEmbedRequest is the graph a GraphEmbedder is asked to embed.
 //
 // IMPORTANT: whoever stores the result in the vector store (not done yet, see the note above) needs a key for it: use Pipeline with
@@ -55,6 +37,24 @@ type GraphEmbedRequest struct {
 	Entities []graph.EvidenceEntity
 	Edges    []graph.EvidenceEdge
 }
+
+// The graph embedder hook: a callback of the program that embeds gligabao (gligabao.ServeOptions.GraphEmbedder, see docs/hooks.md) that
+// turns a graph (the entities and facts of a remember call, or the context a query is answered from) into ONE embedding of the graph
+// as a whole, which is different from the text embeddings of the entities, edges and chunks that the pipelines already write to the
+// vector store (WithVectors). The embedding is meant to come from a custom model that is trained for graphs.
+//
+// IMPORTANT: the embeddings that the hook returns are NOT stored anywhere yet. For now gligabao calls the hook and discards the
+// result. They MUST be stored in the vector store (CallOptions.Vectors, in a vector dataset of their own) before anything relies on them;
+// until then the hook is only a place where the call happens, and nothing can be searched by it. Every call site below (and the docs)
+// repeats this on purpose, so that it is not forgotten when the hook starts to do real work.
+
+// Graph embedding events: which pipeline the graph is from (the values of graph.InContextEvent.Pipeline).
+const (
+	// GraphEmbedRemember: the graph a Remember call made, once it is fully constructed.
+	GraphEmbedRemember = graph.PipelineRemember
+	// GraphEmbedQuery: the graph context a Query call fetched for the question, before the answer is made from it.
+	GraphEmbedQuery = graph.PipelineQuery
+)
 
 // ErrInvalidGraphIndex means the name of a graph embedding index is malformed.
 var ErrInvalidGraphIndex = errors.New("invalid graph_index")

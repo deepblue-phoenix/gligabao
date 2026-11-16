@@ -12,6 +12,49 @@ import (
 	"unicode/utf8"
 )
 
+// Config sets how a text is chunked.
+type Config struct {
+	// Size is the largest chunk, in tokens, overlap included. 0 means DefaultSize.
+	Size int
+	// OverlapPercent is how much of the previous chunk is repeated at the start of the next one, as a percentage of
+	// Size (0 = no overlap). Use DefaultConfig for the default of DefaultOverlapPercent.
+	OverlapPercent int
+	// Tokenizer counts tokens. nil means Estimator.
+	Tokenizer Tokenizer
+}
+
+// Chunk is one piece of a text.
+type Chunk struct {
+	// Index is the position of the chunk in the text, from 0.
+	Index int
+	// Text is the chunk: text[Start:End] of the original, so consecutive chunks keep the original separators.
+	Text string
+	// Tokens is the token count of Text.
+	Tokens int
+	// Start and End are the byte offsets of Text in the original text.
+	Start, End int
+	// OverlapTokens is the size of the part at the start of Text that repeats the end of the previous chunk (0 for
+	// the first chunk, and when no overlap fits).
+	OverlapTokens int
+}
+
+// unit is a span text[start:end] (no leading or trailing whitespace) that fits one chunk.
+type unit struct {
+	start, end, tokens int
+}
+
+type splitter struct {
+	text string
+	tok  Tokenizer
+	size int
+	// cutSize is the largest unit made by cutting a sentence into words (or a word into pieces): size less the
+	// overlap, so that a chunk made of such a unit still has room for its overlap.
+	cutSize int
+}
+
+// span is a byte range of the text.
+type span struct{ start, end int }
+
 const (
 	// DefaultSize is the default chunk size in tokens (and so the size above which a text is chunked).
 	DefaultSize = 1024
@@ -25,17 +68,6 @@ const (
 	// MaxOverlapPercent bounds Config.OverlapPercent: more than half of a chunk repeated is mostly waste.
 	MaxOverlapPercent = 50
 )
-
-// Config sets how a text is chunked.
-type Config struct {
-	// Size is the largest chunk, in tokens, overlap included. 0 means DefaultSize.
-	Size int
-	// OverlapPercent is how much of the previous chunk is repeated at the start of the next one, as a percentage of
-	// Size (0 = no overlap). Use DefaultConfig for the default of DefaultOverlapPercent.
-	OverlapPercent int
-	// Tokenizer counts tokens. nil means Estimator.
-	Tokenizer Tokenizer
-}
 
 // DefaultConfig is DefaultSize tokens with DefaultOverlapPercent overlap, counted by Estimator.
 func DefaultConfig() Config {
@@ -77,21 +109,6 @@ func (c Config) Validate() error {
 func (c Config) NeedsChunking(text string) bool {
 	c = c.WithDefaults()
 	return c.Tokenizer.Count(text) > c.Size
-}
-
-// Chunk is one piece of a text.
-type Chunk struct {
-	// Index is the position of the chunk in the text, from 0.
-	Index int
-	// Text is the chunk: text[Start:End] of the original, so consecutive chunks keep the original separators.
-	Text string
-	// Tokens is the token count of Text.
-	Tokens int
-	// Start and End are the byte offsets of Text in the original text.
-	Start, End int
-	// OverlapTokens is the size of the part at the start of Text that repeats the end of the previous chunk (0 for
-	// the first chunk, and when no overlap fits).
-	OverlapTokens int
 }
 
 //---------------------------------------------------------------------------------------------
@@ -192,23 +209,6 @@ func Split(text string,
 }
 
 //---------------------------------------------------------------------------------------------
-
-// unit is a span text[start:end] (no leading or trailing whitespace) that fits one chunk.
-type unit struct {
-	start, end, tokens int
-}
-
-type splitter struct {
-	text string
-	tok  Tokenizer
-	size int
-	// cutSize is the largest unit made by cutting a sentence into words (or a word into pieces): size less the
-	// overlap, so that a chunk made of such a unit still has room for its overlap.
-	cutSize int
-}
-
-// span is a byte range of the text.
-type span struct{ start, end int }
 
 // units splits the whole text: paragraphs, with the oversized ones broken down further.
 func (s *splitter) units() []unit {

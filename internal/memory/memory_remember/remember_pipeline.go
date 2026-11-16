@@ -22,6 +22,19 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 )
 
+// unit is a text that goes through the reconcile stages, with what they make of it: the text of the call, a chunk of it, or a
+// text of an enrichment stage.
+type unit struct {
+	text string
+	ex   *Extraction
+	// part says the text is a chunk of a longer one; nil if it is not.
+	part *chunkPart
+
+	cs   *candidates               // load_candidates
+	plan *memory_temporal.EdgePlan // resolve_edges
+	res  *Result                   // store
+}
+
 //------------------
 // MEMORY PIPELINE
 
@@ -135,19 +148,6 @@ var reconcileSteps = []memory_pipeline.Step[job]{
 }
 
 //------------------
-
-// unit is a text that goes through the reconcile stages, with what they make of it: the text of the call, a chunk of it, or a
-// text of an enrichment stage.
-type unit struct {
-	text string
-	ex   *Extraction
-	// part says the text is a chunk of a longer one; nil if it is not.
-	part *chunkPart
-
-	cs   *candidates               // load_candidates
-	plan *memory_temporal.EdgePlan // resolve_edges
-	res  *Result                   // store
-}
 
 // reconcile runs the reconcile stages on a text that an enrichment stage made (a web search result, a series observation), from
 // which ex was extracted, and returns what was stored. The job is the one of the enrichment stage, with its own run log view

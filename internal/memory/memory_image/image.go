@@ -33,6 +33,58 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// ImageExtraction is what the LLM read from an image.
+type ImageExtraction struct {
+	Theme      string           `json:"theme"`       // what the whole image is, one of ImageThemes
+	Title      string           `json:"title"`       // the image's own title; "" if it has none
+	Text       string           `json:"text"`        // all the text, the blocks joined by newlines
+	TextBlocks []ImageTextBlock `json:"text_blocks"` // in reading order
+	// Description is a prose account of what the image shows and how its elements relate; "" if there is nothing to
+	// relate (e.g. a photo, or an image with only text). It is what the graph of the image is extracted from.
+	Description string `json:"description"`
+
+	// The call that produced it.
+	Provider     string  `json:"provider,omitempty"`
+	Model        string  `json:"model,omitempty"`
+	InputTokens  int     `json:"input_tokens,omitempty"`
+	OutputTokens int     `json:"output_tokens,omitempty"`
+	CostUSD      float64 `json:"cost_usd,omitempty"`
+	Raw          string  `json:"-"` // the model's output as received
+}
+
+// ImageResult summarizes what RememberImage stored.
+type ImageResult struct {
+	UserID  string `json:"user_id"`
+	Dataset string `json:"dataset"`
+	// Pipeline is always "image": it tells this result from that of the text pipeline (Result).
+	Pipeline        string `json:"pipeline"`
+	ImageArtifactID int64  `json:"image_artifact_id"`
+	// SessionID is the session the image artifact is attached to (omitted if none). For a Cached result it is the
+	// session of the stored artifact, which is the one that first remembered the image, not necessarily this call's.
+	SessionID    string `json:"session_id,omitempty"`
+	ExtractionID int64  `json:"extraction_id"`
+	MediaType    string `json:"media_type"`
+	SHA256       string `json:"sha256"`
+	SizeBytes    int    `json:"size_bytes"`
+	Path         string `json:"path"` // the file, relative to the image directory
+	// Cached is true if the dataset already had this image (same SHA-256): nothing was sent to the LLM or stored, and
+	// this is the stored result of the earlier call, including its model, tokens and cost, which were spent then.
+	Cached    bool      `json:"cached"`
+	ValidAt   time.Time `json:"valid_at"`   // event time of the image
+	CreatedAt time.Time `json:"created_at"` // ingestion time
+	ImageExtraction
+	// ArtifactID is the text artifact (gb_artifacts) the description was remembered as, which owns the graph of the
+	// image (Entities and Edges, and the artifact graph endpoints); 0 (omitted) if the image has no description.
+	ArtifactID int64 `json:"artifact_id,omitempty"`
+	// Entities and Edges are the graph just extracted from the image; omitted for a Cached result (read the graph of
+	// ArtifactID instead).
+	Entities []memory_remember.Entity `json:"entities,omitempty"`
+	Edges    []memory_remember.Edge   `json:"edges,omitempty"`
+	// TrajectoryID and Trajectory: see Result.
+	TrajectoryID string           `json:"trajectory_id,omitempty"`
+	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
+}
+
 //---------------------------------------------------------------------------------------------
 
 // ImageDir is where RememberImage stores the image files (see image_store.go); the database only tracks them.
@@ -104,25 +156,6 @@ func ResolveImage(data []byte) (string, error) {
 
 // ImageTextBlock is one region of text found in an image, with its role (title, paragraph, label, ...).
 type ImageTextBlock = graph.ImageTextBlock
-
-// ImageExtraction is what the LLM read from an image.
-type ImageExtraction struct {
-	Theme      string           `json:"theme"`       // what the whole image is, one of ImageThemes
-	Title      string           `json:"title"`       // the image's own title; "" if it has none
-	Text       string           `json:"text"`        // all the text, the blocks joined by newlines
-	TextBlocks []ImageTextBlock `json:"text_blocks"` // in reading order
-	// Description is a prose account of what the image shows and how its elements relate; "" if there is nothing to
-	// relate (e.g. a photo, or an image with only text). It is what the graph of the image is extracted from.
-	Description string `json:"description"`
-
-	// The call that produced it.
-	Provider     string  `json:"provider,omitempty"`
-	Model        string  `json:"model,omitempty"`
-	InputTokens  int     `json:"input_tokens,omitempty"`
-	OutputTokens int     `json:"output_tokens,omitempty"`
-	CostUSD      float64 `json:"cost_usd,omitempty"`
-	Raw          string  `json:"-"` // the model's output as received
-}
 
 // ExtractImage sends the image (of a media type from ResolveImage) to the LLM, which reads its text and classifies it.
 func ExtractImage(ctx context.Context,
@@ -219,39 +252,6 @@ func oneOf(s string,
 }
 
 //---------------------------------------------------------------------------------------------
-
-// ImageResult summarizes what RememberImage stored.
-type ImageResult struct {
-	UserID  string `json:"user_id"`
-	Dataset string `json:"dataset"`
-	// Pipeline is always "image": it tells this result from that of the text pipeline (Result).
-	Pipeline        string `json:"pipeline"`
-	ImageArtifactID int64  `json:"image_artifact_id"`
-	// SessionID is the session the image artifact is attached to (omitted if none). For a Cached result it is the
-	// session of the stored artifact, which is the one that first remembered the image, not necessarily this call's.
-	SessionID    string `json:"session_id,omitempty"`
-	ExtractionID int64  `json:"extraction_id"`
-	MediaType    string `json:"media_type"`
-	SHA256       string `json:"sha256"`
-	SizeBytes    int    `json:"size_bytes"`
-	Path         string `json:"path"` // the file, relative to the image directory
-	// Cached is true if the dataset already had this image (same SHA-256): nothing was sent to the LLM or stored, and
-	// this is the stored result of the earlier call, including its model, tokens and cost, which were spent then.
-	Cached    bool      `json:"cached"`
-	ValidAt   time.Time `json:"valid_at"`   // event time of the image
-	CreatedAt time.Time `json:"created_at"` // ingestion time
-	ImageExtraction
-	// ArtifactID is the text artifact (gb_artifacts) the description was remembered as, which owns the graph of the
-	// image (Entities and Edges, and the artifact graph endpoints); 0 (omitted) if the image has no description.
-	ArtifactID int64 `json:"artifact_id,omitempty"`
-	// Entities and Edges are the graph just extracted from the image; omitted for a Cached result (read the graph of
-	// ArtifactID instead).
-	Entities []memory_remember.Entity `json:"entities,omitempty"`
-	Edges    []memory_remember.Edge   `json:"edges,omitempty"`
-	// TrajectoryID and Trajectory: see Result.
-	TrajectoryID string           `json:"trajectory_id,omitempty"`
-	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
-}
 
 // PipelineImage is ImageResult.Pipeline.
 const PipelineImage = "image"

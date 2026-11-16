@@ -9,6 +9,30 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 )
 
+// KnowledgeDataset is what a dataset has stored: all its artifacts (of every kind: texts, chunks, web searches, ...) and the graphs that
+// come with them.
+type KnowledgeDataset struct {
+	// UserID and Dataset (already resolved) say which dataset it is; DatasetID is its ID.
+	UserID, Dataset string
+	DatasetID       int64
+	// Artifacts are all the artifacts of the dataset, in the order of their IDs.
+	Artifacts []graph.Artifact
+	// Graphs are the graphs of the artifacts that have one, in the order of the artifact IDs.
+	Graphs []ArtifactGraph
+	// TopClassesFunc reads the top classes of the dataset (set by gligabao when it loads the dataset; use TopClasses).
+	TopClassesFunc func(ctx context.Context,
+		n int) ([]graph.ClassCount, error)
+}
+
+// TrainingDataset is the superset of a KnowledgeDataset that a training works from: the knowledge dataset (all of it, or a filtered
+// subset) and, for each of the graphs in it, the class it belongs to.
+type TrainingDataset struct {
+	KnowledgeDataset
+	// Classes has the class of each graph of the dataset, by the ID of the artifact the graph is of (ArtifactGraph.ArtifactID): every
+	// graph has one, and a class is a non-empty name.
+	Classes map[int64]string
+}
+
 // The classifying training hook: a callback of the program that embeds gligabao (gligabao.ServeOptions.ClassifyingTrainingHook, see
 // docs/hooks.md) that makes the training dataset of a classifier of graphs out of a knowledge dataset. gligabao hands it the whole
 // dataset (every artifact and the graph of each), and it answers with a TrainingDataset: the knowledge dataset it wants to train on,
@@ -33,21 +57,6 @@ type ArtifactGraph struct {
 // ArtifactClass is one class an LLM gave to the graph of an artifact (a record of gb_artifact_classes), with the run of the model call.
 type ArtifactClass = graph.ArtifactClass
 
-// KnowledgeDataset is what a dataset has stored: all its artifacts (of every kind: texts, chunks, web searches, ...) and the graphs that
-// come with them.
-type KnowledgeDataset struct {
-	// UserID and Dataset (already resolved) say which dataset it is; DatasetID is its ID.
-	UserID, Dataset string
-	DatasetID       int64
-	// Artifacts are all the artifacts of the dataset, in the order of their IDs.
-	Artifacts []graph.Artifact
-	// Graphs are the graphs of the artifacts that have one, in the order of the artifact IDs.
-	Graphs []ArtifactGraph
-	// TopClassesFunc reads the top classes of the dataset (set by gligabao when it loads the dataset; use TopClasses).
-	TopClassesFunc func(ctx context.Context,
-		n int) ([]graph.ClassCount, error)
-}
-
 // TopClasses returns the n classes most given to the artifact graphs of the whole dataset (not only of the graphs in ds, which a hook may
 // have filtered), each with the number of artifacts it was given to, the most frequent first. It is the function behind
 // GET /v1/gb/datasets/{name}/classes, and reads the database, so it only works on a dataset gligabao loaded (else it returns an error).
@@ -57,15 +66,6 @@ func (ds KnowledgeDataset) TopClasses(ctx context.Context,
 		return nil, errors.New("top classes: the knowledge dataset was not loaded by gligabao")
 	}
 	return ds.TopClassesFunc(ctx, n)
-}
-
-// TrainingDataset is the superset of a KnowledgeDataset that a training works from: the knowledge dataset (all of it, or a filtered
-// subset) and, for each of the graphs in it, the class it belongs to.
-type TrainingDataset struct {
-	KnowledgeDataset
-	// Classes has the class of each graph of the dataset, by the ID of the artifact the graph is of (ArtifactGraph.ArtifactID): every
-	// graph has one, and a class is a non-empty name.
-	Classes map[int64]string
 }
 
 // ErrInvalidTrainingDataset means the training dataset a training hook returned is not a valid one (see ClassifyingTrainingHook).

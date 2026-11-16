@@ -17,9 +17,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
-// ErrAnchor means an anchor with on_unmatched "error" (or an ID) matched nothing in the dataset. Nothing is stored.
-var ErrAnchor = errors.New("series anchor not found")
-
 // Result is one stored series.
 type Result struct {
 	ID        int64  `json:"id"`
@@ -53,6 +50,9 @@ type AnchorResult struct {
 	// Created says the entity was created by the anchor (on_unmatched "create"): the text did not mention it.
 	Created bool `json:"created,omitempty"`
 }
+
+// ErrAnchor means an anchor with on_unmatched "error" (or an ID) matched nothing in the dataset. Nothing is stored.
+var ErrAnchor = errors.New("series anchor not found")
 
 // Store writes the series and their points, refreshes their stats, and anchors them, inside tx (the transaction of
 // Remember, or of Attach). dsID is the dataset; artifactID is the artifact the call created (0 if none, as for Attach):

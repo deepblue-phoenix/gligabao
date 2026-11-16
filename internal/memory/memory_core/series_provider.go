@@ -11,33 +11,6 @@ import (
 	"time"
 )
 
-// Timeseries providers (see docs/timeseries.md): sources of timeseries that the program embedding gligabao registers
-// when it starts the server (gligabao.ServeOptions.TimeseriesProviders). A provider describes, in natural language,
-// what it provides and when it applies; an LLM reads those descriptions and decides which provider to use for which
-// entity of a remembered text (the "resolve_series" stage). The provider's Fetch callback then does the fetching, so
-// the embedding program owns all the logic that talks to the data source (credentials, symbols, rate limits).
-
-// ErrInvalidProvider means a registered provider is malformed.
-var ErrInvalidProvider = errors.New("invalid timeseries provider")
-
-// ErrSeriesProvidersUnavailable means a call asked for series to be fetched but no provider is registered.
-var ErrSeriesProvidersUnavailable = errors.New("timeseries fetch is not available: no timeseries provider is registered")
-
-// The limits of a provider and of a fetch window.
-const (
-	MaxProviderNameLen        = 64
-	MaxProviderDescriptionLen = 4000
-	MaxProviderQueryLen       = 1000
-	MaxProviders              = 50
-	// MaxFetchWindow is the longest time before or after the reference time a fetch may ask for.
-	MaxFetchWindow = 20 * 365 * 24 * time.Hour
-	// DefaultFetchBefore is how far before the reference time a fetch reaches when the request says nothing. The default
-	// after is 0: nothing past the reference time is fetched, so a memory of an event never contains its future.
-	DefaultFetchBefore = 30 * 24 * time.Hour
-)
-
-var providerNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
-
 // FetchEntity is the entity a series is fetched for.
 type FetchEntity struct {
 	Name        string
@@ -70,11 +43,6 @@ type SeriesData struct {
 	Points    []SeriesPoint
 }
 
-// SeriesFetchFunc fetches the series of one entity. It returns no series and no error when it has nothing for the
-// entity (a normal outcome); an error when the fetch failed. It must honour ctx, and may be called concurrently.
-type SeriesFetchFunc func(ctx context.Context,
-	req SeriesFetchRequest) ([]SeriesData, error)
-
 // SeriesProvider is a source of timeseries.
 type SeriesProvider struct {
 	// Name identifies the provider: letters, digits, '_', '-' and '.', unique. It is what a request names in
@@ -91,6 +59,48 @@ type SeriesProvider struct {
 	// Fetch is the callback that fetches the series. Required.
 	Fetch SeriesFetchFunc
 }
+
+// SeriesFetch asks Remember to fetch series from the registered providers for the entities of the text (see
+// WithSeriesFetch). It is opt-in: fetching costs time and, for a provider, perhaps money.
+type SeriesFetch struct {
+	// Providers are the names of the providers that may be used; empty means all registered.
+	Providers []string
+	// Before and After are how far before and after the reference time the series reach. Zero Before means
+	// DefaultFetchBefore; zero After means nothing after the reference time.
+	Before, After time.Duration
+}
+
+// Timeseries providers (see docs/timeseries.md): sources of timeseries that the program embedding gligabao registers
+// when it starts the server (gligabao.ServeOptions.TimeseriesProviders). A provider describes, in natural language,
+// what it provides and when it applies; an LLM reads those descriptions and decides which provider to use for which
+// entity of a remembered text (the "resolve_series" stage). The provider's Fetch callback then does the fetching, so
+// the embedding program owns all the logic that talks to the data source (credentials, symbols, rate limits).
+
+// ErrInvalidProvider means a registered provider is malformed.
+var ErrInvalidProvider = errors.New("invalid timeseries provider")
+
+// ErrSeriesProvidersUnavailable means a call asked for series to be fetched but no provider is registered.
+var ErrSeriesProvidersUnavailable = errors.New("timeseries fetch is not available: no timeseries provider is registered")
+
+// The limits of a provider and of a fetch window.
+const (
+	MaxProviderNameLen        = 64
+	MaxProviderDescriptionLen = 4000
+	MaxProviderQueryLen       = 1000
+	MaxProviders              = 50
+	// MaxFetchWindow is the longest time before or after the reference time a fetch may ask for.
+	MaxFetchWindow = 20 * 365 * 24 * time.Hour
+	// DefaultFetchBefore is how far before the reference time a fetch reaches when the request says nothing. The default
+	// after is 0: nothing past the reference time is fetched, so a memory of an event never contains its future.
+	DefaultFetchBefore = 30 * 24 * time.Hour
+)
+
+var providerNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// SeriesFetchFunc fetches the series of one entity. It returns no series and no error when it has nothing for the
+// entity (a normal outcome); an error when the fetch failed. It must honour ctx, and may be called concurrently.
+type SeriesFetchFunc func(ctx context.Context,
+	req SeriesFetchRequest) ([]SeriesData, error)
 
 // ResolveSeriesProviders validates the providers and returns a normalized copy (strings trimmed), sorted by name.
 func ResolveSeriesProviders(in []SeriesProvider) ([]SeriesProvider, error) {
@@ -146,16 +156,6 @@ func ResolveSeriesProviders(in []SeriesProvider) ([]SeriesProvider, error) {
 }
 
 //---------------------------------------------------------------------------------------------
-
-// SeriesFetch asks Remember to fetch series from the registered providers for the entities of the text (see
-// WithSeriesFetch). It is opt-in: fetching costs time and, for a provider, perhaps money.
-type SeriesFetch struct {
-	// Providers are the names of the providers that may be used; empty means all registered.
-	Providers []string
-	// Before and After are how far before and after the reference time the series reach. Zero Before means
-	// DefaultFetchBefore; zero After means nothing after the reference time.
-	Before, After time.Duration
-}
 
 // ResolveSeriesFetch validates f against the registered providers and returns a normalized copy: provider names
 // checked and de-duplicated (all of them if none is named), the default window applied. It returns

@@ -7,10 +7,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 )
 
-// TrendThresholdPct is the change (in percent, first to last point) beyond which a series trends up or down; a smaller
-// change is flat.
-const TrendThresholdPct = 1.0
-
 // Stats summarizes the points of a series. It is computed in Go from the points (never by an LLM) and stored as JSON
 // in gb_series.stats; it is what the rest of the system looks at instead of the raw points.
 type Stats struct {
@@ -42,6 +38,10 @@ type Move struct {
 	ToValue   float64   `json:"to_value"`
 	Pct       float64   `json:"pct"`
 }
+
+// TrendThresholdPct is the change (in percent, first to last point) beyond which a series trends up or down; a smaller
+// change is flat.
+const TrendThresholdPct = 1.0
 
 // Summarize computes the Stats of points, which must be sorted oldest first. It returns nil for no points.
 func Summarize(points []graph.SeriesPoint) *Stats {

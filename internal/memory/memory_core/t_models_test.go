@@ -8,6 +8,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
+type captureLLM struct{ model string }
+
 func TestResolveModels(t *testing.T) {
 	m, err := ResolveModels(map[string]string{"extract_graph": " a ", "resolve_edges": "  ", "extract_image": "c"})
 	if err != nil || len(m) != 2 || m["extract_graph"] != "a" || m["extract_image"] != "c" {
@@ -49,8 +51,6 @@ func TestParseAndMergeModels(t *testing.T) {
 		t.Error("merge of nothing is not nil")
 	}
 }
-
-type captureLLM struct{ model string }
 
 func (c *captureLLM) Complete(_ context.Context,
 	r llm.Request) (*llm.Response, error) {

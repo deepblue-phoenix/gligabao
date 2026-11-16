@@ -7,9 +7,6 @@ import (
 	"sync"
 )
 
-// maxCacheEntries bounds a cache: when it is full it is emptied, which is crude and enough for a cache of place names.
-const maxCacheEntries = 10000
-
 // cached is a Resolver that remembers the answers of another one.
 type cached struct {
 	Resolver
@@ -20,6 +17,9 @@ type cached struct {
 type cacheEntry struct {
 	place *Place // nil: the resolver knows no such place
 }
+
+// maxCacheEntries bounds a cache: when it is full it is emptied, which is crude and enough for a cache of place names.
+const maxCacheEntries = 10000
 
 // Cached wraps r so that a query asked before is answered from memory: places and "not found" are kept, failures of r
 // are not. Queries are compared ignoring case and surrounding space.

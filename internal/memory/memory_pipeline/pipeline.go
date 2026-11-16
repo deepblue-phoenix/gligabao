@@ -31,6 +31,38 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
+// Stage is one stage of a pipeline.
+type Stage[S any] struct {
+	// Name is the stage, as the run log names it.
+	Name   string
+	Policy Policy
+	// Enabled says whether the call uses the stage; nil means always. A stage that is not enabled is skipped, and Run is not
+	// called.
+	Enabled func(*S) bool
+	// Also names the stages that this one does too, when it does (for instance the storage of the series, which happens in
+	// the transaction that stores the text): they start and end with it. nil means none.
+	Also func(*S) []string
+	// Run does the work of the stage. It returns the error that ends it (see Policy, and Stop). The state comes first, so that
+	// a method of it can be Run as it is: (*job).extract.
+	Run func(s *S,
+		ctx context.Context) error
+}
+
+// Each runs its steps once for every item of the call (every chunk of a document), in order and each item to the end, before
+// the next one. It is not a stage of the run log: the stages of Steps are, and they start again for each item. Count is how
+// many items there are, and Set makes the item i the current one of s.
+type Each[S any] struct {
+	Count func(*S) int
+	Set   func(s *S,
+		i int)
+	Steps []Step[S]
+}
+
+type runner[S any] struct {
+	obs     Observer
+	stopped bool // a stage returned Stop: the rest is skipped
+}
+
 // Policy says what happens to the pipeline when a stage returns an error.
 type Policy int
 
@@ -74,33 +106,6 @@ type Step[S any] interface {
 	names(into []string) []string
 }
 
-// Stage is one stage of a pipeline.
-type Stage[S any] struct {
-	// Name is the stage, as the run log names it.
-	Name   string
-	Policy Policy
-	// Enabled says whether the call uses the stage; nil means always. A stage that is not enabled is skipped, and Run is not
-	// called.
-	Enabled func(*S) bool
-	// Also names the stages that this one does too, when it does (for instance the storage of the series, which happens in
-	// the transaction that stores the text): they start and end with it. nil means none.
-	Also func(*S) []string
-	// Run does the work of the stage. It returns the error that ends it (see Policy, and Stop). The state comes first, so that
-	// a method of it can be Run as it is: (*job).extract.
-	Run func(s *S,
-		ctx context.Context) error
-}
-
-// Each runs its steps once for every item of the call (every chunk of a document), in order and each item to the end, before
-// the next one. It is not a stage of the run log: the stages of Steps are, and they start again for each item. Count is how
-// many items there are, and Set makes the item i the current one of s.
-type Each[S any] struct {
-	Count func(*S) int
-	Set   func(s *S,
-		i int)
-	Steps []Step[S]
-}
-
 // Run runs the steps on s, in order, telling obs. It returns the error of the first Fatal stage that failed, after which no
 // other stage runs (they stay as they were: not started); nil if none did, or if a stage ended the pipeline with Stop. obs may
 // be nil.
@@ -136,11 +141,6 @@ func Names[S any](steps []Step[S]) []string {
 		}
 	}
 	return out
-}
-
-type runner[S any] struct {
-	obs     Observer
-	stopped bool // a stage returned Stop: the rest is skipped
 }
 
 func (r *runner[S]) skip(names ...string) {

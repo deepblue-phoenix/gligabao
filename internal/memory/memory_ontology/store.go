@@ -25,6 +25,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// prepared is a parsed ontology ready to be stored.
+type prepared struct {
+	meta    Meta // everything but the ID, the owner, the name and the timestamps
+	classes []graph.OntologyClass
+	edges   []graph.OntologyEdge
+}
+
 var (
 	ErrInvalidName = errors.New("invalid ontology name")
 	ErrInvalid     = errors.New("invalid ontology")
@@ -57,13 +64,6 @@ func ResolveName(name string) (string, error) {
 }
 
 //---------------------------------------------------------------------------------------------
-
-// prepared is a parsed ontology ready to be stored.
-type prepared struct {
-	meta    Meta // everything but the ID, the owner, the name and the timestamps
-	classes []graph.OntologyClass
-	edges   []graph.OntologyEdge
-}
 
 // prepare validates the inputs and parses the document. If description is empty, the ontology's own
 // rdfs:comment is used.

@@ -2,14 +2,6 @@ package memory_chunk
 
 import "unicode"
 
-// Tokenizer counts the tokens of a text. The chunker only needs a count, not the tokens themselves.
-//
-// Counts must be (roughly) additive over text separated by whitespace: Count("a b") should be about Count("a") +
-// Count("b"). The chunker relies on it to size chunks without recounting every candidate.
-type Tokenizer interface {
-	Count(text string) int
-}
-
 // Estimator is the default Tokenizer: a pure-Go estimate of the token count of a BPE tokenizer such as the
 // cl100k_base one used by OpenAI's text-embedding-3 models. It needs no vocabulary file and no network.
 //
@@ -24,6 +16,14 @@ type Tokenizer interface {
 // To size chunks by the exact tokens of a model, implement Tokenizer on top of that model's tokenizer and set it
 // in Config.Tokenizer.
 type Estimator struct{}
+
+// Tokenizer counts the tokens of a text. The chunker only needs a count, not the tokens themselves.
+//
+// Counts must be (roughly) additive over text separated by whitespace: Count("a b") should be about Count("a") +
+// Count("b"). The chunker relies on it to size chunks without recounting every candidate.
+type Tokenizer interface {
+	Count(text string) int
+}
 
 // Count implements Tokenizer.
 func (Estimator) Count(text string) int { return EstimateTokens(text) }

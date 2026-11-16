@@ -20,6 +20,12 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
+// searcher answers every web search with a briefing that the test LLM extracts a fact from.
+type searcher struct{ fail bool }
+
+// badJSONLLM answers with text that is not the JSON the extraction asks for.
+type badJSONLLM struct{}
+
 // onlyRun returns the one remember run of the database.
 func onlyRun(t *testing.T,
 	d *sql.DB) *relational.RememberRun {
@@ -598,9 +604,6 @@ func testRememberRunLogSeries(t *testing.T,
 		&all[1])
 }
 
-// searcher answers every web search with a briefing that the test LLM extracts a fact from.
-type searcher struct{ fail bool }
-
 func (s searcher) WebSearch(context.Context,
 	llm.WebSearchRequest) (*llm.WebSearchResponse, error) {
 	if s.fail {
@@ -737,9 +740,6 @@ func TestRememberRunLogStages(t *testing.T) {
 		}
 	}
 }
-
-// badJSONLLM answers with text that is not the JSON the extraction asks for.
-type badJSONLLM struct{}
 
 func (badJSONLLM) Complete(context.Context,
 	llm.Request) (*llm.Response, error) {

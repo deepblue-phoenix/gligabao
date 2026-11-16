@@ -11,6 +11,11 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
+type imageLLM struct {
+	out  string
+	seen *llm.Request
+}
+
 func testPNG(t *testing.T) []byte {
 	t.Helper()
 	var b bytes.Buffer
@@ -85,11 +90,6 @@ func TestParseImageExtraction(t *testing.T) {
 	if _, err := parseImageExtraction("no json"); err == nil {
 		t.Error("expected an error")
 	}
-}
-
-type imageLLM struct {
-	out  string
-	seen *llm.Request
 }
 
 func (l imageLLM) Complete(_ context.Context,

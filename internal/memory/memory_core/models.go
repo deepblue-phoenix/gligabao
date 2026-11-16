@@ -10,6 +10,13 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
+type modelLLM struct {
+	LLM
+	stage, model, reasoning string
+}
+
+type stageKey struct{}
+
 // The stages of remember that call an LLM. A call can choose the model of each one (WithModels); a stage it names no
 // model for uses the default model of the LLM client.
 const (
@@ -165,11 +172,6 @@ func (o CallOptions) ModelLLM(llm LLM,
 	}
 }
 
-type modelLLM struct {
-	LLM
-	stage, model, reasoning string
-}
-
 func (m *modelLLM) Complete(ctx context.Context,
 	req llm.Request) (*llm.Response, error) {
 	if req.Model == "" {
@@ -180,8 +182,6 @@ func (m *modelLLM) Complete(ctx context.Context,
 	}
 	return m.LLM.Complete(WithStage(ctx, m.stage), req)
 }
-
-type stageKey struct{}
 
 // WithStage returns ctx that carries the pipeline stage a model call is made for. WithRecording stores it in the model
 // run of the call.

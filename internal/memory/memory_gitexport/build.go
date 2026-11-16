@@ -19,12 +19,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 )
 
-const (
-	authorName  = "gligabao"
-	authorEmail = "gligabao@localhost"
-	branch      = "main"
-)
-
 // Input is everything of a dataset that the repository is built from.
 type Input struct {
 	Name        string
@@ -97,6 +91,12 @@ type commitStats struct {
 	confirmed             int
 	changes               []string // the edge events that changed a fact, as lines
 }
+
+const (
+	authorName  = "gligabao"
+	authorEmail = "gligabao@localhost"
+	branch      = "main"
+)
 
 // Write builds the repository of the dataset and writes it to sink. The repository has a root commit (a README), then one
 // commit per remember call, oldest first, and, only if some entities or facts have no source artifact (their artifact

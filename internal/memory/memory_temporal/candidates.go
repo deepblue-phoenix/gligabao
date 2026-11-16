@@ -11,15 +11,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
-const (
-	// MaxCandidates is how many existing edges are shown to the LLM for the duplicate / contradiction check.
-	MaxCandidates = 50
-
-	ViaName    = "name"
-	ViaSimilar = "similar"
-	ViaBoth    = ViaName + "+" + ViaSimilar
-)
-
 // Candidates are the stored facts a Remember call compares its new facts with, and how they were found.
 type Candidates struct {
 	// Edges are the merged candidates; ByName and BySimilar are what each lookup found before merging (an edge found by
@@ -29,6 +20,15 @@ type Candidates struct {
 	// Via says how each edge (by ID) was found: ViaName, ViaSimilar or ViaBoth.
 	Via map[int64]string
 }
+
+const (
+	// MaxCandidates is how many existing edges are shown to the LLM for the duplicate / contradiction check.
+	MaxCandidates = 50
+
+	ViaName    = "name"
+	ViaSimilar = "similar"
+	ViaBoth    = ViaName + "+" + ViaSimilar
+)
 
 // AliasSearch finds, for the dataset dsID, the names of stored entities that are the same as an endpoint of the new edges but
 // are not named alike (aliases, found by similarity of embeddings). A search that fails is the caller's to report: it
