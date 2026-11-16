@@ -27,7 +27,7 @@ const (
 const (
 	StopFinalized         = "finalized"
 	StopFrontierExhausted = "frontier_exhausted"
-	StopIterations        = "breaker:iterations"
+	StopSteps             = "breaker:steps"
 	StopTokens            = "breaker:tokens"
 	StopCost              = "breaker:cost"
 )

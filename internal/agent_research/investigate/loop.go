@@ -390,7 +390,7 @@ func (r *runner) turn(ctx context.Context,
 		st)
 	detail := fmt.Sprintf("turn %d of %d",
 		n,
-		st.Limits.MaxIterations)
+		st.Limits.MaxSteps)
 	if q := investigate_core.CurrentID(st); q != "" && r.ls.Phase == investigate_core.PhaseExploration {
 		detail += ", question " + q
 	}

@@ -22,11 +22,16 @@ const DefaultName = "default"
 
 // Defaults of the fields a file leaves out, and the hard ceilings that no file can raise: they bound what one research can cost.
 const (
-	DefaultMaxSteps  = 20
-	DefaultMaxTokens = 8192
-	// MaxStepsCeiling is the most model calls any agent may be given (a definition, a request or a worker).
-	MaxStepsCeiling  = 40
-	maxTokensCeiling = 64000
+	// The steps (model calls) of an agent: the simple loop has DefaultMaxSteps by default and at most MaxStepsCeiling (also the ceiling of
+	// a worker); the investigative loop has DefaultInvestigativeSteps by default, at least MinInvestigativeSteps and at most
+	// InvestigativeStepsCeiling. StepsRange gives them by loop.
+	DefaultMaxSteps           = 20
+	MaxStepsCeiling           = 40
+	DefaultInvestigativeSteps = 60
+	MinInvestigativeSteps     = 2
+	InvestigativeStepsCeiling = 300
+	DefaultMaxTokens          = 8192
+	maxTokensCeiling          = 64000
 	// DefaultSearchUses is the most searches one web_search call makes.
 	DefaultSearchUses = 2
 	maxSearchUses     = 10
@@ -73,7 +78,6 @@ type Investigate struct {
 	MaxDepth               int `toml:"max_depth" json:"max_depth,omitempty"`
 	MaxAttempts            int `toml:"max_attempts" json:"max_attempts,omitempty"`
 	MaxQuestions           int `toml:"max_questions" json:"max_questions,omitempty"`
-	MaxIterations          int `toml:"max_iterations" json:"max_iterations,omitempty"`
 	MaxTotalTokens         int `toml:"max_total_tokens" json:"max_total_tokens,omitempty"`
 	KeepTurns              int `toml:"keep_turns" json:"keep_turns,omitempty"`
 	ExtractionThreshold    int `toml:"extraction_threshold" json:"extraction_threshold,omitempty"`
@@ -94,7 +98,7 @@ type Investigate struct {
 	WorkerContextTokens   int     `toml:"worker_context_tokens" json:"worker_context_tokens,omitempty"`
 	MaxWorkers            int     `toml:"max_workers" json:"max_workers,omitempty"`
 	MinPriorityToDelegate float64 `toml:"min_priority_to_delegate" json:"min_priority_to_delegate,omitempty"`
-	// SynthesisReserve is the fraction (0 to 0.5) of the iteration, token and cost limits that exploration cannot spend; GatePriority (0 to
+	// SynthesisReserve is the fraction (0 to 0.5) of the step, token and cost limits that exploration cannot spend; GatePriority (0 to
 	// 1) the priority from which a pending question stops the exploration gate.
 	SynthesisReserve float64 `toml:"synthesis_reserve" json:"synthesis_reserve,omitempty"`
 	GatePriority     float64 `toml:"gate_priority" json:"gate_priority,omitempty"`
@@ -174,6 +178,16 @@ func (d *Def) CodeEnabled() bool { return d.Code != nil && d.Code.Enabled }
 
 // Investigative reports whether the agent runs the investigative loop.
 func (d *Def) Investigative() bool { return d.Loop == LoopInvestigative }
+
+// StepsRange is the lowest, the default and the highest number of steps (model calls, max_steps) a research of this loop may have.
+func StepsRange(loop string) (lo,
+	def,
+	hi int) {
+	if loop == LoopInvestigative {
+		return MinInvestigativeSteps, DefaultInvestigativeSteps, InvestigativeStepsCeiling
+	}
+	return 1, DefaultMaxSteps, MaxStepsCeiling
+}
 
 // Values of Knowledge.Access.
 const (

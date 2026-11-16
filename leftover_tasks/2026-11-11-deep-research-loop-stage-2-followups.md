@@ -13,7 +13,7 @@ Stage 2 (`docs/agents/deep-research-loop-stage-2.md`) connected the investigativ
 - [ ] **Admin UI: render the frontier tree** from `gb_agent_frontier_questions.parent_id` with statuses, the transitions and the challenges of a run (the SQL is in `docs/agents/research.md`, "Reading a run with SQL"); `core.Run` already has `phase` and `stop_reason` to show.
 - [ ] **Run the PostgreSQL tests** of stage 2: `TestMigrationAddsPhaseAndStopReason`, `TestFreshDatabaseHasPhaseAndStopReason`, `TestInvestigativeRunThroughTheManager` and the `investigate` loop tests skip without `POSTGRES_TEST_DSN`. Fix what fails (the doc queries use `?1`, the test rewrites it to `$1`; `SUM(outcome = 'survived')` in `challenges_per_target_and_strategy` is SQLite syntax and needs `SUM((outcome = 'survived')::int)` in PostgreSQL).
 - [ ] **The `modal` runner for the investigative loop** (refused at start): the agent binary has to carry the loop, the notes directory and the investigate store.
-- [ ] **Validate the knobs against each other** when loading a definition (for example `min_domains <= min_sources`, `keep_turns` against `max_iterations`); only each range is checked now.
+- [ ] **Validate the knobs against each other** when loading a definition (for example `min_domains <= min_sources`, `keep_turns` against `max_steps`); only each range is checked now.
 
 ## How to pick it up
 

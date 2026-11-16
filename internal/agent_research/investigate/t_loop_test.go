@@ -156,7 +156,7 @@ func newEnv(t *testing.T,
 func loopLimits() investigate_core.Limits {
 	l := investigate_core.DefaultLimits()
 	l.MinSources, l.MinDomains, l.MinIndependentSources = 1, 1, 1
-	l.ExtractionThreshold, l.MaxIterations = 200, 40
+	l.ExtractionThreshold, l.MaxSteps = 200, 40
 	return l
 }
 
@@ -401,7 +401,7 @@ func testRunRestoresTheNotesFile(t *testing.T,
 			}
 		},
 	}
-	e.sess.Limits.MaxIterations = 5 // exploration may take 4 turns, the fifth is the report
+	e.sess.Limits.MaxSteps = 5 // exploration may take 4 turns, the fifth is the report
 	if _, err := e.run1(t,
 		fm,
 		hooks); err != nil {
@@ -452,7 +452,7 @@ func TestRunBreakerInExploration(t *testing.T) {
 func testRunBreakerInExploration(t *testing.T,
 	d *sql.DB) {
 	l := loopLimits()
-	l.MaxIterations = 10 // exploration may take 8 turns, synthesis the rest
+	l.MaxSteps = 10 // exploration may take 8 turns, synthesis the rest
 	e := newEnv(t,
 		d,
 		l)
@@ -481,13 +481,13 @@ func testRunBreakerInExploration(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.StopReason != investigate_core.StopIterations || res.Report == "" || res.Turns != 10 {
+	if res.StopReason != investigate_core.StopSteps || res.Report == "" || res.Turns != 10 {
 		t.Fatalf("result: %+v", res)
 	}
-	if want := []string{"exploration/", "synthesis/breaker:iterations", "synthesis/breaker:iterations"}; !slices.Equal(e.phases, want) {
+	if want := []string{"exploration/", "synthesis/breaker:steps", "synthesis/breaker:steps"}; !slices.Equal(e.phases, want) {
 		t.Errorf("phases: %v", e.phases)
 	}
-	if !strings.Contains(fm.texts[8], "cut short by `breaker:iterations`") || !strings.Contains(fm.texts[8], "open gap (q_002)") {
+	if !strings.Contains(fm.texts[8], "cut short by `breaker:steps`") || !strings.Contains(fm.texts[8], "open gap (q_002)") {
 		t.Error("the synthesis input says the investigation was cut and lists the open question")
 	}
 	if _, forced := fm.payloads[8]["tool_choice"]; forced {
@@ -498,7 +498,7 @@ func testRunBreakerInExploration(t *testing.T,
 		t.Errorf("the last turn is forced: %v", fm.payloads[9]["tool_choice"])
 	}
 	st, _ := e.sess.Load(context.Background())
-	if !strings.Contains(st.Notes.Scratch, "cut short by breaker: iterations") {
+	if !strings.Contains(st.Notes.Scratch, "cut short by breaker: steps") {
 		t.Errorf("scratch: %q", st.Notes.Scratch)
 	}
 }
@@ -511,7 +511,7 @@ func TestRunBreakerInSynthesis(t *testing.T) {
 func testRunBreakerInSynthesis(t *testing.T,
 	d *sql.DB) {
 	l := loopLimits()
-	l.MaxIterations = 10
+	l.MaxSteps = 10
 	e := newEnv(t,
 		d,
 		l)
@@ -535,13 +535,13 @@ func testRunBreakerInSynthesis(t *testing.T,
 		fm,
 		investigate.Hooks{})
 	var be *investigate.BreakerError
-	if !errors.As(err, &be) || be.Breaker.Name != "iterations" || !strings.Contains(err.Error(), "breaker: iterations") {
+	if !errors.As(err, &be) || be.Breaker.Name != "steps" || !strings.Contains(err.Error(), "breaker: steps") {
 		t.Fatalf("err: %v", err)
 	}
-	if res.Report != "" || res.StopReason != "breaker:iterations" || res.Turns != 10 {
+	if res.Report != "" || res.StopReason != "breaker:steps" || res.Turns != 10 {
 		t.Errorf("result: %+v", res)
 	}
-	if last := e.phases[len(e.phases)-1]; last != "synthesis/breaker:iterations" {
+	if last := e.phases[len(e.phases)-1]; last != "synthesis/breaker:steps" {
 		t.Errorf("phases: %v", e.phases)
 	}
 }
@@ -696,7 +696,7 @@ func testRunConsolidation(t *testing.T,
 	d *sql.DB) {
 	l := loopLimits()
 	l.NotesMaxTokens = 20
-	l.MaxIterations = 6
+	l.MaxSteps = 6
 	e := newEnv(t,
 		d,
 		l)

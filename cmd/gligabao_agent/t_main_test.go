@@ -102,7 +102,7 @@ func TestUsageErrors(t *testing.T) {
 		},
 		"steps too big": {
 			anthropic: "k",
-			args:      []string{"--max-steps", "41", "t"},
+			args:      []string{"--max-steps", "301", "t"},
 			want:      "--max-steps",
 		},
 		"bad user": {

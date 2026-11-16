@@ -189,7 +189,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 	f.IntVar(&maxSteps,
 		"max-steps",
 		0,
-		"the most model calls the agent makes (default: the agent's, 20 for the default one; at most 40); more research more, and cost more")
+		"the most model calls the agent makes (default: the agent's, 20 for the default one; at most 40 for the simple loop and 300 for the investigative one); more research more, and cost more")
 	f.StringVar(&model,
 		"model",
 		"",

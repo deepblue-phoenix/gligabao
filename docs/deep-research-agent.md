@@ -46,7 +46,7 @@ Every research agent is **isolated** from the others, so that one cannot slow do
 
 | Setting | Value |
 | ------- | ----- |
-| Steps (`MaxSteps`) | 20 by default; the job lets the caller choose 1 to 40 (`max_steps`) |
+| Steps (`MaxSteps`) | 20 by default; the job lets the caller choose 1 to 40 (`max_steps`; the investigative loop has its own range, 2 to 300, default 60) |
 | Answer size (`MaxTokens`) | 8192 tokens per model call (so a report is at most that long) |
 | Model | the server's default model, or the `model` of the request. It runs the loop and writes the report |
 | Tools | `web_search` and `fetch_url`; with a knowledge base (the case when it runs as a job on the server), also `query` and `remember` |

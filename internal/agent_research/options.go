@@ -1,6 +1,7 @@
 package agent_research
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"unicode/utf8"
@@ -46,9 +47,9 @@ type Options struct {
 	// provider that is not available yet is a 400. Not stored with the run.
 	SearchProvider string `json:"search_provider,omitempty"`
 	FetchProvider  string `json:"fetch_provider,omitempty"`
-	// Investigate are the knobs of the investigative loop (max_iterations, max_total_tokens, min_sources, ...; see agent_defs.Investigate), over
-	// those of the definition. They only take effect for an agent with loop = "investigative"; with another loop they are an error. With that
-	// loop max_iterations replaces max_steps (which is then not allowed) and max_cost_usd caps the cost as always.
+	// Investigate are the knobs of the investigative loop (max_total_tokens, min_sources, ...; see agent_defs.Investigate), over
+	// those of the definition. They only take effect for an agent with loop = "investigative"; with another loop they are an error. The
+	// steps of that loop are MaxSteps like for the simple one (another range, see agent_defs.StepsRange) and max_cost_usd caps the cost as always.
 	Investigate *agent_defs.Investigate `json:"investigate,omitempty"`
 
 	// datasetGiven says that the request named a dataset (a definition may have a default of its own); treeCostCap is the cap on the cost
@@ -78,9 +79,11 @@ const (
 	// MaxTopicLen is the longest topic, in characters.
 	MaxTopicLen = 2000
 	// DefaultMaxSteps is the number of model calls the built-in agent may make when the options say none (the other agents have the
-	// max_steps of their definition); MaxMaxSteps is the most any agent may be given.
-	DefaultMaxSteps = agent_defs.DefaultMaxSteps
-	MaxMaxSteps     = agent_defs.MaxStepsCeiling
+	// max_steps of their definition); MaxMaxSteps is the most the simple loop may be given and MaxMaxStepsInvestigative the most the
+	// investigative one may (the exact range of an agent is checked against its loop by the Manager, see agent_defs.StepsRange).
+	DefaultMaxSteps          = agent_defs.DefaultMaxSteps
+	MaxMaxSteps              = agent_defs.MaxStepsCeiling
+	MaxMaxStepsInvestigative = agent_defs.InvestigativeStepsCeiling
 	// maxModelLen is the longest model name.
 	maxModelLen = 100
 )
@@ -114,8 +117,9 @@ func (o Options) resolve() (Options, error) {
 		return o, invalidErr("topic is required")
 	case utf8.RuneCountInString(o.Topic) > MaxTopicLen:
 		return o, invalidErr("topic is too long (at most 2000 characters)")
-	case o.MaxSteps < 0 || o.MaxSteps > MaxMaxSteps:
-		return o, invalidErr("max_steps must be between 1 and 40")
+	case o.MaxSteps < 0 || o.MaxSteps > MaxMaxStepsInvestigative:
+		return o, invalidErr(fmt.Sprintf("max_steps must be between 1 and %d",
+			MaxMaxStepsInvestigative))
 	case o.Investigate != nil && len(o.Investigate.Check()) > 0:
 		return o, invalidErr(o.Investigate.Check()[0])
 	case o.Runner != core.RunnerLocal && o.Runner != core.RunnerModal:

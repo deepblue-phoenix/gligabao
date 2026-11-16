@@ -28,8 +28,8 @@ version = "1.0.0"
 description = "Investigates."
 system_prompt = "DEEP PROMPT"
 loop = "investigative"
+max_steps = 12
 [investigate]
-max_iterations = 12
 min_sources = 1
 min_domains = 1
 `
@@ -89,7 +89,7 @@ func testInvestigativeRun(t *testing.T,
 		t.Fatal(err)
 	}
 	if started.MaxSteps != 12 {
-		t.Errorf("max_iterations is the steps of the run: %d", started.MaxSteps)
+		t.Errorf("max_steps of the definition is the steps of the run: %d", started.MaxSteps)
 	}
 	m.Wait()
 	run, err := m.Get(ctx,
@@ -151,14 +151,23 @@ func TestInvestigativeOptions(t *testing.T) {
 		"knobs with the simple loop": {agent_research.Options{
 			Topic: "t",
 			Investigate: &agent_defs.Investigate{
-				MaxIterations: 5,
+				MinSources: 5,
 			},
 		}, "only take effect with the investigative loop"},
-		"max_steps": {agent_research.Options{
+		"max_steps over the ceiling": {agent_research.Options{
 			Topic:    "t",
 			Agent:    "deep",
-			MaxSteps: 5,
-		}, "max_steps does not apply"},
+			MaxSteps: 301,
+		}, "max_steps must be between 1 and 300"},
+		"max_steps below the investigative floor": {agent_research.Options{
+			Topic:    "t",
+			Agent:    "investigator",
+			MaxSteps: 1,
+		}, "max_steps must be between 2 and 300"},
+		"max_steps over the simple ceiling": {agent_research.Options{
+			Topic:    "t",
+			MaxSteps: 41,
+		}, "max_steps must be between 1 and 40"},
 		"bad knob": {agent_research.Options{
 			Topic: "t",
 			Agent: "deep",

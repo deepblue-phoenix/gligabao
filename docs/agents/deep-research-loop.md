@@ -399,7 +399,7 @@ Checked by code **before every model call**; none depends on the model's coopera
 
 | Breaker | Default | Effect |
 | ------- | ------- | ------ |
-| `max_iterations` | 60 turns for exploration (run option; replaces the `max_steps` of the loop; today's 1..40 limit is raised) | forces the phase to end |
+| `max_steps` | 60 turns for exploration (the `max_steps` of the definition or the request, 2 to 300 for this loop; the simple loop keeps 1 to 40) | forces the phase to end |
 | `max_depth` | 3 | not a loop stop: questions deeper are never created |
 | `max_attempts` per question | 4 | question becomes `unresolvable` |
 | `max_questions` per run | 40 | no more nodes; agent must prune or resolve |
@@ -407,7 +407,7 @@ Checked by code **before every model call**; none depends on the model's coopera
 | cost budget | `max_cost_usd` (the existing [cost cap](agent-defs.md#limits-cost-caps)) | forces the phase to end |
 | wall clock | `timeout` (existing) | the run ends as today |
 
-When a breaker fires during exploration, the loop **does not fail the run**: it moves directly to synthesis, with a note in the notes file and in the report that the investigation was cut short and by what (`breaker: cost`), listing the still-pending questions as open gaps. Synthesis has its own reserved budget (`synthesis_reserve`, default 15% of the iteration/token/cost limits) that exploration cannot spend, so a report can always be written. If even the reserve is exhausted, the run ends as `failed` with the breaker named in `error` (today's behaviour for an agent that ends without a report). The last turn is always forced to be `finalize_report` (`tool_choice` on that tool), replacing today's "last step has no tools".
+When a breaker fires during exploration, the loop **does not fail the run**: it moves directly to synthesis, with a note in the notes file and in the report that the investigation was cut short and by what (`breaker: cost`), listing the still-pending questions as open gaps. Synthesis has its own reserved budget (`synthesis_reserve`, default 15% of the step/token/cost limits) that exploration cannot spend, so a report can always be written. If even the reserve is exhausted, the run ends as `failed` with the breaker named in `error` (today's behaviour for an agent that ends without a report). The last turn is always forced to be `finalize_report` (`tool_choice` on that tool), replacing today's "last step has no tools".
 
 ## Parallelism and sub-agents
 
@@ -613,7 +613,7 @@ Notes on the schema:
 - `VERIFIED` is only reachable when `gb_agent_claim_sources` has at least `min_independent_sources` `supports` rows with distinct `domain`s and at least `min_challenges` closed challenges with outcome `survived` on the claim (checked by the code that updates the status, not by a DB constraint).
 - Question ids and claim ids are assigned by the code from the per-run counters (max existing id + 1) in the same transaction as the insert.
 - The existing `gb_agent_research_states` gets new `state` values (not constrained): `planning` (broad expansion), `selecting`, `extracting`, `verifying`, `challenging`, `consolidating`, `synthesizing`.
-- `gb_agent_research_runs` gets three columns, all by `ALTER` (see Migrations): `notes_id` (the random id of the notes file, `''` for runs made before), `phase` (`exploration`, `synthesis`) and `stop_reason` (`finalized`, `frontier_exhausted`, `breaker:iterations`, `breaker:tokens`, `breaker:cost`, `''` while running).
+- `gb_agent_research_runs` gets three columns, all by `ALTER` (see Migrations): `notes_id` (the random id of the notes file, `''` for runs made before), `phase` (`exploration`, `synthesis`) and `stop_reason` (`finalized`, `frontier_exhausted`, `breaker:steps`, `breaker:tokens`, `breaker:cost`, `''` while running).
 - `notes.md` (the working copy) is a file per run, named as in [Working state](#working-state-notesmd). Its history is `gb_agent_notes_versions`:
 
 ```sql
@@ -643,7 +643,7 @@ Each iteration is a recorded state with the question id in its `detail`, as toda
 
 New knobs, in the [agent definition](agent-defs.md) and as run options (with these defaults); none changes the behaviour of an agent definition that does not set them except `loop = "investigative"`, which turns the whole design on (the existing plain loop remains as `loop = "simple"` during the migration):
 
-`research_notes_dir` (server config, default in the research data directory) · `max_depth` 3 · `max_attempts` 4 · `max_questions` 40 · `max_iterations` 60 · `max_total_tokens` · `max_cost_usd` · `synthesis_reserve` 0.15 · `keep_turns` 2 · `extraction_threshold` 4000 chars · `notes_max_tokens` 6000 · `min_sources` 5 · `min_domains` 3 · `min_independent_sources` 2 · `min_challenges` 1 · `max_challenges_per_target` 3 · `gate_priority` 0.5 · `max_reopens` 1 · `max_parallel` 1.
+`research_notes_dir` (server config, default in the research data directory) · `max_depth` 3 · `max_attempts` 4 · `max_questions` 40 · `max_steps` 60 · `max_total_tokens` · `max_cost_usd` · `synthesis_reserve` 0.15 · `keep_turns` 2 · `extraction_threshold` 4000 chars · `notes_max_tokens` 6000 · `min_sources` 5 · `min_domains` 3 · `min_independent_sources` 2 · `min_challenges` 1 · `max_challenges_per_target` 3 · `gate_priority` 0.5 · `max_reopens` 1 · `max_parallel` 1.
 
 ## Out of scope (for the first implementation)
 

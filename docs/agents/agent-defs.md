@@ -33,7 +33,7 @@ description = "Scans recent news in a topic area and reports with dates and sour
 system_prompt_file = "prompts/news_scanner.md"   # or system_prompt = """...""": exactly one of them
 
 model = ""                       # "" inherits: see "Model"
-max_steps = 25                   # 1 to 40, default 20
+max_steps = 25                   # simple loop: 1 to 40, default 20; investigative loop: 2 to 300, default 60
 max_tokens = 8192                # of each answer, default 8192
 loop = "simple"                  # "simple" (default) or "investigative": see [investigate]
 tools = ["web_search", "fetch_url"]   # default: both; query and remember are NOT listed here: see [knowledge]
@@ -123,16 +123,16 @@ A cap is a **soft stop**, not a failure:
 
 The server has a built-in investigative agent, `investigator` (next to the built-in `default`): the loop with `web_search`, `fetch_url`, read/write knowledge and a cap of 2 USD. A file called `investigator.toml` replaces it. The admin UI starts it for its "investigative" choice.
 
-`loop = "simple"` (the default, also when the key is left out) is the loop an agent has always had: it searches and reads until it writes the report, in at most `max_steps` model calls. `loop = "investigative"` runs the [deep-research loop](deep-research-loop.md) instead: a frontier of questions with notes, claims and challenges, an exploration phase ended by a gate and a synthesis phase that writes the report without searching (see [the run](research.md#the-investigative-loop)). It has the same tools (`fetch_url` is called `fetch_page` for the model), the same prompt (plus the loop's instructions for each phase), skills, search and knowledge settings and cost caps (`max_cost_usd` is a circuit-breaker there). It runs independent questions in sub-agents when `max_parallel` is above 1 ([subagents.md](subagents.md)). `runner = "modal"` is an error for a research with it. `max_steps` does not apply; `max_iterations` replaces it.
+`loop = "simple"` (the default, also when the key is left out) is the loop an agent has always had: it searches and reads until it writes the report, in at most `max_steps` model calls. `loop = "investigative"` runs the [deep-research loop](deep-research-loop.md) instead: a frontier of questions with notes, claims and challenges, an exploration phase ended by a gate and a synthesis phase that writes the report without searching (see [the run](research.md#the-investigative-loop)). It has the same tools (`fetch_url` is called `fetch_page` for the model), the same prompt (plus the loop's instructions for each phase), skills, search and knowledge settings and cost caps (`max_cost_usd` is a circuit-breaker there). It runs independent questions in sub-agents when `max_parallel` is above 1 ([subagents.md](subagents.md)). `runner = "modal"` is an error for a research with it. `max_steps` is its limit of turns (model calls) too, with another range: 2 to 300, default 60 (the last 15% are the synthesis reserve), against 1 to 40 for the simple loop. The range of each agent is listed by `GET /v1/gb/research/agents` (`steps_min`, `steps_max`).
 
 The `[investigate]` table sets the knobs; every one is optional (0 or left out is the default), and the table is an **error** with the simple loop (not a silent no-op). A research can override them with the `investigate` option of the request, which is also an error for a simple agent.
 
 ```toml
 loop = "investigative"
+max_steps = 60                   # not in [investigate]: turns (model calls) of the run, 2 to 300; the last 15% are the synthesis reserve
 [investigate]
-max_iterations = 60              # turns (model calls) of the run, 2 to 300; the last 15% are the synthesis reserve
 max_total_tokens = 0             # input + output tokens of the run, 0 = no limit (also split by the reserve)
-synthesis_reserve = 0.15         # 0 to 0.5: the part of the iteration, token and cost limits that exploration cannot spend
+synthesis_reserve = 0.15         # 0 to 0.5: the part of the step, token and cost limits that exploration cannot spend
 max_depth = 3                    # 1 to 6: how deep the question tree goes
 max_attempts = 4                 # query formulations on a question before it is unresolvable
 max_questions = 40               # questions in a run

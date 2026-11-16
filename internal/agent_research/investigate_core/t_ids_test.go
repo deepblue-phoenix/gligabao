@@ -41,7 +41,7 @@ func TestDefaultLimits(t *testing.T) {
 		GatePriority:           0.5,
 		KeepTurns:              2,
 		ExtractionThreshold:    4000,
-		MaxIterations:          60,
+		MaxSteps:               60,
 		SynthesisReserve:       0.15,
 	}
 	if l != want {

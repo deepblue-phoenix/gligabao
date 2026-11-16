@@ -346,7 +346,7 @@ function renderDetail(d: Detail): HTMLElement {
   if (d.phase) {
     row("Loop", "investigative", "The deep-research loop: a frontier of questions with notes, challenges and gates");
     row("Phase", d.phase, "exploration: the cycle on the frontier; synthesis: the report is written from the notes");
-    row("Stop reason", d.stop_reason || "(still exploring)", "Why the exploration ended: frontier_exhausted, breaker:iterations|tokens|cost, or finalized");
+    row("Stop reason", d.stop_reason || "(still exploring)", "Why the exploration ended: frontier_exhausted, breaker:steps|tokens|cost, or finalized");
   }
 
   root.appendChild(node("h4", "", "Topic"));

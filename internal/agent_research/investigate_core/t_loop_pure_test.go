@@ -474,7 +474,7 @@ func TestFinalCheckQueuesUnverifiedClaims(t *testing.T) {
 
 func TestCheckBreakersAndReserve(t *testing.T) {
 	lim := Limits{
-		MaxIterations:    20,
+		MaxSteps:         20,
 		MaxTotalTokens:   1000,
 		MaxCostUSD:       1,
 		SynthesisReserve: 0.2,
@@ -503,7 +503,7 @@ func TestCheckBreakersAndReserve(t *testing.T) {
 	}{
 		{explore(16,
 			0,
-			0), "iterations"}, {explore(0,
+			0), "steps"}, {explore(0,
 			800,
 			0), "tokens"}, {explore(0,
 			0,
@@ -547,7 +547,7 @@ func TestCheckBreakersAndReserve(t *testing.T) {
 		0), lim) || IsLastTurn(syn(18,
 		0,
 		0), lim) {
-		t.Error("the last turn is the one that reaches max_iterations")
+		t.Error("the last turn is the one that reaches max_steps")
 	}
 }
 

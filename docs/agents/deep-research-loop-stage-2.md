@@ -91,7 +91,7 @@ The cycle of the design, executed by `loop.go`:
 4. **Observe** and **Update**: the handlers return effects; the effect executor runs them in one transaction (including the `gb_agent_notes_versions` row of a notes write); the notes file is written after commit.
 5. **Restore**: at the start of each turn, if the notes file of the run is missing or unreadable, the loop writes it from `LatestNotesVersion` and adds a version with reason `restore`. The loop never starts a turn without a notes file.
 
-After every update: run the reblocking of stage 1, the breaker check (item 8), and start the next turn. A turn with no tool call is a reminder turn (the open frontier and the open challenges are repeated in the next prompt), and it counts toward `max_iterations`.
+After every update: run the reblocking of stage 1, the breaker check (item 8), and start the next turn. A turn with no tool call is a reminder turn (the open frontier and the open challenges are repeated in the next prompt), and it counts toward `max_steps`.
 
 Wire the logging of every attempt: each `web_search`, `fetch_page` or `query` made for a question inserts a row in `gb_agent_frontier_attempts` (with its outcome summary) through the effect executor, and a challenge's query links to that row (`attempt_id`).
 
@@ -139,7 +139,7 @@ The **conclusion challenge**: the conclusion is written in a few sentences in `S
 
 | Breaker | Default | On fire, in exploration |
 | ------- | ------- | ----------------------- |
-| `max_iterations` (turns, exploration) | 60 | move to synthesis, note the cut |
+| `max_steps` (turns, exploration) | 60 | move to synthesis, note the cut |
 | `max_total_tokens` (input + output of the run) | none, set by the run | move to synthesis |
 | `max_cost_usd` (the existing cost cap) | the existing cap | move to synthesis |
 | `max_attempts` per question | 4 | question becomes `unresolvable` (stage 1), not a loop stop |
@@ -147,13 +147,13 @@ The **conclusion challenge**: the conclusion is written in a few sentences in `S
 | `max_depth` | 3 | not a loop stop (stage 1 refuses deeper nodes) |
 | wall clock (`timeout`) | existing | ends the run as today |
 
-Reserve: `synthesis_reserve` (default 0.15) of the iteration, token and cost limits is not spendable by exploration. Exploration breakers use the limit minus the reserve; synthesis breakers use the full limit. When a breaker fires in exploration, the loop moves to synthesis with a note in `Scratch` and in the report input: "the investigation was cut short by `breaker: <name>`", and the still-pending questions are listed as open gaps. The run is **not** failed.
+Reserve: `synthesis_reserve` (default 0.15) of the step, token and cost limits is not spendable by exploration. Exploration breakers use the limit minus the reserve; synthesis breakers use the full limit. When a breaker fires in exploration, the loop moves to synthesis with a note in `Scratch` and in the report input: "the investigation was cut short by `breaker: <name>`", and the still-pending questions are listed as open gaps. The run is **not** failed.
 
 If a breaker fires in synthesis (the reserve is exhausted), the run ends as `failed` with the breaker named in `error` (the same as today's agent that ends without a report).
 
 The last synthesis turn is always forced: `tool_choice` set to `finalize_report`, replacing today's "last step has no tools".
 
-Stop reasons written to `gb_agent_research_runs.stop_reason`: `finalized`, `frontier_exhausted`, `breaker:iterations`, `breaker:tokens`, `breaker:cost`, empty while running.
+Stop reasons written to `gb_agent_research_runs.stop_reason`: `finalized`, `frontier_exhausted`, `breaker:steps`, `breaker:tokens`, `breaker:cost`, empty while running.
 
 ### 9. Synthesis loop
 
@@ -168,7 +168,7 @@ Stop reasons written to `gb_agent_research_runs.stop_reason`: `finalized`, `fron
 - Add `loop` to the agent definition (`docs/agents/agent-defs.md`): `simple` (default) or `investigative`. Validation rejects any other value with a clear error.
 - Add the knobs of the design's [configuration](deep-research-loop.md#configuration) to the agent definition and to the run options (`internal/agent_research/options.go`), with the design's defaults. They take effect only when `loop = "investigative"`; setting them with `loop = "simple"` is an error, not a silent no-op.
 - Run options override the agent definition, as today for the other limits.
-- `max_iterations` replaces `max_steps` for the investigative loop only. The simple loop keeps its limit.
+- `max_steps` is the turn limit of the investigative loop too, with its own range (2 to 300, default 60; the simple loop keeps 1 to 40).
 
 ### 11. Persistence of the run, the states and the migrations
 
@@ -236,11 +236,11 @@ Compare the investigative loop with the simple loop on the same topics, as the d
 Where the code (`internal/agent_research/investigate/`, `internal/agent_research/investigative.go`, 0.181.0) chose, extended or differs from this page:
 
 - **Files.** As recommended: `loop_state.go`, `prompt.go`, `evict.go`, `gates.go`, `breakers.go` (pure, checked by `purity_test.go`), `finish_tools.go` (the two tools, in `LoopRegistry()`, which is `InvestigativeRegistry()` plus them) and `loop.go` (effects). `investigative.go` in `agent_research` is the wiring; `Run` takes a `ModelFunc` (`(*llm.Client).Raw`), the `agent.Tool`s of the agent and `Hooks`, so the loop is tested with a fake model.
-- **Where the knobs live.** In the agent definition they are an `[investigate]` table next to `loop` (`agent_defs.Investigate`), in the request an `investigate` object of the same shape; zero is the default and the request overrides the definition per field (`Investigate.Merge`). `max_cost_usd` is the existing cap (the lowest of the definition's, the request's and the server's). `Limits` of stage 1 gained `GatePriority`, `KeepTurns`, `ExtractionThreshold`, `MaxIterations`, `MaxTotalTokens`, `MaxCostUSD` and `SynthesisReserve`.
-- **Errors for what does not fit.** `loop = "investigative"` with `runner = "modal"`, or with `max_steps` in the request is an error, like knobs with the simple loop.
+- **Where the knobs live.** In the agent definition they are an `[investigate]` table next to `loop` (`agent_defs.Investigate`), in the request an `investigate` object of the same shape; zero is the default and the request overrides the definition per field (`Investigate.Merge`). `max_cost_usd` is the existing cap (the lowest of the definition's, the request's and the server's). `Limits` of stage 1 gained `GatePriority`, `KeepTurns`, `ExtractionThreshold`, `MaxSteps`, `MaxTotalTokens`, `MaxCostUSD` and `SynthesisReserve`.
+- **Errors for what does not fit.** `loop = "investigative"` with `runner = "modal"`, is an error, like knobs with the simple loop.
 - **The loop selects.** `frontier_next` is never offered to the model in exploration (except in the planning turn, for the atomic case): the loop calls it (state `selecting`, no model call). When nothing is actionable the **final check** (`FinalCheck`) queues a question (priority 0.6, by the code) for every UNVERIFIED claim behind a resolved question (a claim that has one is not queued again, so it ends). If it queued none and the exploration gate passes, exploration ends with `frontier_exhausted`; if the gate does not pass, the model gets up to 6 **wrap-up turns** (resolve the root, state and challenge the conclusion, `finish_exploration`) before it ends the same way.
 - **Stop reason.** `stop_reason` is set when exploration ends by exhaustion or a breaker and a report accepted after that keeps it; `finalized` is the reason when the model's own `finish_exploration` ended exploration. The breaker that fails the run in synthesis is the `stop_reason` and is named in `error`.
-- **Reserve arithmetic.** Exploration may take `floor(max_iterations * (1 - synthesis_reserve))` turns and the same share of the token and cost limits; the last turn (`turns + 1 >= max_iterations`) is forced to `finalize_report` with `tool_choice`.
+- **Reserve arithmetic.** Exploration may take `floor(max_steps * (1 - synthesis_reserve))` turns and the same share of the token and cost limits; the last turn (`turns + 1 >= max_steps`) is forced to `finalize_report` with `tool_choice`.
 - **Uncommitted results.** Every successful result of `web_search`, `fetch_page` and `query` is pending until a later turn writes the notes (`notes_append`, `notes_update`, `notes_scratch`) or a forced extraction turn has run. The next turn is a forced extraction when a pending result is above `extraction_threshold` or is `keep_turns` turns old (so the commit point comes before the window moves on). After an extraction turn that wrote nothing, a pending `fetch_page` is recorded as a source with the note "read, nothing relevant".
 - **Attempts.** Each search, page read or query made for the current question is logged by the effect layer (tool, query or URL, a one-line outcome: its size and the first 100 characters). The registered query of an open challenge is linked to its challenge (`LinkAttempt`). A query already in the log (the one `retry_question` logged) is not logged twice, so an attempt is a query formulation.
 - **Reasons are stored with the answer.** `resolve_question(reason)` now appends `(reason: ...)` to the stored answer (stage 1 kept it only in the transition), because the exploration gate needs to see that a question without a VERIFIED claim has a stated reason.

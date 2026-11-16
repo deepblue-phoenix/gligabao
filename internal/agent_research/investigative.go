@@ -26,6 +26,7 @@ import (
 // investigateLimits are the limits of the loop: the defaults of the design, the knobs of the definition and the options over them, and
 // the cost cap (the lowest of the caps that apply, 0 for none).
 func investigateLimits(k agent_defs.Investigate,
+	steps int,
 	costCap float64) investigate_core.Limits {
 	l := investigate_core.DefaultLimits()
 	pick := func(v,
@@ -36,7 +37,7 @@ func investigateLimits(k agent_defs.Investigate,
 		return def
 	}
 	l.MaxDepth, l.MaxAttempts, l.MaxQuestions = pick(k.MaxDepth, l.MaxDepth), pick(k.MaxAttempts, l.MaxAttempts), pick(k.MaxQuestions, l.MaxQuestions)
-	l.MaxIterations, l.MaxTotalTokens = pick(k.MaxIterations, l.MaxIterations), k.MaxTotalTokens
+	l.MaxSteps, l.MaxTotalTokens = pick(steps, l.MaxSteps), k.MaxTotalTokens
 	l.KeepTurns, l.ExtractionThreshold, l.NotesMaxTokens = pick(k.KeepTurns, l.KeepTurns), pick(k.ExtractionThreshold, l.ExtractionThreshold), pick(k.NotesMaxTokens, l.NotesMaxTokens)
 	l.MinSources, l.MinDomains = pick(k.MinSources, l.MinSources), pick(k.MinDomains, l.MinDomains)
 	l.MinIndependentSources, l.MinChallenges = pick(k.MinIndependentSources, l.MinIndependentSources), pick(k.MinChallenges, l.MinChallenges)
@@ -108,7 +109,7 @@ func (r *researcher) codeConfig() (*investigate.CodeConfig, error) {
 
 // runInvestigative runs the investigative loop of the agent and returns its outcome in the shape of the simple loop's.
 func (r *researcher) runInvestigative() (*agent.Result, error) {
-	limits := investigateLimits(r.opts.investigateKnobs(r.def), lowestCap(r.def.Limits.MaxCostUSD, r.opts.treeCostCap))
+	limits := investigateLimits(r.opts.investigateKnobs(r.def), r.opts.MaxSteps, lowestCap(r.def.Limits.MaxCostUSD, r.opts.treeCostCap))
 	local := investigate.NotesFile{
 		Dir: r.mgr.notesDir(),
 	}

@@ -40,7 +40,7 @@ import (
 var version = ""
 
 const (
-	maxStepsLimit = agent_research.MaxMaxSteps // the same limits as the research job of the server
+	maxStepsLimit = agent_research.MaxMaxStepsInvestigative // the most any loop allows; the exact range of the agent is checked by the Manager
 	maxTopicChars = agent_research.MaxTopicLen
 	envDB         = "GLIGABAO_DB" // the SQLite file, when --db is not given
 	defaultUser   = "agent"
@@ -110,7 +110,7 @@ func run(ctx context.Context,
 	var (
 		maxSteps = fs.Int("max-steps",
 			0,
-			fmt.Sprintf("most model calls, the last of which writes the report (1 to %d; default: the agent's, 20 for the default agent)", maxStepsLimit))
+			fmt.Sprintf("most model calls, the last of which writes the report (default: the agent's; the range depends on its loop: 1 to 40 for the simple one, 2 to %d for the investigative one)", maxStepsLimit))
 		agentName = fs.String("agent",
 			"",
 			"the agent definition to run (default: \"default\", the built-in research agent; with --agent-bundle, the agent the bundle is for)")
@@ -224,7 +224,7 @@ Flags:
 	}
 	if *maxSteps < 0 || *maxSteps > maxStepsLimit {
 		fmt.Fprintf(stderr,
-			"gligabao_agent: --max-steps must be between 1 and %d\n",
+			"gligabao_agent: --max-steps must be between 1 and %d (the range of the agent's loop is checked when it starts)\n",
 			maxStepsLimit)
 		return exitUsage
 	}

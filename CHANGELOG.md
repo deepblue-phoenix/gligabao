@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.208.0] - 2026-11-19
+
+### Changed
+- **One name for the limit of model calls: `max_steps`, in both loops.** The investigative loop no longer has `investigate.max_iterations` (the `[investigate]` key and the field of the `investigate` request object are gone, and a file or request that still has it is rejected as an unknown key): its limit is the same `max_steps` as the simple loop's, in the definition and in the request (`POST /v1/gb/research`, CLI `--max-steps`, MCP `max_steps`). Only the range differs by loop: 1 to 40 (default 20) for the simple one, 2 to 300 (default 60) for the investigative one; a value outside the range of the agent's loop is a `400` that names the range. `max_steps` in a request for an investigative agent used to be an error, and now sets its steps.
+- The breaker that ends exploration on the step limit is now `steps` (it was `iterations`): `stop_reason` is `breaker:steps` (runs made before keep `breaker:iterations`), and so is the text of the cut in the notes and the error. Go: `investigate_core.Limits.MaxIterations` is `MaxSteps`, `StopIterations` is `StopSteps`, `agent_defs.Investigate.MaxIterations` is removed (use `Def.MaxSteps`); `agent_defs.StepsRange(loop)` gives the lowest, default and highest steps of a loop.
+- A definition of the investigative loop that leaves `max_steps` out now has 60 (it had 20, which that loop ignored), so the hash of such definitions, the built-in `investigator` included, changes.
+
+### Added
+- `GET /v1/gb/research/agents` (and the admin list) has `steps_min` and `steps_max` for each agent: the range its `max_steps` may have, so that a client (a UI slider) takes the bounds from the server instead of hard-coding them; `max_steps` there is the default.
+
 ## [0.207.0] - 2026-11-18
 
 ### Added

@@ -492,16 +492,16 @@ func TestLoopDefaultsToSimpleAndKnobsNeedTheInvestigativeLoop(t *testing.T) {
 	if s, _ := same.Get("deep"); s.Hash != d.Hash {
 		t.Error("loop = simple changed the hash")
 	}
-	inv, err := loadLoop(t, "loop = \"Investigative\"\n[investigate]\nmax_iterations = 30\nsynthesis_reserve = 0.2\n")
+	inv, err := loadLoop(t, "loop = \"Investigative\"\nmax_steps = 30\n[investigate]\nsynthesis_reserve = 0.2\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if i, _ := inv.Get("deep"); !i.Investigative() || i.Investigate.MaxIterations != 30 || i.Hash == d.Hash {
+	if i, _ := inv.Get("deep"); !i.Investigative() || i.MaxSteps != 30 || i.Hash == d.Hash {
 		t.Errorf("investigative: %+v", i)
 	}
 	for name, c := range map[string]struct{ extra, want string }{
 		"unknown loop":                 {"loop = \"parallel\"\n", `loop: "parallel" must be "simple" or "investigative"`},
-		"knobs with the simple loop":   {"[investigate]\nmax_iterations = 30\n", `only take effect with loop = "investigative"`},
+		"knobs with the simple loop":   {"[investigate]\nmin_sources = 30\n", `only take effect with loop = "investigative"`},
 		"knobs with the explicit one":  {"loop = \"simple\"\n[investigate]\nmin_sources = 3\n", `only take effect`},
 		"sub-agents":                   {"loop = \"investigative\"\n[spawn]\nenabled = true\n", "sub-agents of the simple loop were removed"},
 		"range":                        {"loop = \"investigative\"\n[investigate]\nkeep_turns = 9\n", "investigate.keep_turns"},
@@ -511,6 +511,8 @@ func TestLoopDefaultsToSimpleAndKnobsNeedTheInvestigativeLoop(t *testing.T) {
 		"worker steps":                 {"loop = \"investigative\"\n[investigate]\nworker_max_steps = 41\n", "investigate.worker_max_steps"},
 		"min priority":                 {"loop = \"investigative\"\n[investigate]\nmin_priority_to_delegate = 1.5\n", "min_priority_to_delegate"},
 		"workers with the simple loop": {"[investigate]\nmax_parallel = 2\n", "only take effect"},
+		"simple steps over 40":         {"max_steps = 41\n", "max_steps: 41 must be between 1 and 40"},
+		"investigative steps over 300": {"loop = \"investigative\"\nmax_steps = 301\n", "max_steps: 301 must be between 2 and 300"},
 		"unknown knob":                 {"loop = \"investigative\"\n[investigate]\nmax_chaos = 2\n", "unknown key"},
 	} {
 		if _, err := loadLoop(t, c.extra); err == nil || !strings.Contains(err.Error(), c.want) {
@@ -521,18 +523,38 @@ func TestLoopDefaultsToSimpleAndKnobsNeedTheInvestigativeLoop(t *testing.T) {
 	}
 }
 
+func TestStepsRange(t *testing.T) {
+	for loop, want := range map[string][3]int{
+		"":                {1, 20, 40},
+		LoopSimple:        {1, 20, 40},
+		LoopInvestigative: {2, 60, 300},
+	} {
+		lo, def, hi := StepsRange(loop)
+		if [3]int{lo, def, hi} != want {
+			t.Errorf("%q: %d %d %d", loop, lo, def, hi)
+		}
+	}
+	inv, err := loadLoop(t, "loop = \"investigative\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i, _ := inv.Get("deep"); i.MaxSteps != 60 {
+		t.Errorf("an investigative definition defaults to 60 steps: %d", i.MaxSteps)
+	}
+}
+
 func TestInvestigateMerge(t *testing.T) {
 	base := Investigate{
-		MaxIterations: 30,
-		MinSources:    3,
-		GatePriority:  0.4,
+		MaxQuestions: 30,
+		MinSources:   3,
+		GatePriority: 0.4,
 	}
 	got := base.Merge(Investigate{
 		MinSources:       7,
 		SynthesisReserve: 0.2,
 	})
 	want := Investigate{
-		MaxIterations:    30,
+		MaxQuestions:     30,
 		MinSources:       7,
 		GatePriority:     0.4,
 		SynthesisReserve: 0.2,

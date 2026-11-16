@@ -35,15 +35,15 @@ func normalize(d *Def) {
 	d.Description = strings.TrimSpace(d.Description)
 	d.SystemPrompt = strings.TrimSpace(d.SystemPrompt)
 	d.Model = strings.TrimSpace(d.Model)
-	if d.MaxSteps == 0 {
-		d.MaxSteps = DefaultMaxSteps
-	}
 	if d.MaxTokens == 0 {
 		d.MaxTokens = DefaultMaxTokens
 	}
 	d.Loop = strings.ToLower(strings.TrimSpace(d.Loop))
 	if d.Loop == LoopSimple { // "" is the simple loop: keep one form, so that the hash of an agent does not depend on how it says so
 		d.Loop = ""
+	}
+	if d.MaxSteps == 0 { // the default depends on the loop
+		_, d.MaxSteps, _ = StepsRange(d.Loop)
 	}
 	if d.Tools == nil {
 		d.Tools = append([]string(nil), KnownTools...)
@@ -134,10 +134,11 @@ func check(d *Def) []string {
 	if len(d.Model) > 100 || strings.ContainsAny(d.Model, " \t\r\n") {
 		bad("model: %q is not a valid model name", d.Model)
 	}
-	if d.MaxSteps < 1 || d.MaxSteps > MaxStepsCeiling {
-		bad("max_steps: %d must be between 1 and %d",
+	if lo, _, hi := StepsRange(d.Loop); d.MaxSteps < lo || d.MaxSteps > hi {
+		bad("max_steps: %d must be between %d and %d for this loop",
 			d.MaxSteps,
-			MaxStepsCeiling)
+			lo,
+			hi)
 	}
 	if d.MaxTokens < 1 || d.MaxTokens > maxTokensCeiling {
 		bad("max_tokens: %d must be between 1 and %d",
@@ -462,10 +463,6 @@ func (v Investigate) Check() []string {
 		v.MaxQuestions,
 		2,
 		200)
-	in("max_iterations",
-		v.MaxIterations,
-		2,
-		300)
 	in("max_total_tokens",
 		v.MaxTotalTokens,
 		1000,
@@ -554,7 +551,6 @@ func (v Investigate) Merge(o Investigate) Investigate {
 		MaxDepth:               pick(v.MaxDepth, o.MaxDepth),
 		MaxAttempts:            pick(v.MaxAttempts, o.MaxAttempts),
 		MaxQuestions:           pick(v.MaxQuestions, o.MaxQuestions),
-		MaxIterations:          pick(v.MaxIterations, o.MaxIterations),
 		MaxTotalTokens:         pick(v.MaxTotalTokens, o.MaxTotalTokens),
 		KeepTurns:              pick(v.KeepTurns, o.KeepTurns),
 		ExtractionThreshold:    pick(v.ExtractionThreshold, o.ExtractionThreshold),

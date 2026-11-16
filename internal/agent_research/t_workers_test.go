@@ -20,8 +20,8 @@ version = "1.0.0"
 description = "Investigates with workers."
 system_prompt = "DEEP PROMPT"
 loop = "investigative"
+max_steps = 12
 [investigate]
-max_iterations = 12
 min_sources = 1
 min_domains = 1
 max_parallel = 2

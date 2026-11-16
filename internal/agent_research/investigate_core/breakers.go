@@ -8,7 +8,7 @@ import (
 
 // Breaker is a limit of the run that was reached.
 type Breaker struct {
-	// Name is "iterations", "tokens" or "cost"; Limit and Used are in the unit of the breaker (turns, tokens, USD), Limit being the limit
+	// Name is "steps", "tokens" or "cost"; Limit and Used are in the unit of the breaker (turns, tokens, USD), Limit being the limit
 	// that applied (the reserve already taken off in exploration).
 	Name        string
 	Limit, Used float64
@@ -33,12 +33,12 @@ func ExplorationLimit(limit,
 }
 
 // ExplorationTurns is the number of turns exploration may take of the limit (rounded down, at least 1 when there is a limit).
-func ExplorationTurns(maxIterations int,
+func ExplorationTurns(maxSteps int,
 	reserve float64) int {
-	if maxIterations <= 0 {
+	if maxSteps <= 0 {
 		return 0
 	}
-	return max(1, int(math.Floor(ExplorationLimit(float64(maxIterations), reserve))))
+	return max(1, int(math.Floor(ExplorationLimit(float64(maxSteps), reserve))))
 }
 
 // CheckBreakers returns the breakers that fired, checked before every model call: the turns made, the tokens and the cost against the
@@ -51,13 +51,13 @@ func CheckBreakers(ls LoopState,
 		reserve = 0
 	}
 	var out []Breaker
-	if limits.MaxIterations > 0 {
-		limit := float64(limits.MaxIterations)
+	if limits.MaxSteps > 0 {
+		limit := float64(limits.MaxSteps)
 		if reserve > 0 {
-			limit = float64(ExplorationTurns(limits.MaxIterations, reserve))
+			limit = float64(ExplorationTurns(limits.MaxSteps, reserve))
 		}
 		if float64(ls.Turns) >= limit {
-			out = append(out, Breaker{"iterations", limit, float64(ls.Turns)})
+			out = append(out, Breaker{"steps", limit, float64(ls.Turns)})
 		}
 	}
 	if limits.MaxTotalTokens > 0 {
@@ -77,7 +77,7 @@ func CheckBreakers(ls LoopState,
 // to be finalize_report.
 func IsLastTurn(ls LoopState,
 	limits Limits) bool {
-	return limits.MaxIterations > 0 && ls.Turns+1 >= limits.MaxIterations
+	return limits.MaxSteps > 0 && ls.Turns+1 >= limits.MaxSteps
 }
 
 // CutShort is what the loop writes when a breaker ends exploration: a line in Scratch saying so, and the questions still open as gaps in

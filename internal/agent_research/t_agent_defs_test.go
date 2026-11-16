@@ -325,6 +325,19 @@ dataset_locked = true
 		if got := strings.Join(names, ","); got != "default@1.0.0,investigator@1.0.0,pinned@1.0.0,scout@1.2.0" {
 			t.Errorf("agents: %s", got)
 		}
+		// the allowed range of max_steps depends on the loop and is listed for clients (a UI bounds its slider with it)
+		for _, i := range infos {
+			want := [3]int{1, 20, 40}
+			if i.Loop == "investigative" {
+				want = [3]int{2, 60, 300}
+			}
+			if got := [3]int{i.StepsMin, i.MaxSteps, i.StepsMax}; got != want && i.Name != "scout" && i.Name != "pinned" {
+				t.Errorf("%s: steps min, default and max %v, want %v",
+					i.Name,
+					got,
+					want)
+			}
+		}
 	})
 }
 

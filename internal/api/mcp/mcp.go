@@ -61,7 +61,7 @@ type QueryInput struct {
 type ResearchStartInput struct {
 	UserID         string  `json:"user_id" jsonschema:"the user that owns the research"`
 	Topic          string  `json:"topic" jsonschema:"what to research: a question, or a subject to write a report on (at most 2000 characters)"`
-	MaxSteps       int     `json:"max_steps,omitempty" jsonschema:"the most model calls the agent makes, the last of which writes the report (default 20, at most 40); more steps research more and cost more"`
+	MaxSteps       int     `json:"max_steps,omitempty" jsonschema:"the most model calls the agent makes, the last of which writes the report (default: the agent's, 20 for the default agent and 60 for the investigative one; at most 40 for the simple loop and 300 for the investigative one); more steps research more and cost more"`
 	Model          string  `json:"model,omitempty" jsonschema:"the model the agent runs on, one that supports Anthropic's web search tool (default: the agent's, else the server's)"`
 	Agent          string  `json:"agent,omitempty" jsonschema:"the agent definition to run: its prompt, tools, search and knowledge settings, cost caps and sub-agents (default: default, the built-in research agent)"`
 	AgentVersion   string  `json:"agent_version,omitempty" jsonschema:"a constraint the agent's version must meet, e.g. 1.2.0, >=1.0 or ^1.2"`

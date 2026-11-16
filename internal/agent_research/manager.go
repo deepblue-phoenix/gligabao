@@ -19,7 +19,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
@@ -89,8 +88,12 @@ type AgentInfo struct {
 	Hash   string `json:"hash"`
 	Source string `json:"source"`
 	// Model, MaxSteps and the caps are the definition's settings; MaxParallel is the most workers its investigative loop runs at once (1: it works alone).
-	Model          string  `json:"model"`
-	MaxSteps       int     `json:"max_steps"`
+	Model    string `json:"model"`
+	MaxSteps int    `json:"max_steps"`
+	// StepsMin and StepsMax are the lowest and the highest max_steps a research of this agent's loop may be started with (the range
+	// differs by loop, see agent_defs.StepsRange): a client such as a UI reads them to bound its input. MaxSteps is the default.
+	StepsMin       int     `json:"steps_min"`
+	StepsMax       int     `json:"steps_max"`
 	MaxCostUSD     float64 `json:"max_cost_usd"`
 	MaxTreeCostUSD float64 `json:"max_tree_cost_usd"`
 	Knowledge      string  `json:"knowledge"`
@@ -241,6 +244,7 @@ func (m *Manager) Definitions() []*agent_defs.Def { return m.registry().List() }
 func (m *Manager) Agents() []AgentInfo {
 	var out []AgentInfo
 	for _, d := range m.registry().List() {
+		stepsMin, _, stepsMax := agent_defs.StepsRange(d.Loop)
 		info := AgentInfo{
 			Name:           d.Name,
 			Version:        d.Version,
@@ -249,6 +253,8 @@ func (m *Manager) Agents() []AgentInfo {
 			Source:         d.Source,
 			Model:          d.Model,
 			MaxSteps:       d.MaxSteps,
+			StepsMin:       stepsMin,
+			StepsMax:       stepsMax,
 			MaxCostUSD:     d.Limits.MaxCostUSD,
 			MaxTreeCostUSD: d.Limits.MaxTreeCostUSD,
 			Knowledge:      d.Knowledge.Access,
@@ -285,16 +291,15 @@ func (m *Manager) Agents() []AgentInfo {
 func (m *Manager) applyDef(opts Options,
 	def *agent_defs.Def) (Options, error) {
 	opts.Agent = def.Name
+	if lo, _, hi := agent_defs.StepsRange(def.Loop); opts.MaxSteps != 0 && (opts.MaxSteps < lo || opts.MaxSteps > hi) {
+		return opts, invalidErr(fmt.Sprintf("max_steps must be between %d and %d for the agent %q",
+			lo,
+			hi,
+			def.Name))
+	}
 	if def.Investigative() {
-		if opts.MaxSteps != 0 {
-			return opts, invalidErr("max_steps does not apply to the investigative loop: use investigate.max_iterations")
-		}
 		if opts.Runner == core.RunnerModal {
 			return opts, invalidErr("the investigative loop runs locally: the modal runner does not support it")
-		}
-		opts.MaxSteps = opts.investigateKnobs(def).MaxIterations
-		if opts.MaxSteps == 0 {
-			opts.MaxSteps = investigate_core.DefaultLimits().MaxIterations
 		}
 	} else if opts.Investigate != nil {
 		return opts, invalidErr(fmt.Sprintf("the investigate options only take effect with the investigative loop, and the agent %q runs the simple one", def.Name))
