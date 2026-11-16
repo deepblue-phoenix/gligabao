@@ -8,9 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +16,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
@@ -41,6 +40,8 @@ type Target struct {
 	EmbeddingDimensions int
 	// ImageDir is the directory of the image files ("" : the files are not copied).
 	ImageDir string
+	// Images is where the image files are copied to; it takes precedence over ImageDir. nil: the file system store of ImageDir.
+	Images imagestore.Store
 }
 
 // Options are the settings of an import.
@@ -235,7 +236,7 @@ func Import(ctx context.Context,
 
 	im.refreshSeries(ctx)
 	im.vectors(ctx)
-	im.copyImages()
+	im.copyImages(ctx)
 	return im.res, nil
 }
 
@@ -1137,11 +1138,13 @@ func (im *importer) mapVector(v vector.Vector) (out vector.Vector, same, ok bool
 }
 
 // copyImages writes the image files of the images that were imported to the image directory, under the paths the rows now have.
-func (im *importer) copyImages() {
+func (im *importer) copyImages(ctx context.Context) {
 	if len(im.images) == 0 {
 		return
 	}
-	if im.t.ImageDir == "" {
+	images := imagestore.Resolve(im.t.Images,
+		im.t.ImageDir)
+	if images == nil {
 		im.res.warnf("the %d image files of the archive are not copied: the target has no image directory", len(im.images))
 		return
 	}
@@ -1151,15 +1154,25 @@ func (im *importer) copyImages() {
 		if !ok {
 			return nil
 		}
-		full := filepath.Join(im.t.ImageDir, filepath.FromSlash(newPath))
-		if _, err := os.Stat(full); err == nil {
-			return nil // the same image of the same dataset is stored already
-		}
-		if err := writeFileAtomic(full, content); err != nil {
+		data, err := io.ReadAll(content)
+		if err != nil {
 			im.res.warnf("image file %s was not copied: %v",
 				newPath,
 				err)
 			return nil
+		}
+		created, err := images.Put(ctx,
+			im.o.UserID,
+			newPath,
+			data)
+		if err != nil {
+			im.res.warnf("image file %s was not copied: %v",
+				newPath,
+				err)
+			return nil
+		}
+		if !created {
+			return nil // the same image of the same dataset is stored already
 		}
 		im.res.Images++
 		return nil

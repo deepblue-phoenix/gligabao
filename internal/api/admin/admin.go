@@ -3,15 +3,14 @@
 package admin
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
@@ -57,6 +56,8 @@ type Named struct {
 	// ImageDir is the directory of the image files of DB's image artifacts ("" = unknown: nothing is reported
 	// about the files on disk).
 	ImageDir string
+	// Images is the store of the image files; it takes precedence over ImageDir (nil: the file system store of ImageDir).
+	Images imagestore.Store
 	// Vectors is the vector store holding the embeddings of DB's datasets; nil if there is none (the vectors of a
 	// deleted dataset are then not cleaned up).
 	Vectors vector.Store
@@ -388,7 +389,7 @@ func VectorsAllOf(dbs []Named) http.HandlerFunc {
 
 //---------------------------------------------------------------------------------------------
 
-// imageDisk describes the image directory next to what the database tracks.
+// imageDisk describes the image store (a directory or an S3 bucket) next to what the database tracks.
 type imageDisk struct {
 	Dir    string `json:"dir"`
 	Exists bool   `json:"exists"`
@@ -430,8 +431,11 @@ func ImagesOf(dbs []Named) http.HandlerFunc {
 			out := imagesView{
 				ImageStats: st,
 			}
-			if n.ImageDir != "" {
-				out.Disk = scanImageDir(n.ImageDir, st.Paths)
+			if images := imagestore.Resolve(n.Images,
+				n.ImageDir); images != nil {
+				out.Disk = scanImages(r.Context(),
+					images,
+					st.Paths)
 			}
 			httputil.WriteJSON(w,
 				http.StatusOK,
@@ -444,37 +448,26 @@ func ImagesOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
-// scanImageDir walks dir and compares its files with the paths the database tracks (relative to dir, slash-separated).
-func scanImageDir(dir string,
+// scanImages lists the files of the image store and compares them with the paths the database tracks (relative to the
+// store root, slash-separated).
+func scanImages(ctx context.Context,
+	images imagestore.Store,
 	tracked []string) *imageDisk {
 	d := &imageDisk{
-		Dir: dir,
+		Dir: images.Location(),
 	}
-	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+	objs, err := images.List(ctx)
+	if err != nil {
 		d.Missing = len(tracked)
 		return d
 	}
 	d.Exists = true
 	onDisk := map[string]bool{}
-	filepath.WalkDir(dir, func(p string,
-		e os.DirEntry,
-		err error) error {
-		if err != nil || e.IsDir() {
-			return nil // unreadable entries are skipped
-		}
-		rel, err := filepath.Rel(dir, p)
-		if err != nil || strings.HasPrefix(e.Name(), ".tmp-") { // a file being written is not yet one of the store
-			return nil
-		}
-		fi, err := e.Info()
-		if err != nil {
-			return nil
-		}
+	for _, o := range objs {
 		d.Files++
-		d.Bytes += fi.Size()
-		onDisk[filepath.ToSlash(rel)] = true
-		return nil
-	})
+		d.Bytes += o.Size
+		onDisk[o.Path] = true
+	}
 	seen := map[string]bool{}
 	for _, p := range tracked {
 		if seen[p] { // the same file can back several artifacts

@@ -27,7 +27,7 @@ import (
 // d holds all databases; its vector store has one vector dataset per dataset and index (memory_dataset.VectorDataset). emb is what remember embeds with and what query
 // embeds the question with: it must not be nil (a query with a nil emb panics). jv may be nil (Jev not configured), in which case
 // remember skips the steps that run on Jev. ws may be nil (no Anthropic API key), in which case a remember request that asks for
-// web_search returns 503. Images are stored as files in d.ImageDir.
+// web_search returns 503. Images are stored in d.ImageStore (a directory or an S3 bucket).
 func Register(mux *http.ServeMux,
 	mgr *memory_remember.Manager,
 	d *db.DB,
@@ -116,7 +116,7 @@ func rememberOptions(d *db.DB,
 	ws memory_core.WebSearcher,
 	providers []memory_core.SeriesProvider,
 	o options) []memory_core.Option {
-	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_core.WithGraphEmbedder(o.graphEmbedder), memory_image.WithImageDir(d.ImageDir)}
+	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_core.WithGraphEmbedder(o.graphEmbedder), memory_image.WithImageStore(d.ImageStore)}
 }
 
 // QueryHandler is the handler of POST /v1/gb/query, without the API key check that Register puts in front of it: the admin UI's query
@@ -310,7 +310,7 @@ func RegisterEval(mux *http.ServeMux,
 		memory_core.WithSeriesProviders(providers),
 		memory_core.WithGeoResolver(o.geo),
 		memory_core.WithGraphEmbedder(o.graphEmbedder),
-		memory_image.WithImageDir(d.ImageDir)))
+		memory_image.WithImageStore(d.ImageStore)))
 	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational,
 		llm,
 		memory.WithVectors(d.Vector, emb),

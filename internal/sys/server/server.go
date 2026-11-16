@@ -438,6 +438,7 @@ func newMux(ctx context.Context,
 		DB:       d.Relational,
 		Vectors:  d.Vector,
 		ImageDir: d.ImageDir,
+		Images:   d.ImageStore,
 	}}, extraAdminDBs...)
 	if trainingMode {
 		registerTraining(ctx,
@@ -930,7 +931,7 @@ func prepare(ctx context.Context,
 		"sqlite_path":          database.SQLitePath,
 		"vector_store":         database.VectorStore,
 		"vector_dir":           database.VectorDir,
-		"image_dir":            database.ImageDir,
+		"image_store":          database.ImageStore.Location(),
 		"embedding_dimensions": database.EmbeddingDimensions,
 	}).Info("databases opened")
 

@@ -38,6 +38,11 @@ const (
 	EnvS3VectorsBucket       = "S3_VECTORS_BUCKET"
 	EnvS3VectorsRegion       = "S3_VECTORS_REGION"
 	EnvS3VectorsPrefix       = "S3_VECTORS_PREFIX"
+	EnvImageStore            = "IMAGE_STORE"
+	EnvImageS3Bucket         = "IMAGE_S3_BUCKET"
+	EnvImageS3Region         = "IMAGE_S3_REGION"
+	EnvImageS3Prefix         = "IMAGE_S3_PREFIX"
+	EnvImageS3Endpoint       = "IMAGE_S3_ENDPOINT"
 	EnvSidecarURL            = "SIDECAR_URL"
 )
 
@@ -52,6 +57,12 @@ const (
 	VectorStoreChromem   = "chromem"
 	VectorStorePinecone  = "pinecone"
 	VectorStoreS3Vectors = "s3vectors"
+)
+
+// Image stores selectable with the image_store setting.
+const (
+	ImageStoreFS = "fs"
+	ImageStoreS3 = "s3"
 )
 
 // DefaultEmbeddingDimensions is the output size of the default embedding model (text-embedding-3-small).
@@ -108,6 +119,19 @@ type Config struct {
 	// S3VectorsPrefix is the "subdirectory" of the bucket gligabao uses (also S3_VECTORS_PREFIX): each dataset is the index
 	// "<prefix>.<dataset>", so deployments can share a bucket. Optional.
 	S3VectorsPrefix string `toml:"s3_vectors_prefix"`
+	// ImageStore selects where the image files are kept: "fs" (default; a directory, `serve --image-dir`, by default next
+	// to the main database) or "s3" (an Amazon S3 bucket, see image_s3_bucket). Also IMAGE_STORE.
+	ImageStore string `toml:"image_store"`
+	// ImageS3Bucket is the (existing) S3 bucket of image_store = "s3" (also IMAGE_S3_BUCKET).
+	ImageS3Bucket string `toml:"image_s3_bucket"`
+	// ImageS3Region is its AWS region (also IMAGE_S3_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
+	// Credentials come from the standard AWS chain (environment, shared files, IAM role), never from this file.
+	ImageS3Region string `toml:"image_s3_region"`
+	// ImageS3Prefix is the "subdirectory" of the bucket the images are stored under (also IMAGE_S3_PREFIX), so
+	// deployments can share a bucket. Optional.
+	ImageS3Prefix string `toml:"image_s3_prefix"`
+	// ImageS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also IMAGE_S3_ENDPOINT). Empty = AWS.
+	ImageS3Endpoint string `toml:"image_s3_endpoint"`
 	// ChunkSize is the chunk size, in tokens: remember splits a text of more than this many tokens into chunks (see
 	// docs/chunking.md). Default chunk.DefaultSize (1024).
 	ChunkSize int `toml:"chunk_size"`
@@ -265,6 +289,12 @@ func Default() *Config {
 		S3VectorsRegion:   os.Getenv(EnvS3VectorsRegion),
 		S3VectorsPrefix:   os.Getenv(EnvS3VectorsPrefix),
 
+		ImageStore:      envOr(EnvImageStore, ImageStoreFS),
+		ImageS3Bucket:   os.Getenv(EnvImageS3Bucket),
+		ImageS3Region:   os.Getenv(EnvImageS3Region),
+		ImageS3Prefix:   os.Getenv(EnvImageS3Prefix),
+		ImageS3Endpoint: os.Getenv(EnvImageS3Endpoint),
+
 		ResearchNotesS3Bucket: os.Getenv(EnvResearchNotesS3Bucket),
 		ResearchNotesS3Region: os.Getenv(EnvResearchNotesS3Region),
 		ResearchNotesS3Prefix: os.Getenv(EnvResearchNotesS3Prefix),
@@ -317,6 +347,20 @@ func (c *Config) Validate() error {
 			VectorStoreChromem,
 			VectorStorePinecone,
 			VectorStoreS3Vectors)
+	}
+	switch c.ImageStore {
+	case ImageStoreFS:
+	case ImageStoreS3:
+		if strings.TrimSpace(c.ImageS3Bucket) == "" {
+			return fmt.Errorf("config: image_s3_bucket (or %s) is required when image_store is %q",
+				EnvImageS3Bucket,
+				ImageStoreS3)
+		}
+	default:
+		return fmt.Errorf("config: image_store %q must be %q or %q",
+			c.ImageStore,
+			ImageStoreFS,
+			ImageStoreS3)
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)
@@ -415,4 +459,13 @@ func (c *Config) resolveDirs(base string) {
 			}
 		}
 	}
+}
+
+// envOr returns the environment variable name, or def if it is empty.
+func envOr(name,
+	def string) string {
+	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+		return v
+	}
+	return def
 }

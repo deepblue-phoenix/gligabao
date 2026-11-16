@@ -127,6 +127,7 @@ func (i dbImporter) Import(ctx context.Context,
 			Vector:              i.d.Vector,
 			EmbeddingDimensions: i.d.EmbeddingDimensions,
 			ImageDir:            i.d.ImageDir,
+			Images:              i.d.ImageStore,
 		},
 		dbimport.Options{
 			UserID:        run.UserID,

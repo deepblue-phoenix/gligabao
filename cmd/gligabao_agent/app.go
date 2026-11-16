@@ -135,6 +135,7 @@ func (a *app) fullExport(ctx context.Context,
 			VectorStore:         a.database.VectorStore,
 			EmbeddingDimensions: a.database.EmbeddingDimensions,
 			ImageDir:            a.database.ImageDir,
+			Images:              a.database.ImageStore,
 		},
 		dbexport.Options{
 			Source:  "gligabao_agent",

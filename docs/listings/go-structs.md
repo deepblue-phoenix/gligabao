@@ -124,7 +124,7 @@
 | `internal/api/admin.evalOverview`                         | is the admin UI's eval overview with totals and experiments.                                                           |
 | `internal/api/admin.experimentDetail`                     | is an experiment with its runs for the admin detail view.                                                              |
 | `internal/api/admin.experimentView`                       | is an experiment with its counts as listed in the admin UI.                                                            |
-| `internal/api/admin.imageDisk`                            | describes the image directory next to what the database tracks.                                                        |
+| `internal/api/admin.imageDisk`                            | describes the image store next to what the database tracks.                                                            |
 | `internal/api/admin.imagesView`                           | is the admin UI's image statistics together with the disk state.                                                       |
 | `internal/api/admin.inferencesResponse`                   | is the admin API response listing inferences with breakdowns and pagination.                                           |
 | `internal/api/admin.lookup`                               | holds the entities, edges and artifacts that the anchors of one dataset point to.                                      |

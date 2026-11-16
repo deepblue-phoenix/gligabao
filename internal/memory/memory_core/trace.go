@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
@@ -52,7 +53,8 @@ type CallOptions struct {
 	Eval bool
 	Dir  string // the trajectory directory
 
-	ImageDir string // the image directory; "" means the default of package memory_image
+	ImageDir   string           // the image directory; "" means the default of package memory_image (ignored if ImageStore is set)
+	ImageStore imagestore.Store // where the image files are kept; nil means the file system store of ImageDir
 
 	Vectors  vector.Store // the vector store of the text pipeline
 	Embedder Embedder

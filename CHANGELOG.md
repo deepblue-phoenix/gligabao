@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.210.0] - 2026-11-20
+
+### Added
+- **Image files can be stored in an Amazon S3 bucket** instead of the image directory: set `image_store = "s3"` and `image_s3_bucket` (also `image_s3_region`, `image_s3_prefix`, `image_s3_endpoint`; environment `IMAGE_STORE`, `IMAGE_S3_BUCKET`, `IMAGE_S3_REGION`, `IMAGE_S3_PREFIX`, `IMAGE_S3_ENDPOINT`). The default stays `fs` (the directory). The config is rejected if `image_store` is `s3` without a bucket. In S3 each user has a directory of their own (`<prefix>/<user id>/<dataset id>/<sha256>.<ext>`), and every store operation names its owner and can only reach that owner's directory, so users cannot access each other's images; the file system layout is unchanged.
+
+### Changed
+- Image storage is abstracted behind `imagestore.Store` (`internal/db/imagestore`, with `FS` and `S3`; `Put`/`Read`/`Remove` take the owner user id), kept in `db.DB.ImageStore`; the image pipeline, the admin image statistics, the database export and the research import all use it. Go: `memory_image.WithImageStore(store)`; `memory_image.WithImageDir` still works. `dbexport.Source`, `dbimport.Target` and `admin.Named` get an `Images` store field next to `ImageDir`.
+
 ## [0.209.0] - 2026-11-16
 
 ### Added

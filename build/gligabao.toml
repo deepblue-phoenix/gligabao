@@ -31,6 +31,16 @@ embedding_dimensions = 1536
 # s3_vectors_region = "us-east-1"
 # s3_vectors_prefix = "prod"
 
+# Where image files are kept: "fs" (default; a directory, `serve --image-dir`, by default next to the database) or "s3"
+# (an existing Amazon S3 bucket). Credentials come from the standard AWS chain, not from this file. Images are stored as
+# "<prefix>/<dataset id>/<sha256>.<ext>". Also settable with IMAGE_STORE / IMAGE_S3_BUCKET / IMAGE_S3_REGION /
+# IMAGE_S3_PREFIX / IMAGE_S3_ENDPOINT (a custom endpoint such as MinIO or LocalStack).
+# image_store = "s3"
+# image_s3_bucket = "my-gligabao-images"
+# image_s3_region = "us-east-1"
+# image_s3_prefix = "prod"
+# image_s3_endpoint = ""
+
 # Long texts: remember splits a text of more than chunk_size tokens into chunks (at paragraph boundaries, with
 # chunk_overlap_percent of each chunk repeated at the start of the next) and extracts, stores and embeds each chunk on
 # its own. See docs/chunking.md.

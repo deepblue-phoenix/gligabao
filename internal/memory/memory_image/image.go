@@ -2,8 +2,8 @@ package memory_image
 
 // The image pipeline (package memory_image): Remember for images (RememberImage). It is independent of the text pipeline (remember.go):
 // an image is sent to a vision LLM, which reads the text in it (OCR: title and text blocks) and classifies the whole
-// image by a theme ("graph", "plot", ...). The image file is kept in the image directory (ImageDir, see package
-// image_store.go), tracked by an image artifact row (gb_image_artifacts: metadata and the file's path, never the bytes),
+// image by a theme ("graph", "plot", ...). The image file is kept in the image store (see package imagestore: a directory, ImageDir, or an S3 bucket; see
+// config image_store), tracked by an image artifact row (gb_image_artifacts: metadata and the file's path, never the bytes),
 // and what the model read is stored as an image extraction with its text blocks (gb_image_extractions,
 // gb_image_text_blocks). The model also describes what the image shows and how its elements relate (the links of a graph
 // or diagram, what a plot says); that description is then remembered as a text artifact by the text pipeline
@@ -24,6 +24,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -43,12 +44,21 @@ func WithImageDir(dir string) memory_core.Option {
 	return func(o *memory_core.CallOptions) { o.ImageDir = dir }
 }
 
-// imageDir is the image directory of a call.
-func imageDir(o memory_core.CallOptions) string {
-	if o.ImageDir != "" {
-		return o.ImageDir
+// WithImageStore sets where this call keeps the image files (the file system or S3, see package imagestore); it takes
+// precedence over ImageDir and WithImageDir. A nil store is ignored.
+func WithImageStore(s imagestore.Store) memory_core.Option {
+	return func(o *memory_core.CallOptions) { o.ImageStore = s }
+}
+
+// storeOf is the image store of a call: the one of WithImageStore, else the directory of WithImageDir / ImageDir.
+func storeOf(o memory_core.CallOptions) imagestore.Store {
+	if o.ImageStore != nil {
+		return o.ImageStore
 	}
-	return ImageDir
+	if o.ImageDir != "" {
+		return imagestore.NewFS(o.ImageDir)
+	}
+	return imagestore.NewFS(ImageDir)
 }
 
 // CallRememberImage is the type of the LLM calls of RememberImage, stored in gb_inferences.type.
@@ -322,7 +332,9 @@ func RememberImage(ctx context.Context,
 		case err == nil:
 			co.Report("find_existing_image", "succeeded", "this image was extracted before: using the stored result", nil)
 			// Same content, so the same file name: this only writes the file if it is gone.
-			if _, _, err := saveFile(imageDir(co),
+			if _, _, err := imagestore.Save(ctx,
+				storeOf(co),
+				userID,
 				dsID,
 				art.MediaType,
 				hash,
@@ -381,7 +393,9 @@ func RememberImage(ctx context.Context,
 	}
 	// The file first, then the row that tracks it: a failed insert removes the file again (unless it was there already,
 	// from the same image in this dataset), so only a crash in between can leave an untracked file.
-	path, created, err := saveFile(imageDir(co),
+	path, created, err := imagestore.Save(ctx,
+		storeOf(co),
+		userID,
 		dsID,
 		mediaType,
 		hash,
@@ -416,7 +430,9 @@ func RememberImage(ctx context.Context,
 		})
 	if err != nil {
 		if created {
-			if removeErr := removeFile(imageDir(co), path); removeErr != nil {
+			if removeErr := storeOf(co).Remove(ctx,
+				userID,
+				path); removeErr != nil {
 				log.WithError(removeErr).WithField("path", path).Error("remove image file after failed insert")
 			}
 		}
@@ -608,5 +624,7 @@ func LoadImage(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	return readFile(imageDir(memory_core.NewCallOptions(opts)), a.Path)
+	return storeOf(memory_core.NewCallOptions(opts)).Read(ctx,
+		userID,
+		a.Path)
 }

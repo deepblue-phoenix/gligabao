@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
@@ -59,6 +60,11 @@ type Config struct {
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
 	PineconeKey       string
 	PineconeIndexHost string
+	// ImageStore selects where the image files are kept: config.ImageStoreFS (default, the directory ImageDir) or
+	// config.ImageStoreS3 (the bucket ImageS3).
+	ImageStore string
+	// ImageS3 configures the S3 image store (config.ImageStoreS3).
+	ImageS3 imagestore.S3Config
 	// S3Vectors configures the S3 vector store (config.VectorStoreS3Vectors); its Dimensions default to EmbeddingDimensions.
 	S3Vectors vector.S3VectorsConfig
 	// Chunking is the chunk size and overlap remember uses for a long text. The zero value means chunk.DefaultConfig().
@@ -89,12 +95,19 @@ func ConfigFrom(c *config.Config,
 	vectorDir,
 	imageDir string) Config {
 	return Config{
-		Backend:             c.DBBackend,
-		SQLitePath:          sqlitePath,
-		PostgresDSN:         c.PostgresDSN,
-		VectorStore:         c.VectorStore,
-		VectorDir:           vectorDir,
-		ImageDir:            imageDir,
+		Backend:     c.DBBackend,
+		SQLitePath:  sqlitePath,
+		PostgresDSN: c.PostgresDSN,
+		VectorStore: c.VectorStore,
+		VectorDir:   vectorDir,
+		ImageDir:    imageDir,
+		ImageStore:  c.ImageStore,
+		ImageS3: imagestore.S3Config{
+			Bucket:   c.ImageS3Bucket,
+			Region:   c.ImageS3Region,
+			Prefix:   c.ImageS3Prefix,
+			Endpoint: c.ImageS3Endpoint,
+		},
 		EmbeddingDimensions: c.EmbeddingDimensions,
 		PineconeKey:         c.PineconeKey,
 		PineconeIndexHost:   c.PineconeIndexHost,
@@ -136,6 +149,9 @@ type DB struct {
 	// ImageDir is the directory of the image files (created when the first image is stored). The relational
 	// database only tracks their paths.
 	ImageDir string
+	// ImageStore is where the image files are kept (never nil on an opened DB): the directory ImageDir, or an S3
+	// bucket. Read and write images through it, not through ImageDir.
+	ImageStore imagestore.Store
 	// Chunking is the chunk size and overlap remember uses for a long text.
 	Chunking memory_chunk.Config
 }
@@ -163,8 +179,23 @@ func Open(cfg Config) (*DB, error) {
 		cfg.ImageDir = DefaultImageDir(cfg.SQLitePath)
 	}
 
+	var images imagestore.Store
+	switch cfg.ImageStore {
+	case "", config.ImageStoreFS:
+		images = imagestore.NewFS(cfg.ImageDir)
+	case config.ImageStoreS3:
+		s3Store, err := imagestore.NewS3(context.Background(), cfg.ImageS3)
+		if err != nil {
+			return nil, err
+		}
+		images = s3Store
+	default:
+		return nil, fmt.Errorf("unknown image store %q", cfg.ImageStore)
+	}
+
 	d := &DB{
 		ImageDir:            cfg.ImageDir,
+		ImageStore:          images,
 		Backend:             cfg.Backend,
 		VectorStore:         cfg.VectorStore,
 		EmbeddingDimensions: cfg.EmbeddingDimensions,
@@ -316,5 +347,5 @@ func (d *DB) String() string {
 		rel,
 		vec,
 		d.EmbeddingDimensions,
-		d.ImageDir)
+		d.ImageStore.Location())
 }

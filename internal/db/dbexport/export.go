@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"math"
 	"net/url"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -43,6 +43,8 @@ type Source struct {
 	EmbeddingDimensions int
 	// ImageDir is the directory of the image files ("" or one that does not exist: no images).
 	ImageDir string
+	// Images is where the image files are read from; it takes precedence over ImageDir. nil: the file system store of ImageDir.
+	Images imagestore.Store
 }
 
 // Extra is a file the caller adds to the archive, as entry "extra/<Name>". Name is a relative path with forward slashes.
@@ -119,7 +121,8 @@ func Write(ctx context.Context,
 	}
 	if err := writeImages(ctx,
 		zw,
-		src.ImageDir,
+		imagestore.Resolve(src.Images,
+			src.ImageDir),
 		m); err != nil {
 		return nil, err
 	}
@@ -475,65 +478,56 @@ func uniqueName(name string,
 
 func writeImages(ctx context.Context,
 	zw *zip.Writer,
-	dir string,
+	images imagestore.Store,
 	m *Manifest) error {
-	if dir == "" {
+	if images == nil {
 		return nil
 	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+	objs, err := images.List(ctx)
+	if errors.Is(err, imagestore.ErrNotFound) {
 		return nil // nothing was ever stored: the directory is created with the first image
 	}
-	var files []string
-	err := filepath.WalkDir(dir, func(p string,
-		d fs.DirEntry,
-		err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.Type().IsRegular() || strings.HasPrefix(d.Name(), ".tmp-") {
-			return nil
-		}
-		rel, err := filepath.Rel(dir, p)
-		if err != nil {
-			return err
-		}
-		files = append(files, filepath.ToSlash(rel))
-		return nil
-	})
 	if err != nil {
-		return fmt.Errorf("dbexport: read the image directory: %w", err)
+		return fmt.Errorf("dbexport: list the images: %w", err)
 	}
-	sort.Strings(files)
-	for _, rel := range files {
+	sort.Slice(objs, func(i, j int) bool { return objs[i].Path < objs[j].Path })
+	for _, o := range objs {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		size, err := copyImage(zw,
-			imagesDir+rel,
-			filepath.Join(dir, filepath.FromSlash(rel)))
+		size, err := copyImage(ctx,
+			zw,
+			imagesDir+o.Path,
+			images,
+			o.Owner,
+			o.Path)
 		if err != nil {
 			return fmt.Errorf("dbexport: image %s: %w",
-				rel,
+				o.Path,
 				err)
 		}
 		m.Images = append(m.Images, ImageFile{
-			Path: rel,
+			Path: o.Path,
 			Size: size,
-			File: imagesDir + rel,
+			File: imagesDir + o.Path,
 		})
 	}
 	return nil
 }
 
-// copyImage adds the file at src as the entry name, stored as it is (images are compressed already).
-func copyImage(zw *zip.Writer,
-	name,
-	src string) (int64, error) {
-	f, err := os.Open(src)
+// copyImage adds the image rel of the store as the entry name, stored as it is (images are compressed already).
+func copyImage(ctx context.Context,
+	zw *zip.Writer,
+	name string,
+	images imagestore.Store,
+	owner,
+	rel string) (int64, error) {
+	data, err := images.Read(ctx,
+		owner,
+		rel)
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
 	w, err := zw.CreateHeader(&zip.FileHeader{
 		Name:     name,
 		Method:   zip.Store,
@@ -542,5 +536,6 @@ func copyImage(zw *zip.Writer,
 	if err != nil {
 		return 0, err
 	}
-	return io.Copy(w, f)
+	n, err := w.Write(data)
+	return int64(n), err
 }
