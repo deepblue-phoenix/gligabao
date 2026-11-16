@@ -2,6 +2,8 @@
 
 **All new code must be written in the functional-programming style.** Use pure functions, immutable data, and explicit data transformations; avoid mutable shared state, hidden side effects, and imperative loops where a functional form fits. This is mandatory, not a preference.
 
+**Go structs are declared at the top of the file.** In every Go file, put the `type` declarations of structs before the functions, methods and other declarations, so a reader sees the data shapes first.
+
 **Struct literals are pretty printed.** When constructing a struct, write every key/value on its own line, never the whole struct on one line. One-line struct construction is hard to read.
 
 **Function definitions with 2 or more arguments, and function calls with 3 or more arguments, are split per argument.** Keep the first argument on the line of the name, then put each following argument on its own line, indented one level deeper than the line the definition or call starts on. The closing `)` goes after the last argument. This makes the argument list easy to scan at a glance. Calls with 1 or 2 arguments stay on one line.
