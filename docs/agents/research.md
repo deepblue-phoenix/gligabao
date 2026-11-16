@@ -119,6 +119,10 @@ Reads one run with its `states`, in the order they were entered. The `report` an
 
 To follow a run, poll this route (or `research_get`, or `gligabao research get`), or stream it ([below](#get-v1gbresearchidstream)).
 
+### `POST /v1/gb/research/{id}/stop`
+
+Stops a research of the user that is working (and its sub-agents): the run ends as `stopped`, with `error` saying `the user`, and no report. It answers `200` with the run as it is then. `404` for an unknown id or another user's research (the admin route `POST /v1/gb/admin/api/research/{id}/stop` is the one that stops any user's), `409` if it has ended already, `400` for a bad id.
+
 ### `GET /v1/gb/research/{id}/stream`
 
 Server-Sent Events that follow a research until it ends; for a finished one they replay it (one snapshot, then `done`). The route is the same for the research of any user's own id; the research of another user is a plain `404` (before the stream starts).

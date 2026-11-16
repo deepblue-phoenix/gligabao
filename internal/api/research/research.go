@@ -201,3 +201,39 @@ func Get(m *agent_research.Manager) http.HandlerFunc {
 			run)
 	}
 }
+
+// researchStoppedBy is what the runs stopped by their owner through the API say.
+const researchStoppedBy = "the user"
+
+// Stop serves POST /v1/gb/research/{id}/stop: stops the agent of the user that is working (its sub-agents too), see
+// agent_research.Manager.Stop, and answers with the agent (core.Run) as it is then (status "stopped"). 404 for an unknown id, or the one
+// of another user's agent (only the admin route stops those), 409 if the agent has ended already.
+func Stop(m *agent_research.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		userID, ok := user(w, httputil.UserID(r))
+		if !ok {
+			return
+		}
+		id, err := strconv.ParseInt(r.PathValue("id"),
+			10,
+			64)
+		if err != nil || id < 1 {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				"id must be a positive integer")
+			return
+		}
+		run, err := m.Stop(r.Context(),
+			userID,
+			id,
+			researchStoppedBy)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			run)
+	}
+}

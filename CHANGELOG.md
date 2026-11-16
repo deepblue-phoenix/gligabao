@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.209.0] - 2026-11-16
+
+### Added
+- `POST /v1/gb/research/{id}/stop`: a user stops their own working research (sub-agents too). It answers `200` with the run (status `stopped`, `error` "the user"), `404` for an unknown or another user's run, `409` if it has ended. The admin route keeps stopping any user's research.
+
 ## [0.208.0] - 2026-11-19
 
 ### Changed

@@ -208,6 +208,29 @@ func testResearchRoutes(t *testing.T,
 			rec.Code,
 			rec.Body)
 	}
+	// Stop: another user gets a 404, a finished research a 409, a bad id a 400, no key a 401.
+	stopPath := "/v1/gb/research/" + strconv.FormatInt(started.ID, 10) + "/stop"
+	for _, c := range []struct {
+		key, path string
+		want      int
+	}{
+		{"key-bob", stopPath, 404},
+		{"key-alice", stopPath, 409},
+		{"key-alice", "/v1/gb/research/0/stop", 400},
+		{"key-alice", "/v1/gb/research/999/stop", 404},
+		{"", stopPath, 401},
+	} {
+		if rec := do(c.key,
+			"POST",
+			c.path,
+			``); rec.Code != c.want {
+			t.Fatalf("stop %s as %q: %d %s",
+				c.path,
+				c.key,
+				rec.Code,
+				rec.Body)
+		}
+	}
 	if rec := do("",
 		"GET",
 		streamPath,

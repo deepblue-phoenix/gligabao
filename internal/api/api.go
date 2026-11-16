@@ -85,6 +85,7 @@ func Register(mux *http.ServeMux,
 		mux.Handle("GET /v1/gb/research/agents", a(research.Agents(o.research)))
 		mux.Handle("GET /v1/gb/research/{id}", a(research.Get(o.research)))
 		mux.Handle("GET /v1/gb/research/{id}/stream", a(research.Stream(o.research)))
+		mux.Handle("POST /v1/gb/research/{id}/stop", a(research.Stop(o.research)))
 	}
 }
 
@@ -275,7 +276,7 @@ func WithClassifyingTrainingHook(f memory_core.ClassifyingTrainingHook) Option {
 	return func(o *options) { o.trainingHook = f }
 }
 
-// WithResearch adds the routes of the research agents to Register (POST and GET /v1/gb/research, GET /v1/gb/research/agents, GET /v1/gb/research/{id}, GET /v1/gb/research/{id}/stream, under the
+// WithResearch adds the routes of the research agents to Register (POST and GET /v1/gb/research, GET /v1/gb/research/agents, GET /v1/gb/research/{id}, GET /v1/gb/research/{id}/stream, POST /v1/gb/research/{id}/stop, under the
 // same WithAuth as the other routes of users) and their tools to RegisterMCP (research_start, research_list, research_get): m starts
 // the agents and reads their runs. Without it (or with nil) neither has them.
 func WithResearch(m *agent_research.Manager) Option { return func(o *options) { o.research = m } }
