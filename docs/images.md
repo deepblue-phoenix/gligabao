@@ -1,10 +1,10 @@
 # Images (the image pipeline)
 
-`POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own, separate from the text pipeline ([remember/remember.md](remember/remember.md)): a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
+`POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own, separate from the text pipeline ([remember/remember.md](remember/remember.md)): a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system or in an S3 bucket, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
 
 The model also describes what the image shows and how its parts relate (the links of a graph or diagram, what a plot or chart says). That **description** is then remembered as a text artifact (kind `knowledge`) by the text pipeline, so the graph of the image (entities, edges, vectors, sessions) is extracted and stored like that of any text, and `query` sees it. See [The graph of an image](#the-graph-of-an-image).
 
-Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/image_prompts.go`, `internal/api/remember/remember.go` (the handler), `internal/memory/memory_image/image_store.go` (the files), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
+Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/image_prompts.go`, `internal/api/remember/remember.go` (the handler), `internal/db/imagestore/` (the files: `fs.go`, `s3.go`), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
 
 ## Request
 
