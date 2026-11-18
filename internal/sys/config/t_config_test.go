@@ -429,12 +429,12 @@ func TestS3VectorsStore(t *testing.T) {
 }
 
 func TestResearchNotesS3(t *testing.T) {
-	p := write(t, "research_notes_s3_bucket = \"b\"\nresearch_notes_s3_prefix = \"notes\"\n")
+	p := write(t, "research_s3_bucket = \"b\"\nresearch_s3_notes_prefix = \"notes\"\n")
 	cfg, err := Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ResearchNotesS3Bucket != "b" || cfg.ResearchNotesS3Prefix != "notes" {
+	if cfg.ResearchS3Bucket != "b" || cfg.ResearchS3NotesPrefix != "notes" {
 		t.Errorf("got %+v", cfg)
 	}
 }

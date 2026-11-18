@@ -32,9 +32,9 @@ const (
 	EnvPineconeKey           = "PINECONE_API_KEY"
 	EnvPineconeHost          = "PINECONE_INDEX_HOST"
 	EnvPostgresDSN           = "POSTGRES_DSN"
-	EnvResearchNotesS3Bucket = "RESEARCH_NOTES_S3_BUCKET"
-	EnvResearchNotesS3Region = "RESEARCH_NOTES_S3_REGION"
-	EnvResearchNotesS3Prefix = "RESEARCH_NOTES_S3_PREFIX"
+	EnvResearchS3Bucket      = "RESEARCH_S3_BUCKET"
+	EnvResearchS3Region      = "RESEARCH_S3_REGION"
+	EnvResearchS3NotesPrefix = "RESEARCH_S3_NOTES_PREFIX"
 	EnvOntologyS3Bucket      = "ONTOLOGY_S3_BUCKET"
 	EnvOntologyS3Region      = "ONTOLOGY_S3_REGION"
 	EnvOntologyS3Prefix      = "ONTOLOGY_S3_PREFIX"
@@ -208,14 +208,14 @@ type Config struct {
 	MontyBin             string `toml:"monty_bin"`
 	MontyWorkers         int    `toml:"monty_workers"`
 	MontyRequestTimeoutS int    `toml:"monty_request_timeout_s"`
-	// ResearchNotesS3Bucket, when set, also stores the notes files of the investigative loop in this (existing) Amazon S3 bucket (also
-	// RESEARCH_NOTES_S3_BUCKET), the research bucket common to all the research agents: the local files stay the working copy and every
+	// ResearchS3Bucket, when set, also stores the notes files of the investigative loop in this (existing) Amazon S3 bucket (also
+	// RESEARCH_S3_BUCKET), the research bucket common to all the research agents: the local files stay the working copy and every
 	// write is mirrored to <prefix>/<user>/notes_<user>_<run>_<notes_id>.md. Empty (default): local files only.
-	ResearchNotesS3Bucket string `toml:"research_notes_s3_bucket"`
-	// ResearchNotesS3Region is its AWS region (also RESEARCH_NOTES_S3_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
-	ResearchNotesS3Region string `toml:"research_notes_s3_region"`
-	// ResearchNotesS3Prefix is the subdirectory of the bucket for the investigative notes (also RESEARCH_NOTES_S3_PREFIX); default "research/investigative_notes".
-	ResearchNotesS3Prefix string `toml:"research_notes_s3_prefix"`
+	ResearchS3Bucket string `toml:"research_s3_bucket"`
+	// ResearchS3Region is its AWS region (also RESEARCH_S3_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
+	ResearchS3Region string `toml:"research_s3_region"`
+	// ResearchS3NotesPrefix is the subdirectory of the bucket for the investigative notes (also RESEARCH_S3_NOTES_PREFIX); default "research/investigative_notes".
+	ResearchS3NotesPrefix string `toml:"research_s3_notes_prefix"`
 	// OntologyS3Bucket is the (existing) bucket the ontology documents are also stored in (also ONTOLOGY_S3_BUCKET). Empty (default): ontologies are
 	// kept only in the database. There is no fallback to another bucket.
 	OntologyS3Bucket string `toml:"ontology_s3_bucket"`
@@ -329,9 +329,9 @@ func Default() *Config {
 		AtifS3Prefix:     os.Getenv(EnvAtifS3Prefix),
 		AtifS3Endpoint:   os.Getenv(EnvAtifS3Endpoint),
 
-		ResearchNotesS3Bucket: os.Getenv(EnvResearchNotesS3Bucket),
-		ResearchNotesS3Region: os.Getenv(EnvResearchNotesS3Region),
-		ResearchNotesS3Prefix: os.Getenv(EnvResearchNotesS3Prefix),
+		ResearchS3Bucket:      os.Getenv(EnvResearchS3Bucket),
+		ResearchS3Region:      os.Getenv(EnvResearchS3Region),
+		ResearchS3NotesPrefix: os.Getenv(EnvResearchS3NotesPrefix),
 	}
 }
 

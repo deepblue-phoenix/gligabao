@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.215.0] - 2026-11-22
+
+### Changed
+- **Breaking: the research S3 settings are renamed**, as they describe one research bucket shared by all the research agents (each kind of data in its own subdirectory), not only the notes: `research_notes_s3_bucket` is now `research_s3_bucket` (`RESEARCH_S3_BUCKET`), `research_notes_s3_region` is `research_s3_region` (`RESEARCH_S3_REGION`) and `research_notes_s3_prefix` is `research_s3_notes_prefix` (`RESEARCH_S3_NOTES_PREFIX`; the default is unchanged, `research/investigative_notes`). Other research assets can get their own subdirectory in the same bucket. Set the new names in the config and environment.
+
 ## [0.214.0] - 2026-11-22
 
 ### Added
