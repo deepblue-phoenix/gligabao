@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.213.0] - 2026-11-22
+
+### Changed
+- **Breaking: the default S3 prefixes** of the research notes and the ATIF traces follow a common layout of one bucket with a subdirectory per kind of data. `research_notes_s3_prefix` (`RESEARCH_NOTES_S3_PREFIX`) defaults to `research/investigative_notes` (was `investigative_notes`), and `atif_s3_prefix` (`ATIF_S3_PREFIX`) to `traces/atif` (was `atif_traces`). Objects already stored under the old prefixes are not moved: set the old prefix explicitly to keep reading them.
+
 ## [0.212.0] - 2026-11-22
 
 ### Added

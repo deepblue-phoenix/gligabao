@@ -26,7 +26,7 @@ type notesMirror struct {
 }
 
 // DefaultNotesS3Prefix is the "subdirectory" of the research bucket the notes go to when no prefix is configured.
-const DefaultNotesS3Prefix = "investigative_notes"
+const DefaultNotesS3Prefix = "research/investigative_notes"
 
 // s3Timeout bounds one S3 call, so that a slow bucket cannot hold a research run.
 const s3Timeout = 30 * time.Second

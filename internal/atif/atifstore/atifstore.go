@@ -24,7 +24,7 @@ import (
 )
 
 // DefaultS3Prefix is the "subdirectory" of the bucket the traces go to when no prefix is configured.
-const DefaultS3Prefix = "atif_traces"
+const DefaultS3Prefix = "traces/atif"
 
 // timeLayout is the creation timestamp of the object name: sortable, UTC, and safe in a file name.
 const timeLayout = "20060102T150405Z"

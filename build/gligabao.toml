@@ -49,7 +49,7 @@ embedding_dimensions = 1536
 # atif_store = "s3"
 # atif_s3_bucket = "my-gligabao-research"
 # atif_s3_region = "us-east-1"
-# atif_s3_prefix = "atif_traces"
+# atif_s3_prefix = "traces/atif"
 # atif_s3_endpoint = ""
 
 # Long texts: remember splits a text of more than chunk_size tokens into chunks (at paragraph boundaries, with
@@ -132,7 +132,7 @@ agent_defs_dir = "agent_defs"
 # a notes file missing locally is read back from the bucket. Credentials: the default AWS chain (instance role). Default: off, local files only.
 # research_notes_s3_bucket = "gligabao-int-research-dev"
 # research_notes_s3_region = "us-east-1"
-# research_notes_s3_prefix = "investigative_notes"
+# research_notes_s3_prefix = "research/investigative_notes"
 
 # The most one research (all its agents together) may spend, in USD, whatever its agent definition and request say: they can only lower it.
 # When it is reached the agents write their reports and say so. 0 (default): no cap of the server.

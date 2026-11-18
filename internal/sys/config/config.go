@@ -218,7 +218,7 @@ type Config struct {
 	ResearchNotesS3Bucket string `toml:"research_notes_s3_bucket"`
 	// ResearchNotesS3Region is its AWS region (also RESEARCH_NOTES_S3_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
 	ResearchNotesS3Region string `toml:"research_notes_s3_region"`
-	// ResearchNotesS3Prefix is the subdirectory of the bucket for the investigative notes (also RESEARCH_NOTES_S3_PREFIX); default "investigative_notes".
+	// ResearchNotesS3Prefix is the subdirectory of the bucket for the investigative notes (also RESEARCH_NOTES_S3_PREFIX); default "research/investigative_notes".
 	ResearchNotesS3Prefix string `toml:"research_notes_s3_prefix"`
 	// AtifStore says where the ATIF traces (trajectories) are stored: "fs" (default; JSON files in the trajectory directory, see
 	// `serve --trajectory-dir`) or "s3" (an Amazon S3 bucket, one directory per user, see atif_s3_bucket). Also ATIF_STORE. With "s3"
@@ -230,7 +230,7 @@ type Config struct {
 	// AtifS3Region is its AWS region (also ATIF_S3_REGION); empty: research_notes_s3_region when the bucket is the research one,
 	// else the AWS SDK default (AWS_REGION, shared config).
 	AtifS3Region string `toml:"atif_s3_region"`
-	// AtifS3Prefix is the subdirectory of the bucket for the traces (also ATIF_S3_PREFIX); default "atif_traces". Each user has a
+	// AtifS3Prefix is the subdirectory of the bucket for the traces (also ATIF_S3_PREFIX); default "traces/atif". Each user has a
 	// subdirectory of it, and a trace is "<prefix>/<user>/<creation timestamp>_<trajectory_id>.json".
 	AtifS3Prefix string `toml:"atif_s3_prefix"`
 	// AtifS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also ATIF_S3_ENDPOINT). Empty = AWS.

@@ -49,7 +49,7 @@ func TestNotesS3Mirror(t *testing.T) {
 	if err := m.Write(p, "hello"); err != nil {
 		t.Fatal(err)
 	}
-	key := "b/investigative_notes/a_b/" + filepath.Base(p)
+	key := "b/research/investigative_notes/a_b/" + filepath.Base(p)
 	if fake.objs[key] != "hello" {
 		t.Fatalf("objects: %v", fake.objs)
 	}

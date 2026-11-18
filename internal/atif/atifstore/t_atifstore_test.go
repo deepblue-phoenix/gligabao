@@ -43,7 +43,7 @@ func (m *memStore) Remove(context.Context, string, string) error { return nil }
 
 func (m *memStore) List(context.Context) ([]imagestore.Object, error) { return nil, nil }
 
-func (m *memStore) Location() string { return "s3://bkt/atif_traces" }
+func (m *memStore) Location() string { return "s3://bkt/traces/atif" }
 
 func traj(id string) *atif.Trajectory {
 	return &atif.Trajectory{
@@ -75,7 +75,7 @@ func TestS3PutIsPerUserAndReadable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loc != "s3://bkt/atif_traces/alice/20260304T050607Z_t1.json" {
+	if loc != "s3://bkt/traces/atif/alice/20260304T050607Z_t1.json" {
 		t.Fatalf("location = %q", loc)
 	}
 	if _, ok := m.objs["alice/20260304T050607Z_t1.json"]; !ok {
@@ -88,7 +88,7 @@ func TestS3PutIsPerUserAndReadable(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), `"trajectory_id": "t1"`) {
 		t.Fatalf("read: %v %s", err, data)
 	}
-	if _, err := s.Read(context.Background(), "s3://other/atif_traces/alice/x.json"); err == nil {
+	if _, err := s.Read(context.Background(), "s3://other/traces/atif/alice/x.json"); err == nil {
 		t.Fatal("a location of another bucket must be refused")
 	}
 }
