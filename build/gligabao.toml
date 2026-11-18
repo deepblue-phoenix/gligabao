@@ -41,6 +41,17 @@ embedding_dimensions = 1536
 # image_s3_prefix = "prod"
 # image_s3_endpoint = ""
 
+# Where ATIF traces (trajectories) are stored: "fs" (default; JSON files in the trajectory directory, `serve --trajectory-dir`) or "s3"
+# (an existing Amazon S3 bucket; credentials from the standard AWS chain). In S3 each user has a directory:
+# "<prefix>/<user>/<creation timestamp>_<trajectory_id>.json". Without atif_s3_bucket the research bucket (research_notes_s3_bucket and
+# its region) is reused, under the prefix below, so no new bucket is needed. With "s3" the server's research agents also record a
+# trace of every research. Also settable with ATIF_STORE / ATIF_S3_BUCKET / ATIF_S3_REGION / ATIF_S3_PREFIX / ATIF_S3_ENDPOINT.
+# atif_store = "s3"
+# atif_s3_bucket = "my-gligabao-research"
+# atif_s3_region = "us-east-1"
+# atif_s3_prefix = "atif_traces"
+# atif_s3_endpoint = ""
+
 # Long texts: remember splits a text of more than chunk_size tokens into chunks (at paragraph boundaries, with
 # chunk_overlap_percent of each chunk repeated at the start of the next) and extracts, stores and embeds each chunk on
 # its own. See docs/chunking.md.

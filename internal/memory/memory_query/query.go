@@ -169,7 +169,9 @@ func Query(ctx context.Context,
 		return nil, err
 	}
 	co.SessionID = sessionID
-	tr := memory_core.StartTrace(CallQuery, co)
+	tr := memory_core.StartTrace(CallQuery,
+		userID,
+		co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj

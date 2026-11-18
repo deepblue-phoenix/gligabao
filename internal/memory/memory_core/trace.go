@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
@@ -27,6 +28,8 @@ import (
 type CallOptions struct {
 	Eval bool
 	Dir  string // the trajectory directory
+	// TrajectoryStore, when not nil (atifstore.Default, the S3 store of the server), stores the trajectories instead of Dir.
+	TrajectoryStore atifstore.Store
 
 	ImageDir   string           // the image directory; "" means the default of package memory_image (ignored if ImageStore is set)
 	ImageStore imagestore.Store // where the image files are kept; nil means the file system store of ImageDir
@@ -119,8 +122,10 @@ type ProgressEvent struct {
 // Trace records one Remember/Query/RememberImage call as an ATIF trajectory. A nil *Trace (eval not requested) is
 // valid and records nothing, so callers need no checks.
 type Trace struct {
-	b   *atif.Builder
-	dir string
+	b     *atif.Builder
+	dir   string
+	store atifstore.Store // nil: the directory dir
+	user  string          // whose directory the trajectory goes to in a store with one per user
 
 	mu       sync.Mutex
 	warnings []string
@@ -172,8 +177,9 @@ type Option func(*CallOptions)
 // NewCallOptions applies opts on top of the defaults.
 func NewCallOptions(opts []Option) CallOptions {
 	o := CallOptions{
-		Dir:      TrajectoryDir,
-		Chunking: memory_chunk.DefaultConfig(),
+		Dir:             TrajectoryDir,
+		TrajectoryStore: atifstore.Default,
+		Chunking:        memory_chunk.DefaultConfig(),
 	}
 	for _, f := range opts {
 		f(&o)
@@ -267,8 +273,10 @@ func (t *Trace) Warn(msg string) {
 	t.warnings = append(t.warnings, msg)
 }
 
-// StartTrace returns nil unless o asks for eval.
-func StartTrace(kind string,
+// StartTrace returns nil unless o asks for eval. user is the user the call is for: the trajectory goes to the directory of that user
+// in a store that has one (S3).
+func StartTrace(kind,
+	user string,
 	o CallOptions) *Trace {
 	if !o.Eval {
 		return nil
@@ -278,7 +286,9 @@ func StartTrace(kind string,
 			Name:    "gligabao-" + kind,
 			Version: agentVersion,
 		}),
-		dir: o.Dir,
+		dir:   o.Dir,
+		store: o.TrajectoryStore,
+		user:  user,
 	}
 	if o.SessionID != "" { // the trajectories of one session share the session ID
 		t.b.SetSessionID(o.SessionID)
@@ -334,12 +344,22 @@ func (t *Trace) Finish(callErr error) *atif.Trajectory {
 	}
 	t.mu.Unlock()
 	traj := t.b.Build()
-	if path, err := atif.WriteFile(t.dir, traj); err != nil {
+	if path, err := t.storeFor().Put(context.Background(),
+		t.user,
+		traj); err != nil {
 		log.WithError(err).WithField("trajectory_id", traj.TrajectoryID).Error("store ATIF trajectory")
 	} else {
 		log.WithFields(log.Fields{"trajectory_id": traj.TrajectoryID, "path": path}).Debug("ATIF trajectory stored")
 	}
 	return traj
+}
+
+// storeFor is where the trajectory goes: the configured store, or the directory.
+func (t *Trace) storeFor() atifstore.Store {
+	if t.store != nil {
+		return t.store
+	}
+	return atifstore.FS{Dir: t.dir}
 }
 
 // Tool records a tool step whose arguments and result are summarized from Go values.

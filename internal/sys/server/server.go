@@ -26,9 +26,12 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
@@ -131,6 +134,9 @@ type Options struct {
 	Monty code_sandbox.Config
 	// ResearchNotesS3 ("" bucket: off) also stores the notes files of the investigative loop in the research S3 bucket.
 	ResearchNotesS3 investigate.NotesS3Config
+	// TrajectoryS3 ("" bucket: off) stores the ATIF traces in an Amazon S3 bucket instead of the trajectory directory, one directory per
+	// user (see package atifstore). With it the research agents also record a trace of every research.
+	TrajectoryS3 imagestore.S3Config
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -891,6 +897,36 @@ func register(mux *http.ServeMux,
 
 //---------------------------------------------------------------------------------------------
 
+// openTraceStore returns the S3 store of the ATIF traces, or nil (the local trajectory directory) when no bucket is configured.
+func openTraceStore(ctx context.Context,
+	cfg imagestore.S3Config) (atifstore.Store, error) {
+	if cfg.Bucket == "" {
+		return nil, nil
+	}
+	s, err := atifstore.NewS3(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// storeResearchTrace returns the function that stores the merged trace of each research in the directory of its user. A failed
+// write is logged: the research is over and does not depend on it.
+func storeResearchTrace(store atifstore.Store) agent_research.TrajectoryFunc {
+	return func(runID int64,
+		userID string,
+		t *atif.Trajectory) {
+		loc, err := store.Put(context.Background(),
+			userID,
+			t)
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{"run_id": runID, "user_id": userID, "trajectory_id": t.TrajectoryID}).Error("store ATIF trace of research")
+			return
+		}
+		log.WithFields(log.Fields{"run_id": runID, "location": loc}).Debug("ATIF trace of research stored")
+	}
+}
+
 // prepare opens the databases, builds everything the server needs and returns its handler (the routes of NewHandler) and
 // a function that releases it all (the remember manager, then the databases), which the caller must call when done. Nothing is
 // listened on. On an error everything already set up is released.
@@ -940,6 +976,14 @@ func prepare(ctx context.Context,
 		memory_core.TrajectoryDir = opts.TrajectoryDir
 	case database.SQLitePath != "":
 		memory_core.TrajectoryDir = filepath.Join(filepath.Dir(database.SQLitePath), "atif")
+	}
+	traceStore, err := openTraceStore(ctx, opts.TrajectoryS3)
+	if err != nil {
+		return nil, nil, err
+	}
+	atifstore.Default = traceStore
+	if traceStore != nil {
+		log.WithField("atif_s3", opts.TrajectoryS3.Bucket+"/"+opts.TrajectoryS3.Prefix).Info("ATIF traces are stored in S3, one directory per user")
 	}
 	if opts.EvalModeEnable {
 		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/query are enabled")
@@ -1124,6 +1168,9 @@ func prepare(ctx context.Context,
 			return nil, nil, err
 		}
 		research.NotesS3 = notesS3
+	}
+	if traceStore != nil {
+		research.UseTrajectories(storeResearchTrace(traceStore))
 	}
 	if err := research.UseAgentDefs(agentDefs); err != nil {
 		stopMgr()

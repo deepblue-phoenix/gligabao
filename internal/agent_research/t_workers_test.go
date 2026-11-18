@@ -308,6 +308,7 @@ func testMergedTrajectories(t *testing.T,
 	var mu sync.Mutex
 	got := map[int64]*atif.Trajectory{}
 	m.UseTrajectories(func(id int64,
+		_ string,
 		tr *atif.Trajectory) {
 		mu.Lock()
 		got[id] = tr

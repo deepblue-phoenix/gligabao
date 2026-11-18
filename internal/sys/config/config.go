@@ -43,6 +43,11 @@ const (
 	EnvImageS3Region         = "IMAGE_S3_REGION"
 	EnvImageS3Prefix         = "IMAGE_S3_PREFIX"
 	EnvImageS3Endpoint       = "IMAGE_S3_ENDPOINT"
+	EnvAtifStore             = "ATIF_STORE"
+	EnvAtifS3Bucket          = "ATIF_S3_BUCKET"
+	EnvAtifS3Region          = "ATIF_S3_REGION"
+	EnvAtifS3Prefix          = "ATIF_S3_PREFIX"
+	EnvAtifS3Endpoint        = "ATIF_S3_ENDPOINT"
 	EnvSidecarURL            = "SIDECAR_URL"
 )
 
@@ -63,6 +68,12 @@ const (
 const (
 	ImageStoreFS = "fs"
 	ImageStoreS3 = "s3"
+)
+
+// ATIF trace stores selectable with the atif_store setting.
+const (
+	AtifStoreFS = "fs"
+	AtifStoreS3 = "s3"
 )
 
 // DefaultEmbeddingDimensions is the output size of the default embedding model (text-embedding-3-small).
@@ -209,6 +220,21 @@ type Config struct {
 	ResearchNotesS3Region string `toml:"research_notes_s3_region"`
 	// ResearchNotesS3Prefix is the subdirectory of the bucket for the investigative notes (also RESEARCH_NOTES_S3_PREFIX); default "investigative_notes".
 	ResearchNotesS3Prefix string `toml:"research_notes_s3_prefix"`
+	// AtifStore says where the ATIF traces (trajectories) are stored: "fs" (default; JSON files in the trajectory directory, see
+	// `serve --trajectory-dir`) or "s3" (an Amazon S3 bucket, one directory per user, see atif_s3_bucket). Also ATIF_STORE. With "s3"
+	// the research agents of the server record a trace of every research too.
+	AtifStore string `toml:"atif_store"`
+	// AtifS3Bucket is the (existing) bucket of atif_store = "s3" (also ATIF_S3_BUCKET). Empty: the research bucket
+	// (research_notes_s3_bucket), so no new bucket is needed; the traces then live under their own prefix of it.
+	AtifS3Bucket string `toml:"atif_s3_bucket"`
+	// AtifS3Region is its AWS region (also ATIF_S3_REGION); empty: research_notes_s3_region when the bucket is the research one,
+	// else the AWS SDK default (AWS_REGION, shared config).
+	AtifS3Region string `toml:"atif_s3_region"`
+	// AtifS3Prefix is the subdirectory of the bucket for the traces (also ATIF_S3_PREFIX); default "atif_traces". Each user has a
+	// subdirectory of it, and a trace is "<prefix>/<user>/<creation timestamp>_<trajectory_id>.json".
+	AtifS3Prefix string `toml:"atif_s3_prefix"`
+	// AtifS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also ATIF_S3_ENDPOINT). Empty = AWS.
+	AtifS3Endpoint string `toml:"atif_s3_endpoint"`
 	// ResearchMaxCostUSD is the most one research (all its agents together) may spend, in USD, whatever its agent definition and its
 	// request say: they can only lower it. 0 (default): no cap of the server.
 	ResearchMaxCostUSD float64 `toml:"research_max_cost_usd"`
@@ -246,6 +272,22 @@ func DefaultPath() string {
 		return FileName
 	}
 	return filepath.Join(filepath.Dir(exe), FileName)
+}
+
+// AtifS3BucketOrDefault is AtifS3Bucket, or the research bucket (ResearchNotesS3Bucket) if it is empty.
+func (c *Config) AtifS3BucketOrDefault() string {
+	if strings.TrimSpace(c.AtifS3Bucket) != "" {
+		return c.AtifS3Bucket
+	}
+	return c.ResearchNotesS3Bucket
+}
+
+// AtifS3RegionOrDefault is AtifS3Region; if it is empty and the bucket is the research one, the region of the research bucket.
+func (c *Config) AtifS3RegionOrDefault() string {
+	if c.AtifS3Region != "" || strings.TrimSpace(c.AtifS3Bucket) != "" {
+		return c.AtifS3Region
+	}
+	return c.ResearchNotesS3Region
 }
 
 // DefaultResearchNotesDirName is the directory next to the binary that ResearchNotesDirOrDefault falls back to.
@@ -294,6 +336,12 @@ func Default() *Config {
 		ImageS3Region:   os.Getenv(EnvImageS3Region),
 		ImageS3Prefix:   os.Getenv(EnvImageS3Prefix),
 		ImageS3Endpoint: os.Getenv(EnvImageS3Endpoint),
+
+		AtifStore:      envOr(EnvAtifStore, AtifStoreFS),
+		AtifS3Bucket:   os.Getenv(EnvAtifS3Bucket),
+		AtifS3Region:   os.Getenv(EnvAtifS3Region),
+		AtifS3Prefix:   os.Getenv(EnvAtifS3Prefix),
+		AtifS3Endpoint: os.Getenv(EnvAtifS3Endpoint),
 
 		ResearchNotesS3Bucket: os.Getenv(EnvResearchNotesS3Bucket),
 		ResearchNotesS3Region: os.Getenv(EnvResearchNotesS3Region),
@@ -361,6 +409,20 @@ func (c *Config) Validate() error {
 			c.ImageStore,
 			ImageStoreFS,
 			ImageStoreS3)
+	}
+	switch c.AtifStore {
+	case AtifStoreFS:
+	case AtifStoreS3:
+		if strings.TrimSpace(c.AtifS3BucketOrDefault()) == "" {
+			return fmt.Errorf("config: atif_s3_bucket (or %s; or research_notes_s3_bucket) is required when atif_store is %q",
+				EnvAtifS3Bucket,
+				AtifStoreS3)
+		}
+	default:
+		return fmt.Errorf("config: atif_store %q must be %q or %q",
+			c.AtifStore,
+			AtifStoreFS,
+			AtifStoreS3)
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)

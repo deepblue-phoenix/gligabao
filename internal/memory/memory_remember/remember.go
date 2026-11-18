@@ -422,7 +422,9 @@ func Remember(ctx context.Context,
 	}
 	opts = append(opts[:len(opts):len(opts)], memory_core.WithSeries(series))
 	co.Series = series
-	tr := memory_core.StartTrace(CallRemember, co)
+	tr := memory_core.StartTrace(CallRemember,
+		userID,
+		co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj

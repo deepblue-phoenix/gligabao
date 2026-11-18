@@ -20,7 +20,7 @@ func (warnLLM) Complete(context.Context,
 
 // The warning of a call that ran differently from the request (see llm.Response.Warning) is kept, once, in the extra of the trajectory.
 func TestTraceKeepsWarnings(t *testing.T) {
-	tr := StartTrace("remember", CallOptions{
+	tr := StartTrace("remember", "u1", CallOptions{
 		Eval: true,
 		Dir:  t.TempDir(),
 	})

@@ -19,6 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -448,6 +449,7 @@ func serverOptions(cfg *Config,
 		AdminExtensions:            opts.AdminExtensions,
 
 		TrajectoryDir: opts.TrajectoryDir,
+		TrajectoryS3:  trajectoryS3(cfg),
 		EvalDBPath:    opts.EvalDBPath,
 
 		// The reruns of eval cases of the admin UI. This line is the one place that plugs the implementation into the server: the server
@@ -463,3 +465,16 @@ func serverOptions(cfg *Config,
 
 // aiPrices converts the configured prices; omitted cache prices default to the input price.
 func aiPrices(c *Config) map[string]llm.Price { return c.AIPrices() }
+
+// trajectoryS3 is the S3 bucket of the ATIF traces (atif_store = "s3"); the zero value (no bucket) leaves them in the trajectory directory.
+func trajectoryS3(cfg *config.Config) imagestore.S3Config {
+	if cfg.AtifStore != config.AtifStoreS3 {
+		return imagestore.S3Config{}
+	}
+	return imagestore.S3Config{
+		Bucket:   cfg.AtifS3BucketOrDefault(),
+		Region:   cfg.AtifS3RegionOrDefault(),
+		Prefix:   cfg.AtifS3Prefix,
+		Endpoint: cfg.AtifS3Endpoint,
+	}
+}

@@ -438,3 +438,28 @@ func TestResearchNotesS3(t *testing.T) {
 		t.Errorf("got %+v", cfg)
 	}
 }
+
+// atif_store = "s3" reuses the research bucket when no bucket of its own is given, and needs one of them.
+func TestAtifStoreS3Bucket(t *testing.T) {
+	c := Default()
+	c.AtifStore = AtifStoreS3
+	if err := c.Validate(); err == nil {
+		t.Fatal("atif_store s3 without a bucket must fail")
+	}
+	c.ResearchNotesS3Bucket = "research"
+	c.ResearchNotesS3Region = "eu-west-1"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.AtifS3BucketOrDefault() != "research" || c.AtifS3RegionOrDefault() != "eu-west-1" {
+		t.Fatalf("fallback: %q %q", c.AtifS3BucketOrDefault(), c.AtifS3RegionOrDefault())
+	}
+	c.AtifS3Bucket = "traces"
+	if c.AtifS3BucketOrDefault() != "traces" || c.AtifS3RegionOrDefault() != "" {
+		t.Fatalf("own bucket: %q %q", c.AtifS3BucketOrDefault(), c.AtifS3RegionOrDefault())
+	}
+	c.AtifStore = "gcs"
+	if err := c.Validate(); err == nil {
+		t.Fatal("unknown atif_store must fail")
+	}
+}

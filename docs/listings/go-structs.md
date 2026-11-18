@@ -81,6 +81,8 @@
 | `internal/llm.thinking`                                    | is the extended-thinking setting (type and token budget) of an API request.                                            |
 | `internal/llm.webSearchAPIResponse`                        | is the JSON response body of a web search call to the Anthropic API.                                                   |
 | `internal/llm.webSearchBlock`                              | reads the parts of a web search content block whatever its type.                                                       |
+| `internal/atif/atifstore.FS`                            | stores ATIF trajectories as files in a directory.                                                                      |
+| `internal/atif/atifstore.S3`                            | stores ATIF trajectories in an S3 bucket, one directory per user.                                                      |
 | `internal/atif.Agent`                                  | describes the agent that produced an ATIF trajectory.                                                                  |
 | `internal/atif.Builder`                                | records an ATIF trajectory step by step and is safe for concurrent use.                                                |
 | `internal/atif.FinalMetrics`                           | holds the token, cost and step totals over a whole trajectory.                                                         |

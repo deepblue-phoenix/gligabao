@@ -150,6 +150,7 @@ func (a *app) captureTrajectory() func() *atif.Trajectory {
 	var mu sync.Mutex
 	var got *atif.Trajectory
 	a.research.UseTrajectories(func(_ int64,
+		_ string,
 		t *atif.Trajectory) {
 		mu.Lock()
 		got = t

@@ -35,6 +35,7 @@ type agentInfo struct {
 // sub-agents merged in. It is called on the goroutine of the root agent, after its run has ended and was recorded, also for a research
 // that failed or was stopped.
 type TrajectoryFunc func(runID int64,
+	userID string,
 	t *atif.Trajectory)
 
 // mainAgent is the "agent" tag of the steps of the agent the user started.
@@ -90,7 +91,9 @@ func (r *researcher) finishTrajectory(res *agent.Result) {
 		info,
 		kids)
 	if r.parent == nil && r.onTrajectory != nil {
-		r.onTrajectory(r.run.ID, r.traj)
+		r.onTrajectory(r.run.ID,
+			r.run.UserID,
+			r.traj)
 	}
 }
 

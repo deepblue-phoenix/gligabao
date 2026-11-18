@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
@@ -885,7 +886,7 @@ func EvalTrajectory(d *sql.DB,
 }
 
 // readTrajectoryFile reads the JSON file of a recorded trajectory: from the trajectory directory dir first (when not
-// empty), then from the path stored with the reference. It fails if neither can be read.
+// empty), then from the path stored with the reference (a file, or the s3:// location of a trace in the S3 store). It fails if neither can be read.
 func readTrajectoryFile(ref *core.KnowledgeTrajectory,
 	dir string) ([]byte, error) {
 	var candidates []string
@@ -897,6 +898,14 @@ func readTrajectoryFile(ref *core.KnowledgeTrajectory,
 	}
 	for _, p := range candidates {
 		if data, err := os.ReadFile(p); err == nil {
+			return data, nil
+		}
+	}
+	// A trace kept in S3 (atif_store = "s3") has its s3:// location as the path.
+	if atifstore.Default != nil && atifstore.IsS3Location(ref.Path) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if data, err := atifstore.Default.Read(ctx, ref.Path); err == nil {
 			return data, nil
 		}
 	}

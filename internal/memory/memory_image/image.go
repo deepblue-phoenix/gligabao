@@ -303,7 +303,9 @@ func RememberImage(ctx context.Context,
 		d,
 		CallRememberImage)
 
-	tr := memory_core.StartTrace(CallRememberImage, co)
+	tr := memory_core.StartTrace(CallRememberImage,
+		userID,
+		co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj

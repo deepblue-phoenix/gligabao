@@ -4,7 +4,7 @@
 
 The model also describes what the image shows and how its parts relate (the links of a graph or diagram, what a plot or chart says). That **description** is then remembered as a text artifact (kind `knowledge`) by the text pipeline, so the graph of the image (entities, edges, vectors, sessions) is extracted and stored like that of any text, and `query` sees it. See [The graph of an image](#the-graph-of-an-image).
 
-Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/image_prompts.go`, `internal/api/remember/remember.go` (the handler), `internal/db/imagestore/` (the files: `fs.go`, `s3.go`), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
+Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`, `ResolveImage`, `LoadImage`, `MaxImageBytes`), `internal/memory/memory_image/image_prompts.go` (the prompt), `internal/api/remember/remember.go` (the handler `rememberImage`), `internal/db/imagestore/` (the files: `fs.go`, `s3.go`), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL), `internal/llm/ai.go` (the `Image` type sent to the model), `internal/api/admin/admin.go` (the admin statistics) and `admin_ui/src/{image,imagestats}.ts` (the admin UI).
 
 ## Request
 
@@ -16,12 +16,14 @@ gb-user-id: u1
 {"dataset": "charts", "image": "<base64>", "reference_time": "2025-01-31T09:00:00Z"}
 ```
 
-- `image`: the image, base64-encoded (standard alphabet): a JPEG, PNG, GIF or WebP, at most 5 MiB (the Anthropic API limit) before encoding. The type is detected from the bytes. A request with `image` is an image request; the body may be up to about 7 MiB (instead of 1 MiB for text).
+- `image`: the image, base64-encoded (standard alphabet): a JPEG, PNG, GIF or WebP, at most 5 MiB (`memory_image.MaxImageBytes`, the Anthropic API limit) before encoding. The type is detected from the bytes. A request with `image` is an image request; the body may be up to about 7 MiB (instead of 1 MiB for text).
 - `dataset` (optional, default `main`, created if missing) and `reference_time` (optional, RFC 3339, default now: when the image was captured or observed) work as for text.
 - `session_id` (optional) works as for text ([sessions.md](sessions.md)): it is stored on the new image artifact (`gb_image_artifacts.session_id`) and echoed as `session_id` in the response. Images add no entities or edges, so there are no session links beyond it. `400` if it is too long or has control characters.
 - `models` (optional): `{"extract_image": "<model>"}` picks the vision model that reads the image; without it the default model is used (see [remember/remember.md](remember/remember.md#choosing-the-model-of-each-stage)). A repeated image is answered from its stored extraction without an LLM call, so the model reported is the one that made it.
 - `stream` (optional, default `false`): answer with a Server-Sent Events stream of the steps of the pipeline instead of one JSON body: see [Streaming progress](#streaming-progress).
 - `text` and `kind` must not be given together with `image` (`400`): an image is not a text artifact.
+
+From the CLI, `gligabao remember --image FILE` sends the file the same way (see [cli.md](cli.md)).
 
 ## Response
 
@@ -139,7 +141,14 @@ Created on startup in the same database as the other tables (`internal/db/graph/
 
 The image rows (artifact, extraction, text blocks and the `gb_image_graphs` row with the description) of a call are written in one transaction, after the LLM call: if it fails nothing is stored (and a dataset that did not exist is not created). Each new image adds one image artifact (a repeat adds nothing, see above); an artifact can have several extractions (for example from different models) but `remember` makes one. Image artifacts are not in `gb_artifacts`; the text artifact of the description is, and its graph shows up in the [graph export](graph.md).
 
-Go access, in package `graph`: `InsertImage`, `ListImageArtifacts`, `GetImageArtifact`, `ListImageExtractions`, `GetImageGraph`, `SetImageGraphArtifact`.
+Go access, in package `graph`: `InsertImage`, `ListImageArtifacts`, `GetImageArtifact`, `ListImageExtractions`, `FindImageBySHA256` (the dedup lookup of [Repeated images](#repeated-images)), `ImageStatistics` (the admin statistics), `GetImageGraph` and `SetImageGraphArtifact`. Each dispatches to the `sqlite` or `postgres` implementation (`db_image.go`, `db_image_graph.go`).
+
+## Admin UI
+
+The admin UI (`admin_ui/src/`) has two image parts:
+
+- **Remember an image** (`image.ts`, `initImageOverlay`): paste an image anywhere on the page and it opens as an overlay. "Remember" posts it to `POST ../remember` (the endpoint above) with the user and dataset last used in the UI, and shows the result next to the image (theme, title, text blocks, cache state, tokens and cost), with a spinner while it waits. Images over `MaxImageBytes` or of another type are refused in the browser.
+- **Image statistics** (`imagestats.ts`, `initImageStats`): loads `GET /admin/api/images[?db=<name>]` (`ImagesOf` in `internal/api/admin/admin.go`) and shows the counts and sizes of the image artifacts and extractions, grouped by media type and theme. The response also has `disk`, when the image directory is known: `missing` counts artifacts whose file is not in the directory and `untracked` counts files that no artifact points to (for example left by a crash). It is read from the configured store (the directory, or S3).
 
 ## Limitations
 

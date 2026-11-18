@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.211.0] - 2026-11-21
+
+### Added
+- **ATIF traces can be stored in an Amazon S3 bucket** instead of the trajectory directory: set `atif_store = "s3"` (default `fs`; environment `ATIF_STORE`). The bucket is `atif_s3_bucket` (`ATIF_S3_BUCKET`); when it is not set the **research bucket** (`research_notes_s3_bucket`, and its region) is reused, so no new bucket is needed, and the traces live under their own prefix, `atif_traces` (`atif_s3_prefix`, `ATIF_S3_PREFIX`; also `atif_s3_region`, `atif_s3_endpoint`). The config is rejected if `atif_store` is `s3` and neither bucket is set.
+- Each user has a directory of their own in the bucket, so traces are segregated: `<prefix>/<user>/<creation timestamp>_<trajectory_id>.json`, the timestamp being the UTC time of the trace's first step (`20260304T050607Z`), so a user's traces list in creation order. The user isolation is that of the image store (the user is one encoded path segment; a user cannot reach another's directory). The file system layout (`<dir>/<trajectory_id>.json`) is unchanged.
+- With the S3 store the server's research agents record a trace of every research (the sub-agents merged into the main agent's), stored in the directory of the user who started it; the remember/query eval endpoints store theirs there too. The admin UI reads a trace by its `s3://` location.
+- New package `internal/atif/atifstore` (`Store`, `FS`, `S3`, `ObjectName`).
+
+### Changed
+- Internal: `memory_core.StartTrace` takes the user, and the `agent_research.TrajectoryFunc` gets the user ID of the research.
+
 ## [0.210.0] - 2026-11-20
 
 ### Added
