@@ -17,13 +17,14 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
@@ -450,7 +451,12 @@ func serverOptions(cfg *Config,
 
 		TrajectoryDir: opts.TrajectoryDir,
 		TrajectoryS3:  trajectoryS3(cfg),
-		EvalDBPath:    opts.EvalDBPath,
+		OntologyS3: memory_ontology.S3Config{
+			Bucket: cfg.OntologyS3Bucket,
+			Region: cfg.OntologyS3Region,
+			Prefix: cfg.OntologyS3Prefix,
+		},
+		EvalDBPath: opts.EvalDBPath,
 
 		// The reruns of eval cases of the admin UI. This line is the one place that plugs the implementation into the server: the server
 		// cannot import internal/evals/knowledge (which imports the server, to run each eval case behind an in-process one), so it takes
@@ -466,14 +472,11 @@ func serverOptions(cfg *Config,
 // aiPrices converts the configured prices; omitted cache prices default to the input price.
 func aiPrices(c *Config) map[string]llm.Price { return c.AIPrices() }
 
-// trajectoryS3 is the S3 bucket of the ATIF traces (atif_store = "s3"); the zero value (no bucket) leaves them in the trajectory directory.
-func trajectoryS3(cfg *config.Config) imagestore.S3Config {
-	if cfg.AtifStore != config.AtifStoreS3 {
-		return imagestore.S3Config{}
-	}
-	return imagestore.S3Config{
-		Bucket:   cfg.AtifS3BucketOrDefault(),
-		Region:   cfg.AtifS3RegionOrDefault(),
+// trajectoryS3 is the S3 bucket of the ATIF traces (atif_s3_bucket); the zero value (no bucket) leaves them in the trajectory directory.
+func trajectoryS3(cfg *config.Config) atifstore.S3Config {
+	return atifstore.S3Config{
+		Bucket:   cfg.AtifS3Bucket,
+		Region:   cfg.AtifS3Region,
 		Prefix:   cfg.AtifS3Prefix,
 		Endpoint: cfg.AtifS3Endpoint,
 	}

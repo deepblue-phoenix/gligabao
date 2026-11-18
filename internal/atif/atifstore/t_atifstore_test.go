@@ -1,49 +1,47 @@
 package atifstore
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
-	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 )
 
-// memStore is an in-memory imagestore.Store keyed like the S3 one: owner + "/" + rel.
-type memStore struct {
+// fakeS3 is an in-memory S3API.
+type fakeS3 struct {
 	mu   sync.Mutex
 	objs map[string][]byte
 }
 
-func (m *memStore) Put(_ context.Context,
-	owner,
-	rel string,
-	data []byte) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.objs[owner+"/"+rel] = data
-	return true, nil
+func (f *fakeS3) PutObject(_ context.Context,
+	in *s3.PutObjectInput,
+	_ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	body, _ := io.ReadAll(in.Body)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.objs[*in.Key] = body
+	return &s3.PutObjectOutput{}, nil
 }
 
-func (m *memStore) Read(_ context.Context,
-	owner,
-	rel string) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	d, ok := m.objs[owner+"/"+rel]
+func (f *fakeS3) GetObject(_ context.Context,
+	in *s3.GetObjectInput,
+	_ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b, ok := f.objs[*in.Key]
 	if !ok {
-		return nil, imagestore.ErrNotFound
+		return nil, &s3types.NoSuchKey{}
 	}
-	return d, nil
+	return &s3.GetObjectOutput{Body: io.NopCloser(bytes.NewReader(b))}, nil
 }
-
-func (m *memStore) Remove(context.Context, string, string) error { return nil }
-
-func (m *memStore) List(context.Context) ([]imagestore.Object, error) { return nil, nil }
-
-func (m *memStore) Location() string { return "s3://bkt/traces/atif" }
 
 func traj(id string) *atif.Trajectory {
 	return &atif.Trajectory{
@@ -69,8 +67,12 @@ func TestObjectNameHasCreationTimestamp(t *testing.T) {
 }
 
 func TestS3PutIsPerUserAndReadable(t *testing.T) {
-	m := &memStore{objs: map[string][]byte{}}
-	s := NewS3WithStore(m)
+	m := &fakeS3{objs: map[string][]byte{}}
+	s, err := NewS3WithClient(m,
+		S3Config{Bucket: "bkt"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	loc, err := s.Put(context.Background(), "alice", traj("t1"))
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +80,7 @@ func TestS3PutIsPerUserAndReadable(t *testing.T) {
 	if loc != "s3://bkt/traces/atif/alice/20260304T050607Z_t1.json" {
 		t.Fatalf("location = %q", loc)
 	}
-	if _, ok := m.objs["alice/20260304T050607Z_t1.json"]; !ok {
+	if _, ok := m.objs["traces/atif/alice/20260304T050607Z_t1.json"]; !ok {
 		t.Fatalf("not stored under the user: %v", m.objs)
 	}
 	if _, err := s.Put(context.Background(), "bob", traj("t2")); err != nil {

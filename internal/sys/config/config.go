@@ -35,6 +35,9 @@ const (
 	EnvResearchNotesS3Bucket = "RESEARCH_NOTES_S3_BUCKET"
 	EnvResearchNotesS3Region = "RESEARCH_NOTES_S3_REGION"
 	EnvResearchNotesS3Prefix = "RESEARCH_NOTES_S3_PREFIX"
+	EnvOntologyS3Bucket      = "ONTOLOGY_S3_BUCKET"
+	EnvOntologyS3Region      = "ONTOLOGY_S3_REGION"
+	EnvOntologyS3Prefix      = "ONTOLOGY_S3_PREFIX"
 	EnvS3VectorsBucket       = "S3_VECTORS_BUCKET"
 	EnvS3VectorsRegion       = "S3_VECTORS_REGION"
 	EnvS3VectorsPrefix       = "S3_VECTORS_PREFIX"
@@ -43,7 +46,6 @@ const (
 	EnvImageS3Region         = "IMAGE_S3_REGION"
 	EnvImageS3Prefix         = "IMAGE_S3_PREFIX"
 	EnvImageS3Endpoint       = "IMAGE_S3_ENDPOINT"
-	EnvAtifStore             = "ATIF_STORE"
 	EnvAtifS3Bucket          = "ATIF_S3_BUCKET"
 	EnvAtifS3Region          = "ATIF_S3_REGION"
 	EnvAtifS3Prefix          = "ATIF_S3_PREFIX"
@@ -68,12 +70,6 @@ const (
 const (
 	ImageStoreFS = "fs"
 	ImageStoreS3 = "s3"
-)
-
-// ATIF trace stores selectable with the atif_store setting.
-const (
-	AtifStoreFS = "fs"
-	AtifStoreS3 = "s3"
 )
 
 // DefaultEmbeddingDimensions is the output size of the default embedding model (text-embedding-3-small).
@@ -220,15 +216,19 @@ type Config struct {
 	ResearchNotesS3Region string `toml:"research_notes_s3_region"`
 	// ResearchNotesS3Prefix is the subdirectory of the bucket for the investigative notes (also RESEARCH_NOTES_S3_PREFIX); default "research/investigative_notes".
 	ResearchNotesS3Prefix string `toml:"research_notes_s3_prefix"`
-	// AtifStore says where the ATIF traces (trajectories) are stored: "fs" (default; JSON files in the trajectory directory, see
-	// `serve --trajectory-dir`) or "s3" (an Amazon S3 bucket, one directory per user, see atif_s3_bucket). Also ATIF_STORE. With "s3"
-	// the research agents of the server record a trace of every research too.
-	AtifStore string `toml:"atif_store"`
-	// AtifS3Bucket is the (existing) bucket of atif_store = "s3" (also ATIF_S3_BUCKET). Empty: the research bucket
-	// (research_notes_s3_bucket), so no new bucket is needed; the traces then live under their own prefix of it.
+	// OntologyS3Bucket is the (existing) bucket the ontology documents are also stored in (also ONTOLOGY_S3_BUCKET). Empty (default): ontologies are
+	// kept only in the database. There is no fallback to another bucket.
+	OntologyS3Bucket string `toml:"ontology_s3_bucket"`
+	// OntologyS3Region is its AWS region (also ONTOLOGY_S3_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
+	OntologyS3Region string `toml:"ontology_s3_region"`
+	// OntologyS3Prefix is the subdirectory of the bucket for the ontologies (also ONTOLOGY_S3_PREFIX); default "ontologies". Each user has a
+	// directory below it.
+	OntologyS3Prefix string `toml:"ontology_s3_prefix"`
+	// AtifS3Bucket is the (existing) bucket the ATIF traces (trajectories) are stored in (also ATIF_S3_BUCKET), one directory per user. Empty
+	// (default): the traces are JSON files in the trajectory directory (see `serve --trajectory-dir`). There is no other switch and no fallback
+	// to another bucket. With a bucket the research agents of the server record a trace of every research too.
 	AtifS3Bucket string `toml:"atif_s3_bucket"`
-	// AtifS3Region is its AWS region (also ATIF_S3_REGION); empty: research_notes_s3_region when the bucket is the research one,
-	// else the AWS SDK default (AWS_REGION, shared config).
+	// AtifS3Region is its AWS region (also ATIF_S3_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
 	AtifS3Region string `toml:"atif_s3_region"`
 	// AtifS3Prefix is the subdirectory of the bucket for the traces (also ATIF_S3_PREFIX); default "traces/atif". Each user has a
 	// subdirectory of it, and a trace is "<prefix>/<user>/<creation timestamp>_<trajectory_id>.json".
@@ -272,22 +272,6 @@ func DefaultPath() string {
 		return FileName
 	}
 	return filepath.Join(filepath.Dir(exe), FileName)
-}
-
-// AtifS3BucketOrDefault is AtifS3Bucket, or the research bucket (ResearchNotesS3Bucket) if it is empty.
-func (c *Config) AtifS3BucketOrDefault() string {
-	if strings.TrimSpace(c.AtifS3Bucket) != "" {
-		return c.AtifS3Bucket
-	}
-	return c.ResearchNotesS3Bucket
-}
-
-// AtifS3RegionOrDefault is AtifS3Region; if it is empty and the bucket is the research one, the region of the research bucket.
-func (c *Config) AtifS3RegionOrDefault() string {
-	if c.AtifS3Region != "" || strings.TrimSpace(c.AtifS3Bucket) != "" {
-		return c.AtifS3Region
-	}
-	return c.ResearchNotesS3Region
 }
 
 // DefaultResearchNotesDirName is the directory next to the binary that ResearchNotesDirOrDefault falls back to.
@@ -337,11 +321,13 @@ func Default() *Config {
 		ImageS3Prefix:   os.Getenv(EnvImageS3Prefix),
 		ImageS3Endpoint: os.Getenv(EnvImageS3Endpoint),
 
-		AtifStore:      envOr(EnvAtifStore, AtifStoreFS),
-		AtifS3Bucket:   os.Getenv(EnvAtifS3Bucket),
-		AtifS3Region:   os.Getenv(EnvAtifS3Region),
-		AtifS3Prefix:   os.Getenv(EnvAtifS3Prefix),
-		AtifS3Endpoint: os.Getenv(EnvAtifS3Endpoint),
+		OntologyS3Bucket: os.Getenv(EnvOntologyS3Bucket),
+		OntologyS3Region: os.Getenv(EnvOntologyS3Region),
+		OntologyS3Prefix: os.Getenv(EnvOntologyS3Prefix),
+		AtifS3Bucket:     os.Getenv(EnvAtifS3Bucket),
+		AtifS3Region:     os.Getenv(EnvAtifS3Region),
+		AtifS3Prefix:     os.Getenv(EnvAtifS3Prefix),
+		AtifS3Endpoint:   os.Getenv(EnvAtifS3Endpoint),
 
 		ResearchNotesS3Bucket: os.Getenv(EnvResearchNotesS3Bucket),
 		ResearchNotesS3Region: os.Getenv(EnvResearchNotesS3Region),
@@ -409,20 +395,6 @@ func (c *Config) Validate() error {
 			c.ImageStore,
 			ImageStoreFS,
 			ImageStoreS3)
-	}
-	switch c.AtifStore {
-	case AtifStoreFS:
-	case AtifStoreS3:
-		if strings.TrimSpace(c.AtifS3BucketOrDefault()) == "" {
-			return fmt.Errorf("config: atif_s3_bucket (or %s; or research_notes_s3_bucket) is required when atif_store is %q",
-				EnvAtifS3Bucket,
-				AtifStoreS3)
-		}
-	default:
-		return fmt.Errorf("config: atif_store %q must be %q or %q",
-			c.AtifStore,
-			AtifStoreFS,
-			AtifStoreS3)
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)

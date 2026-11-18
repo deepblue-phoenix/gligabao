@@ -41,13 +41,18 @@ embedding_dimensions = 1536
 # image_s3_prefix = "prod"
 # image_s3_endpoint = ""
 
-# Where ATIF traces (trajectories) are stored: "fs" (default; JSON files in the trajectory directory, `serve --trajectory-dir`) or "s3"
-# (an existing Amazon S3 bucket; credentials from the standard AWS chain). In S3 each user has a directory:
-# "<prefix>/<user>/<creation timestamp>_<trajectory_id>.json". Without atif_s3_bucket the research bucket (research_notes_s3_bucket and
-# its region) is reused, under the prefix below, so no new bucket is needed. With "s3" the server's research agents also record a
-# trace of every research. Also settable with ATIF_STORE / ATIF_S3_BUCKET / ATIF_S3_REGION / ATIF_S3_PREFIX / ATIF_S3_ENDPOINT.
-# atif_store = "s3"
-# atif_s3_bucket = "my-gligabao-research"
+# Ontology documents are also stored in S3 when ontology_s3_bucket is set (an existing bucket; no fallback to any other bucket). Without
+# it ontologies are kept only in the database. Each user has a directory:
+# "<prefix>/<user>/<ontology name>/<timestamp>_<load|merge|replace>.owl". Also settable with ONTOLOGY_S3_BUCKET / _REGION / _PREFIX.
+# ontology_s3_bucket = "my-gligabao-ontologies"
+# ontology_s3_region = "us-east-1"
+# ontology_s3_prefix = "ontologies"
+
+# ATIF traces (trajectories): with atif_s3_bucket set (an existing Amazon S3 bucket; credentials from the standard AWS chain) they are
+# stored there, one directory per user: "<prefix>/<user>/<creation timestamp>_<trajectory_id>.json". Without it they are JSON files in
+# the trajectory directory (`serve --trajectory-dir`). No other switch, no fallback to any other bucket. With a bucket the server's
+# research agents also record a trace of every research. Also settable with ATIF_S3_BUCKET / ATIF_S3_REGION / ATIF_S3_PREFIX / ATIF_S3_ENDPOINT.
+# atif_s3_bucket = "my-gligabao-traces"
 # atif_s3_region = "us-east-1"
 # atif_s3_prefix = "traces/atif"
 # atif_s3_endpoint = ""

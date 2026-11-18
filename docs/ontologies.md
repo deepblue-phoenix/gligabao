@@ -192,3 +192,15 @@ Not stored: anything else, in particular restrictions and other anonymous class 
 - Updating changes the stored ontology in place; there is no version history beyond `sha256` (of the last document) and `updated_at`.
 - Only RDF/XML is read (no Turtle, JSON-LD, ...), and there is no reasoning or consistency checking.
 - Ontologies are not connected to datasets, and `remember` and `query` ignore them.
+
+## Storage in S3
+
+The classes and edges live in the database. If `ontology_s3_bucket` (`ONTOLOGY_S3_BUCKET`, an existing bucket, with `ontology_s3_region`) is set, the documents are also stored there. There is no switch and no fallback to another bucket (such as the research one): with no bucket the S3 copy is off. Each user has a directory, and each document sent (a load, a merge or a replace) is a new object, never overwritten:
+
+```
+<ontology_s3_prefix>/<user>/<name>/<timestamp>_<load|merge|replace>.owl
+```
+
+`ontology_s3_prefix` defaults to `ontologies` (also `ONTOLOGY_S3_PREFIX`). A failed S3 write is logged and does not fail the request.
+
+The documents are written by an S3 client dedicated to the ontologies (`memory_ontology/archive.go`), separate from the clients of the images and the ATIF traces.

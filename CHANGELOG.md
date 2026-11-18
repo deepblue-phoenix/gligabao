@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.214.0] - 2026-11-22
+
+### Added
+- **Ontology documents in S3.** With `ontology_s3_bucket` (`ONTOLOGY_S3_BUCKET`, plus `ontology_s3_region` and `ontology_s3_prefix`, default `ontologies`) set, every loaded or updated ontology document is also stored in that bucket, in a directory per user: `<prefix>/<user>/<name>/<timestamp>_<load|merge|replace>.owl`. Documents are never overwritten. A failed S3 write is logged and does not fail the request. Without a bucket nothing changes.
+
+### Changed
+- The images, the ATIF traces and the ontology documents each have their own dedicated S3 client (`imagestore`, `atifstore`, `memory_ontology`); the traces and the ontologies no longer borrow the image client. Nothing changes for users: the same bucket settings and the same per-user key layout.
+- **Breaking: the ATIF trace store has no switch any more.** `atif_store` (`ATIF_STORE`) is removed: traces go to S3 when `atif_s3_bucket` is set, and to the trajectory directory when it is not.
+- **Breaking: no S3 setting falls back to the research bucket any more.** `atif_s3_bucket` no longer defaults to `research_notes_s3_bucket` (and its region); a deployment that relied on it must set `atif_s3_bucket` itself.
+
 ## [0.213.0] - 2026-11-22
 
 ### Changed

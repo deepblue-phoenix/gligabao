@@ -174,6 +174,11 @@ func Load(ctx context.Context,
 		}
 		return nil, err
 	}
+	archive(ctx,
+		userID,
+		name,
+		actionLoad,
+		content)
 	return meta, nil
 }
 
@@ -299,6 +304,15 @@ func Update(ctx context.Context,
 			return nil, err
 		}
 	}
+	action := actionMerge
+	if replace {
+		action = actionReplace
+	}
+	archive(ctx,
+		userID,
+		name,
+		action,
+		content)
 	return meta, nil
 }
 

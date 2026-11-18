@@ -901,7 +901,7 @@ func readTrajectoryFile(ref *core.KnowledgeTrajectory,
 			return data, nil
 		}
 	}
-	// A trace kept in S3 (atif_store = "s3") has its s3:// location as the path.
+	// A trace kept in S3 (atif_s3_bucket) has its s3:// location as the path.
 	if atifstore.Default != nil && atifstore.IsS3Location(ref.Path) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

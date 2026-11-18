@@ -31,7 +31,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
@@ -40,6 +39,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -136,7 +136,9 @@ type Options struct {
 	ResearchNotesS3 investigate.NotesS3Config
 	// TrajectoryS3 ("" bucket: off) stores the ATIF traces in an Amazon S3 bucket instead of the trajectory directory, one directory per
 	// user (see package atifstore). With it the research agents also record a trace of every research.
-	TrajectoryS3 imagestore.S3Config
+	TrajectoryS3 atifstore.S3Config
+	// OntologyS3 ("" bucket: off) also stores the ontology documents in an Amazon S3 bucket, one directory per user (see memory_ontology.Archive).
+	OntologyS3 memory_ontology.S3Config
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -924,7 +926,7 @@ func register(mux *http.ServeMux,
 
 // openTraceStore returns the S3 store of the ATIF traces, or nil (the local trajectory directory) when no bucket is configured.
 func openTraceStore(ctx context.Context,
-	cfg imagestore.S3Config) (atifstore.Store, error) {
+	cfg atifstore.S3Config) (atifstore.Store, error) {
 	if cfg.Bucket == "" {
 		return nil, nil
 	}
@@ -1009,6 +1011,16 @@ func prepare(ctx context.Context,
 	atifstore.Default = traceStore
 	if traceStore != nil {
 		log.WithField("atif_s3", opts.TrajectoryS3.Bucket+"/"+opts.TrajectoryS3.Prefix).Info("ATIF traces are stored in S3, one directory per user")
+	}
+	memory_ontology.Archive = nil
+	if opts.OntologyS3.Bucket != "" {
+		cfg := opts.OntologyS3
+		ontoStore, ontoErr := memory_ontology.NewS3(ctx, cfg)
+		if ontoErr != nil {
+			return nil, nil, ontoErr
+		}
+		memory_ontology.Archive = ontoStore
+		log.WithField("ontology_s3", ontoStore.Location()).Info("ontology documents are also stored in S3, one directory per user")
 	}
 	if opts.EvalModeEnable {
 		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/query are enabled")
