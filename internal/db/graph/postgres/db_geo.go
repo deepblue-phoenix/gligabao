@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -254,4 +255,92 @@ func EntityGeoWithin(ctx context.Context,
 		out = append(out, *g)
 	}
 	return out, rows.Err()
+}
+
+// The entities waiting for the geo manager (gb_geo_pending, see sql/schema.sql).
+
+func (t *Tx) UpsertGeoPending(ctx context.Context,
+	p model.NewGeoPending) error {
+	now := p.Now.UTC()
+	_, err := t.tx.ExecContext(ctx,
+		`
+		INSERT INTO gb_geo_pending (entity_id, kind, query, attempts, last_error, created_at, updated_at)
+		VALUES ($1, $2, $3, 0, '', $4, $4)
+		ON CONFLICT (entity_id) DO UPDATE SET kind = excluded.kind, query = excluded.query, attempts = 0, last_error = '',
+			updated_at = excluded.updated_at`,
+		p.EntityID,
+		p.Kind,
+		p.Query,
+		now)
+	if err != nil {
+		return fmt.Errorf("upsert geo pending %d: %w",
+			p.EntityID,
+			err)
+	}
+	return nil
+}
+
+func (t *Tx) DeleteGeoPending(ctx context.Context,
+	entityID int64) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`DELETE FROM gb_geo_pending WHERE entity_id = $1`,
+		entityID); err != nil {
+		return fmt.Errorf("delete geo pending %d: %w",
+			entityID,
+			err)
+	}
+	return nil
+}
+
+func (t *Tx) FailGeoPending(ctx context.Context,
+	entityID int64,
+	reason string,
+	now time.Time) error {
+	if _, err := t.tx.ExecContext(ctx,
+		`UPDATE gb_geo_pending SET attempts = attempts + 1, last_error = $1, updated_at = $2 WHERE entity_id = $3`,
+		reason,
+		now.UTC(),
+		entityID); err != nil {
+		return fmt.Errorf("fail geo pending %d: %w",
+			entityID,
+			err)
+	}
+	return nil
+}
+
+func (t *Tx) ListGeoPending(ctx context.Context,
+	maxAttempts,
+	limit int) ([]model.GeoPending, error) {
+	rows, err := t.tx.QueryContext(ctx,
+		`
+		SELECT entity_id, kind, query, attempts, last_error FROM gb_geo_pending
+		WHERE attempts < $1
+		ORDER BY updated_at, entity_id
+		LIMIT $2`,
+		maxAttempts,
+		limit)
+	if err != nil {
+		return nil, fmt.Errorf("list geo pending: %w", err)
+	}
+	defer rows.Close()
+	var out []model.GeoPending
+	for rows.Next() {
+		var g model.GeoPending
+		if err := rows.Scan(&g.EntityID, &g.Kind, &g.Query, &g.Attempts, &g.LastError); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+func (t *Tx) CountGeoPending(ctx context.Context,
+	dsID int64) (int, error) {
+	var n int
+	if err := t.tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM gb_geo_pending p JOIN gb_entities e ON e.id = p.entity_id WHERE e.dataset_id = $1`,
+		dsID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count geo pending: %w", err)
+	}
+	return n, nil
 }

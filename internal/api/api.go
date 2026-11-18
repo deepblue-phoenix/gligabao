@@ -55,6 +55,7 @@ func Register(mux *http.ServeMux,
 		queryOptions(d,
 			emb,
 			o)...)))
+	mux.Handle("GET /v1/gb/geo", a(query.GeoHandler(d.Relational)))
 	mux.Handle("GET /v1/gb/geo/nearby", a(query.NearbyHandler(d.Relational, memory_core.WithGeoRadius(o.geoRadiusKm))))
 	mux.Handle("POST /v1/gb/datasets", a(datasets.Create(d.Relational)))
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))

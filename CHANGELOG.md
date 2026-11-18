@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.212.0] - 2026-11-22
+
+### Added
+- **Geo resolution no longer blocks `remember`.** The server has one **geo manager** (`memory_geo.Manager`): a single goroutine, with a context of its own, that asks the geo resolver for one place at a time. `remember` still detects the places with the LLM (one call, synchronous), but then only records them as pending and queues them; the manager asks the resolver later and stores the coordinates in `gb_entity_geo`. The remember queue holds 10000 jobs (a full queue leaves the place pending), and a place already queued (same entity ID) is not queued twice.
+- **`query` goes through the same manager, first.** The manager has a separate query queue (1000 requests) and always serves it before the remember queue (a request being resolved is not interrupted). Query only asks the resolver when the call asks for the proximity search (`geo_nearby`/`geo_radius_km`, off by default).
+- `geo_sync` (default `false`) in the `remember` request (Go: `memory_core.WithGeoSync`, `RememberRequest.GeoSync`): wait until the places of the call are resolved and stored, so their coordinates are in the response. The knowledge evals set it, so they need no change.
+- Without `geo_sync` the places in the `remember` response (`geo`) have `pending: true` and no coordinates. **`GET /v1/gb/geo`** (`dataset`, optional `entity_id`) returns the resolved places of a dataset and `pending`, how many are still to be resolved.
+- New table `gb_geo_pending` (created at startup): the entities judged to be places whose coordinates are not resolved. It is removed when the place is resolved or the resolver does not know it; a failing resolver counts attempts (5 at most). The **geo sweeper** of the server queues the pending places at startup and every two minutes, so work lost to a restart, a full queue or a resolver outage is picked up again.
+
+### Changed
+- The worker (`gligabao_worker`) has no geo manager: with geo on its `remember` only detects the places and records them as pending (`memory_core.WithGeoDeferred`), and the server that shares the database resolves them through its sweeper. The worker's `query` still asks the resolver directly.
+- A plain resolver given to `memory_core.WithGeoResolver` (not the manager: embedding programs, `gligabao_agent`) is still asked inline, as before. The server wraps its resolver (`ServeOptions.GeoResolver` or Nominatim) in the manager itself.
+
 ## [0.211.0] - 2026-11-21
 
 ### Added

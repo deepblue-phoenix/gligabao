@@ -136,7 +136,7 @@ func (w *webPart) label() string {
 // searches the web or fetches series (see remember_seriesfetch.go). The entities of a web search result are never recorded: the search does not recurse.
 func (j *job) noteKeyEntities(ex *Extraction,
 	artifactID int64) {
-	if !(j.co.WebSearch || j.co.SeriesFetch != nil || j.co.GeoResolver != nil) || j.web != nil || j.obs != nil {
+	if !(j.co.WebSearch || j.co.SeriesFetch != nil || j.co.GeoOn()) || j.web != nil || j.obs != nil {
 		return
 	}
 	degree := map[string]int{}

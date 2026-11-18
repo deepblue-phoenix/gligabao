@@ -365,6 +365,20 @@ CREATE TABLE IF NOT EXISTS gb_entity_geo (
 CREATE INDEX IF NOT EXISTS idx_gb_entity_geo_coords ON gb_entity_geo(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_geo_country ON gb_entity_geo(country_code);
 
+-- An entity the LLM judged to be a place, whose coordinates the geo manager has not resolved yet (the remember pipeline does not wait for
+-- the resolver). The row is removed when the place is resolved or the resolver does not know it; the sweeper of the server asks again
+-- for the rows left (a resolver that failed), up to a number of attempts.
+CREATE TABLE IF NOT EXISTS gb_geo_pending (
+	entity_id  INTEGER PRIMARY KEY REFERENCES gb_entities(id) ON DELETE CASCADE,
+	kind       TEXT NOT NULL,
+	query      TEXT NOT NULL,
+	attempts   INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_geo_pending_updated ON gb_geo_pending(updated_at);
+
 -- An ontology (metadata in gb_ontologies, see internal/db/relational) is a small graph of its own, kept apart from
 -- the dataset graph above: classes are nodes, and edges are the relationships between classes.
 --   kind: 'subclass_of' | 'equivalent_class' | 'disjoint_with' | 'property'

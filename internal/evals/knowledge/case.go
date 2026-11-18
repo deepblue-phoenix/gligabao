@@ -169,6 +169,9 @@ func (x *Executor) runCase(ctx context.Context,
 		if m.WebSearch {
 			body["web_search"] = true
 		}
+		if x.Geo != nil {
+			body["geo_sync"] = true // the checks read the coordinates right after: wait for the geo manager
+		}
 		if len(m.Timeseries) > 0 {
 			body["timeseries"] = m.Timeseries
 		}

@@ -94,6 +94,8 @@ type (
 	EntityGeo                    = model.EntityGeo
 	ConnectedGeo                 = model.ConnectedGeo
 	GeoStats                     = model.GeoStats
+	NewGeoPending                = model.NewGeoPending
+	GeoPending                   = model.GeoPending
 	NearbyGeo                    = model.NearbyGeo
 )
 

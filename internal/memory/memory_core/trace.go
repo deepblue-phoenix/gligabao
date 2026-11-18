@@ -77,6 +77,15 @@ type CallOptions struct {
 	// GeoResolver is what finds the coordinates of the entities that are places, set by WithGeoResolver; nil (the default)
 	// means Remember does not look at places at all, and Query does not look for the places a question mentions.
 	GeoResolver memory_geo.Resolver
+	// GeoQueue is where Remember puts the places it found to be resolved without waiting (the geo manager); set by WithGeoResolver
+	// when the resolver is a memory_geo.Queue, nil otherwise.
+	GeoQueue memory_geo.Queue
+	// GeoSync makes Remember wait until the places of the call are resolved and stored, set by WithGeoSync; false (the default)
+	// leaves the resolving to the geo manager. It only matters with a GeoQueue.
+	GeoSync bool
+	// GeoDeferred makes Remember find the places and record them as pending (gb_geo_pending) without a resolver: another process (the
+	// server's geo sweeper) resolves them. Set by WithGeoDeferred; the worker uses it, as it has no geo manager.
+	GeoDeferred bool
 	// GeoNearby turns the proximity search of Query on, set by WithGeoNearby; false (the default) leaves it off.
 	GeoNearby bool
 	// GeoRadiusKm is the radius of the proximity search of Query, set by WithGeoRadius; 0 means DefaultGeoRadiusKm.
@@ -235,7 +244,32 @@ func WithJev(c Classifier) Option { return func(o *CallOptions) { o.Jev = c } }
 // failure never fails the call. It is the one switch of geo: Query also finds the places a question mentions when it is set, asks r
 // for the coordinates of those that are not entities of the dataset (and stores them), and gives the geo entities near them to the
 // LLM that answers, but only when the call asks for it (see WithGeoNearby and WithGeoRadius).
-func WithGeoResolver(r memory_geo.Resolver) Option { return func(o *CallOptions) { o.GeoResolver = r } }
+//
+// When r is also a memory_geo.Queue (the geo manager of the server), Remember does not wait for the resolver: it records the places it
+// found as pending and queues them, and the manager stores the coordinates later (unless WithGeoSync is set), and Query's requests to
+// r are the high priority queue of the manager.
+func WithGeoResolver(r memory_geo.Resolver) Option {
+	return func(o *CallOptions) {
+		o.GeoResolver = r
+		o.GeoQueue = nil
+		if q, ok := r.(memory_geo.Queue); ok {
+			o.GeoQueue = q
+		}
+	}
+}
+
+// WithGeoSync makes Remember wait, before it returns, until the places it found are resolved and stored (default false: the geo manager
+// resolves them later, and Remember only returns the places it found, as pending). It is for the callers that read the coordinates
+// right after (the evals). It has no effect without a geo manager (a plain resolver always resolves before Remember returns).
+func WithGeoSync(on bool) Option { return func(o *CallOptions) { o.GeoSync = on } }
+
+// WithGeoDeferred makes Remember find the places among its entities and record them as pending (gb_geo_pending), without a resolver
+// to ask: the sweeper of a server (which has the geo manager) resolves them later. It is for a process that has no manager. Ignored
+// when the call also has a geo resolver.
+func WithGeoDeferred(on bool) Option { return func(o *CallOptions) { o.GeoDeferred = on } }
+
+// GeoOn says whether Remember looks for places: with a geo resolver, or deferred.
+func (o CallOptions) GeoOn() bool { return o.GeoResolver != nil || o.GeoDeferred }
 
 // WithWebSearcher makes web search available to Remember: ws runs the searches of the calls that ask for them (see
 // WithWebSearch). It does not turn web search on by itself. A nil ws (no Anthropic API key) leaves it unavailable.

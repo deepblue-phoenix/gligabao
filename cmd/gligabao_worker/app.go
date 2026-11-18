@@ -58,7 +58,9 @@ func openApp(ctx context.Context,
 		database: database,
 		lm:       lm,
 	}
-	a.rememberOpts = []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithChunking(database.Chunking), memory_core.WithGeoResolver(geo)}
+	// The worker has no geo manager: remember only finds the places and records them as pending (WithGeoDeferred), and the main server
+	// (which spawned the worker and shares the database) resolves them with its geo manager. Query asks the resolver directly.
+	a.rememberOpts = []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithChunking(database.Chunking), memory_core.WithGeoDeferred(cfg.Geo)}
 	a.queryOpts = []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithGeoResolver(geo), memory_core.WithGeoRadius(cfg.GeoRadiusKm)}
 
 	mgrCtx, stop := context.WithCancel(ctx)

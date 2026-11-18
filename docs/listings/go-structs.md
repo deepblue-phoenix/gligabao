@@ -193,6 +193,7 @@
 | `internal/db/graph/model.EdgeSession`                     | links an edge to a session it was inferred from.                                                                       |
 | `internal/db/graph/model.Entity`                          | is a thing mentioned in the text such as a person, place or concept.                                                   |
 | `internal/db/graph/model.EntityGeo`                       | is the stored geo metadata of an entity that is a place.                                                               |
+| `internal/db/graph/model.GeoPending`                      | is a stored place waiting for the geo manager, as the sweeper reads it.                                                |
 | `internal/db/graph/model.EntityArtifact`                  | links an entity to an artifact that mentions it.                                                                       |
 | `internal/db/graph/model.EntitySession`                   | links an entity to a session in which it was mentioned.                                                                |
 | `internal/db/graph/model.EvidenceEdge`                    | is a graph edge cited by an answer.                                                                                    |
@@ -206,6 +207,7 @@
 | `internal/db/graph/model.NewChunkSummaryArtifact`         | is a chunk summary artifact to insert as a child of its chunk.                                                         |
 | `internal/db/graph/model.NewEdge`                         | is an edge to insert between two entity IDs.                                                                           |
 | `internal/db/graph/model.NewEntityGeo`                    | is the geo metadata to store for an entity.                                                                            |
+| `internal/db/graph/model.NewGeoPending`                   | is a place waiting for the geo manager, to record.                                                                     |
 | `internal/db/graph/model.NewImage`                        | is an image artifact with its first extraction, stored in one transaction.                                             |
 | `internal/db/graph/model.NewImageExtraction`              | is what an LLM read from an image, ready to store.                                                                     |
 | `internal/db/graph/model.NewSeries`                       | is a series to insert or whose metadata to update.                                                                     |
@@ -261,8 +263,13 @@
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `internal/memory/memory_geo.Func`                         | adapts a function to a Resolver.                                                                                       |
+| `internal/memory/memory_geo.Job`                          | is one place that remember wants the geo manager to resolve, without waiting for the answer.                           |
+| `internal/memory/memory_geo.Manager`                      | is the geo manager: one goroutine that asks the resolver for one place at a time, the query queue before the remember queue. |
+| `internal/memory/memory_geo.ManagerOption`                | customizes NewManager.                                                                                                 |
 | `internal/memory/memory_geo.NominatimOptions`             | configures the Nominatim resolver.                                                                                     |
+| `internal/memory/memory_geo.Outcome`                      | is the answer to a Job.                                                                                                |
 | `internal/memory/memory_geo.Place`                        | is a place a Resolver found.                                                                                           |
+| `internal/memory/memory_geo.Queue`                        | is the part of the Manager that remember uses.                                                                         |
 | `internal/memory/memory_geo.Query`                        | is what a Resolver is asked for.                                                                                       |
 | `internal/memory/memory_geo.cacheEntry`                   | is a cached answer of a Resolver.                                                                                      |
 | `internal/memory/memory_geo.cached`                       | is a Resolver that remembers the answers of another one.                                                               |

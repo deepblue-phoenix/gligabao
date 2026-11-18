@@ -109,6 +109,7 @@ type RememberRequest struct {
 	Models        map[string]string `json:"models,omitempty"`    // model per stage
 	Reasoning     map[string]string `json:"reasoning,omitempty"` // level per stage: none, low, medium, high
 	WebSearch     bool              `json:"web_search,omitempty"`
+	GeoSync       bool              `json:"geo_sync,omitempty"`       // wait until the places found are resolved (default: the server resolves them later; see GET /v1/gb/geo)
 	ClassifyGraph *bool             `json:"classify_graph,omitempty"` // default true for a text; point to false to turn it off
 	GraphClasses  []string          `json:"graph_classes,omitempty"`
 	GraphIndex    string            `json:"graph_index,omitempty"`

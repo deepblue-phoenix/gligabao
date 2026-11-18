@@ -31,6 +31,26 @@ type NewEntityGeo struct {
 	Now time.Time
 }
 
+// NewGeoPending is an entity that the LLM judged to be a place and whose coordinates are not known yet (see gb_geo_pending).
+type NewGeoPending struct {
+	EntityID int64
+	// Kind and Query are what the place is and what the resolver is to be asked for (as in NewEntityGeo).
+	Kind  string
+	Query string
+	// Now is the time of the write.
+	Now time.Time
+}
+
+// GeoPending is a stored NewGeoPending, as the sweeper reads it.
+type GeoPending struct {
+	EntityID int64
+	Kind     string
+	Query    string
+	// Attempts is how many times the resolver failed for the place (not counting "not found", which ends the wait); LastError is why.
+	Attempts  int
+	LastError string
+}
+
 // EntityGeo is the stored geo metadata of an entity.
 type EntityGeo struct {
 	EntityID    int64

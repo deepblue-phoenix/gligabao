@@ -4,7 +4,7 @@ Some entities are places: a city, a country, a region, a landmark. `remember` fi
 graph knows where things are. The code is the package `internal/memory/memory_geo` (the resolvers) and `memory_remember/remember_geo.go` (the
 stage of the pipeline); the data is the table `gb_entity_geo`.
 
-`query` uses it too, with the same switch: when the request asks for it, it finds the geo entities near the places of a question and gives them to the LLM that answers, within a radius you can set, and stores the places of the question it resolves (see [In `query`](#in-query)).
+`remember` does not wait for the geocoder: the places are resolved later by the [geo manager](#the-geo-manager) of the server (or at once with `geo_sync`). `query` uses it too, with the same switch: when the request asks for it, it finds the geo entities near the places of a question and gives them to the LLM that answers, within a radius you can set, and stores the places of the question it resolves (see [In `query`](#in-query)).
 
 ## Turning it on
 
@@ -15,6 +15,7 @@ places to a geocoder.
   second, as its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) asks).
 - A program that embeds gligabao sets `ServeOptions.GeoResolver` (any `gligabao.GeoResolver`); that turns geo on by itself.
   For Go code that builds the call itself: `memory_core.WithGeoResolver(r)`, and `api.WithGeoResolver(r)` for `api.Register`.
+  The server puts the resolver behind its [geo manager](#the-geo-manager); a plain resolver given straight to `memory_core.WithGeoResolver` (not a manager) is asked inline, as before.
 
 ## Geo index in the admin UI
 
@@ -71,16 +72,33 @@ errors are logged, recorded in the trajectory and run log, and returned in `geo`
 2. **Detect** (LLM, stage `detect_geo`): which candidates are places, their `kind` (`country`, `region`, `city` or `place`) and
    what to ask the resolver: the name plus what disambiguates it (`"Paris, France"`). It prefers precision: an entity it is
    not sure is a place is left out ("Bank of America" and "Paris Hilton" are not places).
-3. **Resolve**: the geo resolver is asked for each place found (at most 25), one at a time. "Not found" is not a failure.
-4. **Store**: one transaction writes the rows of `gb_entity_geo`, which are then in the geo index too ([The geo index](#the-geo-index)).
+3. **Queue** (with the geo manager, the default of a server): each place found (at most 25) is recorded in `gb_geo_pending` and queued in the manager, and the call goes on without waiting for the geocoder. The manager resolves it later ([The geo manager](#the-geo-manager)), so the places come back in `geo` as `pending` and without coordinates, unless the request sends `geo_sync: true` (below). A plain resolver is asked here instead, one place at a time ("not found" is not a failure).
+4. **Store**: one transaction writes the rows of `gb_entity_geo`, which are then in the geo index too ([The geo index](#the-geo-index)). With the manager this is done by the manager when it has the answer, and the pending record is removed in the same transaction.
 
 `detect_geo` takes a model (`models`) and a reasoning level (`reasoning`) like the other LLM stages
 ([remember/remember.md](remember/remember.md#choosing-the-model-of-each-stage)). In the run log the stage is `resolve_geo` and holds the
 `detect_geo` inference.
 
+## The geo manager
+
+A server with geo on has ONE geo manager (`memory_geo.Manager`, `internal/memory/memory_geo/manager.go`): a single goroutine, started with the server and stopped with its context (not with a request's), that owns the resolver and asks it for one place at a time. A public geocoder allows one request per second, so the manager is also where that is kept, however many pipelines run. The server wraps its resolver in it (`ServeOptions.GeoResolver` or Nominatim); nothing else has to be set.
+
+It has two queues, and **the query queue always wins**:
+
+- **Query queue** (1000 requests): `Manager.Resolve`, the `Resolver` interface of the manager, is what `query` calls (the proximity search, [Nearby entities](#nearby-entities); it only asks when the request asked for that, which is off by default). The caller blocks on the answer. The manager takes from this queue first and only looks at the remember queue when it is empty; a request being resolved is not interrupted, so a query can wait for the one remember job in progress (at most the 30 s timeout of a resolver call). A request whose caller gave up is skipped.
+- **Remember queue** (10000 jobs): `Manager.Enqueue` takes a job (`memory_geo.Job`: the key, which is the entity ID, the query for the resolver and a `Done` function) and returns at once. A key that is already queued or being resolved is refused (`ErrDuplicate`: an entity is resolved once however many calls mention it), and a full queue refuses too (`ErrQueueFull`; the place stays pending). `Done` is called by the manager with the answer and stores it: the coordinates go to `gb_entity_geo` and the pending record is removed; "not found" removes the pending record (a new mention asks again); a failure of the resolver counts an attempt on it. An entity that was deleted meanwhile is not an error. `Manager.Flush` waits for the jobs queued before it.
+
+**Pending places** are rows of `gb_geo_pending` (`entity_id`, `kind`, `query`, `attempts`, `last_error`, timestamps; the row goes with the entity): every place the LLM found gets one when `remember` queues it, and it is removed when it is resolved. They make the work durable. The **geo sweeper** (`memory_remember.RunGeoSweeper`, started with the manager) queues the pending places at startup and every two minutes (500 at a time, those with fewer than 5 failed attempts), so a place whose resolving was lost (a restart, a full queue) or whose resolver was down is asked again. A new mention of the entity starts its attempts again.
+
+**`geo_sync`**: a `remember` request with `"geo_sync": true` (Go: `memory_core.WithGeoSync(true)`, `RememberRequest.GeoSync`) records and queues the places as usual, then waits for the manager (`Flush`) before it returns, so the coordinates are in `geo` as with a plain resolver. It is for callers that read the coordinates right after: the knowledge evals send it, so they need no change. A place that another call had already queued is read from the database after the wait.
+
+**Reading the coordinates.** Without `geo_sync`, call `GET /v1/gb/geo` later: `dataset` (default `main`; the user is the `gb-user-id` header) and optionally `entity_id` give `{"dataset": "main", "entities": [{"entity_id": 12, "name": "Paris", "type": "place", "kind": "city", "latitude": 48.85, "longitude": 2.35, "display_name": "...", "country": "France", "country_code": "fr", "region": "...", "bbox": [..], "provider": "nominatim"}], "pending": 1}`. `pending` is how many places of the dataset are still to be resolved: call again until it is 0. `404` for an unknown dataset, or an `entity_id` that has no coordinates yet; `400` for a bad parameter. It needs no LLM and no resolver. Go: `query.GeoHandler`.
+
+**The worker** (`gligabao_worker`) has no manager (see [worker_binary.md](worker_binary.md)): with geo on its `remember` only detects the places and records them as pending (`memory_core.WithGeoDeferred(true)`), and the server that shares the database resolves them through its sweeper. A server with geo off never does. The worker's `query` asks the resolver directly, so it does not get the priority of the server's query queue, and shares the geocoder's rate limit with the server.
+
 ## In the trajectory
 
-An [eval trajectory](evals/knowledge.md) of a call with a geo resolver has, after the steps of the text itself, a `select_geo_entities` step (the candidates), the `detect_geo` LLM call and a `detect_geo` step (the places it found, with `kind` and `query`), one `resolve_geo` step per place (found or not, the coordinates, `latency_ms`), and a `store_geo` step (how many places were stored). When there are no candidates, the stage stops after `select_geo_entities`.
+An [eval trajectory](evals/knowledge.md) of a call with a geo resolver has, after the steps of the text itself, a `select_geo_entities` step (the candidates), the `detect_geo` LLM call and a `detect_geo` step (the places it found, with `kind` and `query`), then, with the geo manager, a `queue_geo` step (`mode`: `async`, `sync` or `deferred`; how many places were recorded as pending, queued, or already queued by another call). Without `geo_sync` that is the end of the stage: the resolving happens later and is not in the trajectory. With `geo_sync` (or a plain resolver) there is one `resolve_geo` step per place (found or not, the coordinates, `latency_ms`), and with a plain resolver a `store_geo` step (how many places were stored). When there are no candidates, the stage stops after `select_geo_entities`.
 
 ## In `query`
 
@@ -116,7 +134,7 @@ The response is the `nearby` object of the query result: `{"radius_km": 50, "anc
 
 ## The result
 
-`geo` in the response of `remember` has one element per entity the LLM judged to be a place:
+`geo` in the response of `remember` has one element per entity the LLM judged to be a place. By default (the geo manager) the coordinates are not known yet: the element has `"pending": true` and `resolved` is false; `geo_sync: true` waits for them. The element of a resolved place:
 
 ```json
 {"entity": "Paris", "entity_type": "place", "entity_id": 12, "kind": "city", "query": "Paris, France", "resolved": true,
@@ -124,7 +142,7 @@ The response is the `nearby` object of the query result: `{"radius_km": 50, "anc
  "country_code": "fr", "region": "Île-de-France", "provider": "nominatim"}
 ```
 
-`resolved: false` with no `error` means the resolver does not know the place; with an `error` the resolver or the storage failed.
+`pending: true` means the place is recorded and waiting for the manager (read it with [`GET /v1/gb/geo`](#the-geo-manager)); it is also set with `geo_sync` when the resolver failed, as the sweeper asks again. `resolved: false` with no `error` and no `pending` means the resolver does not know the place; with an `error` the resolver, the queue or the storage failed.
 
 ## The table
 
@@ -146,6 +164,8 @@ The response is the `nearby` object of the query result: `{"radius_km": 50, "anc
 
 Go: `graph.GetEntityGeo`, `graph.ListEntityGeo`, and `Tx.UpsertEntityGeo` / `Tx.GetEntityGeo` inside a transaction.
 
+`gb_geo_pending` has one row per place waiting for the [geo manager](#the-geo-manager), keyed by `entity_id` (a foreign key to `gb_entities`; the row goes with the entity): `kind` and `query` (what the resolver is to be asked), `attempts` (failed attempts of the resolver) and `last_error`, `created_at`, `updated_at`. Go: `Tx.UpsertGeoPending`, `DeleteGeoPending`, `FailGeoPending`, `ListGeoPending`, `CountGeoPending`.
+
 ## Writing a resolver
 
 ```go
@@ -155,6 +175,6 @@ type Resolver interface {
 }
 ```
 
-`memory_geo.Cached(r)` adds a cache, `memory_geo.NewNominatim(memory_geo.NominatimOptions{BaseURL: ..., MinInterval: -1})` points at your own Nominatim
+`memory_geo.Cached(r)` adds a cache, `memory_geo.NewManager(ctx, r)` is the [geo manager](#the-geo-manager) (a `Resolver` itself, and a `memory_geo.Queue` for `remember`), `memory_geo.NewNominatim(memory_geo.NominatimOptions{BaseURL: ..., MinInterval: -1})` points at your own Nominatim
 instance, and `memory_geo.Func` adapts a function. A resolver must be safe for concurrent use and return coordinates in range
-(`Place.Validate`), or the answer is treated as a failure.
+(`Place.Validate`), or the answer is treated as a failure. The manager calls it from one goroutine, one place at a time, with a 30 s timeout.

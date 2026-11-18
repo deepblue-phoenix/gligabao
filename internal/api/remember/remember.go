@@ -65,6 +65,10 @@ type rememberRequest struct {
 	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when
 	// the server has an Anthropic API key (else 503); not for an image (400).
 	WebSearch bool `json:"web_search"`
+	// GeoSync (optional, default false) makes the call wait until the places it found are resolved and stored, so that their coordinates are in
+	// the response. By default the geo manager of the server resolves them later (the places are in the response as "pending") and the
+	// coordinates are read with GET /v1/gb/geo. Meant for evals and tests; it only matters when geo is on.
+	GeoSync bool `json:"geo_sync"`
 	// ClassifyGraph (optional, default true for a text; nil is the default, false turns it off) has an LLM classify the graph of each artifact the call stores (the text, or each chunk of a
 	// document): it picks one to three classes, and each is stored as a record of gb_artifact_classes that references the run (inference)
 	// of the call. It costs a call per artifact; the model and the reasoning level are those of the "classify_graph" stage. Not for an image
@@ -294,6 +298,7 @@ func handler(mgr *memory_remember.Manager,
 				memory_core.WithModels(models),
 				memory_core.WithReasoning(reasoning),
 				memory_core.WithWebSearch(req.WebSearch),
+				memory_core.WithGeoSync(req.GeoSync),
 				memory_core.WithClassifyGraph(classifyGraph, graphClasses),
 				memory_core.WithSeries(series),
 				memory_core.WithSeriesFetch(fetch),

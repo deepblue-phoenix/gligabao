@@ -10,7 +10,10 @@ package memory_remember
 //  2. DETECT: one LLM call (the detect_geo stage) reads the candidates and says which are places (a country, a region, a
 //     city, or anything smaller: a landmark, an address, a mountain), their kind, and what to ask the resolver for: the name
 //     with whatever disambiguates it ("Paris, Texas").
-//  3. RESOLVE: the geo resolver is asked for each place, one at a time (a public geocoder allows no more).
+//  3. RESOLVE: the geo resolver is asked for each place, one at a time (a public geocoder allows no more). With the geo manager of the
+//     server (memory_geo.Manager) the call does not wait for this: it records the places as pending and queues them, and the manager
+//     resolves and stores them later (queueGeo, remember_geo_queue.go; memory_core.WithGeoSync waits for them). Only a plain resolver
+//     (an embedding program's, the agent command) is asked inline, as described here.
 //  4. STORE: the coordinates and the rest of what the resolver says go to gb_entity_geo, keyed by the entity, in one
 //     transaction.
 //
@@ -44,6 +47,9 @@ type GeoResult struct {
 	// Kind is what the place is ("country", "region", "city" or "place") and Query what the resolver was asked for.
 	Kind  string `json:"kind,omitempty"`
 	Query string `json:"query,omitempty"`
+	// Pending says the place is recorded (gb_geo_pending) and its coordinates are still to be resolved by the geo manager (the default, see
+	// memory_core.WithGeoSync): they are stored later and are not in this result. Look them up with GET /v1/gb/geo.
+	Pending bool `json:"pending,omitempty"`
 	// Resolved says the resolver found the place and its geo metadata is stored (in gb_entity_geo): the fields below are then set.
 	Resolved    bool    `json:"resolved"`
 	Latitude    float64 `json:"latitude,omitempty"`
@@ -185,8 +191,8 @@ func parseGeoPlaces(text string,
 // coordinates (see the top of this file). It returns one result per entity the LLM judged to be a place (and that was not
 // looked up before); nil if there was nothing to decide. It never fails the call. The call has a geo resolver.
 func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
-	resolver := j.co.GeoResolver
-	fields := log.Fields{"stage": memory_core.StageDetectGeo, "user_id": j.userID, "dataset": j.dataset, "resolver": resolver.Name()}
+	resolverName := geoResolverName(j.co)
+	fields := log.Fields{"stage": memory_core.StageDetectGeo, "user_id": j.userID, "dataset": j.dataset, "resolver": resolverName}
 
 	all := make([]*keyEntity,
 		0,
@@ -214,7 +220,7 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	j.tr.Tool("Picked the entities that may be places: the extracted entities of a type that can be a place (not a person, concept, "+
 		"product or event), without the ones that already have geo metadata, at most "+fmt.Sprint(maxGeoCandidates)+".",
 		"select_geo_entities",
-		map[string]any{"entities_extracted": len(all), "max": maxGeoCandidates, "resolver": resolver.Name()},
+		map[string]any{"entities_extracted": len(all), "max": maxGeoCandidates, "resolver": resolverName},
 		map[string]any{"entities": names})
 	j.run.Output(StageResolveGeo,
 		"select_geo_entities",
@@ -282,20 +288,22 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	}
 
 	//--------------------------------------
+	// QUEUE: with the geo manager (or deferred, for the sweeper of the server) this call does not wait for the resolver
+	if j.co.GeoQueue != nil || j.co.GeoResolver == nil {
+		return j.queueGeo(ctx,
+			places,
+			resolverName,
+			fields)
+	}
+
+	//--------------------------------------
 	// RESOLVE, one at a time: the resolver may be rate-limited
+	resolver := j.co.GeoResolver
 	results := make([]GeoResult,
 		0,
 		len(places))
 	var upserts []graph.NewEntityGeo
 	for _, p := range places {
-		r := GeoResult{
-			Entity:     p.Entity.Name,
-			EntityType: p.Entity.Type,
-			EntityID:   p.ID,
-			Kind:       p.Kind,
-			Query:      p.Query,
-		}
-		args := map[string]any{"entity": p.Entity.Name, "type": p.Entity.Type, "kind": p.Kind, "query": p.Query, "resolver": resolver.Name()}
 		started := time.Now()
 		place, err := callGeoResolver(ctx,
 			resolver,
@@ -303,74 +311,19 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 				Text: p.Query,
 				Kind: p.Kind,
 			})
-		timing := memory_core.ToolTiming{
-			Provider: resolver.Name(),
-			Started:  started,
-			Latency:  time.Since(started),
-		}
-		switch {
-		case errors.Is(err, memory_geo.ErrNotFound):
-			log.WithFields(fields).WithField("entity", p.Entity.Name).Info("remember: the geo resolver does not know the place")
-			j.tr.TimedTool("The geo resolver does not know the place.",
-				"resolve_geo",
-				args,
-				map[string]any{"found": false},
-				timing)
-			j.run.Output(StageResolveGeo,
-				"resolve_geo",
-				p.Entity.Name,
-				map[string]any{"request": args, "found": false})
-		case err != nil:
-			r.Error = "resolve: " + err.Error()
-			log.WithError(err).WithFields(fields).WithField("entity", p.Entity.Name).Warn("remember: the geo resolver failed")
-			j.tr.TimedTool("The geo resolver failed.",
-				"resolve_geo",
-				args,
-				map[string]any{"error": r.Error},
-				timing)
-			j.run.Output(StageResolveGeo,
-				"resolve_geo",
-				p.Entity.Name,
-				map[string]any{"request": args, "error": r.Error})
-		default:
-			r.Resolved, r.Latitude, r.Longitude, r.DisplayName = true, place.Latitude, place.Longitude, place.DisplayName
-			r.Country, r.CountryCode, r.Region, r.Provider = place.Country, place.CountryCode, place.Region, place.Provider
-			if r.Provider == "" {
-				r.Provider = resolver.Name()
-			}
-			j.tr.TimedTool("The geo resolver found the place.",
-				"resolve_geo",
-				args,
-				map[string]any{"found": true, "latitude": place.Latitude,
-					"longitude": place.Longitude, "display_name": place.DisplayName, "country": place.Country},
-				timing)
-			j.run.Output(StageResolveGeo,
-				"resolve_geo",
-				p.Entity.Name,
-				map[string]any{"request": args, "found": true, "place": map[string]any{"latitude": place.Latitude, "longitude": place.Longitude,
-					"kind": place.Kind, "display_name": place.DisplayName, "country": place.Country, "country_code": place.CountryCode,
-					"region": place.Region, "type": place.Type, "bbox": place.BBox, "importance": place.Importance, "provider": r.Provider, "ref": place.Ref}})
-			if p.ID != 0 {
-				upserts = append(upserts, graph.NewEntityGeo{
-					EntityID:    p.ID,
-					Kind:        p.Kind,
-					Query:       p.Query,
-					Latitude:    place.Latitude,
-					Longitude:   place.Longitude,
-					DisplayName: place.DisplayName,
-					Country:     place.Country,
-					CountryCode: place.CountryCode,
-					Region:      place.Region,
-					PlaceType:   place.Type,
-					BBox:        place.BBox,
-					Importance:  place.Importance,
-					Provider:    r.Provider,
-					ProviderRef: place.Ref,
-					Now:         j.now,
-				})
-			}
-		}
+		r, up := j.recordGeoOutcome(p,
+			resolverName,
+			memory_geo.Outcome{
+				Place:   place,
+				Err:     err,
+				Started: started,
+				Latency: time.Since(started),
+			},
+			fields)
 		results = append(results, r)
+		if up != nil {
+			upserts = append(upserts, *up)
+		}
 		if ctx.Err() != nil { // the call was cancelled: stop asking
 			break
 		}
@@ -420,24 +373,11 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 // callGeoResolver runs the resolver with a timeout; a panic in it (the code of the embedding program) is an error, not a crash.
 func callGeoResolver(ctx context.Context,
 	r memory_geo.Resolver,
-	q memory_geo.Query) (p *memory_geo.Place, err error) {
-	ctx, cancel := context.WithTimeout(ctx, geoResolveTimeout)
-	defer cancel()
-	defer func() {
-		if rec := recover(); rec != nil {
-			p, err = nil, fmt.Errorf("geo resolver %q panicked: %v",
-				r.Name(),
-				rec)
-		}
-	}()
-	p, err = r.Resolve(ctx, q)
-	if err == nil && p == nil {
-		return nil, fmt.Errorf("geo resolver %q returned no place and no error", r.Name())
-	}
-	if err == nil {
-		err = p.Validate()
-	}
-	return p, err
+	q memory_geo.Query) (*memory_geo.Place, error) {
+	return memory_geo.Call(ctx,
+		r,
+		q,
+		geoResolveTimeout)
 }
 
 // geoUnresolved returns the entities of cands (in order) that exist in the dataset and have no geo metadata yet, with the

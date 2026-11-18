@@ -341,6 +341,28 @@ func NewHandler(ctx context.Context,
 		extraAdminDBs...)
 }
 
+// startGeoManager puts the geo resolver behind the geo manager of the server (see memory_geo.Manager): ONE goroutine that asks the
+// resolver for one place at a time, serving query before remember, and the sweeper that queues the places whose resolving was lost (or
+// done by a process without a manager: the worker). Both run until ctx is done. nil (geo off) and a resolver that already is a manager
+// are returned as they are.
+func startGeoManager(ctx context.Context,
+	r memory_geo.Resolver,
+	d *db.DB) memory_geo.Resolver {
+	if r == nil {
+		return nil
+	}
+	if _, ok := r.(memory_geo.Queue); ok {
+		return r
+	}
+	m := memory_geo.NewManager(ctx, r)
+	go memory_remember.RunGeoSweeper(ctx,
+		d.Relational,
+		m,
+		m.Name(),
+		0)
+	return m
+}
+
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
 func newMux(ctx context.Context,
@@ -368,6 +390,9 @@ func newMux(ctx context.Context,
 	adminExts []admin.Extension,
 	prices *llm.PriceTable,
 	extraAdminDBs ...admin.Named) http.Handler {
+	geoResolver = startGeoManager(ctx,
+		geoResolver,
+		d)
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter,

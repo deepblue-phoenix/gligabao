@@ -512,6 +512,26 @@ type Tx interface {
 	// GetEntityGeo reads the geo metadata of an entity. It returns ErrNotFound if the entity has none.
 	GetEntityGeo(ctx context.Context,
 		entityID int64) (*EntityGeo, error)
+
+	// UpsertGeoPending records that the entity is a place whose coordinates are still to be resolved (gb_geo_pending). An existing
+	// record of the entity is replaced and its attempts start again. It is removed by DeleteGeoPending once the place is resolved.
+	UpsertGeoPending(ctx context.Context,
+		p NewGeoPending) error
+	// DeleteGeoPending removes the record of the entity (nothing to do if it has none).
+	DeleteGeoPending(ctx context.Context,
+		entityID int64) error
+	// FailGeoPending counts one more failed attempt of the resolver for the entity and keeps why.
+	FailGeoPending(ctx context.Context,
+		entityID int64,
+		reason string,
+		now time.Time) error
+	// CountGeoPending returns how many entities of the dataset are still pending.
+	CountGeoPending(ctx context.Context,
+		dsID int64) (int, error)
+	// ListGeoPending returns at most limit records that have fewer than maxAttempts failed attempts, the oldest first.
+	ListGeoPending(ctx context.Context,
+		maxAttempts,
+		limit int) ([]GeoPending, error)
 }
 
 // ClassCount is a class with the number of artifact graphs of a dataset it was given to.

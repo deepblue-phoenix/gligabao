@@ -90,6 +90,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
 | remember | `select_geo_entities` | (only when the server has a [geo resolver](../geo.md)) the entities that may be places (not a person, concept, product or event, and without those that already have geo metadata) |
 | remember | `detect_geo` | (only with a geo resolver, when there are candidates) which of them the LLM judged to be places, with their `kind` and the `query` for the resolver (the LLM call itself is the usual `system`, `user`, `agent` steps) |
+| remember | `queue_geo` | (with the geo manager) the places recorded as pending and queued: `mode` (`async`, `sync` or `deferred`), `pending`, `queued`, `already_queued`. The knowledge evals send `geo_sync`, so the `resolve_geo` steps below follow it |
 | remember | `resolve_geo` | (only with a geo resolver, one per place) the geo resolver's answer: whether it found the place, and its coordinates, display name and country; `latency_ms` in the extra. An error here is recorded but not fatal |
 | remember | `store_geo` | (only when a place was found) the number of places stored in `gb_entity_geo` |
 | remember | `select_web_search_entities` | (only with [`web_search`](../web-search.md)) the key entities that were picked to search the web for |

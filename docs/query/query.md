@@ -99,7 +99,7 @@ Every hit is resolved through the database: a vector whose row was deleted is dr
 
 If there is nothing to answer from (no entity or fact in the context, and no passage), the endpoint returns a fixed answer ("I don't have any information in memory to answer that.") with empty evidence, without calling the LLM.
 
-With [geo](../geo.md#in-query) on, a second LLM call (stage `detect_geo`) lists the places the question mentions. Only when the request sets `geo_nearby` or `geo_radius_km`, the places, and the entities that matched the question and are places, are used to look up the geo entities within the radius of them, which are added to the context of the answer, and the response has `nearby` (see [Nearby entities](../geo.md#nearby-entities)); the places of the question that are resolved are stored too.
+With [geo](../geo.md#in-query) on, a second LLM call (stage `detect_geo`) lists the places the question mentions. Only when the request sets `geo_nearby` or `geo_radius_km`, the places, and the entities that matched the question and are places, are used to look up the geo entities within the radius of them, which are added to the context of the answer, and the response has `nearby` (see [Nearby entities](../geo.md#nearby-entities)); the places of the question that are resolved are stored too. The resolver is asked through the server's [geo manager](../geo.md#the-geo-manager), on its query queue, which it serves before the places `remember` has queued.
 
 ### 3. Ask the LLM
 

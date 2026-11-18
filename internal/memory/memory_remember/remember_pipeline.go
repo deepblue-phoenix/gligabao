@@ -579,7 +579,7 @@ func (j *job) storeDocumentSeries(ctx context.Context) (err error) {
 }
 
 func (j *job) hasJev() bool         { return j.co.Jev != nil }
-func (j *job) hasGeo() bool         { return j.co.GeoResolver != nil }
+func (j *job) hasGeo() bool         { return j.co.GeoOn() }
 func (j *job) hasWebSearch() bool   { return j.co.WebSearch }
 func (j *job) hasSeriesFetch() bool { return j.co.SeriesFetch != nil }
 func (j *job) hasObservables() bool { return j.co.SeriesObservations && len(j.observables) > 0 }

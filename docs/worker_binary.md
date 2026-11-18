@@ -23,6 +23,7 @@ The worker keeps nothing: the data lives in the databases it is pointed at, whic
 
 - **Relational and graph database: PostgreSQL only.** `--config gligabao.toml` with `db_backend = "postgres"` and `postgres_dsn`, or without a file the `POSTGRES_DSN` environment variable. A config file that says `sqlite` (or does not say `db_backend`, which defaults to `sqlite`) is refused with exit code `2`. SQLite is not supported: `remember` reads at the start of its pipeline and `query` reads all the way, so a local copy cannot be kept in sync with the main instance.
 - **Vector store: Pinecone or S3 Vectors only** (`vector_store = "pinecone"` or `"s3vectors"`; remote, so the main instance sees the same vectors). `chromem` is refused. Without a config file the store is S3 Vectors if `S3_VECTORS_BUCKET` is set, else Pinecone (`PINECONE_API_KEY` and `PINECONE_INDEX_HOST`).
+- **Geo:** the worker has no [geo manager](geo.md#the-geo-manager). With `geo = true` its `remember` finds the places among the entities and records them as pending (`gb_geo_pending`) without asking a geocoder; the main server, which shares the database, resolves them through its geo sweeper, so the main server must have geo on. Its `query` asks the resolver directly.
 - The worker has no export: it does not write archives and there is nothing to download to the main instance. Several runs may work on one database at the same time.
 
 ## Flags

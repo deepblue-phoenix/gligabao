@@ -27,6 +27,7 @@
 - `gb_image_text_blocks`
 - `gb_image_graphs`
 - `gb_entity_geo`
+- `gb_geo_pending`
 - `gb_series`
 - `gb_series_points`
 - `gb_series_anchors`
@@ -66,6 +67,7 @@
 | `gb_image_text_blocks`        | the text regions of an image extraction in reading order, each with a role (title, caption, label, ...).                                        |
 | `gb_image_graphs`             | the description of an image extraction (what it shows and how its parts relate), and the text artifact it was remembered as, which owns the graph of the image. |
 | `gb_entity_geo`               | geo metadata of an entity that is a place (coordinates, kind, display name, country, bounding box, provider), one row per entity.                |
+| `gb_geo_pending`              | an entity judged to be a place whose coordinates the geo manager has not resolved yet (kind, query, failed attempts, last error); removed when resolved. |
 | `gb_series`                   | timeseries identified by (provider, key, field) in a dataset, with a summary and stats of all their points.                                     |
 | `gb_series_points`            | the timestamped values of a series.                                                                                                             |
 | `gb_series_anchors`           | many-to-many link anchoring a series (optionally a window of it) to an artifact, entity or edge.                                                |
@@ -105,6 +107,7 @@
 | `gb_image_text_blocks`        | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_image_graphs`             | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_entity_geo`               | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_geo_pending`              | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_series`                   | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_series_points`            | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_series_anchors`           | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
