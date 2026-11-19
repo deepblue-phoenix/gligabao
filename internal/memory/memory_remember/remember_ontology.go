@@ -1,10 +1,10 @@
 package memory_remember
 
 // Ontology grounding (see docs/ontologies/ontologies.md): with the ontology_grounding flag the entities and edges the LLM extracts are
-// checked against the user's ontologies, merged into one registry for the call (ontospec.Registry).
+// checked against the user's ontologies, merged into one compiled ontology for the call (ontospec.CompiledOntology).
 //
 //   - The extraction prompt describes the ontology. In annotate mode it is a guide (the LLM may use other types when none fits); in strict
-//     mode the LLM is told the output must conform to the JSON Schema of the ontology (Registry.ExtractionJSON). The LLM client has no
+//     mode the LLM is told the output must conform to the JSON Schema of the ontology (CompiledOntology.ExtractionJSON). The LLM client has no
 //     structured output (response_format), so the schema goes into the prompt and the result is validated afterwards, which is the
 //     guarantee in both modes.
 //   - The ground_graph stage (it makes no run log output: gb_ontology_events has what it decided) runs between the extraction of a text (or chunk) and its reconcile and store stages. It tags every
@@ -23,9 +23,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology/ontospec"
 )
 
-// groundCall is the grounding of one Remember call: the registry and the mode.
+// groundCall is the grounding of one Remember call: the compiled ontology and the mode.
 type groundCall struct {
-	reg  *ontospec.Registry
+	reg  *ontospec.CompiledOntology
 	mode string
 }
 

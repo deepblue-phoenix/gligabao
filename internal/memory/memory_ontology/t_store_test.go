@@ -162,11 +162,13 @@ func testResolve(t *testing.T,
 	}
 }
 
-// A save swaps the registry: the calls that run keep the one they got, the next ones get the new one, and none sees a torn state
+// A save swaps the compiled ontology: the calls that run keep the one they got, the next ones get the new one, and none sees a torn state
 // (run with -race).
-func TestRegistrySwapUnderLoad(t *testing.T) { dbtest.Run(t, testRegistrySwapUnderLoad) }
+func TestCompiledOntologySwapUnderLoad(t *testing.T) {
+	dbtest.Run(t, testCompiledOntologySwapUnderLoad)
+}
 
-func testRegistrySwapUnderLoad(t *testing.T,
+func testCompiledOntologySwapUnderLoad(t *testing.T,
 	d *sql.DB) {
 	ctx := context.Background()
 	if _, err := Create(ctx, d, "u1", "animals", "", "", []byte(animals)); err != nil {
@@ -191,7 +193,7 @@ func testRegistrySwapUnderLoad(t *testing.T,
 					return
 				}
 				v := reg.Refs[0].Version
-				// versions only go up, and a registry is whole: version 1 has one relation, later ones two
+				// versions only go up, and a compiled ontology is whole: version 1 has one relation, later ones two
 				if v < last || (v == 1) != (len(reg.Relations()) == 1) {
 					errs <- fmt.Errorf("version %d after %d with %d relations", v, last, len(reg.Relations()))
 					return
@@ -209,14 +211,14 @@ func testRegistrySwapUnderLoad(t *testing.T,
 		t.Error(err)
 	}
 	if len(old.Relations()) != 1 || old.Refs[0].Version != 1 {
-		t.Error("the registry a call held changed under it")
+		t.Error("the compiled ontology a call held changed under it")
 	}
 	now, _ := Resolve(ctx, d, "u1", []string{"animals"})
 	if now.Refs[0].Version != 2 || len(now.Relations()) != 2 {
 		t.Errorf("after the save: version %d, %d relations", now.Refs[0].Version, len(now.Relations()))
 	}
-	// A registry cached at an older version is replaced from the database (a save by another server).
-	Registries.Forget("u1", "animals")
+	// A compiled ontology cached at an older version is replaced from the database (a save by another server).
+	CompiledOntologies.Forget("u1", "animals")
 	if reg, _ := Resolve(ctx, d, "u1", []string{"animals"}); reg.Refs[0].Version != 2 {
 		t.Errorf("lazy load: version %d", reg.Refs[0].Version)
 	}

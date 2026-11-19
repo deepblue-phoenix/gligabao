@@ -2,7 +2,7 @@ package memory_ontology
 
 // Ontologies describe the concepts of a domain: classes, the relations between them and their properties, written in the YAML/JSON DSL
 // of package ontospec. This package stores them (gb_ontologies, with a version history in gb_ontology_versions), keeps the compiled
-// registries in memory and swaps them when an ontology is saved, and resolves the ontologies a remember call names into one registry
+// compiled ontologies in memory and swaps them when an ontology is saved, and resolves the ontologies a remember call names into one compiled ontology
 // (Resolve). Ontologies are owned by a user and named; names are unique per user. They are separate from datasets.
 
 import (
@@ -29,12 +29,12 @@ import (
 type cached struct {
 	ref  ontospec.Ref
 	spec ontospec.Spec
-	reg  *ontospec.Registry
+	reg  *ontospec.CompiledOntology
 }
 
-// registryStore holds, for each (user, ontology), a pointer to its compiled registry. A save swaps the pointer atomically, so the calls
-// that are running keep the registry they started with and the next ones get the new one.
-type registryStore struct {
+// CompiledOntologyStore holds, for each (user, ontology), a pointer to its compiled ontology. A save swaps the pointer atomically, so the calls
+// that are running keep the compiled ontology they started with and the next ones get the new one.
+type CompiledOntologyStore struct {
 	mu   sync.Mutex
 	byID map[string]*atomic.Pointer[cached]
 }
@@ -56,8 +56,8 @@ type Meta = relational.Ontology
 
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
-// Registries is the in-memory store of the compiled registries of the server.
-var Registries = &registryStore{byID: map[string]*atomic.Pointer[cached]{}}
+// CompiledOntologies is the in-memory store of the compiled ontologies of the server.
+var CompiledOntologies = &CompiledOntologyStore{byID: map[string]*atomic.Pointer[cached]{}}
 
 // ResolveName trims name and checks it: required, 1-64 characters of letters, digits, '.', '_' or '-',
 // starting with a letter or digit.
@@ -181,7 +181,7 @@ func Create(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	if err := Registries.put(userID,
+	if err := CompiledOntologies.put(userID,
 		meta,
 		p.spec); err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func Create(ctx context.Context,
 }
 
 // Update replaces the ontology stored for userID under name with the one in content: the new document is the new version (the version
-// is incremented, the old documents are kept in the history), and the compiled registry is swapped for the new one. It returns ErrNotFound
+// is incremented, the old documents are kept in the history), and the compiled ontology is swapped for the new one. It returns ErrNotFound
 // if there is no such ontology (an update never creates one) and an error wrapping ErrInvalid if the document is not valid, in which
 // case the stored ontology is left as it was.
 func Update(ctx context.Context,
@@ -237,7 +237,7 @@ func Update(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	if err := Registries.put(userID,
+	if err := CompiledOntologies.put(userID,
 		meta,
 		p.spec); err != nil {
 		return nil, err
@@ -256,6 +256,8 @@ func Get(ctx context.Context,
 	d *sql.DB,
 	userID,
 	name string) (*Meta, error) {
+
+	// USER_ID
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -263,6 +265,8 @@ func Get(ctx context.Context,
 	if name, err = ResolveName(name); err != nil {
 		return nil, err
 	}
+
+	// GET_ONTOLOGY
 	meta, err := relational.GetOntology(ctx,
 		d,
 		userID,
@@ -272,6 +276,8 @@ func Get(ctx context.Context,
 	}
 	return meta, err
 }
+
+//---------------------------------------------------------------------------------------------
 
 // List returns userID's ontologies, oldest first, without their specs.
 func List(ctx context.Context,
@@ -294,6 +300,8 @@ func List(ctx context.Context,
 	return out, nil
 }
 
+//---------------------------------------------------------------------------------------------
+
 func withoutSpec(m *Meta) *Meta {
 	c := *m
 	c.Spec, c.Content = nil, ""
@@ -306,6 +314,7 @@ func Events(ctx context.Context,
 	userID,
 	name string,
 	f graph.OntologyEventFilter) ([]graph.OntologyEvent, error) {
+
 	meta, err := Get(ctx,
 		d,
 		userID,
@@ -320,15 +329,15 @@ func Events(ctx context.Context,
 }
 
 //---------------------------------------------------------------------------------------------
-// The registries
+// The compiled ontologies
 
-// Resolve returns the registry of the ontologies a remember call grounds against: the ontologies called names of userID, merged
+// Resolve returns the compiled ontology of the ontologies a remember call grounds against: the ontologies called names of userID, merged
 // (all the user's ontologies if names is empty). It returns ErrNotFound (naming it) if one does not exist or the user has none, and an
 // error wrapping ErrInvalid, naming both ontologies, if two of them define the same class or relation differently.
 func Resolve(ctx context.Context,
 	d *sql.DB,
 	userID string,
-	names []string) (*ontospec.Registry, error) {
+	names []string) (*ontospec.CompiledOntology, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -342,7 +351,7 @@ func Resolve(ctx context.Context,
 	}
 	entries := make([]*cached, len(metas))
 	for i := range metas {
-		if entries[i], err = Registries.get(userID, &metas[i]); err != nil {
+		if entries[i], err = CompiledOntologies.get(userID, &metas[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -368,6 +377,7 @@ func selected(ctx context.Context,
 	d *sql.DB,
 	userID string,
 	names []string) ([]Meta, error) {
+	
 	if len(names) == 0 {
 		all, err := relational.ListOntologies(ctx,
 			d,
@@ -413,7 +423,7 @@ func storeKey(userID,
 }
 
 // slot returns the pointer of (user, name), creating it empty.
-func (s *registryStore) slot(userID,
+func (s *CompiledOntologyStore) slot(userID,
 	name string) *atomic.Pointer[cached] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -426,8 +436,8 @@ func (s *registryStore) slot(userID,
 	return p
 }
 
-// Forget drops the cached registry of (user, ontology): the next use compiles it from the database again.
-func (s *registryStore) Forget(userID,
+// Forget drops the cached compiled ontology of (user, ontology): the next use compiles it from the database again.
+func (s *CompiledOntologyStore) Forget(userID,
 	name string) {
 	s.slot(userID, name).Store(nil)
 }
@@ -462,8 +472,8 @@ func compileSpec(m *Meta,
 	}, nil
 }
 
-// put compiles a saved ontology and swaps it in: the calls that already hold the previous registry are not affected.
-func (s *registryStore) put(userID string,
+// put compiles a saved ontology and swaps it in: the calls that already hold the previous compiled ontology are not affected.
+func (s *CompiledOntologyStore) put(userID string,
 	m *Meta,
 	spec ontospec.Spec) error {
 	c, err := compileSpec(m, spec)
@@ -490,7 +500,7 @@ func swapIfNewer(slot *atomic.Pointer[cached],
 
 // get returns the compiled form of the stored ontology m: the one in memory if it is of the same version, else it is compiled from m
 // (the first use after a start, or after a save by another server) and swapped in.
-func (s *registryStore) get(userID string,
+func (s *CompiledOntologyStore) get(userID string,
 	m *Meta) (*cached, error) {
 	slot := s.slot(userID, m.Name)
 	if c := slot.Load(); c != nil && c.ref.ID == m.ID && c.ref.Version == m.Version {

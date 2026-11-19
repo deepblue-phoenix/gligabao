@@ -28,7 +28,7 @@ func ResolveGroundingMode(mode string) (string, error) {
 }
 
 // WithOntologyGrounding makes Remember ground the graph it extracts against the user's ontologies (the ground_graph stage; off by
-// default). names are the ontologies to use (all of the user's if empty; they are merged into one registry for the call); mode is
+// default). names are the ontologies to use (all of the user's if empty; they are merged into one compiled ontology for the call); mode is
 // ontospec.ModeAnnotate (the default: tag what matches, flag the rest, drop nothing) or ontospec.ModeStrict (drop what does not
 // conform). Validate the mode with ResolveGroundingMode first. See docs/ontologies/ontologies.md.
 func WithOntologyGrounding(names []string,

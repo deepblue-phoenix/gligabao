@@ -309,7 +309,7 @@
 | `internal/memory/memory_image.ImageResult`                  | summarizes what RememberImage stored.                                                                                  |
 | `internal/memory/memory_ontology.cached`                    | is the compiled form of one stored ontology at one version.                                                            |
 | `internal/memory/memory_ontology.prepared`                  | is a parsed and validated ontology document ready to be stored.                                                        |
-| `internal/memory/memory_ontology.registryStore`             | holds an atomic pointer to the compiled registry of each (user, ontology), swapped when it is saved.                   |
+| `internal/memory/memory_ontology.CompiledOntologyStore`             | holds an atomic pointer to the compiled ontology of each (user, ontology), swapped when it is saved.                   |
 | `internal/memory/memory_ontology/ontospec.AnnotateSummary`  | is the grounding summary of annotate mode.                                                                             |
 | `internal/memory/memory_ontology/ontospec.ClassCount`       | is how many items resolved to a class or relation.                                                                     |
 | `internal/memory/memory_ontology/ontospec.ClassDef`         | is a class of an ontology: parents, description, properties and aliases.                                               |
@@ -325,14 +325,14 @@
 | `internal/memory/memory_ontology/ontospec.PropertyDef`      | is a property of an ontology class or relation: type, enum, pattern, required.                                         |
 | `internal/memory/memory_ontology/ontospec.ReasonCount`      | is how many items have a reason code.                                                                                  |
 | `internal/memory/memory_ontology/ontospec.Ref`              | says which stored ontology, and which version of it, defines a class or relation.                                      |
-| `internal/memory/memory_ontology/ontospec.Registry`         | is a compiled (and merged) ontology: hierarchy, alias lookup, validators, extraction schema.                           |
+| `internal/memory/memory_ontology/ontospec.CompiledOntology`         | is a compiled (and merged) ontology: hierarchy, alias lookup, validators, extraction schema.                           |
 | `internal/memory/memory_ontology/ontospec.RelationDef`      | is a relation of an ontology: domain, range, temporal flag, properties and aliases.                                    |
 | `internal/memory/memory_ontology/ontospec.Spec`             | is an ontology in the YAML/JSON DSL: classes and relations.                                                            |
 | `internal/memory/memory_ontology/ontospec.StrictSummary`    | is the grounding summary of strict mode, with the dropped ratio.                                                       |
-| `internal/memory/memory_ontology/ontospec.classInfo`        | is a class of a Registry with its own and inherited properties.                                                        |
+| `internal/memory/memory_ontology/ontospec.classInfo`        | is a class of a CompiledOntology with its own and inherited properties.                                                        |
 | `internal/memory/memory_ontology/ontospec.names`            | is a name with its aliases, for collision checks.                                                                      |
-| `internal/memory/memory_ontology/ontospec.propInfo`         | is a property of a Registry with its compiled pattern.                                                                 |
-| `internal/memory/memory_ontology/ontospec.relationInfo`     | is a relation of a Registry with its domain, range and properties.                                                     |
+| `internal/memory/memory_ontology/ontospec.propInfo`         | is a property of a CompiledOntology with its compiled pattern.                                                                 |
+| `internal/memory/memory_ontology/ontospec.relationInfo`     | is a relation of a CompiledOntology with its domain, range and properties.                                                     |
 | `internal/memory/memory_query.Evidence`                     | lists the entities and edges an answer is based on.                                                                    |
 | `internal/memory/memory_query.QueryPlace`                   | is a place the question of a query mentions (text, kind, query for a geo resolver).                                    |
 | `internal/memory/memory_query.QueryResult`                  | is the answer to a query together with its supporting evidence.                                                        |
@@ -356,7 +356,7 @@
 | `internal/memory/memory_remember.chunkSummary`              | is the summary of a chunk before it is stored.                                                                         |
 | `internal/memory/memory_remember.chunkVector`               | is a chunk whose text is embedded together with entities and edges.                                                    |
 | `internal/memory/memory_remember.geoPlace`                  | is the LLM's decision that an entity is a place.                                                                       |
-| `internal/memory/memory_remember.groundCall`                | is the ontology grounding of one Remember call: the registry and the mode.                                             |
+| `internal/memory/memory_remember.groundCall`                | is the ontology grounding of one Remember call: the compiled ontology and the mode.                                             |
 | `internal/memory/memory_remember.grounding`                 | is what the ground_graph stage made of one extraction, written as events by store.                                     |
 | `internal/memory/memory_remember.job`                       | holds what one Remember call shares between the steps it runs on each text.                                            |
 | `internal/memory/memory_remember.keyEntity`                 | is an entity of the call that may be searched for on the web.                                                          |

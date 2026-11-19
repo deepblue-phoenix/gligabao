@@ -247,14 +247,14 @@ Indexes: `artifact_id`, `ontology_id`, (`dataset_id`, `created_at`).
 
 ### Extraction schema
 
-`Registry.ExtractionJSON()` (`internal/memory/memory_ontology/ontospec`) compiles the ontology into a JSON Schema (draft 2020-12) of the extraction output: `entities` is an array of `anyOf` branches, one per class (`type` a `const`, the properties of the class and its ancestors with their `enum` and `pattern`, `required`, `additionalProperties: false`), and `edges` one per relation (`relation` a `const`, its properties, and `valid_at` / `invalid_at` if it is `temporal`). The domain and range cannot be written in JSON Schema: they are in the description of the branch and checked by the grounding.
+`CompiledOntology.ExtractionJSON()` (`internal/memory/memory_ontology/ontospec`) compiles the ontology into a JSON Schema (draft 2020-12) of the extraction output: `entities` is an array of `anyOf` branches, one per class (`type` a `const`, the properties of the class and its ancestors with their `enum` and `pattern`, `required`, `additionalProperties: false`), and `edges` one per relation (`relation` a `const`, its properties, and `valid_at` / `invalid_at` if it is `temporal`). The domain and range cannot be written in JSON Schema: they are in the description of the branch and checked by the grounding.
 
 ## Versions, storage and hot swap
 
 - **`gb_ontologies`** (relational database): `id`, `user_id`, `name`, `description`, `format`, `version`, `spec` (the ontology as JSON: JSONB in PostgreSQL, TEXT in SQLite), `size_bytes`, `sha256` (of the latest document), `classes`, `relations`, `properties` (counts), `created_at`, `updated_at`; unique (`user_id`, `name`).
 - **`gb_ontology_versions`**: the history, one row per save: `ontology_id` → `gb_ontologies` (cascade), `version`, `format`, `content` (the document as it was sent), `spec`, `sha256`, `created_at`.
 - The **`version`** is an integer the server bumps on every save (the `version` field of a document is only a label the author gives it). It is what is stamped on the nodes and edges.
-- In memory, a `Registry` per (user, ontology) is compiled from the spec and kept behind an atomic pointer (`memory_ontology.Registries`). A save compiles the new registry and swaps the pointer: the calls that are running keep the registry they started with, and the next ones get the new one. A registry that is not in memory (after a restart, or after a save by another server) is compiled from the database on first use.
+- In memory, a `CompiledOntology` per (user, ontology) is compiled from the spec and kept behind an atomic pointer (`memory_ontology.CompiledOntologies`). A save compiles the new compiled ontology and swaps the pointer: the calls that are running keep the compiled ontology they started with, and the next ones get the new one. A compiled ontology that is not in memory (after a restart, or after a save by another server) is compiled from the database on first use.
 - With `ontology_s3_bucket` (`ONTOLOGY_S3_BUCKET`, an existing bucket, with `ontology_s3_region`) set, the documents are also stored in S3, one directory per user: `<ontology_s3_prefix>/<user>/<name>/<timestamp>_<create|update>.<yaml|json>` (the prefix defaults to `ontologies`, also `ONTOLOGY_S3_PREFIX`). Documents are never overwritten; a failed S3 write is logged and does not fail the request. They are written by an S3 client dedicated to the ontologies (`memory_ontology/archive.go`).
 
 ## The market ontology
@@ -265,6 +265,6 @@ Indexes: `artifact_id`, `ontology_id`, (`dataset_id`, `created_at`).
 
 - OWL is not supported (the OWL parser, `gb_onto_classes` and `gb_onto_edges` were removed): there are no individuals, no reasoning and no consistency checking beyond the checks above.
 - There is no endpoint to delete an ontology, and no merging of a fragment into a stored ontology: send the whole document.
-- `query` does not use ontologies: **subclass expansion at query time** (`type IN descendants`; `Registry.Expand` is there for it) and a **background re-validation** of the stored graph when an ontology changes are a later phase. The tags on the rows say which version they were grounded against.
+- `query` does not use ontologies: **subclass expansion at query time** (`type IN descendants`; `CompiledOntology.Expand` is there for it) and a **background re-validation** of the stored graph when an ontology changes are a later phase. The tags on the rows say which version they were grounded against.
 - An entity's `properties` are validated, not stored.
 - Existing databases: the OWL ontologies (`gb_onto_*`, the old `gb_ontologies`) are dropped at startup, and the new tables and the three columns of `gb_entities` and `gb_edges` are created or added. Load ontologies again, in the new format.

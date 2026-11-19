@@ -83,7 +83,9 @@ type Issue struct {
 	Message  string `json:"message"`
 }
 
-// Ground checks nodes and links, as an extraction made them, against the registry. It returns one Item per node, then one per link.
+//---------------------------------------------------------------------------------------------
+
+// Ground checks nodes and links, as an extraction made them, against the compiled ontology. It returns one Item per node, then one per link.
 //
 // A node is a match if its type resolves to a class (by name or alias) and its properties are those of the class, valid. A link is a
 // match if its relation resolves, the class of its source is the domain or a subclass of it, the class of its target is the range or a
@@ -92,9 +94,10 @@ type Issue struct {
 // In ModeAnnotate a node or link that is not a match is kept, with the outcome "unmatched" (unknown type or relation) or "violation".
 // In ModeStrict it is "dropped": and so is a link with an end that was dropped or that the extraction does not list (the domain and
 // range of such an end cannot be judged; in ModeAnnotate they are skipped).
-func (r *Registry) Ground(mode string,
+func (r *CompiledOntology) Ground(mode string,
 	nodes []Node,
 	links []Link) []Item {
+	
 	strict := mode == ModeStrict
 	nodeItems := make([]Item, len(nodes))
 	byKey := map[string]int{} // Key(name) -> index of the first node of that name
@@ -118,7 +121,9 @@ func (r *Registry) Ground(mode string,
 	return append(nodeItems, linkItems...)
 }
 
-func (r *Registry) groundNode(strict bool,
+//---------------------------------------------------------------------------------------------
+
+func (r *CompiledOntology) groundNode(strict bool,
 	i int,
 	n Node) Item {
 	item := Item{
@@ -146,7 +151,7 @@ func (r *Registry) groundNode(strict bool,
 	return matched(item, viaAlias)
 }
 
-func (r *Registry) groundLink(strict bool,
+func (r *CompiledOntology) groundLink(strict bool,
 	i int,
 	l Link,
 	nodes []Node,
@@ -210,7 +215,7 @@ func (r *Registry) groundLink(strict bool,
 }
 
 // within says whether a type is one of the classes (or a subclass of one); no classes means any.
-func (r *Registry) within(typ string,
+func (r *CompiledOntology) within(typ string,
 	classes []string) bool {
 	if len(classes) == 0 {
 		return true

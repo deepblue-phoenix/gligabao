@@ -77,7 +77,7 @@ func Load(d *sql.DB,
 }
 
 // Update serves PUT /v1/gb/ontologies/{name}. The name comes from the path. The document replaces the ontology stored under that name and
-// is its next version (the version is incremented and the old documents are kept); the compiled registry is swapped for the new one.
+// is its next version (the version is incremented and the old documents are kept); the compiled ontology is swapped for the new one.
 func Update(d *sql.DB,
 	dirs []string) http.HandlerFunc {
 	return func(w http.ResponseWriter,

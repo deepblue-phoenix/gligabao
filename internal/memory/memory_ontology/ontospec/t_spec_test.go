@@ -39,7 +39,7 @@ relations:
 `
 
 func mustCompile(t *testing.T,
-	doc string) *Registry {
+	doc string) *CompiledOntology {
 	t.Helper()
 	// "Cat" is not defined: the zoo has to be completed for the tests that need a valid ontology.
 	doc = strings.Replace(doc, "range: [Dog, Cat]", "range: [Dog]", 1)

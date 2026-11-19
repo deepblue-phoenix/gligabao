@@ -2,12 +2,12 @@
 // YAML or JSON, not OWL. It holds everything that is pure, with no database and no LLM:
 //
 //   - the Spec and its Parse and Validate (the ontology checked against itself);
-//   - Compile, which turns a Spec (or several, merged) into a Registry: an in-memory structure with the class hierarchy, alias
+//   - Compile, which turns a Spec (or several, merged) into a CompiledOntology: an in-memory structure with the class hierarchy, alias
 //     lookup, property validators and the JSON Schema of the LLM's extraction output;
-//   - Ground, which checks the nodes and edges an extraction made against a Registry (see ground.go), and the summaries of the
+//   - Ground, which checks the nodes and edges an extraction made against a CompiledOntology (see ground.go), and the summaries of the
 //     result (see summary.go).
 //
-// The stored ontologies, their versions and the hot swap of the registries are in the parent package, memory_ontology.
+// The stored ontologies, their versions and the hot swap of the compiled ontologies are in the parent package, memory_ontology.
 package ontospec
 
 import (

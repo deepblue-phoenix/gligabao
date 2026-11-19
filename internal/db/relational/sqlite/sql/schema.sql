@@ -21,7 +21,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name
 
 -- An ontology: a typed property graph (classes, relations, properties) written in the YAML/JSON DSL of
 -- internal/memory/memory_ontology/ontospec. Names are unique per user.
---   spec      the ontology as JSON (what the registries are compiled from)
+--   spec      the ontology as JSON (what the compiled ontologies are compiled from)
 --   version   1 for the first save, +1 for every update; stamped on the nodes and edges grounded against it
 --   sha256    hex digest of the latest document; classes/relations/properties: what the spec declares
 CREATE TABLE IF NOT EXISTS gb_ontologies (

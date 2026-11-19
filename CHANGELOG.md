@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.216.1] - 2026-11-19
+
+### Changed
+- Internal rename of the compiled form of an ontology: `ontospec.Registry` is now `ontospec.CompiledOntology`, and the in-memory store of them (`memory_ontology.Registries`) is `CompiledOntologies`, of type `CompiledOntologyStore`. The docs say "compiled ontology" instead of "registry". No change in behaviour or API.
+
 ## [0.216.0] - 2026-11-19
 
 ### Added

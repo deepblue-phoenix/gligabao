@@ -21,10 +21,10 @@ type Part struct {
 	Spec Spec
 }
 
-// Registry is a compiled ontology: immutable, safe for concurrent use. It is the in-memory form the grounding and the extraction
+// CompiledOntology is a compiled ontology: immutable, safe for concurrent use. It is the in-memory form the grounding and the extraction
 // prompt work on; see Compile.
-type Registry struct {
-	// Spec is the merged spec the registry was compiled from.
+type CompiledOntology struct {
+	// Spec is the merged spec the compiled ontology was compiled from.
 	Spec Spec
 	// Refs are the ontologies it was compiled from, in order.
 	Refs []Ref
@@ -132,9 +132,9 @@ func lookupKey[V any](m map[string]V,
 	return zero, "", false
 }
 
-// Compile merges the parts, validates the result and builds the Registry. The error is an *InvalidError (wrapping ErrInvalid) with
+// Compile merges the parts, validates the result and builds the CompiledOntology. The error is an *InvalidError (wrapping ErrInvalid) with
 // every problem found.
-func Compile(parts ...Part) (*Registry, error) {
+func Compile(parts ...Part) (*CompiledOntology, error) {
 	spec, origin, err := Merge(parts)
 	if err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func Compile(parts ...Part) (*Registry, error) {
 		return nil, &InvalidError{Problems: problems}
 	}
 	parents := parentMap(spec)
-	reg := &Registry{
+	reg := &CompiledOntology{
 		Spec:        spec,
 		Refs:        mapSlice(parts, func(p Part) Ref { return p.Ref }),
 		classes:     map[string]*classInfo{},
@@ -217,7 +217,7 @@ func mergeProps(base map[string]propInfo,
 
 // Resolve turns a class name as an extraction wrote it ("market participant", an alias) into the name of the class; viaAlias says
 // it was an alias that matched, and ok that a class matched.
-func (r *Registry) Resolve(name string) (class string, viaAlias,
+func (r *CompiledOntology) Resolve(name string) (class string, viaAlias,
 	ok bool) {
 	k := Key(name)
 	class, ok = r.classByKey[k]
@@ -225,7 +225,7 @@ func (r *Registry) Resolve(name string) (class string, viaAlias,
 }
 
 // ResolveRelation is Resolve for relations.
-func (r *Registry) ResolveRelation(name string) (relation string, viaAlias,
+func (r *CompiledOntology) ResolveRelation(name string) (relation string, viaAlias,
 	ok bool) {
 	k := Key(name)
 	relation, ok = r.relByKey[k]
@@ -233,7 +233,7 @@ func (r *Registry) ResolveRelation(name string) (relation string, viaAlias,
 }
 
 // IsSubClassOf says whether child is parent or one of its descendants. Both are class names or aliases.
-func (r *Registry) IsSubClassOf(child,
+func (r *CompiledOntology) IsSubClassOf(child,
 	parent string) bool {
 	c, _, okC := r.Resolve(child)
 	p, _, okP := r.Resolve(parent)
@@ -244,19 +244,19 @@ func (r *Registry) IsSubClassOf(child,
 }
 
 // Ancestors returns the ancestors of a class, nearest first (nil for an unknown class).
-func (r *Registry) Ancestors(class string) []string {
+func (r *CompiledOntology) Ancestors(class string) []string {
 	c, _, _ := r.Resolve(class)
 	return append([]string(nil), r.ancestors[c]...)
 }
 
 // Descendants returns the descendants of a class, sorted (nil for an unknown class).
-func (r *Registry) Descendants(class string) []string {
+func (r *CompiledOntology) Descendants(class string) []string {
 	c, _, _ := r.Resolve(class)
 	return append([]string(nil), r.descendants[c]...)
 }
 
 // Expand returns the class and its descendants: what a query for the class stands for.
-func (r *Registry) Expand(class string) []string {
+func (r *CompiledOntology) Expand(class string) []string {
 	c, _, ok := r.Resolve(class)
 	if !ok {
 		return nil
@@ -265,16 +265,16 @@ func (r *Registry) Expand(class string) []string {
 }
 
 // Classes returns the class names, sorted.
-func (r *Registry) Classes() []string { return sortedKeys(r.classes) }
+func (r *CompiledOntology) Classes() []string { return sortedKeys(r.classes) }
 
 // Relations returns the relation names, sorted.
-func (r *Registry) Relations() []string { return sortedKeys(r.relations) }
+func (r *CompiledOntology) Relations() []string { return sortedKeys(r.relations) }
 
 // ClassRef returns the ontology that defines a class, by its name.
-func (r *Registry) ClassRef(class string) Ref { return r.origin["c:"+class] }
+func (r *CompiledOntology) ClassRef(class string) Ref { return r.origin["c:"+class] }
 
 // RelationRef returns the ontology that defines a relation, by its name.
-func (r *Registry) RelationRef(relation string) Ref { return r.origin["r:"+relation] }
+func (r *CompiledOntology) RelationRef(relation string) Ref { return r.origin["r:"+relation] }
 
 //---------------------------------------------------------------------------------------------
 // The extraction schema and the prompt
@@ -282,7 +282,7 @@ func (r *Registry) RelationRef(relation string) Ref { return r.origin["r:"+relat
 // ExtractionJSON is the JSON Schema (draft 2020-12) of what the extraction must return under the ontology: a branch per class for the
 // entities (the type is a constant, the properties are those of the class and its ancestors, no others) and a branch per relation for
 // the edges. The domain and range of a relation cannot be written in JSON Schema; they are in its description, and Ground checks them.
-func (r *Registry) ExtractionJSON() map[string]any {
+func (r *CompiledOntology) ExtractionJSON() map[string]any {
 	entityBranches := mapSlice(r.Classes(), func(name string) any {
 		return map[string]any{
 			"type":     "object",
@@ -381,7 +381,7 @@ func propSchema(d PropertyDef) map[string]any {
 
 // Prompt describes the ontology in words, for the extraction prompt: the classes (with parents, descriptions and properties) and
 // the relations (domain, range, properties).
-func (r *Registry) Prompt() string {
+func (r *CompiledOntology) Prompt() string {
 	var b strings.Builder
 	b.WriteString("Classes (the allowed values of an entity's \"type\"):\n")
 	for _, name := range r.Classes() {
