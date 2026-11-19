@@ -616,7 +616,8 @@ func ArtifactEntities(ctx context.Context,
 	withChunks bool) ([]model.EvidenceEntity, error) {
 	rows, err := d.QueryContext(ctx,
 		`
-		SELECT en.id, en.name, en.type, en.description, COALESCE(en.model_id, '')
+		SELECT en.id, en.name, en.type, en.description, COALESCE(en.model_id, ''),
+			en.ontology_version, en.ontology_class, en.ontology_valid, en.origin_type
 		FROM gb_entities en
 		WHERE en.dataset_id = $1 AND en.id IN (
 			SELECT ea.entity_id
@@ -634,12 +635,27 @@ func ArtifactEntities(ctx context.Context,
 	var out []model.EvidenceEntity
 	for rows.Next() {
 		var e model.EvidenceEntity
+		var version sql.NullInt64
+		var class, origin sql.NullString
+		var valid sql.NullBool
 		if err := rows.Scan(&e.ID,
 			&e.Name,
 			&e.Type,
 			&e.Description,
-			&e.ModelID); err != nil {
+			&e.ModelID,
+			&version,
+			&class,
+			&valid,
+			&origin); err != nil {
 			return nil, err
+		}
+		if version.Valid || class.Valid || valid.Valid || origin.Valid {
+			e.Ontology = &model.Grounding{
+				Class:      class.String,
+				Version:    int(version.Int64),
+				Valid:      valid.Bool,
+				OriginType: origin.String,
+			}
 		}
 		out = append(out, e)
 	}

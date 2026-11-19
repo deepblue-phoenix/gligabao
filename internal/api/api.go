@@ -50,6 +50,8 @@ func Register(mux *http.ServeMux,
 		ws,
 		providers,
 		o)))
+	mux.Handle("GET /v1/gb/remember/runs", a(remember.RunsHandler(d.Relational)))
+	mux.Handle("GET /v1/gb/remember/runs/{id}", a(remember.RunHandler(d.Relational)))
 	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational,
 		llm,
 		queryOptions(d,

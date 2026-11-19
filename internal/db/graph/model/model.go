@@ -177,6 +177,8 @@ type EvidenceEntity struct {
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
 	ModelID     string `json:"model_id,omitempty"` // ID of the model (gb_models) that inferred the entity
+	// Ontology is how the entity was grounded (only set by the graph of an artifact, and only for a grounded entity).
+	Ontology *Grounding `json:"ontology,omitempty"`
 }
 
 // EvidenceEdge is a graph edge cited by an answer.

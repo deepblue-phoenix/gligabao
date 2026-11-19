@@ -523,7 +523,12 @@ func Remember(ctx context.Context,
 		userID,
 		dataset,
 		kind,
-		input)
+		runParams(input,
+			&co,
+			ground,
+			cc,
+			chunked,
+			len(series)))
 	run.report = co.Report
 	defer func() {
 		run.Finish(err)

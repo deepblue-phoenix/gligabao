@@ -246,7 +246,7 @@ Every call is recorded in `gb_remember_runs`: **one row per execution of the pip
 | Column | |
 | ------ | - |
 | `id`, `user_id`, `dataset` (the name), `kind` | the call |
-| `params` | JSON: how it was made (reference time, session, models and reasoning per stage, chunk size, the optional stages asked for) |
+| `params` | JSON: how it was made (reference time, session, chunk size and the models and reasoning per stage) plus **every flag the pipeline supports, set or not** (since 0.219.0; a run from before lacks the unset ones): `web_search`, `classify_graph`, `graph_classes`, `ontology_grounding`, `ontology_grounding_mode`, `ontologies`, `geo` (the server has a geo resolver or defers it), `geo_sync`, `graph_index`, `timeseries`, `timeseries_fetch`, `timeseries_observations`, `chunked`, `chunk_size`, `chunk_overlap_percent`, `models`, `reasoning` |
 | `artifact_id` | the artifact the text was stored as (the parent, for a chunked text); `NULL` until it is stored |
 | `status`, `error` | **the call as a whole**, so it can be checked without looking at the stages: `started`, then `succeeded` if `remember` returned a result or `failed` (with `error`) if it returned an error |
 | `started_at`, `finished_at` | of the call |
@@ -271,6 +271,8 @@ The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`
 SELECT id, dataset, error FROM gb_remember_runs WHERE status = 'failed';
 SELECT run_id, error FROM gb_remember_run_stages WHERE stage_type = 'web_search' AND status = 'failed';
 ```
+
+**For users, over REST.** `GET /v1/gb/remember/runs[?limit=][&offset=][&dataset=]` (header `gb-user-id`; `limit` defaults to 50, at most 200) returns `{"runs": [...], "total", "limit", "offset"}`, the runs of the user, newest first, and `GET /v1/gb/remember/runs/{id}` one run (`404` if it is another user's). A run is a row as above (`params` are the flags the call was made with, without the `user_id`, which the stored params have but these endpoints remove) plus `cost_usd`, the sum of the cost of the inferences of all its stages. The graph a run stored is `GET /v1/gb/datasets/{dataset}/artifacts/{artifact_id}/graph`, whose entities carry `ontology` (`class`, `version`, `valid`, `origin_type`: `extracted` or `ontology`) when they were grounded.
 
 From Go: `relational.GetRememberRun`, `ListRememberRuns` (filter by user, dataset and status). Writing is done by the pipeline runner: `startRunLog` returns a `*runLog` whose methods (`Start`, `Done`, `Skip`, `AddInference`, `Artifact`, `Finish`) do nothing on `nil` and never fail the call; a row that cannot be written is logged. A stage only files its [outputs](#stage-outputs), with `j.run.Output`.
 

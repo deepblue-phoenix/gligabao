@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.219.0] - 2026-11-20
+
+### Added
+- **The `params` of a remember run now hold every flag the pipeline supports, set or not** (`web_search`, `classify_graph`, `graph_classes`, `ontology_grounding`, `ontology_grounding_mode`, `ontologies`, `geo`, `geo_sync`, `graph_index`, `timeseries`, `timeseries_fetch`, `timeseries_observations`, `chunked`, `chunk_size`, `chunk_overlap_percent`, `models`, `reasoning`), with `false` or empty for a flag that was not set; before only the flags that were on were stored (a run from before 0.219.0 lacks the missing ones). The trajectory input of evals is unchanged. The REST endpoints below remove `user_id` from the params they return.
+- **`GET /v1/gb/remember/runs` and `GET /v1/gb/remember/runs/{id}`**: the remember runs of the user of the request (newest first; `limit`, `offset`, `dataset`), each with its `params` (the flags the call was made with), its stages and `cost_usd` (the sum of the cost of all its inferences). A run of another user is a `404`. They are not admin endpoints, so they can be proxied to a UI.
+- The graph of an artifact (`GET /v1/gb/datasets/{name}/artifacts/{id}/graph`) gives a grounded entity its `ontology` (`class`, `version`, `valid`, `origin_type`).
+
 ## [0.218.0] - 2026-11-19
 
 ### Added
