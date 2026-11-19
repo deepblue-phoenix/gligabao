@@ -116,7 +116,7 @@ For finance, `Resolve` maps an organization to a ticker and `Fetch` calls a pric
 
 - **Entity to ticker is where this goes wrong.** A guessed ticker for "Apple" can be the wrong company. Prefer precision over recall: require an unambiguous match and skip otherwise.
 - **Cache the resolved identifier** on the entity (an identifier attribute, or a `has_ticker` edge), so it is resolved once.
-- **Providers by entity type.** Once [ontologies](ontologies.md) are used by `remember`, a class (`Company`) can imply a provider.
+- **Providers by entity type.** Once [ontologies](ontologies/ontologies.md) are used by `remember`, a class (`Company`) can imply a provider.
 
 ## The attach endpoint
 

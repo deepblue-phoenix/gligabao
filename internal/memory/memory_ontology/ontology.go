@@ -29,7 +29,7 @@ type Class struct {
 	// Declared is true if the document itself defines the class (types it as owl:Class or rdfs:Class), and false if
 	// the class is only mentioned, as an endpoint of a relationship. When an ontology is merged into a stored one,
 	// only declared classes overwrite the stored class's name, label and comment; a class that is merely mentioned
-	// is created if it is missing, and left untouched if it exists (see docs/ontologies.md).
+	// is created if it is missing, and left untouched if it exists (see docs/ontologies/ontologies.md).
 	Declared bool
 }
 

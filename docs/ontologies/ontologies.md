@@ -17,7 +17,7 @@ Loads an ontology under a name.
 
 | Field | Required | Description |
 | ----- | -------- | ----------- |
-| `gb-user-id` (header) | yes | Owner of the ontology (see [identity.md](identity.md)); not a body field. An ontology loaded from a file belongs to the user who sends the request too. |
+| `gb-user-id` (header) | yes | Owner of the ontology (see [identity.md](../identity.md)); not a body field. An ontology loaded from a file belongs to the user who sends the request too. |
 | `name` | yes | Name of the ontology: 1-64 characters of letters, digits, `.`, `_`, `-`, starting with a letter or digit. Unique per user. |
 | `content` | one of `content` and `file` | The ontology document, as a string (at most 8 MiB). |
 | `file` | one of `content` and `file` | The name of a file of the [ontology directories](#ontology-directories) to load instead of sending `content`, e.g. `"market.owl"`. A plain file name, no directory. |
@@ -183,7 +183,7 @@ Not stored: anything else, in particular restrictions and other anonymous class 
 
 ## The market ontology
 
-[`build/ontology/market.owl`](../build/ontology/market.owl) is a basic, general ontology of markets with the 20 most important concepts: `Market`, `Exchange`, `MarketParticipant`, `Buyer`, `Seller`, `Intermediary`, `Regulator`, `Asset`, `Commodity`, `Security`, `Currency`, `Derivative`, `Order`, `Trade`, `Price`, `Supply`, `Demand`, `MarketIndex`, `Regulation` and `Risk`. `Exchange` is a kind of `Market`; `Buyer`, `Seller` and `Intermediary` are kinds of `MarketParticipant`; `Commodity`, `Security`, `Currency` and `Derivative` are kinds of `Asset`. The other relationships are object properties, for example `Trade -hasBuyer-> Buyer`, `Order -placedBy-> MarketParticipant`, `Price -denominatedIn-> Currency`, `Derivative -underlying-> Asset`, `Regulator -regulates-> Market`, and `Asset -tradedOn-> Market` (inverse of `Market -listsAsset-> Asset`). Add further ontologies to the `build/ontology` directory the same way.
+[`build/ontology/market.owl`](../../build/ontology/market.owl) is a basic, general ontology of markets with the 20 most important concepts: `Market`, `Exchange`, `MarketParticipant`, `Buyer`, `Seller`, `Intermediary`, `Regulator`, `Asset`, `Commodity`, `Security`, `Currency`, `Derivative`, `Order`, `Trade`, `Price`, `Supply`, `Demand`, `MarketIndex`, `Regulation` and `Risk`. `Exchange` is a kind of `Market`; `Buyer`, `Seller` and `Intermediary` are kinds of `MarketParticipant`; `Commodity`, `Security`, `Currency` and `Derivative` are kinds of `Asset`. The other relationships are object properties, for example `Trade -hasBuyer-> Buyer`, `Order -placedBy-> MarketParticipant`, `Price -denominatedIn-> Currency`, `Derivative -underlying-> Asset`, `Regulator -regulates-> Market`, and `Asset -tradedOn-> Market` (inverse of `Market -listsAsset-> Asset`). Add further ontologies to the `build/ontology` directory the same way.
 
 ## Limits
 
