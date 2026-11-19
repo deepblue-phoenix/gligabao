@@ -83,19 +83,32 @@ func (j *job) groundStage(_ context.Context) error {
 		items: items,
 		links: links,
 	}
+
+	//------------------
+	// GROUNDING
+
 	ex.Entities, ex.Edges = applyGrounding(ex,
 		items,
 		g.refs)
+
+	//------------------
+
 	ex.grounding = g
 	j.groundItems = append(j.groundItems, items...)
 	summary := ontospec.Summarize(j.ground.mode,
 		g.refs,
 		items)
+
+	//------------------
+	// TRACE
 	j.tr.Tool("The entities and edges were grounded against the ontologies; each was tagged with what it matched"+
 		map[bool]string{true: ", and the ones that do not conform were dropped.", false: ", and the ones that do not conform were flagged."}[j.ground.strict()],
 		"ground_graph",
 		map[string]any{"mode": j.ground.mode, "ontologies": g.refs},
 		map[string]any{"summary": summary, "items": items})
+	
+	//------------------
+	
 	return nil
 }
 
@@ -124,6 +137,8 @@ func groundLinks(es []Edge) []ontospec.Link {
 	return out
 }
 
+//---------------------------------------------------------------------------------------------
+
 // applyGrounding returns the entities and edges of ex tagged with the items (in strict mode only those that were kept).
 func applyGrounding(ex *Extraction,
 	items []ontospec.Item,
@@ -148,6 +163,8 @@ func applyGrounding(ex *Extraction,
 	}
 	return entities, edges
 }
+
+//---------------------------------------------------------------------------------------------
 
 // tag is the grounding stored on the row of an item.
 func tag(it ontospec.Item,
