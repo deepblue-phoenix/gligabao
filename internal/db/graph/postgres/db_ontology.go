@@ -107,9 +107,9 @@ func ListOntologyEvents(ctx context.Context,
 }
 
 // groundingColumns are the values of the ontology columns of a row: NULLs for a row that was not grounded.
-func groundingColumns(g *model.Grounding) (version, class, valid any) {
+func groundingColumns(g *model.Grounding) (version, class, valid, origin any) {
 	if g == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
-	return g.Version, nullIfEmpty(g.Class), g.Valid
+	return g.Version, nullIfEmpty(g.Class), g.Valid, nullIfEmpty(g.OriginType)
 }

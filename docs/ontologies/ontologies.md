@@ -1,6 +1,6 @@
 # Ontologies
 
-An ontology describes the concepts of a domain (its **classes**), how they relate (its **relations**) and what can be said about them (their **properties**). gligabao ontologies are written in a small declarative language in **YAML or JSON**: a typed property graph, not OWL. `remember` can ground the graph it extracts against them: the entities and edges are checked against the ontology, tagged with what they matched, and (in strict mode) what does not conform is dropped. See [Grounding in `remember`](#grounding-in-remember).
+An ontology describes the concepts of a domain (its **classes**), how they relate (its **relations**) and what can be said about them (their **properties**). gligabao ontologies are written in a small declarative language in **YAML or JSON**: a typed property graph, not OWL. `remember` can ground the graph it extracts against them: the entities and edges are checked against the ontology, tagged with what they matched, and (in strict mode) what does not conform is dropped. See [Grounding in `remember`](#grounding-in-remember) and [graph-enrichment.md](graph-enrichment.md) (the ontology neighborhood it adds to the graph).
 
 The design and the decisions behind it are in [ontology-grounding-plan.md](ontology-grounding-plan.md).
 
@@ -201,11 +201,13 @@ With `ontology_grounding: true`, `remember` checks the entities and edges the LL
 
 **`strict`**: whatever does not conform (an unknown type or relation, a domain or range violation, a property that is invalid or missing, an edge whose end was dropped or is not listed) is **dropped before the store stage**: it is not stored, and an edge never points at an entity that was dropped.
 
+**The ontology neighborhood** is added to the graph in both modes, next to the tags: the classes the entities matched and their ancestors as `ontology_class` entities, `is_a` and `subclass_of` edges, and the ontology relations between those classes. Only what matched is brought in. See [graph-enrichment.md](graph-enrichment.md).
+
 The grounding is the `ground_graph` stage of the [run log](../remember/remember.md#run-log), between the extraction of the text (or each chunk) and its reconciliation and storage. It runs on no model and never fails the call. Entities and edges of the enrichment stages (web search results, series observations) are not grounded.
 
 ### What is stored on the graph
 
-The rows get three nullable columns, `NULL` when never grounded (the rows of a call without grounding, and rows made before): `ontology_version` (the version of the ontology that defines the class or relation, or of the one the call was grounded against, if it resolved to nothing), `ontology_class` (the canonical class name; for an edge, the relation; `NULL` if it resolved to nothing) and `ontology_valid` (it matched with no violation). An entity is shared between artifacts: a mention that was grounded replaces the tags of the stored entity, one that was not leaves them.
+The rows get four nullable columns, `NULL` when never grounded (the rows of a call without grounding, and rows made before): `ontology_version` (the version of the ontology that defines the class or relation, or of the one the call was grounded against, if it resolved to nothing), `ontology_class` (the canonical class name; for an edge, the relation; `NULL` if it resolved to nothing), `ontology_valid` (it matched with no violation) and `origin_type` (`extracted` for what the LLM extracted, `ontology` for the entities and edges that [graph enrichment](graph-enrichment.md) added from the ontology). An entity is shared between artifacts: a mention that was grounded replaces the tags of the stored entity, one that was not leaves them.
 
 The `properties` of an entity or an edge are validated but **not stored** (the graph has no properties yet).
 

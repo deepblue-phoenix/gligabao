@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	ontology_version INTEGER, -- ontology grounding (see gb_ontology_events); NULL when the row was never grounded
 	ontology_class   TEXT,    -- the class (the relation, for an edge) the row resolved to
 	ontology_valid   BOOLEAN, -- whether it matched the ontology with no violation
+	origin_type  TEXT,    -- 'extracted' (the LLM extracted it) or 'ontology' (grounding added it from the ontology neighborhood)
 	created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 	updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 	UNIQUE (dataset_id, name_key, type)
@@ -77,7 +78,8 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the fact
 	ontology_version INTEGER, -- ontology grounding, as in gb_entities
 	ontology_class   TEXT,
-	ontology_valid   BOOLEAN
+	ontology_valid   BOOLEAN,
+	origin_type  TEXT
 );
 
 -- Edge <-> artifact provenance, many-to-many: gb_edges.artifact_id is only the artifact that created the edge; this
@@ -306,3 +308,5 @@ ALTER TABLE gb_entities ADD COLUMN IF NOT EXISTS ontology_valid BOOLEAN;
 ALTER TABLE gb_edges ADD COLUMN IF NOT EXISTS ontology_version INTEGER;
 ALTER TABLE gb_edges ADD COLUMN IF NOT EXISTS ontology_class TEXT;
 ALTER TABLE gb_edges ADD COLUMN IF NOT EXISTS ontology_valid BOOLEAN;
+ALTER TABLE gb_entities ADD COLUMN IF NOT EXISTS origin_type TEXT;
+ALTER TABLE gb_edges ADD COLUMN IF NOT EXISTS origin_type TEXT;

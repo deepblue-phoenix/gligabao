@@ -32,6 +32,8 @@ const (
 
 // Edge events (see model.EdgeEvent).
 const (
+	OriginExtracted = model.OriginExtracted
+	OriginOntology  = model.OriginOntology
 	EdgeCreated     = model.EdgeCreated
 	EdgeConfirmed   = model.EdgeConfirmed
 	EdgeEnded       = model.EdgeEnded

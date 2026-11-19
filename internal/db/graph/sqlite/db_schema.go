@@ -27,7 +27,7 @@ func initSchema(d *sql.DB) error {
 // ADD COLUMN IF NOT EXISTS).
 func addOntologyColumns(d *sql.DB) error {
 	for _, table := range []string{"gb_entities", "gb_edges"} {
-		for _, col := range [][2]string{{"ontology_version", "INTEGER"}, {"ontology_class", "TEXT"}, {"ontology_valid", "INTEGER"}} {
+		for _, col := range [][2]string{{"ontology_version", "INTEGER"}, {"ontology_class", "TEXT"}, {"ontology_valid", "INTEGER"}, {"origin_type", "TEXT"}} {
 			var n int
 			if err := d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('`+table+`') WHERE name = ?`,
 				col[0]).Scan(&n); err != nil {

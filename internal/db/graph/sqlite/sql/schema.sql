@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	ontology_version INTEGER, -- ontology grounding (see gb_ontology_events); NULL when the row was never grounded
 	ontology_class   TEXT,    -- the class (the relation, for an edge) the row resolved to
 	ontology_valid   INTEGER, -- whether it matched the ontology with no violation
+	origin_type  TEXT,    -- 'extracted' (the LLM extracted it) or 'ontology' (grounding added it from the ontology neighborhood)
 	created_at  DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 	updated_at  DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 	UNIQUE (dataset_id, name_key, type)
@@ -94,7 +95,8 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the fact
 	ontology_version INTEGER, -- ontology grounding, as in gb_entities
 	ontology_class   TEXT,
-	ontology_valid   INTEGER
+	ontology_valid   INTEGER,
+	origin_type  TEXT
 );
 
 -- Which artifacts an edge was inferred from (many-to-many).

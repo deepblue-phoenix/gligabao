@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.218.0] - 2026-11-19
+
+### Added
+- **Ontology grounding adds the neighborhood of what matched.** With `ontology_grounding`, besides tagging the extracted nodes and edges (unchanged), `remember` now writes the immediate ontology subgraph of the matched classes into the graph: an `ontology_class` entity for each matched class and its ancestors, `is_a` edges from the matched entities to their class, `subclass_of` edges up the hierarchy, and the ontology relations between two of those classes. Only matched classes are brought in, never the whole ontology. New nullable column `origin_type` on `gb_entities` and `gb_edges` (`extracted` or `ontology`; added at startup to existing databases) separates what the LLM extracted from what the enrichment added; the added edges carry the grounding tags too. See `docs/ontologies/ontologies.md`.
+
 ## [0.217.0] - 2026-11-19
 
 ### Added

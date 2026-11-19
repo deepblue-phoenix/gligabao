@@ -62,7 +62,7 @@ func TestOpenAddsOntologyColumns(t *testing.T) {
 	if err := graph.Open(config.DBBackendSQLite, d); err != nil {
 		t.Fatal(err)
 	}
-	for _, col := range []string{"ontology_version", "ontology_class", "ontology_valid"} {
+	for _, col := range []string{"ontology_version", "ontology_class", "ontology_valid", "origin_type"} {
 		if _, err := d.Exec(`ALTER TABLE gb_entities DROP COLUMN ` + col); err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +77,7 @@ func TestOpenAddsOntologyColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('gb_entities') WHERE name LIKE 'ontology_%'`).Scan(&n); err != nil || n != 3 {
-		t.Fatalf("%d ontology columns, want 3 (%v)", n, err)
+	if err := d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('gb_entities') WHERE name LIKE 'ontology_%' OR name = 'origin_type'`).Scan(&n); err != nil || n != 4 {
+		t.Fatalf("%d ontology columns, want 4 (%v)", n, err)
 	}
 }

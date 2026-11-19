@@ -9,6 +9,8 @@ package memory_remember
 //     guarantee in both modes.
 //   - The ground_graph stage (it makes no run log output: gb_ontology_events has what it decided) runs between the extraction of a text (or chunk) and its reconcile and store stages. It tags every
 //     entity and edge with what it matched, and in strict mode drops those that do not conform.
+//   - The ground_graph stage also adds the immediate ontology neighborhood of what matched (addNeighborhood): entities for the matched
+//     classes and their ancestors, is_a and subclass_of edges, and the ontology relations between those classes.
 //   - The store stage writes the tags on the rows and one event per grounded item in gb_ontology_events, in the transaction that stores
 //     the artifact (the artifact does not exist before, and nothing runs after the store).
 //   - The call returns a summary (ontospec.AnnotateSummary or ontospec.StrictSummary) in Result.OntologyGrounding.
@@ -17,10 +19,12 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology/ontospec"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 )
 
 // groundCall is the grounding of one Remember call: the compiled ontology and the mode.
@@ -90,6 +94,13 @@ func (j *job) groundStage(_ context.Context) error {
 	ex.Entities, ex.Edges = applyGrounding(ex,
 		items,
 		g.refs)
+
+	// The neighborhood in the ontology of what matched is added to the graph.
+	ex.Entities, ex.Edges = addNeighborhood(ex.Entities,
+		ex.Edges,
+		items,
+		j.ground.reg,
+		j.ref)
 
 	//------------------
 
@@ -165,6 +176,130 @@ func applyGrounding(ex *Extraction,
 }
 
 //---------------------------------------------------------------------------------------------
+// The neighborhood
+
+// Names of what the neighborhood adds to the graph.
+const (
+	// TypeOntologyClass is the type of the entities that stand for a class of the ontology.
+	TypeOntologyClass = "ontology_class"
+	// RelationIsA links an entity that matched a class to the entity of that class.
+	RelationIsA = "is_a"
+)
+
+// addNeighborhood returns the entities and edges with the immediate ontology neighborhood of the nodes that matched added: an entity for
+// each matched class and each of its ancestors (type TypeOntologyClass, tagged valid), an is_a edge from each matched entity to its
+// class, subclass_of edges up the hierarchy, and the relations of the ontology that run between two of those classes. Only classes
+// that were matched are brought in, never the rest of the ontology. Every added entity and edge is tagged valid
+// with origin OriginOntology (the ones the LLM extracted get OriginExtracted); what is already in the extraction (same entity name, same edge) is not added again. The items are not changed, so the summary and
+// the events keep describing the extraction alone.
+func addNeighborhood(entities []Entity,
+	edges []Edge,
+	items []ontospec.Item,
+	reg *ontospec.CompiledOntology,
+	ref time.Time) ([]Entity, []Edge) {
+	matched := filterItems(items, func(it ontospec.Item) bool { return it.Kind == ontospec.KindNode && it.Valid() })
+	classes := mapItems(matched, func(it ontospec.Item) string { return it.Class })
+	hood := reg.Neighborhood(classes)
+
+	have := map[string]bool{}
+	for _, e := range entities {
+		have[memory_core.Key(e.Name)] = true
+	}
+	haveEdge := map[string]bool{}
+	for _, e := range edges {
+		haveEdge[edgeKey(e.Source, e.Relation, e.Target)] = true
+	}
+	// The entities in the extraction that matched, by class: they get an is_a edge to the class.
+	isA := mapItems(matched, func(it ontospec.Item) ClassLink {
+		return ClassLink{
+			Entity: it.Name,
+			Class:  it.Class,
+		}
+	})
+
+	outEntities := append([]Entity(nil), entities...)
+	for _, c := range hood.Classes {
+		if have[memory_core.Key(c.Name)] {
+			continue
+		}
+		have[memory_core.Key(c.Name)] = true
+		outEntities = append(outEntities, Entity{
+			Name: c.Name,
+			Type: TypeOntologyClass,
+			Ontology: &graph.Grounding{
+				Class:   c.Name,
+				Version: c.Ref.Version,
+				Valid:   true,
+				OriginType:  graph.OriginOntology,
+			},
+		})
+	}
+	outEdges := append([]Edge(nil), edges...)
+	add := func(source,
+		relation,
+		target string,
+		version int) {
+		relation = normRelation(relation)
+		if k := edgeKey(source, relation, target); !haveEdge[k] {
+			haveEdge[k] = true
+			e := Edge{
+				Source:      source,
+				Relation:    relation,
+				Target:      target,
+				Description: memory_core.SynthStatement(source, relation, target),
+				Ontology: &graph.Grounding{
+					Class:   relation,
+					Version: version,
+					Valid:   true,
+					OriginType:  graph.OriginOntology,
+				},
+			}
+			memory_temporal.ApplyReference(&e, ref)
+			outEdges = append(outEdges, e)
+		}
+	}
+	for _, l := range isA {
+		add(l.Entity,
+			RelationIsA,
+			l.Class,
+			reg.ClassRef(l.Class).Version)
+	}
+	for _, e := range hood.Edges {
+		add(e.Source,
+			e.Relation,
+			e.Target,
+			e.Ref.Version)
+	}
+	return outEntities, outEdges
+}
+
+// ClassLink says an entity of the extraction matched a class.
+type ClassLink struct {
+	Entity string
+	Class  string
+}
+
+func filterItems(items []ontospec.Item,
+	keep func(ontospec.Item) bool) []ontospec.Item {
+	var out []ontospec.Item
+	for _, it := range items {
+		if keep(it) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func mapItems[R any](items []ontospec.Item,
+	f func(ontospec.Item) R) []R {
+	out := make([]R, len(items))
+	for i, it := range items {
+		out[i] = f(it)
+	}
+	return out
+}
+
+//---------------------------------------------------------------------------------------------
 
 // tag is the grounding stored on the row of an item.
 func tag(it ontospec.Item,
@@ -177,6 +312,7 @@ func tag(it ontospec.Item,
 		Class:   it.Class,
 		Version: version,
 		Valid:   it.Valid(),
+		OriginType:  graph.OriginExtracted,
 	}
 }
 

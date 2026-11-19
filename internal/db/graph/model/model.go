@@ -32,12 +32,21 @@ type Entity struct {
 
 // Grounding is what grounding a node or an edge against an ontology made of it: the class (the relation, for an edge) it resolved to
 // ("" if it did not resolve), the version of the ontology that defines it, and whether it matched with no violation. It is stored on
-// the row (ontology_class, ontology_version, ontology_valid).
+// the row (ontology_class, ontology_version, ontology_valid, origin_type).
 type Grounding struct {
 	Class   string `json:"class,omitempty"`
 	Version int    `json:"version,omitempty"`
 	Valid   bool   `json:"valid"`
+	// Origin says where the row comes from: OriginExtracted (the LLM extracted it) or OriginOntology (grounding added it from the
+	// ontology neighborhood of what matched). Stored in origin_type.
+	OriginType string `json:"origin_type,omitempty"`
 }
+
+// Origins of a grounded row.
+const (
+	OriginExtracted = "extracted"
+	OriginOntology  = "ontology"
+)
 
 // OntologyEvent is what grounding one node or edge of a remember call against an ontology made of it (a row of gb_ontology_events, see
 // sqlite/sql/schema.sql for the columns). EntityID and EdgeID are 0 for a dropped item.

@@ -78,11 +78,12 @@ func testRememberOntologyGrounding(t *testing.T,
 		class   sql.NullString
 		version sql.NullInt64
 		valid   sql.NullBool
+		origin  sql.NullString
 	}
 	entityTags := func(dataset string) map[string]stored {
 		t.Helper()
 		rows, err := d.QueryContext(ctx, `
-			SELECT e.name, e.ontology_class, e.ontology_version, e.ontology_valid
+			SELECT e.name, e.ontology_class, e.ontology_version, e.ontology_valid, e.origin_type
 			FROM gb_entities e JOIN gb_datasets ds ON ds.id = e.dataset_id
 			WHERE ds.name = '`+dataset+`'`)
 		if err != nil {
@@ -93,7 +94,7 @@ func testRememberOntologyGrounding(t *testing.T,
 		for rows.Next() {
 			var name string
 			var s stored
-			if err := rows.Scan(&name, &s.class, &s.version, &s.valid); err != nil {
+			if err := rows.Scan(&name, &s.class, &s.version, &s.valid, &s.origin); err != nil {
 				t.Fatal(err)
 			}
 			out[name] = s
@@ -122,12 +123,17 @@ func testRememberOntologyGrounding(t *testing.T,
 		sum.Nodes != (ontospec.Counts{Total: 5, Matched: 2, ViaAlias: 1, Violations: 2}) || sum.Edges != (ontospec.Counts{Total: 3, Matched: 1, Violations: 2}) {
 		t.Errorf("summary = %+v", sum)
 	}
-	if len(res.Entities) != 5 || len(res.Edges) != 3 {
+	// Nothing is dropped; the neighborhood of Dog and Keeper is added: the entities Dog, Keeper and Animal, an is_a edge for each of Rex, Pip
+	// and Sam, Dog subclass_of Animal, and the relation Keeper keeps Animal (it runs between two classes of the subgraph).
+	if len(res.Entities) != 8 || len(res.Edges) != 8 {
 		t.Errorf("annotate dropped something: %d entities, %d edges", len(res.Entities), len(res.Edges))
 	}
 	tags := entityTags("annotated")
 	if got := tags["Rex"]; got.class.String != "Dog" || got.version.Int64 != 1 || !got.valid.Bool {
 		t.Errorf("Rex = %+v", got)
+	}
+	if tags["Rex"].origin.String != "extracted" || tags["Animal"].origin.String != "ontology" || tags["Dog"].origin.String != "ontology" {
+		t.Errorf("origins: Rex %q, Animal %q, Dog %q", tags["Rex"].origin.String, tags["Animal"].origin.String, tags["Dog"].origin.String)
 	}
 	if got := tags["Pip"]; got.class.String != "Dog" || !got.valid.Bool {
 		t.Errorf("Pip (by an alias) = %+v", got)
@@ -171,7 +177,7 @@ func testRememberOntologyGrounding(t *testing.T,
 		t.Errorf("%d violation events, want 2 (Max and Sam keeps Tom)", len(only))
 	}
 	// The edges carry the same tags: one is a valid keeps; "keeps Tom" resolved to the relation but is a violation; "adores" resolved to nothing.
-	rows, err := d.QueryContext(ctx, `SELECT ontology_class, ontology_valid FROM gb_edges ORDER BY id`)
+	rows, err := d.QueryContext(ctx, `SELECT ontology_class, ontology_valid, origin_type FROM gb_edges ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,13 +185,14 @@ func testRememberOntologyGrounding(t *testing.T,
 	for rows.Next() {
 		var class sql.NullString
 		var valid sql.NullBool
-		if err := rows.Scan(&class, &valid); err != nil {
+		var origin sql.NullString
+		if err := rows.Scan(&class, &valid, &origin); err != nil {
 			t.Fatal(err)
 		}
-		edgeTags = append(edgeTags, class.String+"/"+map[bool]string{true: "valid", false: "invalid"}[valid.Bool])
+		edgeTags = append(edgeTags, class.String+"/"+map[bool]string{true: "valid", false: "invalid"}[valid.Bool]+"/"+origin.String)
 	}
 	rows.Close()
-	if strings.Join(edgeTags, " ") != "keeps/valid keeps/invalid /invalid" {
+	if strings.Join(edgeTags, " ") != "keeps/valid/extracted keeps/invalid/extracted /invalid/extracted is_a/valid/ontology is_a/valid/ontology is_a/valid/ontology subclass_of/valid/ontology keeps/valid/ontology" {
 		t.Errorf("edge tags = %v", edgeTags)
 	}
 	runs, _, _ := relational.ListRememberRuns(ctx, d, relational.RememberRunFilter{}, 10, 0)
@@ -212,11 +219,12 @@ func testRememberOntologyGrounding(t *testing.T,
 	if strict.Mode != "strict" || strict.Nodes.Dropped != 2 || strict.Edges.Dropped != 2 || strict.DroppedRatio != 0.5 || len(strict.Violations) == 0 {
 		t.Errorf("strict summary = %+v", strict)
 	}
-	if len(res.Entities) != 3 || len(res.Edges) != 1 || res.Edges[0].Target != "Rex" {
+	// Plus the neighborhood: 3 class entities, and 5 edges (3 is_a, a subclass_of and a relation).
+	if len(res.Entities) != 6 || len(res.Edges) != 6 || res.Edges[0].Target != "Rex" {
 		t.Errorf("strict stored %d entities and %d edges: %+v", len(res.Entities), len(res.Edges), res.Edges)
 	}
 	tags = entityTags("strict")
-	if len(tags) != 3 || !tags["Rex"].valid.Bool || !tags["Sam"].valid.Bool {
+	if len(tags) != 6 || !tags["Rex"].valid.Bool || !tags["Sam"].valid.Bool || !tags["Animal"].valid.Bool {
 		t.Errorf("strict entities = %+v", tags)
 	}
 	dropped, _ := memory_ontology.Events(ctx, d, "u1", "keepers", graph.OntologyEventFilter{ArtifactID: res.ArtifactID, Outcome: "dropped"})
