@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.217.0] - 2026-11-19
+
+### Added
+- **Admin UI: ontologies view.** A new "ontologies" view shows an ontology as a force-directed d3 graph: the classes are the nodes (coloured by their root class, laid out by depth in the hierarchy), solid arrows are `subClassOf` and dashed arrows are the relations (from each class of the domain to each of the range). It has toggles for the relations and their names, and clicking a class shows its description, aliases, properties (inherited ones too) and relations. It is fed by the new `GET /v1/gb/admin/api/ontologies` (the ontologies of every user, with their specs).
+
 ## [0.216.1] - 2026-11-19
 
 ### Changed

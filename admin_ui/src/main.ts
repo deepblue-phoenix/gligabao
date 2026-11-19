@@ -11,6 +11,7 @@ import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
 import { initInferences } from "./inferences.js";
+import { initOntologies } from "./ontologies.js";
 import { initQuery } from "./query_modal.js";
 import { initResearch } from "./research.js";
 import { initQueryRuns, initRememberRuns } from "./runs.js";
@@ -395,6 +396,7 @@ void (async () => {
   initImageStats();
   initWebSearch();
   initGeo();
+  initOntologies();
   initVectorsView();
   initBookmarks();
   void loadAll(false);

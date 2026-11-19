@@ -170,6 +170,10 @@ What grounding made of the nodes and edges of the `remember` calls that used the
 
 See [the events table](#the-events-table) for the fields and the reason codes.
 
+## Admin UI
+
+The "ontologies" view of the admin UI draws an ontology as a force-directed graph (d3): the classes are the nodes, laid out by depth in the hierarchy and coloured by their root class; solid arrows go from a class to its parents (`subClassOf`), dashed arrows are the relations (one from each class of the `domain` to each class of the `range`). The toggles show or hide the relations and their names, and a click on a class shows its description, aliases, properties (with the inherited ones) and relations, and fades the rest. It reads `GET /v1/gb/admin/api/ontologies?db=<name>` (the standard database by default), which lists the ontologies of every user with their `spec`.
+
 ## Ontology directories
 
 `ontology_dirs` in `gligabao.toml` (relative paths are relative to the file; `serve --ontology-dir`, repeatable, and `ServeOptions.OntologyDirs` override it) lists directories of ontology documents. They are listed explicitly and **not scanned**: nothing is loaded at startup. A request with `"file": "market.yaml"` instead of `content` reads that file from the first directory that has it, and stores it like `content`, under the requesting user. The name must be a plain file name (no directory, not starting with `.`): it cannot reach outside the directories. The Docker image ships `build/ontology/` as `/app/ontology`.

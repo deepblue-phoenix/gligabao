@@ -218,6 +218,29 @@ func ListOntologies(ctx context.Context,
 	return out, rows.Err()
 }
 
+// ListAllOntologies returns the ontologies of every user, oldest first, with their specs (for the admin UI).
+func ListAllOntologies(ctx context.Context,
+	d *sql.DB) ([]model.Ontology, error) {
+	rows, err := d.QueryContext(ctx,
+		`
+		SELECT `+ontologyColumns+`
+		FROM gb_ontologies
+		ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list all ontologies: %w", err)
+	}
+	defer rows.Close()
+	out := []model.Ontology{}
+	for rows.Next() {
+		o, err := scanOntology(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *o)
+	}
+	return out, rows.Err()
+}
+
 // DeleteOntology removes an ontology and its history.
 func DeleteOntology(ctx context.Context,
 	d *sql.DB,

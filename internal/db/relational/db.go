@@ -338,6 +338,20 @@ func ListOntologies(ctx context.Context,
 	return nil, unsupported()
 }
 
+// ListAllOntologies returns the ontologies of every user, oldest first, with their specs.
+func ListAllOntologies(ctx context.Context,
+	d *sql.DB) ([]Ontology, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListAllOntologies(ctx,
+			d)
+	case config.DBBackendPostgres:
+		return postgres.ListAllOntologies(ctx,
+			d)
+	}
+	return nil, unsupported()
+}
+
 // DeleteOntology removes an ontology, its history and its grounding events.
 func DeleteOntology(ctx context.Context,
 	d *sql.DB,

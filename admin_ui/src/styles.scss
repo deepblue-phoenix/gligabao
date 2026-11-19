@@ -1145,3 +1145,19 @@ button.link-btn {
   padding: 0; background: none; border: none; color: $accent; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer;
   &:hover { filter: brightness(1.25); }
 }
+
+// --- Ontologies view (ontologies.ts) ---
+#onto-canvas {
+  position: relative;
+  height: 72vh;
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: 6px;
+
+  svg { display: block; cursor: grab; }
+}
+.onto-link { fill: none; &.onto-sub { stroke: $muted; stroke-opacity: 0.7; stroke-width: 1.2; } &.onto-rel { stroke: $accent; stroke-opacity: 0.55; stroke-width: 1; stroke-dasharray: 4 3; } }
+.onto-arrow-sub { fill: $muted; }
+.onto-arrow-rel { fill: $accent; }
+.onto-overlay { top: 4.5rem; right: 0.5rem; }
+.onto-legend { flex-direction: row; flex-wrap: wrap; gap: 0.2rem 0.9rem; top: 0.5rem; bottom: auto; right: 0.5rem; left: 0.5rem; font-size: 0.7rem; .onto-key { color: $muted; } }
