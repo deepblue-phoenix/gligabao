@@ -114,6 +114,7 @@ func StoreEdges(ctx context.Context,
 			CreatedAt:   now,
 			ArtifactID:  artID,
 			ModelID:     e.ModelID,
+			Ontology:    e.Ontology,
 		})
 		if err != nil {
 			return nil, nil, err

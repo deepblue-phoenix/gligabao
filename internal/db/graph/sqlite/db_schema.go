@@ -20,6 +20,27 @@ func initSchema(d *sql.DB) error {
 	if _, err := d.Exec(schema); err != nil {
 		return fmt.Errorf("init graph schema: %w", err)
 	}
+	return addOntologyColumns(d)
+}
+
+// addOntologyColumns adds the ontology grounding columns to gb_entities and gb_edges of a database created before them (SQLite has no
+// ADD COLUMN IF NOT EXISTS).
+func addOntologyColumns(d *sql.DB) error {
+	for _, table := range []string{"gb_entities", "gb_edges"} {
+		for _, col := range [][2]string{{"ontology_version", "INTEGER"}, {"ontology_class", "TEXT"}, {"ontology_valid", "INTEGER"}} {
+			var n int
+			if err := d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('`+table+`') WHERE name = ?`,
+				col[0]).Scan(&n); err != nil {
+				return fmt.Errorf("init graph schema: %w", err)
+			}
+			if n > 0 {
+				continue
+			}
+			if _, err := d.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col[0] + ` ` + col[1]); err != nil {
+				return fmt.Errorf("init graph schema: %w", err)
+			}
+		}
+	}
 	return nil
 }
 

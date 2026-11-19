@@ -72,6 +72,20 @@ var rememberPipeline = []memory_pipeline.Step[job]{
 		},
 	},
 
+	// The extracted graph of the text, or of each chunk, is grounded against the ontologies. Advisory: it never fails the call.
+	memory_pipeline.Each[job]{
+		Count: (*job).itemCount,
+		Set:   (*job).setItem,
+		Steps: []memory_pipeline.Step[job]{
+			memory_pipeline.Stage[job]{
+				Name:    StageGroundGraph,
+				Policy:  memory_pipeline.Advisory,
+				Enabled: (*job).hasGrounding,
+				Run:     (*job).groundStage,
+			},
+		},
+	},
+
 	// The whole text of a document is stored as the parent artifact of its chunks.
 	memory_pipeline.Stage[job]{
 		Name:    StageStore,
@@ -259,10 +273,11 @@ func (j *job) extract(ctx context.Context) error {
 		j.exs = make([]*Extraction, j.itemCount())
 	}
 	if !j.chunked {
-		ex, err := Extract(ctx,
+		ex, err := extractWith(ctx,
 			j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),
 			j.text,
-			j.ref)
+			j.ref,
+			j.ground)
 		j.outputExtraction("", ex)
 		if err != nil {
 			return err
@@ -279,10 +294,11 @@ func (j *job) extract(ctx context.Context) error {
 		Chunk: c,
 		Count: len(j.chunks),
 	}
-	ex, err := Extract(ctx,
+	ex, err := extractWith(ctx,
 		j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),
 		c.Text,
-		j.ref)
+		j.ref,
+		j.ground)
 	j.outputExtraction(j.stepLabel(part), ex)
 	if err != nil {
 		return fmt.Errorf("memory: extract chunk %d of %d: %w",

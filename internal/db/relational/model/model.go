@@ -6,6 +6,7 @@ package model
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -33,23 +34,26 @@ type Dataset struct {
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 }
 
-// Ontology is the metadata of a loaded ontology. The ontology itself (classes and relationships) is stored in the
-// graph database (see internal/db/graph).
+// Ontology is a stored ontology: its metadata and its spec (the YAML/JSON DSL of internal/memory/memory_ontology/ontospec, kept as
+// JSON). Every save bumps Version and keeps the document of the version in gb_ontology_versions.
 type Ontology struct {
-	ID          int64     `json:"id"`
-	UserID      string    `json:"user_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	IRI         string    `json:"iri,omitempty"`   // the owl:Ontology IRI declared by the document
-	Title       string    `json:"title,omitempty"` // its label
-	Format      string    `json:"format"`          // serialization of the loaded document, e.g. "rdfxml"
-	SizeBytes   int       `json:"size_bytes"`      // size of the loaded document
-	SHA256      string    `json:"sha256"`          // hex digest of the loaded document
-	Classes     int       `json:"classes"`
-	Properties  int       `json:"properties"` // distinct properties that became edges
-	Edges       int       `json:"edges"`      // relationships between classes, subclass_of ones included
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"` // when the ontology was last loaded or replaced; equals created_at until updated
+	ID          int64  `json:"id"`
+	UserID      string `json:"user_id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Format      string `json:"format"`  // serialization of the latest document: "yaml" or "json"
+	Version     int    `json:"version"` // 1 for the first save, +1 for every update
+	SizeBytes   int    `json:"size_bytes"`
+	SHA256      string `json:"sha256"` // hex digest of the latest document
+	Classes     int    `json:"classes"`
+	Relations   int    `json:"relations"`
+	Properties  int    `json:"properties"` // the properties declared by all the classes and relations
+	// Spec is the ontology as JSON; empty in a list.
+	Spec json.RawMessage `json:"spec,omitempty"`
+	// Content is the document as it was sent, kept in gb_ontology_versions; it is only an input of Create and Update.
+	Content   string    `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"` // when the ontology was last saved; equals created_at until updated
 }
 
 // Inference is one invocation of a model (gb_inferences): the dynamic counterpart of Model, which is the static

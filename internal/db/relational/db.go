@@ -50,6 +50,7 @@ const (
 	RememberStageChunkText          = model.RememberStageChunkText
 	RememberStageExtractGraph       = model.RememberStageExtractGraph
 	RememberStageSummarizeChunk     = model.RememberStageSummarizeChunk
+	RememberStageGroundGraph        = model.RememberStageGroundGraph
 	RememberStageLoadCandidates     = model.RememberStageLoadCandidates
 	RememberStageResolveEdges       = model.RememberStageResolveEdges
 	RememberStageStore              = model.RememberStageStore
@@ -260,9 +261,10 @@ func EnsureDataset(ctx context.Context,
 }
 
 //---------------------------------------------------------------------------------------------
-// Ontologies (metadata only; the classes and relationships are stored by package graph)
+// Ontologies (the spec, its version and its history; see package memory_ontology)
 
-// CreateOntology stores the metadata of an ontology (o.ID and o.CreatedAt are ignored and filled in the result).
+// CreateOntology stores an ontology as its version 1, with its document (o.Content) in the history (o.ID, o.Version and the times are
+// ignored and filled in the result).
 // It returns ErrExists if the user already has an ontology with that name.
 func CreateOntology(ctx context.Context,
 	d *sql.DB,
@@ -280,7 +282,7 @@ func CreateOntology(ctx context.Context,
 	return nil, unsupported()
 }
 
-// GetOntology returns the metadata of userID's ontology called name, or ErrNotFound.
+// GetOntology returns userID's ontology called name, or ErrNotFound.
 func GetOntology(ctx context.Context,
 	d *sql.DB,
 	userID,
@@ -300,8 +302,8 @@ func GetOntology(ctx context.Context,
 	return nil, unsupported()
 }
 
-// UpdateOntology overwrites the metadata of the ontology o.ID with the other fields of o (description, IRI, title,
-// format, size, hash, counts and UpdatedAt); the owner, name and creation time never change. It returns the stored
+// UpdateOntology saves a new version of the ontology o.ID: the description, format, hash, counts, spec and document are those of o, the
+// version is incremented and the document goes to the history; the owner, name and creation time never change. It returns the stored
 // row, or ErrNotFound.
 func UpdateOntology(ctx context.Context,
 	d *sql.DB,
@@ -336,8 +338,7 @@ func ListOntologies(ctx context.Context,
 	return nil, unsupported()
 }
 
-// DeleteOntology removes the metadata row of an ontology (and, through the foreign keys, whatever graph rows
-// still reference it). It is used to undo a failed load.
+// DeleteOntology removes an ontology, its history and its grounding events.
 func DeleteOntology(ctx context.Context,
 	d *sql.DB,
 	id int64) error {

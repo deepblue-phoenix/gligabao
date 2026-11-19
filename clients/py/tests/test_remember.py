@@ -243,3 +243,33 @@ def test_unauthorized_is_an_error():
     finally:
         srv.shutdown()
     assert e.value.status == 401
+
+
+def test_remember_ontology_grounding():
+    seen = {}
+    srv = _serve(200, {"artifact_id": 1}, seen)
+    try:
+        c = Client(f"http://127.0.0.1:{srv.server_port}")
+        c.remember("hi", ontology_grounding=True, ontologies=["market"], ontology_grounding_mode="strict")
+        assert seen["body"] == {
+            "text": "hi",
+            "ontology_grounding": True,
+            "ontologies": ["market"],
+            "ontology_grounding_mode": "strict",
+        }
+        c.remember("hi", ontology_grounding=True)
+        assert seen["body"] == {"text": "hi", "ontology_grounding": True}
+        c.remember("hi")
+        assert "ontology_grounding" not in seen["body"]
+    finally:
+        srv.shutdown()
+
+
+def test_remember_ontology_grounding_refused():
+    c = Client("http://127.0.0.1:1")
+    with pytest.raises(ValueError):
+        c.remember("hi", ontologies=["market"])
+    with pytest.raises(ValueError):
+        c.remember("hi", ontology_grounding_mode="strict")
+    with pytest.raises(ValueError):
+        c.remember(image=b"x", ontology_grounding=True)

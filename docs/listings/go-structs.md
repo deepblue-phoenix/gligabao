@@ -122,8 +122,8 @@
 | `internal/api/admin.commentaryRequest`                    | is the optional body of the request for a commentary on a case run.                                                    |
 | `internal/api/admin.datasetView`                          | is a dataset with its counts as listed in the admin UI.                                                                |
 | `internal/api/admin.evalCaseDebugResponse`                | is the answer of the debug view of a case run: checks, input, expectations, commentaries and reruns.                   |
-| `internal/api/admin.evalRerunInfo`                        | is the part of the debug view about reruns: what can be picked.                                                        |
 | `internal/api/admin.evalOverview`                         | is the admin UI's eval overview with totals and experiments.                                                           |
+| `internal/api/admin.evalRerunInfo`                        | is the part of the debug view about reruns: what can be picked.                                                        |
 | `internal/api/admin.experimentDetail`                     | is an experiment with its runs for the admin detail view.                                                              |
 | `internal/api/admin.experimentView`                       | is an experiment with its counts as listed in the admin UI.                                                            |
 | `internal/api/admin.imageDisk`                            | describes the image store next to what the database tracks.                                                            |
@@ -157,8 +157,9 @@
 | `internal/api/mcp.ResearchStartInput`                     | is the input of the research_start tool: the body of POST /v1/gb/research.                                             |
 | `internal/api/mcp.options`                                | holds the handlers of the research tools of the MCP server, if any.                                                    |
 | `internal/api/mcp.recorder`                               | is an http.ResponseWriter that keeps the response in memory.                                                           |
-| `internal/api/ontologies.loadRequest`                     | is the request body for loading an ontology.                                                                           |
-| `internal/api/query.queryRequest`                       | is the request body for a query call.                                                                                 |
+| `internal/api/ontologies.loadRequest`                     | is the request body for creating or updating an ontology (content, spec or file).                                      |
+| `internal/api/ontologies.problemsResponse`                | is the 400 body of an ontology with problems: the error and the list of problems.                                      |
+| `internal/api/query.queryRequest`                         | is the request body for a query call.                                                                                  |
 | `internal/api/remember.fetchRequest`                      | is the timeseries fetch part of a remember request.                                                                    |
 | `internal/api/remember.rememberRequest`                   | is the request body for a remember call.                                                                               |
 | `internal/api/remember.timeseriesRequest`                 | is the timeseries part of a remember request.                                                                          |
@@ -167,7 +168,7 @@
 | `internal/api/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
 | `internal/api/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |
 | `internal/api/training.EvalManager`                       | starts trained-model evals in the background, one at a time per model.                                                 |
-| `internal/api/training.runManager`                        | provides the shared endpoints for the runs of one kind (an eval).                                                |
+| `internal/api/training.runManager`                        | provides the shared endpoints for the runs of one kind (an eval).                                                      |
 
 >>> CHUNK
 
@@ -192,12 +193,13 @@
 | `internal/db/graph/model.EdgeArtifact`                    | links an edge to an artifact it was inferred from.                                                                     |
 | `internal/db/graph/model.EdgeSession`                     | links an edge to a session it was inferred from.                                                                       |
 | `internal/db/graph/model.Entity`                          | is a thing mentioned in the text such as a person, place or concept.                                                   |
-| `internal/db/graph/model.EntityGeo`                       | is the stored geo metadata of an entity that is a place.                                                               |
-| `internal/db/graph/model.GeoPending`                      | is a stored place waiting for the geo manager, as the sweeper reads it.                                                |
 | `internal/db/graph/model.EntityArtifact`                  | links an entity to an artifact that mentions it.                                                                       |
+| `internal/db/graph/model.EntityGeo`                       | is the stored geo metadata of an entity that is a place.                                                               |
 | `internal/db/graph/model.EntitySession`                   | links an entity to a session in which it was mentioned.                                                                |
 | `internal/db/graph/model.EvidenceEdge`                    | is a graph edge cited by an answer.                                                                                    |
 | `internal/db/graph/model.EvidenceEntity`                  | is a graph entity cited by an answer.                                                                                  |
+| `internal/db/graph/model.GeoPending`                      | is a stored place waiting for the geo manager, as the sweeper reads it.                                                |
+| `internal/db/graph/model.Grounding`                       | is what grounding made of a node or an edge: the class it resolved to, the ontology version and whether it is valid.   |
 | `internal/db/graph/model.ImageArtifact`                   | is a stored image's metadata and the location of its file.                                                             |
 | `internal/db/graph/model.ImageExtraction`                 | is a stored LLM extraction of an image with its text blocks.                                                           |
 | `internal/db/graph/model.ImageGroup`                      | counts images or extractions sharing a media type or theme, with their total size.                                     |
@@ -214,9 +216,8 @@
 | `internal/db/graph/model.NewSeriesAnchor`                 | links a series to an artifact, entity or edge.                                                                         |
 | `internal/db/graph/model.NewSeriesObservationArtifact`    | is a series observation artifact to insert under the artifact that anchors the series.                                 |
 | `internal/db/graph/model.NewWebSearchArtifact`            | is a web search result artifact to insert under the artifact the searched entity came from.                            |
-| `internal/db/graph/model.OntologyClass`                   | is a class of an ontology, a node of the ontology graph.                                                               |
-| `internal/db/graph/model.OntologyCounts`                  | is the size (classes, properties, edges) of a stored ontology.                                                         |
-| `internal/db/graph/model.OntologyEdge`                    | is a relationship between two ontology classes referenced by IRI.                                                      |
+| `internal/db/graph/model.OntologyEvent`                   | is what grounding one node or edge of a remember call made of it (a row of gb_ontology_events).                        |
+| `internal/db/graph/model.OntologyEventFilter`             | selects the grounding events of an ontology (artifact, outcome, limit).                                                |
 | `internal/db/graph/model.Series`                          | is a stored series without its points.                                                                                 |
 | `internal/db/graph/model.SeriesAnchor`                    | is a stored link between a series and its target.                                                                      |
 | `internal/db/graph/model.SeriesPoint`                     | is one value of a series at a time.                                                                                    |
@@ -230,7 +231,7 @@
 | `internal/db/relational/model.InferenceGroup`             | sums the inferences sharing a type, stage, model and thinking level.                                                   |
 | `internal/db/relational/model.InferenceStat`              | sums the recorded inferences of one type.                                                                              |
 | `internal/db/relational/model.Model`                      | is an AI model record that graph entities and edges reference.                                                         |
-| `internal/db/relational/model.Ontology`                   | is the metadata of a loaded ontology.                                                                                  |
+| `internal/db/relational/model.Ontology`                   | is a stored ontology: its metadata, spec and version.                                                                  |
 | `internal/db/relational/model.RememberRun`                | is the record of one execution of the remember pipeline, stage by stage.                                               |
 | `internal/db/relational/model.RememberRunFilter`          | selects remember runs by user, dataset and status.                                                                     |
 | `internal/db/relational/model.RememberStage`              | records how one stage of a remember run went.                                                                          |
@@ -278,90 +279,109 @@
 
 >>> MEMORY
 
-| Struct                                                    | Description                                                                                                            |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `internal/memory.DatasetVectorStats`                      | is the state of all the vector indexes of a dataset.                                                                   |
-| `internal/memory.GraphExport`                             | is a whole dataset graph with its entities and edges.                                                                  |
-| `internal/memory.IndexStats`                              | is the state of one vector index of a dataset.                                                                         |
-| `internal/memory.preparedOntology`                        | is a parsed ontology ready to be stored.                                                                               |
-| `internal/memory/memory_core.ArtifactGraph`               | is the graph that comes with one artifact of a knowledge dataset.                                                      |
-| `internal/memory/memory_core.CallOptions`                 | holds the settings of one memory call, from which each pipeline reads what it uses.                                    |
-| `internal/memory/memory_core.Fact`                        | is the memory layer's view of an edge: a statement with the time it held and its source.                               |
-| `internal/memory/memory_core.FetchEntity`                 | is the entity a series is fetched for.                                                                                 |
-| `internal/memory/memory_core.KnowledgeDataset`            | is the artifacts of a dataset and the graphs that come with them, as the classifying training hook gets them.          |
-| `internal/memory/memory_core.SeriesAnchor`                | says what a caller-supplied series is anchored to.                                                                     |
-| `internal/memory/memory_core.SeriesData`                  | is a series returned by a provider.                                                                                    |
-| `internal/memory/memory_core.SeriesEdge`                  | selects a fact by its endpoint names and relation.                                                                     |
-| `internal/memory/memory_core.SeriesEntity`                | selects an entity by name and optionally type.                                                                         |
-| `internal/memory/memory_core.SeriesFetch`                 | asks Remember to fetch series from registered providers for the entities of a text.                                    |
-| `internal/memory/memory_core.SeriesFetchRequest`          | is what a provider's fetch callback is asked for.                                                                      |
-| `internal/memory/memory_core.SeriesPoint`                 | is one value at a time, serialized as a [timestamp, value] pair.                                                       |
-| `internal/memory/memory_core.SeriesProvider`              | is a registered source of timeseries.                                                                                  |
-| `internal/memory/memory_core.SeriesSpec`                  | is a timeseries the caller supplies with its points and anchors.                                                       |
-| `internal/memory/memory_core.ToolTiming`                  | records the model, timing and tokens of a traced step.                                                                 |
-| `internal/memory/memory_core.TrainingDataset`             | is a knowledge dataset (whole or a filtered subset) with the class of each of its graphs.                              |
-| `internal/memory/memory_core.Trace`                       | records one Remember, Query or image call as an ATIF trajectory.                                                      |
-| `internal/memory/memory_core.modelLLM`                    | wraps an LLM to use a stage's model and reasoning level.                                                               |
-| `internal/memory/memory_core.recordingLLM`                | wraps an LLM and stores an inference record for every successful call.                                                 |
-| `internal/memory/memory_core.stageKey`                    | is the context key under which the current pipeline stage is stored.                                                   |
-| `internal/memory/memory_core.tracingLLM`                  | wraps an LLM and records each call's input and output in the trace.                                                    |
-| `internal/memory/memory_image.ImageExtraction`            | is what the LLM read from an image.                                                                                    |
-| `internal/memory/memory_image.ImageResult`                | summarizes what RememberImage stored.                                                                                  |
-| `internal/memory/memory_ontology.Class`                   | is a named class of the ontology.                                                                                      |
-| `internal/memory/memory_ontology.Edge`                    | is a relationship between two ontology classes.                                                                        |
-| `internal/memory/memory_ontology.Ontology`                | is the result of parsing an ontology document.                                                                         |
-| `internal/memory/memory_ontology.edgeKey`                 | is the key used to deduplicate ontology edges.                                                                         |
-| `internal/memory/memory_ontology.graphIndex`              | is an ordered, de-duplicated index of graph values built during parsing.                                               |
-| `internal/memory/memory_ontology.rdfParser`               | decodes RDF/XML into triples.                                                                                          |
-| `internal/memory/memory_ontology.term`                    | is the object of an RDF triple: an IRI, blank node or literal.                                                         |
-| `internal/memory/memory_ontology.triple`                  | is an RDF subject-predicate-object statement.                                                                          |
-| `internal/memory/memory_query.Evidence`                  | lists the entities and edges an answer is based on.                                                                    |
-| `internal/memory/memory_query.QueryPlace`               | is a place the question of a query mentions (text, kind, query for a geo resolver).                                   |
-| `internal/memory/memory_query.QueryResult`              | is the answer to a query together with its supporting evidence.                                                        |
-| `internal/memory/memory_query.graphContext`              | is the subgraph handed to the query LLM.                                                                              |
-| `internal/memory/memory_query.queryContext`             | is everything the query LLM is given: the memory, the current time and the question.                                  |
-| `internal/memory/memory_query.queryOutput`              | is the structured answer the query LLM returns.                                                                       |
-| `internal/memory/memory_remember.ChunkResult`             | is the result for one chunk of a chunked text, itself an artifact.                                                     |
-| `internal/memory/memory_remember.Extraction`              | is the structured entities and edges extracted from a block of text.                                                   |
-| `internal/memory/memory_remember.Manager`                 | is the goroutine that runs queued remember pipeline requests.                                                          |
-| `internal/memory/memory_remember.Outcome`                 | is what a run of Remember returned, a result or an error.                                                              |
-| `internal/memory/memory_remember.QueueHooks`              | holds the enqueue and dequeue callbacks of the manager's queue.                                                        |
-| `internal/memory/memory_remember.Request`                 | asks the manager for one run of Remember.                                                                              |
-| `internal/memory/memory_remember.Result`                  | summarizes what was stored by Remember.                                                                                |
-| `internal/memory/memory_remember.GeoResult`               | is the outcome of the geo lookup for one entity of a Remember call that the LLM judged to be a place.                  |
-| `internal/memory/memory_remember.SeriesFetchResult`       | is the outcome of fetching series from one provider for one entity.                                                    |
-| `internal/memory/memory_remember.SeriesObservationResult` | is the observation made of one series in a Remember call.                                                              |
-| `internal/memory/memory_remember.SummaryResult`           | is a stored chunk summary, an artifact of its own.                                                                     |
-| `internal/memory/memory_remember.WebSearchResult`         | is the web search made for one key entity of a Remember call.                                                          |
-| `internal/memory/memory_remember.candidates`              | holds the stored facts a Remember call compares new facts with, and how they were found.                               |
-| `internal/memory/memory_remember.chunkPart`               | says that a stored text is a chunk of a longer one.                                                                    |
-| `internal/memory/memory_remember.chunkSummary`            | is the summary of a chunk before it is stored.                                                                         |
-| `internal/memory/memory_remember.chunkVector`             | is a chunk whose text is embedded together with entities and edges.                                                    |
-| `internal/memory/memory_remember.job`                     | holds what one Remember call shares between the steps it runs on each text.                                            |
-| `internal/memory/memory_remember.geoPlace`                | is the LLM's decision that an entity is a place.                                                                       |
-| `internal/memory/memory_remember.keyEntity`               | is an entity of the call that may be searched for on the web.                                                          |
-| `internal/memory/memory_remember.merger`                  | accumulates the results of a text's chunks into the text's result.                                                     |
-| `internal/memory/memory_remember.observable`              | is a stored series that an observation may be made of.                                                                 |
-| `internal/memory/memory_remember.observationPart`         | says that a stored text is the observation of a series.                                                                |
-| `internal/memory/memory_remember.pendingVectors`          | holds embeddings computed before a transaction commits and written after it.                                           |
-| `internal/memory/memory_remember.queued`                  | is a queued remember run identified by its run ID and context.                                                         |
-| `internal/memory/memory_remember.runLog`                  | is the log of one Remember call.                                                                                       |
-| `internal/memory/memory_remember.runState`                | is the state shared by the views of a run log.                                                                         |
-| `internal/memory/memory_remember.seriesAssignment`        | is the LLM's decision to fetch from a provider for an entity.                                                          |
-| `internal/memory/memory_remember.seriesFetched`           | is the outcome of one series fetch callback.                                                                           |
-| `internal/memory/memory_remember.similarEntity`           | is a stored entity found by similarity for an endpoint of a new fact.                                                  |
-| `internal/memory/memory_remember.summaryVector`           | is a chunk summary whose text is embedded next to its chunk's.                                                         |
-| `internal/memory/memory_remember.webPart`                 | says that a stored text is the result of a web search.                                                                 |
-| `internal/memory/memory_remember.webSearched`             | is the outcome of the search tool call for one entity.                                                                 |
-| `internal/memory/memory_temporal.Candidates`              | are the stored facts a Remember call compares its new facts with, and how they were found.                             |
-| `internal/memory/memory_temporal.Contradiction`           | says that an existing edge can't hold together with a new edge.                                                        |
-| `internal/memory/memory_temporal.EdgePlan`                | is the outcome of comparing new edges against existing ones.                                                           |
-| `internal/memory/memory_temporal.pair`                    | pairs a new edge with the existing edge it is compared to.                                                             |
-| `internal/memory/memory_timeseries.AnchorResult`          | is one stored series anchor.                                                                                           |
-| `internal/memory/memory_timeseries.Move`                  | is a change between two consecutive points of a series.                                                                |
-| `internal/memory/memory_timeseries.Observed`              | describes the series an observation is about.                                                                          |
-| `internal/memory/memory_timeseries.Result`                | is one stored series.                                                                                                  |
-| `internal/memory/memory_timeseries.Stats`                 | summarizes the points of a series, computed in Go and stored as JSON.                                                  |
+| Struct                                                      | Description                                                                                                            |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `internal/memory.DatasetVectorStats`                        | is the state of all the vector indexes of a dataset.                                                                   |
+| `internal/memory.GraphExport`                               | is a whole dataset graph with its entities and edges.                                                                  |
+| `internal/memory.IndexStats`                                | is the state of one vector index of a dataset.                                                                         |
+| `internal/memory/memory_core.ArtifactGraph`                 | is the graph that comes with one artifact of a knowledge dataset.                                                      |
+| `internal/memory/memory_core.CallOptions`                   | holds the settings of one memory call, from which each pipeline reads what it uses.                                    |
+| `internal/memory/memory_core.Fact`                          | is the memory layer's view of an edge: a statement with the time it held and its source.                               |
+| `internal/memory/memory_core.FetchEntity`                   | is the entity a series is fetched for.                                                                                 |
+| `internal/memory/memory_core.KnowledgeDataset`              | is the artifacts of a dataset and the graphs that come with them, as the classifying training hook gets them.          |
+| `internal/memory/memory_core.SeriesAnchor`                  | says what a caller-supplied series is anchored to.                                                                     |
+| `internal/memory/memory_core.SeriesData`                    | is a series returned by a provider.                                                                                    |
+| `internal/memory/memory_core.SeriesEdge`                    | selects a fact by its endpoint names and relation.                                                                     |
+| `internal/memory/memory_core.SeriesEntity`                  | selects an entity by name and optionally type.                                                                         |
+| `internal/memory/memory_core.SeriesFetch`                   | asks Remember to fetch series from registered providers for the entities of a text.                                    |
+| `internal/memory/memory_core.SeriesFetchRequest`            | is what a provider's fetch callback is asked for.                                                                      |
+| `internal/memory/memory_core.SeriesPoint`                   | is one value at a time, serialized as a [timestamp, value] pair.                                                       |
+| `internal/memory/memory_core.SeriesProvider`                | is a registered source of timeseries.                                                                                  |
+| `internal/memory/memory_core.SeriesSpec`                    | is a timeseries the caller supplies with its points and anchors.                                                       |
+| `internal/memory/memory_core.ToolTiming`                    | records the model, timing and tokens of a traced step.                                                                 |
+| `internal/memory/memory_core.Trace`                         | records one Remember, Query or image call as an ATIF trajectory.                                                       |
+| `internal/memory/memory_core.TrainingDataset`               | is a knowledge dataset (whole or a filtered subset) with the class of each of its graphs.                              |
+| `internal/memory/memory_core.modelLLM`                      | wraps an LLM to use a stage's model and reasoning level.                                                               |
+| `internal/memory/memory_core.recordingLLM`                  | wraps an LLM and stores an inference record for every successful call.                                                 |
+| `internal/memory/memory_core.stageKey`                      | is the context key under which the current pipeline stage is stored.                                                   |
+| `internal/memory/memory_core.tracingLLM`                    | wraps an LLM and records each call's input and output in the trace.                                                    |
+| `internal/memory/memory_image.ImageExtraction`              | is what the LLM read from an image.                                                                                    |
+| `internal/memory/memory_image.ImageResult`                  | summarizes what RememberImage stored.                                                                                  |
+| `internal/memory/memory_ontology.cached`                    | is the compiled form of one stored ontology at one version.                                                            |
+| `internal/memory/memory_ontology.prepared`                  | is a parsed and validated ontology document ready to be stored.                                                        |
+| `internal/memory/memory_ontology.registryStore`             | holds an atomic pointer to the compiled registry of each (user, ontology), swapped when it is saved.                   |
+| `internal/memory/memory_ontology/ontospec.AnnotateSummary`  | is the grounding summary of annotate mode.                                                                             |
+| `internal/memory/memory_ontology/ontospec.ClassCount`       | is how many items resolved to a class or relation.                                                                     |
+| `internal/memory/memory_ontology/ontospec.ClassDef`         | is a class of an ontology: parents, description, properties and aliases.                                               |
+| `internal/memory/memory_ontology/ontospec.Counts`           | is how many nodes or edges there were and what became of them.                                                         |
+| `internal/memory/memory_ontology/ontospec.GroundingSummary` | is what both grounding modes report: mode, ontologies and counts.                                                      |
+| `internal/memory/memory_ontology/ontospec.InvalidError`     | is the error of a spec with problems; it wraps ErrInvalid.                                                             |
+| `internal/memory/memory_ontology/ontospec.Issue`            | is one thing wrong with the properties of a node or an edge.                                                           |
+| `internal/memory/memory_ontology/ontospec.Item`             | is the grounding of one node or edge: outcome, reason and detail.                                                      |
+| `internal/memory/memory_ontology/ontospec.Link`             | is an edge of an extraction as grounding sees it.                                                                      |
+| `internal/memory/memory_ontology/ontospec.Node`             | is an entity of an extraction as grounding sees it.                                                                    |
+| `internal/memory/memory_ontology/ontospec.Part`             | is one ontology to compile, with its Ref.                                                                              |
+| `internal/memory/memory_ontology/ontospec.Problem`          | is one thing wrong with an ontology spec, with its path.                                                               |
+| `internal/memory/memory_ontology/ontospec.PropertyDef`      | is a property of an ontology class or relation: type, enum, pattern, required.                                         |
+| `internal/memory/memory_ontology/ontospec.ReasonCount`      | is how many items have a reason code.                                                                                  |
+| `internal/memory/memory_ontology/ontospec.Ref`              | says which stored ontology, and which version of it, defines a class or relation.                                      |
+| `internal/memory/memory_ontology/ontospec.Registry`         | is a compiled (and merged) ontology: hierarchy, alias lookup, validators, extraction schema.                           |
+| `internal/memory/memory_ontology/ontospec.RelationDef`      | is a relation of an ontology: domain, range, temporal flag, properties and aliases.                                    |
+| `internal/memory/memory_ontology/ontospec.Spec`             | is an ontology in the YAML/JSON DSL: classes and relations.                                                            |
+| `internal/memory/memory_ontology/ontospec.StrictSummary`    | is the grounding summary of strict mode, with the dropped ratio.                                                       |
+| `internal/memory/memory_ontology/ontospec.classInfo`        | is a class of a Registry with its own and inherited properties.                                                        |
+| `internal/memory/memory_ontology/ontospec.names`            | is a name with its aliases, for collision checks.                                                                      |
+| `internal/memory/memory_ontology/ontospec.propInfo`         | is a property of a Registry with its compiled pattern.                                                                 |
+| `internal/memory/memory_ontology/ontospec.relationInfo`     | is a relation of a Registry with its domain, range and properties.                                                     |
+| `internal/memory/memory_query.Evidence`                     | lists the entities and edges an answer is based on.                                                                    |
+| `internal/memory/memory_query.QueryPlace`                   | is a place the question of a query mentions (text, kind, query for a geo resolver).                                    |
+| `internal/memory/memory_query.QueryResult`                  | is the answer to a query together with its supporting evidence.                                                        |
+| `internal/memory/memory_query.graphContext`                 | is the subgraph handed to the query LLM.                                                                               |
+| `internal/memory/memory_query.queryContext`                 | is everything the query LLM is given: the memory, the current time and the question.                                   |
+| `internal/memory/memory_query.queryOutput`                  | is the structured answer the query LLM returns.                                                                        |
+| `internal/memory/memory_remember.ChunkResult`               | is the result for one chunk of a chunked text, itself an artifact.                                                     |
+| `internal/memory/memory_remember.Extraction`                | is the structured entities and edges extracted from a block of text.                                                   |
+| `internal/memory/memory_remember.GeoResult`                 | is the outcome of the geo lookup for one entity of a Remember call that the LLM judged to be a place.                  |
+| `internal/memory/memory_remember.Manager`                   | is the goroutine that runs queued remember pipeline requests.                                                          |
+| `internal/memory/memory_remember.Outcome`                   | is what a run of Remember returned, a result or an error.                                                              |
+| `internal/memory/memory_remember.QueueHooks`                | holds the enqueue and dequeue callbacks of the manager's queue.                                                        |
+| `internal/memory/memory_remember.Request`                   | asks the manager for one run of Remember.                                                                              |
+| `internal/memory/memory_remember.Result`                    | summarizes what was stored by Remember.                                                                                |
+| `internal/memory/memory_remember.SeriesFetchResult`         | is the outcome of fetching series from one provider for one entity.                                                    |
+| `internal/memory/memory_remember.SeriesObservationResult`   | is the observation made of one series in a Remember call.                                                              |
+| `internal/memory/memory_remember.SummaryResult`             | is a stored chunk summary, an artifact of its own.                                                                     |
+| `internal/memory/memory_remember.WebSearchResult`           | is the web search made for one key entity of a Remember call.                                                          |
+| `internal/memory/memory_remember.candidates`                | holds the stored facts a Remember call compares new facts with, and how they were found.                               |
+| `internal/memory/memory_remember.chunkPart`                 | says that a stored text is a chunk of a longer one.                                                                    |
+| `internal/memory/memory_remember.chunkSummary`              | is the summary of a chunk before it is stored.                                                                         |
+| `internal/memory/memory_remember.chunkVector`               | is a chunk whose text is embedded together with entities and edges.                                                    |
+| `internal/memory/memory_remember.geoPlace`                  | is the LLM's decision that an entity is a place.                                                                       |
+| `internal/memory/memory_remember.groundCall`                | is the ontology grounding of one Remember call: the registry and the mode.                                             |
+| `internal/memory/memory_remember.grounding`                 | is what the ground_graph stage made of one extraction, written as events by store.                                     |
+| `internal/memory/memory_remember.job`                       | holds what one Remember call shares between the steps it runs on each text.                                            |
+| `internal/memory/memory_remember.keyEntity`                 | is an entity of the call that may be searched for on the web.                                                          |
+| `internal/memory/memory_remember.merger`                    | accumulates the results of a text's chunks into the text's result.                                                     |
+| `internal/memory/memory_remember.observable`                | is a stored series that an observation may be made of.                                                                 |
+| `internal/memory/memory_remember.observationPart`           | says that a stored text is the observation of a series.                                                                |
+| `internal/memory/memory_remember.pendingVectors`            | holds embeddings computed before a transaction commits and written after it.                                           |
+| `internal/memory/memory_remember.queued`                    | is a queued remember run identified by its run ID and context.                                                         |
+| `internal/memory/memory_remember.runLog`                    | is the log of one Remember call.                                                                                       |
+| `internal/memory/memory_remember.runState`                  | is the state shared by the views of a run log.                                                                         |
+| `internal/memory/memory_remember.seriesAssignment`          | is the LLM's decision to fetch from a provider for an entity.                                                          |
+| `internal/memory/memory_remember.seriesFetched`             | is the outcome of one series fetch callback.                                                                           |
+| `internal/memory/memory_remember.similarEntity`             | is a stored entity found by similarity for an endpoint of a new fact.                                                  |
+| `internal/memory/memory_remember.summaryVector`             | is a chunk summary whose text is embedded next to its chunk's.                                                         |
+| `internal/memory/memory_remember.webPart`                   | says that a stored text is the result of a web search.                                                                 |
+| `internal/memory/memory_remember.webSearched`               | is the outcome of the search tool call for one entity.                                                                 |
+| `internal/memory/memory_temporal.Candidates`                | are the stored facts a Remember call compares its new facts with, and how they were found.                             |
+| `internal/memory/memory_temporal.Contradiction`             | says that an existing edge can't hold together with a new edge.                                                        |
+| `internal/memory/memory_temporal.EdgePlan`                  | is the outcome of comparing new edges against existing ones.                                                           |
+| `internal/memory/memory_temporal.pair`                      | pairs a new edge with the existing edge it is compared to.                                                             |
+| `internal/memory/memory_timeseries.AnchorResult`            | is one stored series anchor.                                                                                           |
+| `internal/memory/memory_timeseries.Move`                    | is a change between two consecutive points of a series.                                                                |
+| `internal/memory/memory_timeseries.Observed`                | describes the series an observation is about.                                                                          |
+| `internal/memory/memory_timeseries.Result`                  | is one stored series.                                                                                                  |
+| `internal/memory/memory_timeseries.Stats`                   | summarizes the points of a series, computed in Go and stored as JSON.                                                  |
 
 >>> SARGO
 

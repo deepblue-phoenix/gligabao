@@ -19,25 +19,40 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name
 	ON gb_datasets(user_id, name)
 	WHERE deleted = 0;
 
--- Metadata of a loaded ontology. The ontology itself (classes and relationships) is in the graph tables
--- gb_onto_classes and gb_onto_edges (internal/db/graph), which reference this row. Names are unique per user.
---   sha256: hex digest of the loaded document; classes/properties/edges: what was stored in the graph
+-- An ontology: a typed property graph (classes, relations, properties) written in the YAML/JSON DSL of
+-- internal/memory/memory_ontology/ontospec. Names are unique per user.
+--   spec      the ontology as JSON (what the registries are compiled from)
+--   version   1 for the first save, +1 for every update; stamped on the nodes and edges grounded against it
+--   sha256    hex digest of the latest document; classes/relations/properties: what the spec declares
 CREATE TABLE IF NOT EXISTS gb_ontologies (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id     TEXT NOT NULL,
 	name        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
-	iri         TEXT NOT NULL DEFAULT '',
-	title       TEXT NOT NULL DEFAULT '',
-	format      TEXT NOT NULL,
+	format      TEXT NOT NULL DEFAULT 'yaml',
+	version     INTEGER NOT NULL DEFAULT 1,
+	spec        TEXT NOT NULL,
 	size_bytes  INTEGER NOT NULL,
 	sha256      TEXT NOT NULL,
 	classes     INTEGER NOT NULL,
+	relations   INTEGER NOT NULL,
 	properties  INTEGER NOT NULL,
-	edges       INTEGER NOT NULL,
 	created_at  DATETIME NOT NULL,
 	updated_at  DATETIME NOT NULL,
 	UNIQUE (user_id, name)
+);
+
+-- The history of an ontology: the document of every version, as it was sent, and the spec it parsed to.
+CREATE TABLE IF NOT EXISTS gb_ontology_versions (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	ontology_id INTEGER NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
+	version     INTEGER NOT NULL,
+	format      TEXT NOT NULL,
+	content     TEXT NOT NULL,
+	spec        TEXT NOT NULL,
+	sha256      TEXT NOT NULL,
+	created_at  DATETIME NOT NULL,
+	UNIQUE (ontology_id, version)
 );
 
 -- The AI models gligabao knows (see llm.SupportedModels). The graph tables reference them: gb_entities.model_id and

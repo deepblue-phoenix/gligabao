@@ -103,7 +103,13 @@ type CallOptions struct {
 	// ClassifyGraph says Remember classifies the graph of each artifact it stores with an LLM (the classify_graph stage), set by
 	// WithClassifyGraph; GraphClasses, if not empty, are the only classes it may choose from (else it chooses freely).
 	ClassifyGraph bool
-	GraphClasses  []string
+	// OntologyGrounding says Remember grounds the graph it extracts against ontologies (the ground_graph stage), set by
+	// WithOntologyGrounding; Ontologies are the names of the ontologies to use (all of the user's if empty) and OntologyMode is
+	// ontospec.ModeAnnotate or ontospec.ModeStrict.
+	OntologyGrounding bool
+	Ontologies        []string
+	OntologyMode      string
+	GraphClasses      []string
 
 	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
 	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a

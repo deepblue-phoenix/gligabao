@@ -2,7 +2,7 @@ package memory_ontology
 
 // Archive keeps the documents of the ontologies in an Amazon S3 bucket, next to the database copy (the classes and edges). It is on when
 // the server has an ontology bucket (config.OntologyS3Bucket). Every user has a directory:
-// "<prefix>/<user>/<name>/<timestamp>_<action>.owl", where timestamp is UTC ("20060102T150405Z") and action is load, merge or replace, so
+// "<prefix>/<user>/<name>/<timestamp>_<action>.<yaml|json>", where timestamp is UTC ("20060102T150405Z") and action is create or update, so
 // the documents of an ontology list in the order they were sent and none is overwritten.
 //
 // The S3 client (S3) is dedicated to the ontologies: it shares no code with the clients of the images and the ATIF traces. Every key is
@@ -23,6 +23,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology/ontospec"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,9 +33,8 @@ const DefaultS3Prefix = "ontologies"
 
 // The actions of an archived document.
 const (
-	actionLoad    = "load"
-	actionMerge   = "merge"
-	actionReplace = "replace"
+	actionCreate = "create"
+	actionUpdate = "update"
 )
 
 const archiveTimeLayout = "20060102T150405Z"
@@ -128,10 +129,12 @@ func userSegment(user string) (string, error) {
 	}
 }
 
-// Key is the object key of a document: "<prefix>/<user>/<name>/<timestamp>_<action>.owl". The name must be a valid ontology name.
+// Key is the object key of a document: "<prefix>/<user>/<name>/<timestamp>_<action>.<format>" (format "yaml", or "json"). The name must be
+// a valid ontology name.
 func (s *S3) Key(user,
 	name,
-	action string,
+	action,
+	format string,
 	at time.Time) (string, error) {
 	seg, err := userSegment(user)
 	if err != nil {
@@ -140,19 +143,29 @@ func (s *S3) Key(user,
 	if name, err = ResolveName(name); err != nil {
 		return "", err
 	}
-	return s.prefix + "/" + seg + "/" + name + "/" + at.UTC().Format(archiveTimeLayout) + "_" + action + ".owl", nil
+	return s.prefix + "/" + seg + "/" + name + "/" + at.UTC().Format(archiveTimeLayout) + "_" + action + "." + ext(format), nil
+}
+
+// ext is the file extension of a format.
+func ext(format string) string {
+	if format == ontospec.FormatJSON {
+		return "json"
+	}
+	return "yaml"
 }
 
 // Put stores a document of the ontology called name of user and returns its key. Objects are never overwritten (the key has the time).
 func (s *S3) Put(ctx context.Context,
 	user,
 	name,
-	action string,
+	action,
+	format string,
 	at time.Time,
 	content []byte) (string, error) {
 	key, err := s.Key(user,
 		name,
 		action,
+		format,
 		at)
 	if err != nil {
 		return "", err
@@ -172,7 +185,8 @@ func (s *S3) Put(ctx context.Context,
 func archive(ctx context.Context,
 	userID,
 	name,
-	action string,
+	action,
+	format string,
 	content []byte) {
 	if Archive == nil {
 		return
@@ -181,6 +195,7 @@ func archive(ctx context.Context,
 		userID,
 		name,
 		action,
+		format,
 		time.Now(),
 		content); err != nil {
 		log.WithError(err).WithField("ontology", name).Error("ontology: storing the document in S3")

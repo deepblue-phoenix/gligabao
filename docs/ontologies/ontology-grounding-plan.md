@@ -1,9 +1,9 @@
 # Plan: ontology graph grounding with a YAML/JSON ontology DSL
 
 ## Description
-Design plan (not implemented yet, reviewed and decided on 2026-11-19) for grounding `remember` graphs against user-editable ontologies. The ontology is a declarative YAML/JSON DSL (typed property graph: classes, relations, properties), not OWL. It is compiled at runtime into (1) a JSON Schema for the LLM's structured extraction output and (2) an in-memory Go registry with validators and lookup maps, swapped atomically when the user saves a change.
+Design plan (reviewed and decided on 2026-11-19; **implemented in 0.216.0**, see the "Implementation notes" at the end for where it differs) for grounding `remember` graphs against user-editable ontologies. The ontology is a declarative YAML/JSON DSL (typed property graph: classes, relations, properties), not OWL. It is compiled at runtime into (1) a JSON Schema for the LLM's structured extraction output and (2) an in-memory Go registry with validators and lookup maps, swapped atomically when the user saves a change.
 
-Companion todo (checklist of what to build): `g_todo/gligabao/ontology_graph_grounding.md`.
+How it works for users: [ontologies.md](ontologies.md). Companion todo (checklist of what to build): `g_todo/gligabao/ontology_graph_grounding.md`.
 
 ## Decisions
 - OWL is removed entirely (parser `memory_ontology` RDF/XML, tables `gb_onto_classes` / `gb_onto_edges`, OWL docs, `build/ontology/market.owl`; the market ontology is converted once to the new YAML format). No JSON-LD, no individuals.
@@ -79,3 +79,13 @@ type StrictSummary struct{ GroundingSummary; DroppedRatio float64; Violations []
 ## Phase 2 (out of scope for now)
 - Query-time subclass expansion with `Descendants`.
 - Background re-validation worker on a major version bump.
+
+## Implementation notes (0.216.0)
+- The pure part (Spec, Parse, Validate, Compile, merge, grounding, summaries) is the package `internal/memory/memory_ontology/ontospec`, with no database, so that `memory_core` can use its constants; the stored ontologies and the registry store are in `memory_ontology`.
+- No `santhosh-tekuri/jsonschema` dependency: validation uses the compiled property validators (type, enum, pattern, required), and `ExtractionJSON` only builds the schema (a plain map) for the prompt. YAML is `gopkg.in/yaml.v3`.
+- The LLM client has no structured output, so in `strict` mode the schema is part of the prompt and the validation afterwards is the guarantee. In `annotate` mode the ontology is in the prompt too, as a guide the model may leave.
+- Names are compared ignoring case and non-alphanumerics, so the extraction's `snake_case` matches a `CamelCase` ontology. `subClassOf`, `domain` and `range` take a name or a list.
+- The grounding stage is `ground_graph` (a run log stage, no model). It runs in its own loop after the extraction of every chunk, before the parent artifact is stored. The events are written by the store stage, in its transaction.
+- Extra reason codes: `endpoint_dropped` and `endpoint_unlisted` (strict mode). An item that resolved to nothing is logged once for each ontology of the call.
+- `GET /v1/gb/ontologies` and `GET /v1/gb/ontologies/{name}` were added with the events endpoint. The `properties` of entities and edges are validated, not stored. An update replaces the whole document (the merge of fragments went away with OWL).
+- Old databases: the OWL tables are dropped at startup and the new columns are added.

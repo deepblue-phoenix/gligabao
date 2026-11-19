@@ -82,9 +82,9 @@ type (
 	ImageGroup                   = model.ImageGroup
 	Counts                       = model.Counts
 	Tx                           = model.Tx
-	OntologyClass                = model.OntologyClass
-	OntologyEdge                 = model.OntologyEdge
-	OntologyCounts               = model.OntologyCounts
+	Grounding                    = model.Grounding
+	OntologyEvent                = model.OntologyEvent
+	OntologyEventFilter          = model.OntologyEventFilter
 	NewSeries                    = model.NewSeries
 	NewSeriesAnchor              = model.NewSeriesAnchor
 	Series                       = model.Series
@@ -1132,98 +1132,24 @@ func CountCrossDatasetEdges(ctx context.Context,
 }
 
 //---------------------------------------------------------------------------------------------
-// Ontologies
+// Ontology grounding
 
-// LoadOntology stores the classes and edges of the ontology whose metadata row is ontologyID (see package
-// relational), replacing any it had stored, in one transaction: either the new ones replace the old or nothing changes. Edges refer to classes by IRI, so every
-// endpoint must be in classes.
-func LoadOntology(ctx context.Context,
+// ListOntologyEvents returns the grounding events of the ontology (see gb_ontology_events), newest first.
+func ListOntologyEvents(ctx context.Context,
 	d *sql.DB,
 	ontologyID int64,
-	classes []OntologyClass,
-	edges []OntologyEdge) error {
+	f OntologyEventFilter) ([]OntologyEvent, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.LoadOntology(ctx,
+		return sqlite.ListOntologyEvents(ctx,
 			d,
 			ontologyID,
-			classes,
-			edges)
+			f)
 	case config.DBBackendPostgres:
-		return postgres.LoadOntology(ctx,
+		return postgres.ListOntologyEvents(ctx,
 			d,
 			ontologyID,
-			classes,
-			edges)
-	}
-	return unsupported()
-}
-
-// MergeOntology merges classes and edges into the ontology whose metadata row is ontologyID, in one transaction
-// (all of it is applied or nothing is), and returns the size of the ontology afterwards. Nothing is deleted.
-//
-// Classes are identified by IRI, and edges by (source IRI, target IRI, kind, IRI):
-//   - a class or edge that is not stored yet is added;
-//   - an edge that is stored already is overwritten: its relation, label, comment and inverse_of are replaced by
-//     the supplied ones, even when those are empty;
-//   - a declared class that is stored already is overwritten in the same way (name, label, comment). A class that
-//     is not declared (see OntologyClass.Declared) is only added when missing and never changes a stored one, so that
-//     mentioning a class as the endpoint of an edge cannot erase its description;
-//   - stored classes and edges that are not supplied are left alone.
-//
-// Overwriting keeps the row (its ID), so the edges attached to a class stay attached.
-func MergeOntology(ctx context.Context,
-	d *sql.DB,
-	ontologyID int64,
-	classes []OntologyClass,
-	edges []OntologyEdge) (OntologyCounts, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.MergeOntology(ctx,
-			d,
-			ontologyID,
-			classes,
-			edges)
-	case config.DBBackendPostgres:
-		return postgres.MergeOntology(ctx,
-			d,
-			ontologyID,
-			classes,
-			edges)
-	}
-	return OntologyCounts{}, unsupported()
-}
-
-// ListOntologyClasses returns the classes of the ontology, in the order they were stored.
-func ListOntologyClasses(ctx context.Context,
-	d *sql.DB,
-	ontologyID int64) ([]OntologyClass, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.ListOntologyClasses(ctx,
-			d,
-			ontologyID)
-	case config.DBBackendPostgres:
-		return postgres.ListOntologyClasses(ctx,
-			d,
-			ontologyID)
-	}
-	return nil, unsupported()
-}
-
-// ListOntologyEdges returns the edges of the ontology, in the order they were stored.
-func ListOntologyEdges(ctx context.Context,
-	d *sql.DB,
-	ontologyID int64) ([]OntologyEdge, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.ListOntologyEdges(ctx,
-			d,
-			ontologyID)
-	case config.DBBackendPostgres:
-		return postgres.ListOntologyEdges(ctx,
-			d,
-			ontologyID)
+			f)
 	}
 	return nil, unsupported()
 }

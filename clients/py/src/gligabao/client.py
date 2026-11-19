@@ -44,6 +44,9 @@ class Client:
         observe_timeseries: bool = False,
         classify_graph: bool | None = None,
         graph_classes: list[str] | None = None,
+        ontology_grounding: bool = False,
+        ontologies: list[str] | None = None,
+        ontology_grounding_mode: str | None = None,
     ) -> dict[str, Any]:
         """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
 
@@ -104,6 +107,13 @@ class Client:
         call per artifact; its model and reasoning level are the "classify_graph" stage of `models` and `reasoning`.
         `graph_classes` are the only classes the LLM may choose from, it picks the closest (lowercase snake_case
         names); without it the LLM chooses freely, reusing the classes the dataset already has.
+
+        `ontology_grounding=True` (text only) grounds the extracted graph against your ontologies (loaded with
+        POST /v1/gb/ontologies): every entity and edge is checked against the classes, relations, domains, ranges
+        and properties, tagged with what it matched, and the response has an "ontology_grounding" summary.
+        `ontologies` are the names to use (they are merged for the call; default: all of yours).
+        `ontology_grounding_mode` is "annotate" (the default: tag what matches, flag the rest, drop nothing) or
+        "strict" (what does not conform is dropped before it is stored). Both need `ontology_grounding=True`.
         """
         if (text is None) == (image is None):
             raise ValueError("remember takes exactly one of text and image")
@@ -117,6 +127,8 @@ class Client:
                 raise ValueError("timeseries does not apply to images")
             if classify_graph or graph_classes:
                 raise ValueError("classify_graph does not apply to images")
+            if ontology_grounding or ontologies or ontology_grounding_mode:
+                raise ValueError("ontology_grounding does not apply to images")
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 with open(image, "rb") as f:
                     image = f.read()
@@ -139,6 +151,14 @@ class Client:
             body["classify_graph"] = classify_graph
         if graph_classes:
             body["graph_classes"] = list(graph_classes)
+        if (ontologies or ontology_grounding_mode) and not ontology_grounding:
+            raise ValueError("ontologies and ontology_grounding_mode need ontology_grounding=True")
+        if ontology_grounding:
+            body["ontology_grounding"] = True
+            if ontologies:
+                body["ontologies"] = list(ontologies)
+            if ontology_grounding_mode:
+                body["ontology_grounding_mode"] = ontology_grounding_mode
         if timeseries or fetch_timeseries:
             ts: dict[str, Any] = {}
             if timeseries:

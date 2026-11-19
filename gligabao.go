@@ -214,7 +214,7 @@ type ServeOptions struct {
 	// {"name", "cases"} (the training evals the admin UI and the API run). If empty, Config.EvalsTrainingDirs; if that is empty
 	// too, an "evals_training" directory next to DBPath.
 	TrainingEvalDirs []string
-	// OntologyDirs are the directories ontology documents (OWL, RDF/XML) are loaded from by file name, searched in order (a
+	// OntologyDirs are the directories ontology documents (YAML or JSON) are loaded from by file name, searched in order (a
 	// request to POST or PUT /v1/gb/ontologies with "file" instead of "content"). Nothing is loaded at startup. If empty,
 	// Config.OntologyDirs; if that is empty too, there are none and only "content" can be sent.
 	OntologyDirs []string

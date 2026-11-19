@@ -113,6 +113,11 @@ type RememberRequest struct {
 	ClassifyGraph *bool             `json:"classify_graph,omitempty"` // default true for a text; point to false to turn it off
 	GraphClasses  []string          `json:"graph_classes,omitempty"`
 	GraphIndex    string            `json:"graph_index,omitempty"`
+	// OntologyGrounding grounds the graph against the user's ontologies; Ontologies are the names to use (default: all) and
+	// OntologyGroundingMode is "annotate" (default) or "strict". See gligabao docs/ontologies/ontologies.md.
+	OntologyGrounding     bool     `json:"ontology_grounding,omitempty"`
+	Ontologies            []string `json:"ontologies,omitempty"`
+	OntologyGroundingMode string   `json:"ontology_grounding_mode,omitempty"`
 	// Extra holds any other field of the API (e.g. "timeseries"); it is merged into the body, and wins over the fields above.
 	Extra map[string]any `json:"-"`
 }

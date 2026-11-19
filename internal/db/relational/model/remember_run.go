@@ -43,6 +43,9 @@ const (
 	RememberStageExtractGraph = "extract_graph"
 	// RememberStageSummarizeChunk is the summary of each chunk of a chunked text.
 	RememberStageSummarizeChunk = "summarize_chunk"
+	// RememberStageGroundGraph is the grounding of the extracted entities and edges against the ontologies (only with ontology_grounding):
+	// the check of their types, relations, domains, ranges and properties, and, in strict mode, the dropping of what does not conform.
+	RememberStageGroundGraph = "ground_graph"
 	// RememberStageLoadCandidates is the lookup of the stored facts the new ones may repeat or contradict (it embeds the
 	// endpoints of the new facts, with vectors).
 	RememberStageLoadCandidates = "load_candidates"
@@ -79,6 +82,7 @@ var RememberStages = []RememberStageDef{
 	{RememberStageChunkText, false},
 	{RememberStageExtractGraph, true},
 	{RememberStageSummarizeChunk, true},
+	{RememberStageGroundGraph, false},
 	{RememberStageLoadCandidates, true},
 	{RememberStageResolveEdges, true},
 	{RememberStageStore, true},

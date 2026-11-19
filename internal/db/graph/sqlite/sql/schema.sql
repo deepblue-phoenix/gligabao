@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	type        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the entity (see the comment above)
+	ontology_version INTEGER, -- ontology grounding (see gb_ontology_events); NULL when the row was never grounded
+	ontology_class   TEXT,    -- the class (the relation, for an edge) the row resolved to
+	ontology_valid   INTEGER, -- whether it matched the ontology with no violation
 	created_at  DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 	updated_at  DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 	UNIQUE (dataset_id, name_key, type)
@@ -88,7 +91,10 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 	created_at  DATETIME NOT NULL,
 	expired_at  DATETIME,
 	artifact_id INTEGER REFERENCES gb_artifacts(id) ON DELETE SET NULL,
-	model_id    TEXT REFERENCES gb_models(id) -- the model that inferred the fact
+	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the fact
+	ontology_version INTEGER, -- ontology grounding, as in gb_entities
+	ontology_class   TEXT,
+	ontology_valid   INTEGER
 );
 
 -- Which artifacts an edge was inferred from (many-to-many).
@@ -379,35 +385,42 @@ CREATE TABLE IF NOT EXISTS gb_geo_pending (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_geo_pending_updated ON gb_geo_pending(updated_at);
 
--- An ontology (metadata in gb_ontologies, see internal/db/relational) is a small graph of its own, kept apart from
--- the dataset graph above: classes are nodes, and edges are the relationships between classes.
---   kind: 'subclass_of' | 'equivalent_class' | 'disjoint_with' | 'property'
---   relation: edge name (the property's local name for 'property'); iri: the property or predicate IRI
---   label, comment, inverse_of: description of a property
-CREATE TABLE IF NOT EXISTS gb_onto_classes (
-	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	ontology_id INTEGER NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
-	iri         TEXT NOT NULL,
-	name        TEXT NOT NULL,
-	label       TEXT NOT NULL DEFAULT '',
-	comment     TEXT NOT NULL DEFAULT '',
-	UNIQUE (ontology_id, iri)
+-- What grounding a remember call against an ontology made of each node and edge it extracted (see
+-- internal/memory/memory_ontology/ontospec, docs/ontologies/ontologies.md): a log for debugging ontologies.
+--   ontology_id/ontology_version   the ontology (gb_ontologies) and version that defines the class or relation the item resolved to; an
+--                                  item that did not resolve is logged once for each ontology of the call, at its version
+--   mode          'annotate' | 'strict'
+--   subject_kind  'node' | 'edge'
+--   name          the entity name, or "source relation target" of an edge; type: the type or relation as the LLM wrote it;
+--                 class: the class or relation it resolved to ('' if none)
+--   outcome       'matched' | 'matched_via_alias' | 'unmatched' | 'violation' | 'dropped'
+--   reason        unknown_class | unknown_relation | domain_violation | range_violation | property_invalid | missing_required |
+--                 endpoint_dropped | endpoint_unlisted ('' for a match)
+--   detail        JSON: the failing property, the validator message, ...
+--   entity_id/edge_id   the stored row (NULL for a dropped item); run_id: the remember run (gb_remember_runs)
+-- Deleting the artifact deletes its events.
+CREATE TABLE IF NOT EXISTS gb_ontology_events (
+	id               INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id       INTEGER NOT NULL REFERENCES gb_datasets(id),
+	artifact_id      INTEGER NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	run_id           INTEGER,
+	ontology_id      INTEGER NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
+	ontology_version INTEGER NOT NULL,
+	mode             TEXT NOT NULL,
+	subject_kind     TEXT NOT NULL,
+	name             TEXT NOT NULL,
+	type             TEXT NOT NULL DEFAULT '',
+	class            TEXT NOT NULL DEFAULT '',
+	outcome          TEXT NOT NULL,
+	reason           TEXT NOT NULL DEFAULT '',
+	detail           TEXT NOT NULL DEFAULT '{}',
+	entity_id        INTEGER REFERENCES gb_entities(id) ON DELETE SET NULL,
+	edge_id          INTEGER REFERENCES gb_edges(id) ON DELETE SET NULL,
+	created_at       DATETIME NOT NULL
 );
-CREATE TABLE IF NOT EXISTS gb_onto_edges (
-	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	ontology_id INTEGER NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
-	source_id   INTEGER NOT NULL REFERENCES gb_onto_classes(id) ON DELETE CASCADE,
-	target_id   INTEGER NOT NULL REFERENCES gb_onto_classes(id) ON DELETE CASCADE,
-	relation    TEXT NOT NULL,
-	kind        TEXT NOT NULL,
-	iri         TEXT NOT NULL,
-	label       TEXT NOT NULL DEFAULT '',
-	comment     TEXT NOT NULL DEFAULT '',
-	inverse_of  TEXT NOT NULL DEFAULT '',
-	UNIQUE (ontology_id, source_id, target_id, kind, iri)
-);
-CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_source ON gb_onto_edges(source_id);
-CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
+CREATE INDEX IF NOT EXISTS idx_gb_ontology_events_artifact ON gb_ontology_events(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_ontology_events_ontology ON gb_ontology_events(ontology_id);
+CREATE INDEX IF NOT EXISTS idx_gb_ontology_events_dataset ON gb_ontology_events(dataset_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_extractions_image ON gb_image_extractions(image_artifact_id);

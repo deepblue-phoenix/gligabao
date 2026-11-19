@@ -33,8 +33,31 @@ func initSchema(ctx context.Context,
 	defer conn.ExecContext(context.WithoutCancel(ctx),
 		`SELECT pg_advisory_unlock($1)`,
 		int64(lockID))
+	if err := dropOWLOntologies(ctx, conn); err != nil {
+		return err
+	}
 	if _, err := conn.ExecContext(ctx, schema+rememberRunsSchema+queryRunsSchema); err != nil {
 		return fmt.Errorf("init schema: %w", err)
+	}
+	return nil
+}
+
+// dropOWLOntologies removes the tables of the OWL ontologies (gb_ontologies with an "iri" column, gb_onto_classes, gb_onto_edges),
+// which the YAML/JSON ontologies replace. The old ontologies cannot be converted: they are loaded again in the new format.
+func dropOWLOntologies(ctx context.Context,
+	conn *sql.Conn) error {
+	var n int
+	if err := conn.QueryRowContext(ctx,
+		`
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'gb_ontologies' AND column_name = 'iri'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, table := range []string{"gb_onto_edges", "gb_onto_classes", "gb_ontologies"} {
+		if _, err := conn.ExecContext(ctx, `DROP TABLE IF EXISTS `+table+` CASCADE`); err != nil {
+			return fmt.Errorf("drop %s: %w", table, err)
+		}
 	}
 	return nil
 }

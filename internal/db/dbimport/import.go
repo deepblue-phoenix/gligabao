@@ -134,7 +134,7 @@ var (
 	}
 	notImported = map[string]bool{
 		tableDatasets:   true, // matched by name, before the rows
-		"gb_ontologies": true, "gb_onto_classes": true, "gb_onto_edges": true,
+		"gb_ontologies": true, "gb_ontology_versions": true, "gb_ontology_events": true,
 	}
 )
 

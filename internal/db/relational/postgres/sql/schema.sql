@@ -13,22 +13,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name
 	ON gb_datasets(user_id, name)
 	WHERE NOT deleted;
 
+-- An ontology: a typed property graph (classes, relations, properties) written in the YAML/JSON DSL of
+-- internal/memory/memory_ontology/ontospec (see sqlite/sql/schema.sql). Names are unique per user.
 CREATE TABLE IF NOT EXISTS gb_ontologies (
 	id          BIGSERIAL PRIMARY KEY,
 	user_id     TEXT NOT NULL,
 	name        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
-	iri         TEXT NOT NULL DEFAULT '',
-	title       TEXT NOT NULL DEFAULT '',
-	format      TEXT NOT NULL,
+	format      TEXT NOT NULL DEFAULT 'yaml',
+	version     INTEGER NOT NULL DEFAULT 1,
+	spec        JSONB NOT NULL,
 	size_bytes  BIGINT NOT NULL,
 	sha256      TEXT NOT NULL,
 	classes     BIGINT NOT NULL,
+	relations   BIGINT NOT NULL,
 	properties  BIGINT NOT NULL,
-	edges       BIGINT NOT NULL,
 	created_at  TIMESTAMPTZ NOT NULL,
 	updated_at  TIMESTAMPTZ NOT NULL,
 	UNIQUE (user_id, name)
+);
+
+-- The history of an ontology: the document of every version, as it was sent, and the spec it parsed to.
+CREATE TABLE IF NOT EXISTS gb_ontology_versions (
+	id          BIGSERIAL PRIMARY KEY,
+	ontology_id BIGINT NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
+	version     INTEGER NOT NULL,
+	format      TEXT NOT NULL,
+	content     TEXT NOT NULL,
+	spec        JSONB NOT NULL,
+	sha256      TEXT NOT NULL,
+	created_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (ontology_id, version)
 );
 
 -- The AI models gligabao knows (see sqlite/sql/schema.sql).

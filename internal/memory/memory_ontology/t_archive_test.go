@@ -40,17 +40,17 @@ func TestArchiveKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	got, err := s.Key("a/b", "market", actionMerge, at)
-	if want := "ontologies/a%2Fb/market/20260102T030405Z_merge.owl"; err != nil || got != want {
+	got, err := s.Key("a/b", "market", actionUpdate, "json", at)
+	if want := "ontologies/a%2Fb/market/20260102T030405Z_update.json"; err != nil || got != want {
 		t.Fatalf("got %q (%v), want %q", got, err, want)
 	}
-	if _, err := s.Key("", "market", actionLoad, at); err == nil {
+	if _, err := s.Key("", "market", actionCreate, "yaml", at); err == nil {
 		t.Fatal("an empty user must be refused")
 	}
-	if _, err := s.Key("u", "../x", actionLoad, at); err == nil {
+	if _, err := s.Key("u", "../x", actionCreate, "yaml", at); err == nil {
 		t.Fatal("a bad name must be refused")
 	}
-	if got, _ := s.Key("..", "m", actionLoad, at); !strings.HasPrefix(got, "ontologies/%2E%2E/") {
+	if got, _ := s.Key("..", "m", actionCreate, "yaml", at); !strings.HasPrefix(got, "ontologies/%2E%2E/") {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -73,15 +73,15 @@ func TestArchiveStoresDocument(t *testing.T) {
 	}
 	Archive = s
 	t.Cleanup(func() { Archive = nil })
-	archive(context.Background(), "u1", "market", actionLoad, []byte("<doc/>"))
+	archive(context.Background(), "u1", "market", actionCreate, "yaml", []byte("<doc/>"))
 	if len(f.objs) != 1 {
 		t.Fatalf("objects %v", f.objs)
 	}
 	for k, v := range f.objs {
-		if !strings.HasPrefix(k, "x/u1/market/") || !strings.HasSuffix(k, "_load.owl") || v != "<doc/>" {
+		if !strings.HasPrefix(k, "x/u1/market/") || !strings.HasSuffix(k, "_create.yaml") || v != "<doc/>" {
 			t.Fatalf("%q = %q", k, v)
 		}
 	}
 	Archive = nil
-	archive(context.Background(), "u1", "market", actionLoad, []byte("<doc/>")) // no store: a no-op
+	archive(context.Background(), "u1", "market", actionCreate, "yaml", []byte("<doc/>")) // no store: a no-op
 }

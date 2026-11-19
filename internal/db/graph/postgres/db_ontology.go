@@ -4,216 +4,112 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 )
 
 //---------------------------------------------------------------------------------------------
-// Ontologies
+// Ontology grounding (gb_ontology_events)
 
-// LoadOntology stores the classes and edges of an ontology in one transaction, replacing any it had stored.
-func LoadOntology(ctx context.Context,
-	d *sql.DB,
-	ontologyID int64,
-	classes []model.OntologyClass,
-	edges []model.OntologyEdge) error {
-	tx, err := d.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, table := range []string{"gb_onto_edges", "gb_onto_classes"} {
-		if _, err := tx.ExecContext(ctx,
+func (t *Tx) InsertOntologyEvents(ctx context.Context,
+	events []model.OntologyEvent,
+	createdAt time.Time) error {
+	for _, e := range events {
+		detail := string(e.Detail)
+		if detail == "" {
+			detail = "{}"
+		}
+		if _, err := t.tx.ExecContext(ctx,
 			`
-			DELETE FROM `+table+`
-			WHERE ontology_id = $1`,
-			ontologyID); err != nil {
-			return fmt.Errorf("clear ontology: %w", err)
-		}
-	}
-	if err := mergeOntology(ctx,
-		tx,
-		ontologyID,
-		classes,
-		edges); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-// MergeOntology merges classes and edges into a stored ontology in one transaction and returns its size
-// afterwards. The merge rules are documented on graph.MergeOntology.
-func MergeOntology(ctx context.Context,
-	d *sql.DB,
-	ontologyID int64,
-	classes []model.OntologyClass,
-	edges []model.OntologyEdge) (model.OntologyCounts, error) {
-	var c model.OntologyCounts
-	tx, err := d.BeginTx(ctx, nil)
-	if err != nil {
-		return c, err
-	}
-	defer tx.Rollback()
-	if err := mergeOntology(ctx,
-		tx,
-		ontologyID,
-		classes,
-		edges); err != nil {
-		return c, err
-	}
-	err = tx.QueryRowContext(ctx,
-		`
-		SELECT
-			(SELECT COUNT(*) FROM gb_onto_classes WHERE ontology_id = $1),
-			(
-				SELECT COUNT(DISTINCT iri)
-				FROM gb_onto_edges
-				WHERE ontology_id = $1 AND kind = 'property'
-			),
-			(SELECT COUNT(*) FROM gb_onto_edges WHERE ontology_id = $1)`,
-		ontologyID).
-		Scan(&c.Classes,
-			&c.Properties,
-			&c.Edges)
-	if err != nil {
-		return c, fmt.Errorf("count ontology: %w", err)
-	}
-	return c, tx.Commit()
-}
-
-// mergeOntology upserts the classes, then the edges, inside tx. Upserting keeps the row of what exists already, so
-// edges that point to it stay valid.
-func mergeOntology(ctx context.Context,
-	tx *sql.Tx,
-	ontologyID int64,
-	classes []model.OntologyClass,
-	edges []model.OntologyEdge) error {
-	ids := make(map[string]int64, len(classes))
-	for _, c := range classes {
-		// A declared class overwrites the stored one. A class that is only mentioned must not: its conflict clause
-		// is a no-op update, which is there only so that RETURNING yields the ID of the existing row.
-		onConflict := `DO UPDATE SET iri = gb_onto_classes.iri`
-		if c.Declared {
-			onConflict = `DO UPDATE SET
-				name    = EXCLUDED.name,
-				label   = EXCLUDED.label,
-				comment = EXCLUDED.comment`
-		}
-		var id int64
-		err := tx.QueryRowContext(ctx,
-			`
-			INSERT INTO gb_onto_classes (ontology_id, iri, name, label, comment)
-			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (ontology_id, iri) `+onConflict+`
-			RETURNING id`,
-			ontologyID,
-			c.IRI,
-			c.Name,
-			c.Label,
-			c.Comment).Scan(&id)
-		if err != nil {
-			return fmt.Errorf("store ontology class %q: %w",
-				c.IRI,
-				err)
-		}
-		ids[c.IRI] = id
-	}
-	for _, e := range edges {
-		src, ok1 := ids[e.SourceIRI]
-		tgt, ok2 := ids[e.TargetIRI]
-		if !ok1 || !ok2 {
-			return fmt.Errorf("ontology edge %q: unknown class %q or %q",
-				e.Relation,
-				e.SourceIRI,
-				e.TargetIRI)
-		}
-		// An edge is identified by (source, target, kind, iri); a stored one is overwritten.
-		if _, err := tx.ExecContext(ctx,
-			`
-			INSERT INTO gb_onto_edges (ontology_id, source_id, target_id, relation, kind, iri, label, comment, inverse_of)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			ON CONFLICT (ontology_id, source_id, target_id, kind, iri) DO UPDATE SET
-				relation   = EXCLUDED.relation,
-				label      = EXCLUDED.label,
-				comment    = EXCLUDED.comment,
-				inverse_of = EXCLUDED.inverse_of`,
-			ontologyID,
-			src,
-			tgt,
-			e.Relation,
-			e.Kind,
-			e.IRI,
-			e.Label,
-			e.Comment,
-			e.InverseOf); err != nil {
-			return fmt.Errorf("store ontology edge %q: %w",
-				e.Relation,
-				err)
+			INSERT INTO gb_ontology_events (
+				dataset_id, artifact_id, run_id, ontology_id, ontology_version, mode, subject_kind, name, type, class,
+				outcome, reason, detail, entity_id, edge_id, created_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16)`,
+			e.DatasetID,
+			e.ArtifactID,
+			nullIfZero(e.RunID),
+			e.OntologyID,
+			e.OntologyVersion,
+			e.Mode,
+			e.SubjectKind,
+			e.Name,
+			e.Type,
+			e.Class,
+			e.Outcome,
+			e.Reason,
+			detail,
+			nullIfZero(e.EntityID),
+			nullIfZero(e.EdgeID),
+			createdAt.UTC()); err != nil {
+			return fmt.Errorf("insert ontology event: %w", err)
 		}
 	}
 	return nil
 }
 
-// ListOntologyClasses returns the classes of the ontology, in the order they were stored.
-func ListOntologyClasses(ctx context.Context,
+// ListOntologyEvents returns the events of the ontology, newest first.
+func ListOntologyEvents(ctx context.Context,
 	d *sql.DB,
-	ontologyID int64) ([]model.OntologyClass, error) {
+	ontologyID int64,
+	f model.OntologyEventFilter) ([]model.OntologyEvent, error) {
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 100
+	}
 	rows, err := d.QueryContext(ctx,
 		`
-		SELECT iri, name, label, comment
-		FROM gb_onto_classes
+		SELECT id, dataset_id, artifact_id, COALESCE(run_id, 0), ontology_id, ontology_version, mode, subject_kind, name, type, class,
+			outcome, reason, detail::text, COALESCE(entity_id, 0), COALESCE(edge_id, 0), created_at
+		FROM gb_ontology_events
 		WHERE ontology_id = $1
-		ORDER BY id`,
-		ontologyID)
+			AND ($2::bigint = 0 OR artifact_id = $2)
+			AND ($3::text = '' OR outcome = $3)
+		ORDER BY id DESC
+		LIMIT $4`,
+		ontologyID,
+		f.ArtifactID,
+		f.Outcome,
+		limit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list ontology events: %w", err)
 	}
 	defer rows.Close()
-	out := []model.OntologyClass{}
+	out := []model.OntologyEvent{}
 	for rows.Next() {
-		var c model.OntologyClass
-		if err := rows.Scan(&c.IRI,
-			&c.Name,
-			&c.Label,
-			&c.Comment); err != nil {
+		var e model.OntologyEvent
+		var detail string
+		if err := rows.Scan(&e.ID,
+			&e.DatasetID,
+			&e.ArtifactID,
+			&e.RunID,
+			&e.OntologyID,
+			&e.OntologyVersion,
+			&e.Mode,
+			&e.SubjectKind,
+			&e.Name,
+			&e.Type,
+			&e.Class,
+			&e.Outcome,
+			&e.Reason,
+			&detail,
+			&e.EntityID,
+			&e.EdgeID,
+			&e.CreatedAt); err != nil {
 			return nil, err
 		}
-		out = append(out, c)
+		e.Detail = []byte(detail)
+		e.CreatedAt = e.CreatedAt.UTC()
+		out = append(out, e)
 	}
 	return out, rows.Err()
 }
 
-// ListOntologyEdges returns the edges of the ontology, in the order they were stored.
-func ListOntologyEdges(ctx context.Context,
-	d *sql.DB,
-	ontologyID int64) ([]model.OntologyEdge, error) {
-	rows, err := d.QueryContext(ctx,
-		`
-		SELECT s.iri, t.iri, e.relation, e.kind, e.iri, e.label, e.comment, e.inverse_of
-		FROM gb_onto_edges e
-		JOIN gb_onto_classes s ON s.id = e.source_id
-		JOIN gb_onto_classes t ON t.id = e.target_id
-		WHERE e.ontology_id = $1
-		ORDER BY e.id`,
-		ontologyID)
-	if err != nil {
-		return nil, err
+// groundingColumns are the values of the ontology columns of a row: NULLs for a row that was not grounded.
+func groundingColumns(g *model.Grounding) (version, class, valid any) {
+	if g == nil {
+		return nil, nil, nil
 	}
-	defer rows.Close()
-	out := []model.OntologyEdge{}
-	for rows.Next() {
-		var e model.OntologyEdge
-		if err := rows.Scan(&e.SourceIRI,
-			&e.TargetIRI,
-			&e.Relation,
-			&e.Kind,
-			&e.IRI,
-			&e.Label,
-			&e.Comment,
-			&e.InverseOf); err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
+	return g.Version, nullIfEmpty(g.Class), g.Valid
 }

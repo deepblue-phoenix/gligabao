@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.216.0] - 2026-11-19
+
+### Added
+- **Ontology grounding in `remember`.** With `ontology_grounding: true` (default `false`) the entities and edges the LLM extracts are checked against the user's ontologies before they are stored: an entity's type must be a class, an edge's relation a relation, its source and target of the domain and range (or subclasses), and the `properties` valid (type, `enum`, `pattern`, required). Two new request fields: `ontologies` (the names to use, merged into one for the call; default all of the user's) and `ontology_grounding_mode` (`annotate`, the default, tags what matches, flags the rest and drops nothing; `strict` drops what does not conform). `400` for fields without the flag, an unknown ontology or mode, ontologies that define the same class or relation differently, and an image. The extraction prompt describes the ontology (in strict mode with its JSON Schema, as the LLM client has no structured output; the validation afterwards is the guarantee), and the call has a new `ground_graph` stage in the run log (no model). The response has `ontology_grounding`, an annotate summary (`matched_percent`, `matched_classes`, `violations`) or a strict one (`dropped_ratio`, a signal that the ontology does not cover the corpus, `violations`). The Python client has `ontology_grounding=`, `ontologies=` and `ontology_grounding_mode=`; the Go client the matching fields.
+- **The ontology language**: classes (with `subClassOf`, `aliases` and typed `properties`), relations (`domain`, `range`, `temporal`, properties, aliases), written in YAML or JSON; invalid ontologies are a `400` that lists the problems (parent cycles, unknown classes, bad types or patterns, name and alias collisions, properties redefined by a subclass). Ontologies are compiled into an in-memory registry (class hierarchy, alias lookup, validators, extraction JSON Schema) that is swapped atomically when one is saved.
+- **Versions**: every save bumps the `version` of an ontology; the documents of all versions are kept (`gb_ontology_versions`).
+- **`GET /v1/gb/ontologies`** (list), **`GET /v1/gb/ontologies/{name}`** (with the spec) and **`GET /v1/gb/ontologies/{name}/events`** (`artifact_id`, `outcome`, `limit`): the grounding events.
+- **`gb_ontology_events`**: one row per grounded node and edge (outcome `matched`, `matched_via_alias`, `unmatched`, `violation` or `dropped`, a reason code and a detail), written in the transaction that stores the artifact. `gb_entities` and `gb_edges` get the nullable columns `ontology_version`, `ontology_class` and `ontology_valid`.
+- `build/ontology/market.yaml`, the market ontology in the new language.
+
+### Changed
+- **Breaking: OWL is gone.** The RDF/XML parser, the `gb_onto_classes` and `gb_onto_edges` tables and `build/ontology/market.owl` are removed. `POST /v1/gb/ontologies` and `PUT /v1/gb/ontologies/{name}` take a YAML or JSON ontology (`content`, `spec` or `file`; `format` is `yaml` or `json`, `rdfxml` is refused), the response has `version`, `relations` and `properties` instead of `iri`, `title` and `edges`, and a `PUT` replaces the whole ontology as its next version (no merge, no `replace`). Documents in S3 are stored as `<timestamp>_<create|update>.<yaml|json>`.
+- Existing databases: at startup the old OWL ontologies are dropped (they cannot be converted; load them again in the new format), the new tables are created and the three columns are added to `gb_entities` and `gb_edges`. The `ground_graph` stage is accepted by the stage tables of the run log of a new database.
+
 ## [0.215.1] - 2026-11-19
 
 ### Changed

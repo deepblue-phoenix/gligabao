@@ -19,6 +19,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology/ontospec"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
@@ -41,6 +43,8 @@ type Extraction struct {
 	InferenceID int64 `json:"-"`
 	// Raw is the text the LLM answered, kept for the stage outputs (see runLog.Output); "" if it did not answer.
 	Raw string `json:"-"`
+	// grounding is what the ground_graph stage made of the extraction (nil without ontology grounding); store writes it as events.
+	grounding *grounding
 }
 
 // Result summarizes what was stored by Remember.
@@ -97,6 +101,10 @@ type Result struct {
 	// artifact that has a graph, in order (only with WithClassifyGraph). Each class is a record of gb_artifact_classes that references the run
 	// of the model call. See remember_classes.go.
 	Classes []ClassResult `json:"classes,omitempty"`
+
+	// OntologyGrounding is the summary of the grounding of the graph against the ontologies (only with WithOntologyGrounding): an
+	// ontospec.AnnotateSummary or an ontospec.StrictSummary, by mode, covering all the chunks of a document. See remember_ontology.go.
+	OntologyGrounding any `json:"ontology_grounding,omitempty"`
 
 	// Geo are the entities of the text that the LLM judged to be places, with what the geo resolver found for each (only
 	// when the call has a geo resolver, WithGeoResolver): one per entity, in the order of extraction. The coordinates are
@@ -163,6 +171,9 @@ type job struct {
 	observables []observable
 	// graphEntityIDs are the IDs of the entities the text of the call (and each of its chunks) mentions, for the graph embedder hook (see embedGraph).
 	graphEntityIDs map[int64]bool
+	// ground is the ontology grounding of the call (nil if it has none); groundItems are the items of every extraction, for the summary.
+	ground      *groundCall
+	groundItems []ontospec.Item
 	// graphs are the graphs of the artifacts the call stored (the text, or each chunk of it), for the classify_graph stage (see noteGraph).
 	graphs []artifactGraph
 	// keyEntities are the entities of the texts stored so far that the web search may pick from (see noteKeyEntities),
@@ -215,11 +226,29 @@ func Extract(ctx context.Context,
 	lm memory_core.LLM,
 	text string,
 	ref time.Time) (*Extraction, error) {
+	return extractWith(ctx,
+		lm,
+		text,
+		ref,
+		nil)
+}
+
+// extractWith is Extract under the ontology of ground (nil: none): the prompt describes it, and the entities and edges may carry
+// properties.
+func extractWith(ctx context.Context,
+	lm memory_core.LLM,
+	text string,
+	ref time.Time,
+	ground *groundCall) (*Extraction, error) {
+	system := entitySystemPrompt
+	if ground != nil {
+		system += ground.ontologyPrompt()
+	}
 
 	//-----------------------
 	// LLM
 	resp, err := lm.Complete(ctx, llm.Request{
-		System: entitySystemPrompt,
+		System: system,
 		Messages: []llm.Message{{
 			Role: llm.RoleUser,
 			Content: "<reference_time>\n" + relational.FormatTime(ref) +
@@ -277,12 +306,13 @@ func parseExtraction(s string,
 	var raw struct {
 		Entities []Entity `json:"entities"`
 		Edges    []struct {
-			Source      string `json:"source"`
-			Target      string `json:"target"`
-			Relation    string `json:"relation"`
-			Description string `json:"description"`
-			ValidAt     string `json:"valid_at"`
-			InvalidAt   string `json:"invalid_at"`
+			Source      string         `json:"source"`
+			Target      string         `json:"target"`
+			Relation    string         `json:"relation"`
+			Description string         `json:"description"`
+			ValidAt     string         `json:"valid_at"`
+			InvalidAt   string         `json:"invalid_at"`
+			Properties  map[string]any `json:"properties"`
 		} `json:"edges"`
 	}
 	if err := json.Unmarshal([]byte(js), &raw); err != nil {
@@ -301,6 +331,7 @@ func parseExtraction(s string,
 			Description: strings.TrimSpace(r.Description),
 			ValidAt:     relational.ParseTime(r.ValidAt),
 			InvalidAt:   relational.ParseTime(r.InvalidAt),
+			Properties:  r.Properties,
 		}
 		if e.Source == "" || e.Target == "" || e.Relation == "" {
 			continue
@@ -456,6 +487,25 @@ func Remember(ctx context.Context,
 			input["graph_classes"] = co.GraphClasses
 		}
 	}
+	var ground *groundCall
+	if co.OntologyGrounding {
+		mode, err := memory_core.ResolveGroundingMode(co.OntologyMode)
+		if err != nil {
+			return nil, err
+		}
+		reg, err := memory_ontology.Resolve(ctx,
+			d,
+			userID,
+			co.Ontologies)
+		if err != nil {
+			return nil, err
+		}
+		ground = &groundCall{
+			reg:  reg,
+			mode: mode,
+		}
+		input["ontology_grounding"] = map[string]any{"mode": mode, "ontologies": reg.Refs}
+	}
 	if len(series) > 0 {
 		input["timeseries"] = memory_core.SeriesSummary(series)
 	}
@@ -497,6 +547,7 @@ func Remember(ctx context.Context,
 		text:    text,
 		cc:      cc,
 		chunked: chunked,
+		ground:  ground,
 	}
 	//------------------
 	// MEMORY PIPELINE
@@ -513,6 +564,11 @@ func Remember(ctx context.Context,
 		return nil, err
 	}
 	//------------------
+	if ground != nil && j.res != nil {
+		j.res.OntologyGrounding = ontospec.Summarize(ground.mode,
+			ground.reg.Refs,
+			j.groundItems)
+	}
 	j.embedGraph(ctx)
 	return j.res, nil
 }
@@ -876,6 +932,18 @@ func store(ctx context.Context,
 		entityID)
 	if err != nil {
 		return nil, err
+	}
+
+	// What grounding made of each entity and edge is logged in the same transaction.
+	if g := ex.grounding; g != nil {
+		if err := tx.InsertOntologyEvents(ctx,
+			g.events(dsID,
+				artID,
+				ids,
+				out.Edges),
+			now); err != nil {
+			return nil, err
+		}
 	}
 
 	// The timeseries the caller supplied are stored in this transaction, so a series that cannot be anchored stores

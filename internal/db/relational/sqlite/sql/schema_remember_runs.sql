@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_remember_run_stages_status ON gb_remember_run_
 CREATE TABLE IF NOT EXISTS gb_remember_run_stage_outputs (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	run_id     INTEGER NOT NULL REFERENCES gb_remember_runs(id) ON DELETE CASCADE,
-	stage      TEXT NOT NULL CHECK (stage IN ('classify_complexity', 'chunk_text', 'extract_graph', 'summarize_chunk', 'load_candidates', 'resolve_edges', 'store', 'store_series', 'classify_graph', 'resolve_geo', 'web_search', 'fetch_series', 'observe_series')),
+	stage      TEXT NOT NULL CHECK (stage IN ('classify_complexity', 'chunk_text', 'extract_graph', 'summarize_chunk', 'ground_graph', 'load_candidates', 'resolve_edges', 'store', 'store_series', 'classify_graph', 'resolve_geo', 'web_search', 'fetch_series', 'observe_series')),
 	name       TEXT NOT NULL,
 	label      TEXT NOT NULL DEFAULT '',
 	output     TEXT NOT NULL,

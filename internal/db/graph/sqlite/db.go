@@ -997,11 +997,16 @@ func (t *Tx) UpsertEntity(ctx context.Context,
 	e model.Entity,
 	nameKey string) (int64, error) {
 	var id int64
+	ontVersion, ontClass, ontValid := groundingColumns(e.Ontology)
 	err := t.tx.QueryRowContext(ctx,
 		`
-		INSERT INTO gb_entities (dataset_id, name, name_key, type, description, model_id)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO gb_entities (dataset_id, name, name_key, type, description, model_id, ontology_version, ontology_class, ontology_valid)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (dataset_id, name_key, type) DO UPDATE SET
+			-- a mention that was grounded replaces the grounding of the stored row; one that was not leaves it
+			ontology_version = COALESCE(excluded.ontology_version, gb_entities.ontology_version),
+			ontology_class   = CASE WHEN excluded.ontology_version IS NOT NULL THEN excluded.ontology_class ELSE gb_entities.ontology_class END,
+			ontology_valid   = COALESCE(excluded.ontology_valid, gb_entities.ontology_valid),
 			-- model_id follows the description: it is the model that wrote the stored state.
 			model_id    = CASE
 				WHEN excluded.description != '' OR gb_entities.model_id IS NULL THEN excluded.model_id
@@ -1018,7 +1023,10 @@ func (t *Tx) UpsertEntity(ctx context.Context,
 		nameKey,
 		e.Type,
 		e.Description,
-		nullIfEmpty(e.ModelID)).Scan(&id)
+		nullIfEmpty(e.ModelID),
+		ontVersion,
+		ontClass,
+		ontValid).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("upsert entity %q: %w",
 			e.Name,
@@ -1074,10 +1082,12 @@ func (t *Tx) GetEntity(ctx context.Context,
 
 func (t *Tx) InsertEdge(ctx context.Context,
 	e model.NewEdge) (int64, error) {
+	ontVersion, ontClass, ontValid := groundingColumns(e.Ontology)
 	res, err := t.tx.ExecContext(ctx,
 		`
-		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, artifact_id, model_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, artifact_id, model_id,
+			ontology_version, ontology_class, ontology_valid)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.DatasetID,
 		e.SourceID,
 		e.TargetID,
@@ -1087,7 +1097,10 @@ func (t *Tx) InsertEdge(ctx context.Context,
 		rsqlite.FormatTimePtr(e.InvalidAt),
 		rsqlite.FormatTime(e.CreatedAt),
 		e.ArtifactID,
-		nullIfEmpty(e.ModelID))
+		nullIfEmpty(e.ModelID),
+		ontVersion,
+		ontClass,
+		ontValid)
 	if err != nil {
 		return 0, fmt.Errorf("insert edge: %w", err)
 	}

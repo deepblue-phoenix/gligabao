@@ -1,54 +1,63 @@
 package memory_ontology
 
-// Ontologies describe the concepts (classes) of a domain and the relationships between them. Loading one parses
-// the document, records its metadata in the relational database (gb_ontologies: name, owner, hash, counts) and
-// stores the ontology itself, classes as nodes and relationships as edges, in the graph database
-// (gb_onto_classes, gb_onto_edges). A loaded ontology can later be updated by name: merged with a new document, or replaced by it (see Update). Ontologies are owned by a user and named; names are unique per user. They are
-// separate from datasets and do not (yet) take part in remember or query.
+// Ontologies describe the concepts of a domain: classes, the relations between them and their properties, written in the YAML/JSON DSL
+// of package ontospec. This package stores them (gb_ontologies, with a version history in gb_ontology_versions), keeps the compiled
+// registries in memory and swaps them when an ontology is saved, and resolves the ontologies a remember call names into one registry
+// (Resolve). Ontologies are owned by a user and named; names are unique per user. They are separate from datasets.
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
-	"time"
+	"sync"
+	"sync/atomic"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology/ontospec"
 )
 
-// prepared is a parsed ontology ready to be stored.
-type prepared struct {
-	meta    Meta // everything but the ID, the owner, the name and the timestamps
-	classes []graph.OntologyClass
-	edges   []graph.OntologyEdge
+// cached is the compiled form of one stored ontology, at one version.
+type cached struct {
+	ref  ontospec.Ref
+	spec ontospec.Spec
+	reg  *ontospec.Registry
+}
+
+// registryStore holds, for each (user, ontology), a pointer to its compiled registry. A save swaps the pointer atomically, so the calls
+// that are running keep the registry they started with and the next ones get the new one.
+type registryStore struct {
+	mu   sync.Mutex
+	byID map[string]*atomic.Pointer[cached]
 }
 
 var (
 	ErrInvalidName = errors.New("invalid ontology name")
-	ErrInvalid     = errors.New("invalid ontology")
-	ErrExists      = errors.New("ontology already exists")
-	ErrNotFound    = errors.New("ontology not found")
+	// ErrInvalid is wrapped by the errors of an ontology that is not valid (a malformed document, or problems found by Validate; the
+	// error is then an *ontospec.InvalidError with the list), and of ontologies that cannot be merged.
+	ErrInvalid  = ontospec.ErrInvalid
+	ErrExists   = errors.New("ontology already exists")
+	ErrNotFound = errors.New("ontology not found")
 )
-
-// FormatRDFXML is the only supported serialization: OWL in RDF/XML.
-const FormatRDFXML = "rdfxml"
 
 // MaxBytes is the maximum size of an ontology document.
 const MaxBytes = 8 << 20
 
-// Meta is the metadata of a stored ontology (as opposed to Ontology, the parsed document).
+// Meta is a stored ontology (see relational.Ontology).
 type Meta = relational.Ontology
 
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// Registries is the in-memory store of the compiled registries of the server.
+var Registries = &registryStore{byID: map[string]*atomic.Pointer[cached]{}}
 
 // ResolveName trims name and checks it: required, 1-64 characters of letters, digits, '.', '_' or '-',
 // starting with a letter or digit.
@@ -65,11 +74,17 @@ func ResolveName(name string) (string, error) {
 
 //---------------------------------------------------------------------------------------------
 
-// prepare validates the inputs and parses the document. If description is empty, the ontology's own
-// rdfs:comment is used.
+// prepared is a parsed and validated document, ready to be stored.
+type prepared struct {
+	meta Meta // everything but the ID, the owner, the name, the version and the timestamps
+	spec ontospec.Spec
+}
+
+// prepare validates the inputs, parses the document (format "yaml", "json", or "" to detect it) and checks the spec.
 func prepare(userID,
 	name,
-	description string,
+	description,
+	format string,
 	content []byte) (userIDOut, nameOut string, p *prepared, err error) {
 	if userID, err = memory_core.ResolveUserID(userID); err != nil {
 		return
@@ -83,70 +98,75 @@ func prepare(userID,
 			MaxBytes)
 		return
 	}
-	o, parseErr := Parse(bytes.NewReader(content))
+	if format = strings.ToLower(strings.TrimSpace(format)); format == "" {
+		format = ontospec.DetectFormat(content)
+	}
+	if format == "yml" {
+		format = ontospec.FormatYAML
+	}
+	spec, parseErr := ontospec.Parse(format, content)
 	if parseErr != nil {
-		err = fmt.Errorf("%w: %v",
-			ErrInvalid,
-			parseErr)
+		err = parseErr
+		return
+	}
+	if _, compileErr := ontospec.Compile(ontospec.Part{
+		Ref:  ontospec.Ref{Name: name},
+		Spec: spec,
+	}); compileErr != nil {
+		err = compileErr
+		return
+	}
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
 		return
 	}
 	if description = strings.TrimSpace(description); description == "" {
-		description = o.Comment
+		description = spec.Description
 	}
 	sum := sha256.Sum256(content)
 	p = &prepared{
 		meta: Meta{
 			Description: description,
-			IRI:         o.IRI,
-			Title:       o.Title,
-			Format:      FormatRDFXML,
+			Format:      format,
 			SizeBytes:   len(content),
 			SHA256:      hex.EncodeToString(sum[:]),
-			Classes:     len(o.Classes),
-			Properties:  o.Properties(),
-			Edges:       len(o.Edges),
+			Classes:     len(spec.Classes),
+			Relations:   len(spec.Relations),
+			Properties:  countProperties(spec),
+			Spec:        specJSON,
+			Content:     string(content),
 		},
-		classes: make([]graph.OntologyClass, len(o.Classes)),
-		edges:   make([]graph.OntologyEdge, len(o.Edges)),
-	}
-	for i, c := range o.Classes {
-		p.classes[i] = graph.OntologyClass{
-			IRI:      c.IRI,
-			Name:     c.Name,
-			Label:    c.Label,
-			Comment:  c.Comment,
-			Declared: c.Declared,
-		}
-	}
-	for i, e := range o.Edges {
-		p.edges[i] = graph.OntologyEdge{
-			SourceIRI: e.SourceIRI,
-			TargetIRI: e.TargetIRI,
-			Relation:  e.Relation,
-			Kind:      e.Kind,
-			IRI:       e.IRI,
-			Label:     e.Label,
-			Comment:   e.Comment,
-			InverseOf: e.InverseOf,
-		}
+		spec: spec,
 	}
 	return userID, name, p, nil
 }
 
-// Load parses an OWL ontology in RDF/XML and stores it for userID under name. The metadata goes to the
-// relational database and the classes and relationships to the graph database. If description is empty, the
-// ontology's own rdfs:comment is used. It returns ErrExists if the user already has an ontology with that
-// name, and ErrInvalid (wrapped) if the document cannot be parsed or defines no class. Nothing is kept
-// when loading fails.
-func Load(ctx context.Context,
+func countProperties(s ontospec.Spec) int {
+	n := 0
+	for _, c := range s.Classes {
+		n += len(c.Properties)
+	}
+	for _, r := range s.Relations {
+		n += len(r.Properties)
+	}
+	return n
+}
+
+// Create parses the ontology in content (YAML or JSON; format "" detects it), checks it and stores it for userID under name, as its
+// version 1. If description is empty, the ontology's own description is used. It returns ErrExists if the user already has an ontology
+// with that name, and an error wrapping ErrInvalid (an *ontospec.InvalidError, for a spec with problems) if it is not valid. Nothing
+// is kept when it fails.
+func Create(ctx context.Context,
 	d *sql.DB,
 	userID,
 	name,
-	description string,
+	description,
+	format string,
 	content []byte) (*Meta, error) {
 	userID, name, p, err := prepare(userID,
 		name,
 		description,
+		format,
 		content)
 	if err != nil {
 		return nil, err
@@ -161,69 +181,35 @@ func Load(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	if err := graph.LoadOntology(ctx,
-		d,
-		meta.ID,
-		p.classes,
-		p.edges); err != nil {
-		// The graph load is atomic; undo the metadata so that the name is free again.
-		if deleteErr := relational.DeleteOntology(context.WithoutCancel(ctx),
-			d,
-			meta.ID); deleteErr != nil {
-			log.WithError(deleteErr).WithField("ontology", name).Error("load ontology: cleanup after failure")
-		}
+	if err := Registries.put(userID,
+		meta,
+		p.spec); err != nil {
 		return nil, err
 	}
 	archive(ctx,
 		userID,
 		name,
-		actionLoad,
+		actionCreate,
+		meta.Format,
 		content)
-	return meta, nil
+	return withoutSpec(meta), nil
 }
 
-// Update changes the ontology stored for userID under name with the one in content. It returns
-// ErrNotFound if there is no such ontology (an update never creates one), and ErrInvalid
-// (wrapped) if the document cannot be parsed or defines no class. The ontology keeps its ID, owner, name and
-// creation time. There are two modes.
-//
-// REPLACE (replace = true): the stored ontology is thrown away and the document becomes the ontology: every
-// stored class and edge not in the document is deleted, and the metadata is recomputed from the document.
-//
-// MERGE (replace = false, the default): the document is merged into the stored ontology, and nothing is deleted.
-//
-//   - Classes are identified by IRI. A class that is not stored is added.
-//   - Edges are identified by (source class IRI, target class IRI, kind, property/predicate IRI), so
-//     "Trade -hasBuyer-> Buyer" is the same edge whatever its label says. An edge that is not stored is added.
-//   - An edge that is already stored is OVERWRITTEN by the one in the document: relation, label, comment and
-//     inverse_of all take the new values, even when the new ones are empty (an overwrite does not combine old
-//     and new metadata). The same holds for a class the document declares (types as owl:Class or rdfs:Class):
-//     its name, label and comment are overwritten.
-//   - A class the document only mentions, as an endpoint of an edge, is added if missing but never changes a
-//     stored class. Otherwise a fragment such as "Asset -tradedOn-> Market" would blank the label and comment
-//     of the stored Asset and Market classes.
-//   - Classes and edges the document does not contain are kept, so a merge can add and correct things but not
-//     remove them; use replace for that.
-//   - Overwriting keeps the stored row (its ID), so whatever stays in the ontology stays connected.
-//   - The whole merge is one transaction: it is applied completely or not at all.
-//
-// The metadata is updated in both modes. The counts (classes, properties, edges) always describe the stored
-// ontology after the update, so after a merge they are totals, not the size of the document. size_bytes and
-// sha256 always describe the document of the latest update (not the merged whole), and updated_at is set. The
-// description, IRI and title are those of the document; after a merge, ones the document does not provide are
-// kept from the stored ontology, whereas a replace drops them. An explicit description in the request always wins.
-//
-// If the update fails, the stored ontology is left as it was.
+// Update replaces the ontology stored for userID under name with the one in content: the new document is the new version (the version
+// is incremented, the old documents are kept in the history), and the compiled registry is swapped for the new one. It returns ErrNotFound
+// if there is no such ontology (an update never creates one) and an error wrapping ErrInvalid if the document is not valid, in which
+// case the stored ontology is left as it was.
 func Update(ctx context.Context,
 	d *sql.DB,
 	userID,
 	name,
-	description string,
-	content []byte,
-	replace bool) (*Meta, error) {
+	description,
+	format string,
+	content []byte) (*Meta, error) {
 	userID, name, p, err := prepare(userID,
 		name,
 		description,
+		format,
 		content)
 	if err != nil {
 		return nil, err
@@ -238,23 +224,10 @@ func Update(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-
-	// The metadata is written first, and put back if the graph change fails. The graph change is atomic, so in
-	// that case the old graph is intact and restoring the old metadata leaves the ontology exactly as it was.
-	p.meta.ID, p.meta.UpdatedAt = old.ID, time.Now()
-	if !replace {
-		// Merge: what the document does not say stays as it is. The counts are provisional until the merge is done.
-		if p.meta.Description == "" {
-			p.meta.Description = old.Description
-		}
-		if p.meta.IRI == "" {
-			p.meta.IRI = old.IRI
-		}
-		if p.meta.Title == "" {
-			p.meta.Title = old.Title
-		}
-		p.meta.Classes, p.meta.Properties, p.meta.Edges = old.Classes, old.Properties, old.Edges
+	if p.meta.Description == "" {
+		p.meta.Description = old.Description
 	}
+	p.meta.ID = old.ID
 	meta, err := relational.UpdateOntology(ctx,
 		d,
 		p.meta)
@@ -264,59 +237,43 @@ func Update(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-
-	var counts graph.OntologyCounts
-	if replace {
-		err = graph.LoadOntology(ctx,
-			d,
-			old.ID,
-			p.classes,
-			p.edges)
-		counts = graph.OntologyCounts{
-			Classes:    len(p.classes),
-			Properties: p.meta.Properties,
-			Edges:      len(p.edges),
-		}
-	} else {
-		counts, err = graph.MergeOntology(ctx,
-			d,
-			old.ID,
-			p.classes,
-			p.edges)
-	}
-	if err != nil {
-		if _, updateErr := relational.UpdateOntology(context.WithoutCancel(ctx),
-			d,
-			*old); updateErr != nil {
-			log.WithError(updateErr).WithField("ontology", name).Error("update ontology: restoring metadata after failure")
-		}
+	if err := Registries.put(userID,
+		meta,
+		p.spec); err != nil {
 		return nil, err
-	}
-
-	// After a merge the counts are those of the merged ontology, known only now.
-	if meta.Classes != counts.Classes || meta.Properties != counts.Properties || meta.Edges != counts.Edges {
-		p.meta.Classes, p.meta.Properties, p.meta.Edges = counts.Classes, counts.Properties, counts.Edges
-		if meta, err = relational.UpdateOntology(ctx,
-			d,
-			p.meta); err != nil {
-			// The graph change is committed already; only the counts in the metadata are stale.
-			log.WithError(err).WithField("ontology", name).Error("update ontology: recording counts")
-			return nil, err
-		}
-	}
-	action := actionMerge
-	if replace {
-		action = actionReplace
 	}
 	archive(ctx,
 		userID,
 		name,
-		action,
+		actionUpdate,
+		meta.Format,
 		content)
-	return meta, nil
+	return withoutSpec(meta), nil
 }
 
-// List returns userID's ontologies, oldest first.
+// Get returns userID's ontology called name, spec included, or ErrNotFound.
+func Get(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (*Meta, error) {
+	userID, err := memory_core.ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	if name, err = ResolveName(name); err != nil {
+		return nil, err
+	}
+	meta, err := relational.GetOntology(ctx,
+		d,
+		userID,
+		name)
+	if errors.Is(err, relational.ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	return meta, err
+}
+
+// List returns userID's ontologies, oldest first, without their specs.
 func List(ctx context.Context,
 	d *sql.DB,
 	userID string) ([]Meta, error) {
@@ -324,7 +281,225 @@ func List(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	return relational.ListOntologies(ctx,
+	metas, err := relational.ListOntologies(ctx,
 		d,
 		userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Meta, len(metas))
+	for i := range metas {
+		out[i] = *withoutSpec(&metas[i])
+	}
+	return out, nil
+}
+
+func withoutSpec(m *Meta) *Meta {
+	c := *m
+	c.Spec, c.Content = nil, ""
+	return &c
+}
+
+// Events returns the grounding events of userID's ontology called name (see graph.OntologyEvent), newest first.
+func Events(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string,
+	f graph.OntologyEventFilter) ([]graph.OntologyEvent, error) {
+	meta, err := Get(ctx,
+		d,
+		userID,
+		name)
+	if err != nil {
+		return nil, err
+	}
+	return graph.ListOntologyEvents(ctx,
+		d,
+		meta.ID,
+		f)
+}
+
+//---------------------------------------------------------------------------------------------
+// The registries
+
+// Resolve returns the registry of the ontologies a remember call grounds against: the ontologies called names of userID, merged
+// (all the user's ontologies if names is empty). It returns ErrNotFound (naming it) if one does not exist or the user has none, and an
+// error wrapping ErrInvalid, naming both ontologies, if two of them define the same class or relation differently.
+func Resolve(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	names []string) (*ontospec.Registry, error) {
+	userID, err := memory_core.ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	metas, err := selected(ctx,
+		d,
+		userID,
+		names)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*cached, len(metas))
+	for i := range metas {
+		if entries[i], err = Registries.get(userID, &metas[i]); err != nil {
+			return nil, err
+		}
+	}
+	if len(entries) == 1 {
+		return entries[0].reg, nil
+	}
+	return ontospec.Compile(mapParts(entries)...)
+}
+
+func mapParts(entries []*cached) []ontospec.Part {
+	out := make([]ontospec.Part, len(entries))
+	for i, e := range entries {
+		out[i] = ontospec.Part{
+			Ref:  e.ref,
+			Spec: e.spec,
+		}
+	}
+	return out
+}
+
+// selected loads the ontologies called names (duplicates counted once), in the order given; all of the user's if names is empty.
+func selected(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	names []string) ([]Meta, error) {
+	if len(names) == 0 {
+		all, err := relational.ListOntologies(ctx,
+			d,
+			userID)
+		if err != nil {
+			return nil, err
+		}
+		if len(all) == 0 {
+			return nil, fmt.Errorf("%w: the user has no ontologies", ErrNotFound)
+		}
+		sort.SliceStable(all, func(i, j int) bool { return all[i].Name < all[j].Name })
+		return all, nil
+	}
+	var out []Meta
+	seen := map[string]bool{}
+	for _, n := range names {
+		n, err := ResolveName(n)
+		if err != nil {
+			return nil, err
+		}
+		if seen[n] {
+			continue
+		}
+		seen[n] = true
+		meta, err := relational.GetOntology(ctx,
+			d,
+			userID,
+			n)
+		if errors.Is(err, relational.ErrNotFound) {
+			return nil, fmt.Errorf("%w: %q", ErrNotFound, n)
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *meta)
+	}
+	return out, nil
+}
+
+func storeKey(userID,
+	name string) string {
+	return userID + "\x00" + name
+}
+
+// slot returns the pointer of (user, name), creating it empty.
+func (s *registryStore) slot(userID,
+	name string) *atomic.Pointer[cached] {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	k := storeKey(userID, name)
+	p, ok := s.byID[k]
+	if !ok {
+		p = &atomic.Pointer[cached]{}
+		s.byID[k] = p
+	}
+	return p
+}
+
+// Forget drops the cached registry of (user, ontology): the next use compiles it from the database again.
+func (s *registryStore) Forget(userID,
+	name string) {
+	s.slot(userID, name).Store(nil)
+}
+
+// compileMeta compiles a stored ontology (its spec as JSON) into a cache entry.
+func compileMeta(m *Meta) (*cached, error) {
+	var spec ontospec.Spec
+	if err := json.Unmarshal(m.Spec, &spec); err != nil {
+		return nil, fmt.Errorf("ontology %q: stored spec: %w", m.Name, err)
+	}
+	return compileSpec(m, spec)
+}
+
+func compileSpec(m *Meta,
+	spec ontospec.Spec) (*cached, error) {
+	ref := ontospec.Ref{
+		ID:      m.ID,
+		Name:    m.Name,
+		Version: m.Version,
+	}
+	reg, err := ontospec.Compile(ontospec.Part{
+		Ref:  ref,
+		Spec: spec,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &cached{
+		ref:  ref,
+		spec: spec,
+		reg:  reg,
+	}, nil
+}
+
+// put compiles a saved ontology and swaps it in: the calls that already hold the previous registry are not affected.
+func (s *registryStore) put(userID string,
+	m *Meta,
+	spec ontospec.Spec) error {
+	c, err := compileSpec(m, spec)
+	if err != nil {
+		return err
+	}
+	swapIfNewer(s.slot(userID, m.Name), c)
+	return nil
+}
+
+// swapIfNewer stores c unless the slot already holds a later version of the ontology (a slow reader must not put an old one back).
+func swapIfNewer(slot *atomic.Pointer[cached],
+	c *cached) {
+	for {
+		cur := slot.Load()
+		if cur != nil && cur.ref.ID == c.ref.ID && cur.ref.Version > c.ref.Version {
+			return
+		}
+		if slot.CompareAndSwap(cur, c) {
+			return
+		}
+	}
+}
+
+// get returns the compiled form of the stored ontology m: the one in memory if it is of the same version, else it is compiled from m
+// (the first use after a start, or after a save by another server) and swapped in.
+func (s *registryStore) get(userID string,
+	m *Meta) (*cached, error) {
+	slot := s.slot(userID, m.Name)
+	if c := slot.Load(); c != nil && c.ref.ID == m.ID && c.ref.Version == m.Version {
+		return c, nil
+	}
+	c, err := compileMeta(m)
+	if err != nil {
+		return nil, err
+	}
+	swapIfNewer(slot, c)
+	return c, nil
 }

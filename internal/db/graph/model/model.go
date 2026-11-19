@@ -5,6 +5,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -22,6 +23,49 @@ type Entity struct {
 	// ModelID is the ID of the model (gb_models) that inferred the entity; "" if unknown. The pipeline sets it, never
 	// the LLM output. See sqlite/sql/schema.sql for what it means for an entity shared between artifacts.
 	ModelID string `json:"model_id,omitempty"`
+	// Properties are the properties the extraction gave the entity under an ontology (only with ontology grounding). They are
+	// validated against the class, not stored.
+	Properties map[string]any `json:"properties,omitempty"`
+	// Ontology is how the entity grounded against the ontologies of the call; nil if it was not grounded.
+	Ontology *Grounding `json:"ontology,omitempty"`
+}
+
+// Grounding is what grounding a node or an edge against an ontology made of it: the class (the relation, for an edge) it resolved to
+// ("" if it did not resolve), the version of the ontology that defines it, and whether it matched with no violation. It is stored on
+// the row (ontology_class, ontology_version, ontology_valid).
+type Grounding struct {
+	Class   string `json:"class,omitempty"`
+	Version int    `json:"version,omitempty"`
+	Valid   bool   `json:"valid"`
+}
+
+// OntologyEvent is what grounding one node or edge of a remember call against an ontology made of it (a row of gb_ontology_events, see
+// sqlite/sql/schema.sql for the columns). EntityID and EdgeID are 0 for a dropped item.
+type OntologyEvent struct {
+	ID              int64           `json:"id,omitempty"`
+	DatasetID       int64           `json:"dataset_id,omitempty"`
+	ArtifactID      int64           `json:"artifact_id"`
+	RunID           int64           `json:"run_id,omitempty"`
+	OntologyID      int64           `json:"ontology_id"`
+	OntologyVersion int             `json:"ontology_version"`
+	Mode            string          `json:"mode"`
+	SubjectKind     string          `json:"subject_kind"` // "node" or "edge"
+	Name            string          `json:"name"`
+	Type            string          `json:"type,omitempty"`
+	Class           string          `json:"class,omitempty"`
+	Outcome         string          `json:"outcome"`
+	Reason          string          `json:"reason,omitempty"`
+	Detail          json.RawMessage `json:"detail,omitempty"`
+	EntityID        int64           `json:"entity_id,omitempty"`
+	EdgeID          int64           `json:"edge_id,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
+// OntologyEventFilter selects events of one ontology: the zero value of a field does not filter on it.
+type OntologyEventFilter struct {
+	ArtifactID int64
+	Outcome    string
+	Limit      int // 0: 100
 }
 
 // Edge is a fact relating two entities (referenced by name), with its bi-temporal validity.
@@ -37,6 +81,9 @@ type Edge struct {
 	CreatedAt   *time.Time `json:"created_at,omitempty"` // when we learned about it
 	ExpiredAt   *time.Time `json:"expired_at,omitempty"` // when we learned it was superseded
 	ModelID     string     `json:"model_id,omitempty"`   // ID of the model (gb_models) that inferred the fact
+	// Properties and Ontology are as for an Entity.
+	Properties map[string]any `json:"properties,omitempty"`
+	Ontology   *Grounding     `json:"ontology,omitempty"`
 }
 
 // Edge events: what a Remember call did to a fact (see EdgeEvent).
@@ -150,6 +197,7 @@ type NewEdge struct {
 	CreatedAt                     time.Time
 	ArtifactID                    int64
 	ModelID                       string // ID of the model (gb_models) that inferred the fact; "" if unknown; the model must be stored
+	Ontology                      *Grounding
 }
 
 // Artifact kinds.
@@ -331,38 +379,6 @@ type Counts struct {
 	Artifacts, Entities, Edges, Chunks, Summaries int
 }
 
-// OntologyClass is a class of an ontology (a node of the ontology graph).
-type OntologyClass struct {
-	IRI     string `json:"iri"`
-	Name    string `json:"name"`
-	Label   string `json:"label,omitempty"`
-	Comment string `json:"comment,omitempty"`
-	// Declared only matters to MergeOntology: true if the document defines the class itself, false if it merely
-	// mentions it as an edge endpoint. It is not stored.
-	Declared bool `json:"-"`
-}
-
-// OntologyCounts is the size of a stored ontology.
-type OntologyCounts struct {
-	Classes    int
-	Properties int // distinct properties among the edges
-	Edges      int
-}
-
-// OntologyEdge is a relationship between two classes of an ontology, referenced by IRI. Kind is "subclass_of",
-// "equivalent_class", "disjoint_with" or "property"; Relation is the edge name (the property name for "property");
-// IRI is the property or predicate IRI. Label, Comment and InverseOf describe a property.
-type OntologyEdge struct {
-	SourceIRI string `json:"source"`
-	TargetIRI string `json:"target"`
-	Relation  string `json:"relation"`
-	Kind      string `json:"kind"`
-	IRI       string `json:"iri"`
-	Label     string `json:"label,omitempty"`
-	Comment   string `json:"comment,omitempty"`
-	InverseOf string `json:"inverse_of,omitempty"`
-}
-
 //---------------------------------------------------------------------------------------------
 
 // Tx is a backend transaction covering all the graph writes of one Remember. All "not found" results are ErrNotFound.
@@ -458,6 +474,10 @@ type Tx interface {
 		id int64,
 		invalidAt,
 		expiredAt time.Time) error
+	// InsertOntologyEvents appends the events of grounding a remember call (gb_ontology_events), all stamped with createdAt.
+	InsertOntologyEvents(ctx context.Context,
+		events []OntologyEvent,
+		createdAt time.Time) error
 	// InsertEdgeEvent appends an event to the log of what Remember did to the facts (gb_edge_events).
 	InsertEdgeEvent(ctx context.Context,
 		e EdgeEvent) error

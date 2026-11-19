@@ -1,0 +1,178 @@
+# A basic, general ontology of markets: the 20 most important concepts and how they relate.
+# Load it with POST /v1/gb/ontologies (see docs/ontologies/ontologies.md).
+id: market
+version: "1"
+description: "A general ontology of markets: participants, assets, orders, trades, prices and regulation."
+
+classes:
+  Market:
+    description: "A place or system where buyers and sellers meet to trade assets at prices set by supply and demand."
+  Exchange:
+    subClassOf: Market
+    description: "An organized, regulated market with fixed rules and a central venue for trading listed assets."
+  MarketParticipant:
+    description: "Any person or organization that takes part in a market."
+    aliases: [participant]
+  Buyer:
+    subClassOf: MarketParticipant
+    description: "A participant that acquires assets."
+  Seller:
+    subClassOf: MarketParticipant
+    description: "A participant that offers or disposes of assets."
+  Intermediary:
+    subClassOf: MarketParticipant
+    description: "A participant such as a broker, dealer or market maker that facilitates trades between others."
+  Regulator:
+    description: "An authority that supervises markets and their participants and enforces regulation."
+  Asset:
+    description: "Anything of value that can be traded in a market."
+  Commodity:
+    subClassOf: Asset
+    description: "A standardized, interchangeable physical good such as oil, wheat or gold."
+  Security:
+    subClassOf: Asset
+    description: "A tradable financial instrument such as a share or a bond."
+    aliases: [stock, share, bond]
+    properties:
+      ticker: {type: string, pattern: "^[A-Z0-9.]{1,10}$", description: The ticker symbol.}
+  Currency:
+    subClassOf: Asset
+    description: "A medium of exchange and unit of account; also traded as an asset."
+    aliases: [fx]
+  Derivative:
+    subClassOf: Asset
+    description: "A contract whose value depends on an underlying asset, e.g. a future or an option."
+  Order:
+    description: "An instruction by a participant to buy or sell an asset, possibly with a limit price."
+    properties:
+      side: {type: string, enum: [buy, sell], description: Whether the order buys or sells.}
+  Trade:
+    description: "An executed transaction in which an asset changes hands between a buyer and a seller."
+    properties:
+      quantity: {type: number, description: How many units were traded.}
+  Price:
+    description: "The amount, in a currency, at which an asset is offered, bid or traded."
+    properties:
+      amount: {type: number, required: true, description: The numeric value of the price.}
+  Supply:
+    description: "The quantity of an asset that sellers are willing to offer at given prices."
+  Demand:
+    description: "The quantity of an asset that buyers are willing to acquire at given prices."
+  MarketIndex:
+    description: "A measure of the value of a selected group of assets, used to track a market or segment."
+    aliases: [index]
+  Regulation:
+    description: "A rule or law that governs how markets operate and how participants behave."
+  Risk:
+    description: "The possibility of loss or adverse price movement associated with holding or trading an asset."
+
+relations:
+  participatesIn:
+    description: "A participant takes part in a market."
+    domain: MarketParticipant
+    range: Market
+    temporal: true
+  hasParticipant:
+    description: "A market has a participant."
+    domain: Market
+    range: MarketParticipant
+    temporal: true
+  tradedOn:
+    description: "An asset is traded on a market."
+    domain: Asset
+    range: Market
+    temporal: true
+  listsAsset:
+    description: "A market offers an asset for trading."
+    domain: Market
+    range: Asset
+    temporal: true
+  placedBy:
+    description: "An order is placed by a participant."
+    domain: Order
+    range: MarketParticipant
+  ordersAsset:
+    description: "An order is an instruction to trade a given asset."
+    domain: Order
+    range: Asset
+  resultsIn:
+    description: "An order is (partly) executed as a trade."
+    domain: Order
+    range: Trade
+  hasBuyer:
+    description: "A trade has a buyer."
+    domain: Trade
+    range: Buyer
+  hasSeller:
+    description: "A trade has a seller."
+    domain: Trade
+    range: Seller
+  tradesAsset:
+    description: "A trade transfers an asset."
+    domain: Trade
+    range: Asset
+  executedOn:
+    description: "A trade is executed on a market."
+    domain: Trade
+    range: Market
+  facilitates:
+    description: "An intermediary helps a trade take place."
+    domain: Intermediary
+    range: Trade
+  hasPrice:
+    description: "An asset, order or trade has a price."
+    domain: Asset
+    range: Price
+  denominatedIn:
+    description: "A price is expressed in a currency."
+    domain: Price
+    range: Currency
+  underlying:
+    description: "A derivative derives its value from an underlying asset."
+    domain: Derivative
+    range: Asset
+  regulates:
+    description: "A regulator supervises a market or its participants."
+    domain: Regulator
+    range: Market
+    temporal: true
+  enforces:
+    description: "A regulator enforces a regulation."
+    domain: Regulator
+    range: Regulation
+  governs:
+    description: "A regulation governs a market."
+    domain: Regulation
+    range: Market
+  determines:
+    description: "Supply and demand together determine the price of an asset."
+    domain: Supply
+    range: Price
+  supplyOf:
+    description: "The supply concerns an asset."
+    domain: Supply
+    range: Asset
+  demandFor:
+    description: "The demand concerns an asset."
+    domain: Demand
+    range: Asset
+  offeredBy:
+    description: "Supply comes from sellers."
+    domain: Supply
+    range: Seller
+  expressedBy:
+    description: "Demand comes from buyers."
+    domain: Demand
+    range: Buyer
+  tracks:
+    description: "An index tracks a market."
+    domain: MarketIndex
+    range: Market
+  composedOf:
+    description: "An index is made up of assets."
+    domain: MarketIndex
+    range: Asset
+  exposesTo:
+    description: "Holding or trading an asset exposes a participant to a risk."
+    domain: Asset
+    range: Risk

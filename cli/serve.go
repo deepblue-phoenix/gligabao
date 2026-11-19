@@ -100,7 +100,7 @@ func newServe(c *CLI,
 	f.StringArrayVar(&ontologyDirs,
 		"ontology-dir",
 		nil,
-		"directory ontology files (OWL, RDF/XML) are loaded from by name through the ontologies API; repeatable, searched in order (default: config ontology_dirs, else none)")
+		"directory ontology files (YAML or JSON) are loaded from by name through the ontologies API; repeatable, searched in order (default: config ontology_dirs, else none)")
 	f.StringVar(&agentDefsDir,
 		"agent-defs-dir",
 		"",

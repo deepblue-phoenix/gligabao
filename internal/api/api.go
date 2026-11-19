@@ -72,6 +72,9 @@ func Register(mux *http.ServeMux,
 	mux.Handle("GET /v1/gb/timeseries/{id}", a(timeseries.Get(d.Relational)))
 	mux.Handle("POST /v1/gb/ontologies", a(ontologies.Load(d.Relational, o.ontologyDirs)))
 	mux.Handle("PUT /v1/gb/ontologies/{name}", a(ontologies.Update(d.Relational, o.ontologyDirs)))
+	mux.Handle("GET /v1/gb/ontologies", a(ontologies.List(d.Relational)))
+	mux.Handle("GET /v1/gb/ontologies/{name}", a(ontologies.Get(d.Relational)))
+	mux.Handle("GET /v1/gb/ontologies/{name}/events", a(ontologies.Events(d.Relational)))
 	if o.research != nil {
 		o.research.UseMemory(researchMemory(mgr,
 			d,

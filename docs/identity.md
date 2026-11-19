@@ -14,7 +14,7 @@ The [MCP](mcp.md) tools (`remember`, `query`; off by default) take `user_id` as 
 | -------- | ----- |
 | `POST /v1/gb/remember`, `POST /v1/gb/query` | header `gb-user-id: u1` |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets`, `DELETE /v1/gb/datasets/{name}` | header `gb-user-id: u1` |
-| `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | header `gb-user-id: u1` (ontologies are owned by a user; names are unique per user, see [ontologies.md](ontologies/ontologies.md)) |
+| `/v1/gb/ontologies` (POST, GET), `/v1/gb/ontologies/{name}` (PUT, GET), `GET /v1/gb/ontologies/{name}/events` | header `gb-user-id: u1` (ontologies are owned by a user; names are unique per user, see [ontologies.md](ontologies/ontologies.md)) |
 | the rest of the routes of users (graph, timeseries, geo nearby, research, dataset training) | header `gb-user-id: u1` |
 
 The [admin API](../README.md#admin-ui) has its own `user_id` filters (it is not tied to a user).

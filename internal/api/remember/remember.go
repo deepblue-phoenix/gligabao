@@ -2,6 +2,7 @@
 package remember
 
 import (
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
@@ -77,6 +79,16 @@ type rememberRequest struct {
 	// GraphClasses (optional) are the only classes the LLM may choose from (at most memory_core.MaxGraphClasses, normalized to lowercase
 	// snake_case); without them it chooses freely, reusing the classes the dataset already has. 400 with classify_graph false.
 	GraphClasses []string `json:"graph_classes"`
+	// OntologyGrounding (optional, default false) grounds the extracted graph against the user's ontologies (see docs/ontologies/ontologies.md):
+	// every entity and edge is checked against the classes, relations, domains, ranges and properties of the ontologies, tagged with what it
+	// matched, and the response carries a summary ("ontology_grounding"). Not for an image (400).
+	OntologyGrounding bool `json:"ontology_grounding"`
+	// Ontologies (optional) are the names of the ontologies to ground against; they are merged into one for the call. Default: all of the
+	// user's ontologies. 400 without ontology_grounding, for an unknown name, and if two of them define the same class or relation differently.
+	Ontologies []string `json:"ontologies"`
+	// OntologyGroundingMode (optional) is "annotate" (default: tag what matches, flag the rest, drop nothing) or "strict" (the extraction is
+	// told to conform to the ontology, and what does not conform is dropped before it is stored). 400 without ontology_grounding.
+	OntologyGroundingMode string `json:"ontology_grounding_mode"`
 	// Timeseries (optional) supplies timeseries to store and anchor to what the text yields (see docs/timeseries.md).
 	// Not for an image (400).
 	Timeseries *timeseriesRequest `json:"timeseries"`
@@ -263,6 +275,16 @@ func handler(mgr *memory_remember.Manager,
 				err.Error())
 			return
 		}
+		groundOpts, err := resolveGrounding(r.Context(),
+			d,
+			httputil.UserID(r),
+			req)
+		if err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
+			return
+		}
 		if req.WebSearch && memory_core.NewCallOptions(opts).WebSearcher == nil {
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
@@ -292,7 +314,7 @@ func handler(mgr *memory_remember.Manager,
 			Kind:    req.Kind,
 			Text:    req.Text,
 			Ref:     ref,
-			Opts: append(opts[:len(opts):len(opts)],
+			Opts: append(append(opts[:len(opts):len(opts)], groundOpts...),
 				memory_core.WithSessionID(sessionID),
 				memory_core.WithGraphIndex(graphIndex),
 				memory_core.WithModels(models),
@@ -416,6 +438,31 @@ func resolveTimeseries(t *timeseriesRequest,
 	return series, f, t.Observations, err
 }
 
+// resolveGrounding validates the ontology grounding fields of a request and returns the options for the call (none without
+// ontology_grounding). The ontologies are resolved here, so that an unknown one, or two that conflict, are a 400 and not a failed run.
+func resolveGrounding(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	req rememberRequest) ([]memory_core.Option, error) {
+	if !req.OntologyGrounding {
+		if len(req.Ontologies) > 0 || strings.TrimSpace(req.OntologyGroundingMode) != "" {
+			return nil, errors.New("ontologies and ontology_grounding_mode need ontology_grounding, which is false")
+		}
+		return nil, nil
+	}
+	mode, err := memory_core.ResolveGroundingMode(req.OntologyGroundingMode)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := memory_ontology.Resolve(ctx,
+		d,
+		userID,
+		req.Ontologies); err != nil {
+		return nil, err
+	}
+	return []memory_core.Option{memory_core.WithOntologyGrounding(req.Ontologies, mode)}, nil
+}
+
 // resolveGraphClasses validates graph_classes of a request: they only make sense when the graph is classified (it is, unless the
 // request says classify_graph false).
 func resolveGraphClasses(classify bool,
@@ -475,6 +522,12 @@ func rememberImage(w http.ResponseWriter,
 		httputil.Error(w,
 			http.StatusBadRequest,
 			"classify_graph does not apply to an image")
+		return
+	}
+	if req.OntologyGrounding || len(req.Ontologies) > 0 || req.OntologyGroundingMode != "" {
+		httputil.Error(w,
+			http.StatusBadRequest,
+			"ontology_grounding does not apply to an image")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))

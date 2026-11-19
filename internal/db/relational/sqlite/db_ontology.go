@@ -13,28 +13,29 @@ import (
 // Ontologies
 
 const ontologyColumns = `
-	id, user_id, name, description, iri, title, format, size_bytes, sha256,
-	classes, properties, edges, created_at, updated_at`
+	id, user_id, name, description, format, version, spec, size_bytes, sha256,
+	classes, relations, properties, created_at, updated_at`
 
 func scanOntology(r scanner) (*model.Ontology, error) {
 	var o model.Ontology
-	var created, updated string
+	var spec, created, updated string
 	if err := r.Scan(&o.ID,
 		&o.UserID,
 		&o.Name,
 		&o.Description,
-		&o.IRI,
-		&o.Title,
 		&o.Format,
+		&o.Version,
+		&spec,
 		&o.SizeBytes,
 		&o.SHA256,
 		&o.Classes,
+		&o.Relations,
 		&o.Properties,
-		&o.Edges,
 		&created,
 		&updated); err != nil {
 		return nil, err
 	}
+	o.Spec = []byte(spec)
 	if t := ParseTime(created); t != nil {
 		o.CreatedAt = *t
 	}
@@ -44,33 +45,37 @@ func scanOntology(r scanner) (*model.Ontology, error) {
 	return &o, nil
 }
 
-// CreateOntology stores the metadata of an ontology. It returns model.ErrExists if the user already has an
-// ontology with that name.
+// CreateOntology stores an ontology as its version 1, with its document (o.Content) in the history. It returns model.ErrExists if the
+// user already has an ontology with that name.
 func CreateOntology(ctx context.Context,
 	d *sql.DB,
 	o model.Ontology) (*model.Ontology, error) {
-	now := Now()
-	res, err := d.ExecContext(ctx,
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	now := FormatTime(Now())
+	res, err := tx.ExecContext(ctx,
 		`
 		INSERT INTO gb_ontologies (
-			user_id, name, description, iri, title, format, size_bytes, sha256,
-			classes, properties, edges, created_at, updated_at
+			user_id, name, description, format, version, spec, size_bytes, sha256,
+			classes, relations, properties, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, name) DO NOTHING`,
 		o.UserID,
 		o.Name,
 		o.Description,
-		o.IRI,
-		o.Title,
 		o.Format,
+		string(o.Spec),
 		o.SizeBytes,
 		o.SHA256,
 		o.Classes,
+		o.Relations,
 		o.Properties,
-		o.Edges,
-		FormatTime(now),
-		FormatTime(now))
+		now,
+		now)
 	if err != nil {
 		return nil, fmt.Errorf("create ontology: %w", err)
 	}
@@ -81,15 +86,49 @@ func CreateOntology(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	return scanOntology(d.QueryRowContext(ctx,
+	if err := insertOntologyVersion(ctx,
+		tx,
+		id,
+		1,
+		o,
+		now); err != nil {
+		return nil, err
+	}
+	out, err := scanOntology(tx.QueryRowContext(ctx,
 		`
 		SELECT `+ontologyColumns+`
 		FROM gb_ontologies
 		WHERE id = ?`,
 		id))
+	if err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
 }
 
-// GetOntology returns the metadata of userID's ontology called name, or model.ErrNotFound.
+func insertOntologyVersion(ctx context.Context,
+	tx *sql.Tx,
+	ontologyID int64,
+	version int,
+	o model.Ontology,
+	now string) error {
+	if _, err := tx.ExecContext(ctx,
+		`
+		INSERT INTO gb_ontology_versions (ontology_id, version, format, content, spec, sha256, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		ontologyID,
+		version,
+		o.Format,
+		o.Content,
+		string(o.Spec),
+		o.SHA256,
+		now); err != nil {
+		return fmt.Errorf("record ontology version: %w", err)
+	}
+	return nil
+}
+
+// GetOntology returns userID's ontology called name, or model.ErrNotFound.
 func GetOntology(ctx context.Context,
 	d *sql.DB,
 	userID,
@@ -107,47 +146,57 @@ func GetOntology(ctx context.Context,
 	return o, err
 }
 
-// UpdateOntology overwrites the metadata of the ontology o.ID (not its owner, name or creation time).
+// UpdateOntology saves a new version of the ontology o.ID: the description, document and spec are overwritten, the version is
+// incremented, and the document is added to the history. The owner, name and creation time stay.
 func UpdateOntology(ctx context.Context,
 	d *sql.DB,
 	o model.Ontology) (*model.Ontology, error) {
-	res, err := d.ExecContext(ctx,
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	now := FormatTime(Now())
+	out, err := scanOntology(tx.QueryRowContext(ctx,
 		`
 		UPDATE gb_ontologies
 		SET description = ?,
-			iri         = ?,
-			title       = ?,
 			format      = ?,
+			version     = version + 1,
+			spec        = ?,
 			size_bytes  = ?,
 			sha256      = ?,
 			classes     = ?,
+			relations   = ?,
 			properties  = ?,
-			edges       = ?,
 			updated_at  = ?
-		WHERE id = ?`,
+		WHERE id = ?
+		RETURNING `+ontologyColumns,
 		o.Description,
-		o.IRI,
-		o.Title,
 		o.Format,
+		string(o.Spec),
 		o.SizeBytes,
 		o.SHA256,
 		o.Classes,
+		o.Relations,
 		o.Properties,
-		o.Edges,
-		FormatTime(o.UpdatedAt),
-		o.ID)
+		now,
+		o.ID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, model.ErrNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("update ontology: %w", err)
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return nil, model.ErrNotFound
+	if err := insertOntologyVersion(ctx,
+		tx,
+		out.ID,
+		out.Version,
+		o,
+		now); err != nil {
+		return nil, err
 	}
-	return scanOntology(d.QueryRowContext(ctx,
-		`
-		SELECT `+ontologyColumns+`
-		FROM gb_ontologies
-		WHERE id = ?`,
-		o.ID))
+	return out, tx.Commit()
 }
 
 // ListOntologies returns userID's ontologies, oldest first.
@@ -176,7 +225,7 @@ func ListOntologies(ctx context.Context,
 	return out, rows.Err()
 }
 
-// DeleteOntology removes the metadata row of an ontology.
+// DeleteOntology removes an ontology and its history.
 func DeleteOntology(ctx context.Context,
 	d *sql.DB,
 	id int64) error {

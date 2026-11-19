@@ -23,7 +23,7 @@ The two operations compared:
 | | `remember` | `query` |
 | - | ---------- | ------- |
 | Declared in | `memory_remember/remember_pipeline.go` (`rememberPipeline`, `reconcileSteps`) | `memory_query/query.go` (`queryPipeline`) |
-| Stages | `classify_complexity`, `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` | `retrieve_graph`, `detect_geo`, `nearby_geo`, `query` |
+| Stages | `classify_complexity`, `chunk_text`, `extract_graph`, `summarize_chunk`, `ground_graph`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` | `retrieve_graph`, `detect_geo`, `nearby_geo`, `query` |
 | State of the call | `job` in `memory_remember` | `job` in `memory_query` |
 | Run log | `gb_remember_runs` (`memory_remember/runlog.go`), [run log](remember/remember.md#run-log) | `gb_query_runs` (`memory_query/runlog.go`), [run log](query/query.md#run-log) |
 | Response field | `remember_run_id` | `query_run_id` |

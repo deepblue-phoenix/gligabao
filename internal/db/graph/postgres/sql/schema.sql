@@ -54,6 +54,9 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	type        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the entity (see sqlite/sql/schema.sql)
+	ontology_version INTEGER, -- ontology grounding (see gb_ontology_events); NULL when the row was never grounded
+	ontology_class   TEXT,    -- the class (the relation, for an edge) the row resolved to
+	ontology_valid   BOOLEAN, -- whether it matched the ontology with no violation
 	created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 	updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 	UNIQUE (dataset_id, name_key, type)
@@ -71,7 +74,10 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 	created_at  TIMESTAMPTZ NOT NULL,
 	expired_at  TIMESTAMPTZ,
 	artifact_id BIGINT REFERENCES gb_artifacts(id) ON DELETE SET NULL,
-	model_id    TEXT REFERENCES gb_models(id) -- the model that inferred the fact
+	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the fact
+	ontology_version INTEGER, -- ontology grounding, as in gb_entities
+	ontology_class   TEXT,
+	ontology_valid   BOOLEAN
 );
 
 -- Edge <-> artifact provenance, many-to-many: gb_edges.artifact_id is only the artifact that created the edge; this
@@ -170,30 +176,29 @@ CREATE TABLE IF NOT EXISTS gb_image_graphs (
 	artifact_id   BIGINT REFERENCES gb_artifacts(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS gb_onto_classes (
-	id          BIGSERIAL PRIMARY KEY,
-	ontology_id BIGINT NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
-	iri         TEXT NOT NULL,
-	name        TEXT NOT NULL,
-	label       TEXT NOT NULL DEFAULT '',
-	comment     TEXT NOT NULL DEFAULT '',
-	UNIQUE (ontology_id, iri)
+-- Ontology grounding log (see sqlite/sql/schema.sql).
+CREATE TABLE IF NOT EXISTS gb_ontology_events (
+	id               BIGSERIAL PRIMARY KEY,
+	dataset_id       BIGINT NOT NULL REFERENCES gb_datasets(id),
+	artifact_id      BIGINT NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	run_id           BIGINT,
+	ontology_id      BIGINT NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
+	ontology_version INTEGER NOT NULL,
+	mode             TEXT NOT NULL,
+	subject_kind     TEXT NOT NULL,
+	name             TEXT NOT NULL,
+	type             TEXT NOT NULL DEFAULT '',
+	class            TEXT NOT NULL DEFAULT '',
+	outcome          TEXT NOT NULL,
+	reason           TEXT NOT NULL DEFAULT '',
+	detail           JSONB NOT NULL DEFAULT '{}',
+	entity_id        BIGINT REFERENCES gb_entities(id) ON DELETE SET NULL,
+	edge_id          BIGINT REFERENCES gb_edges(id) ON DELETE SET NULL,
+	created_at       TIMESTAMPTZ NOT NULL
 );
-CREATE TABLE IF NOT EXISTS gb_onto_edges (
-	id          BIGSERIAL PRIMARY KEY,
-	ontology_id BIGINT NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
-	source_id   BIGINT NOT NULL REFERENCES gb_onto_classes(id) ON DELETE CASCADE,
-	target_id   BIGINT NOT NULL REFERENCES gb_onto_classes(id) ON DELETE CASCADE,
-	relation    TEXT NOT NULL,
-	kind        TEXT NOT NULL,
-	iri         TEXT NOT NULL,
-	label       TEXT NOT NULL DEFAULT '',
-	comment     TEXT NOT NULL DEFAULT '',
-	inverse_of  TEXT NOT NULL DEFAULT '',
-	UNIQUE (ontology_id, source_id, target_id, kind, iri)
-);
-CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_source ON gb_onto_edges(source_id);
-CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
+CREATE INDEX IF NOT EXISTS idx_gb_ontology_events_artifact ON gb_ontology_events(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_ontology_events_ontology ON gb_ontology_events(ontology_id);
+CREATE INDEX IF NOT EXISTS idx_gb_ontology_events_dataset ON gb_ontology_events(dataset_id, created_at);
 
 CREATE TABLE IF NOT EXISTS gb_series_points (
 	series_id BIGINT NOT NULL REFERENCES gb_series(id) ON DELETE CASCADE,
@@ -293,3 +298,11 @@ CREATE INDEX IF NOT EXISTS idx_gb_edge_events_edge ON gb_edge_events(edge_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_session ON gb_image_artifacts(dataset_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_sessions_session ON gb_entity_sessions(session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_sessions_session ON gb_edge_sessions(session_id);
+
+-- Databases created before ontology grounding.
+ALTER TABLE gb_entities ADD COLUMN IF NOT EXISTS ontology_version INTEGER;
+ALTER TABLE gb_entities ADD COLUMN IF NOT EXISTS ontology_class TEXT;
+ALTER TABLE gb_entities ADD COLUMN IF NOT EXISTS ontology_valid BOOLEAN;
+ALTER TABLE gb_edges ADD COLUMN IF NOT EXISTS ontology_version INTEGER;
+ALTER TABLE gb_edges ADD COLUMN IF NOT EXISTS ontology_class TEXT;
+ALTER TABLE gb_edges ADD COLUMN IF NOT EXISTS ontology_valid BOOLEAN;

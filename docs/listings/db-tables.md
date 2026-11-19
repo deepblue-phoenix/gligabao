@@ -6,6 +6,7 @@
 
 - `gb_datasets`
 - `gb_ontologies`
+- `gb_ontology_versions`
 - `gb_models`
 - `gb_inferences`
 - `gb_remember_runs`
@@ -31,8 +32,7 @@
 - `gb_series`
 - `gb_series_points`
 - `gb_series_anchors`
-- `gb_onto_classes`
-- `gb_onto_edges`
+- `gb_ontology_events`
 - `gb_training_job_runs`
 - `gb_training_job_events`
 - `gb_trained_models`
@@ -45,7 +45,8 @@
 | Table                         | Description                                                                                                                                     |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `gb_datasets`                 | hard logical containers (owned by one user) that every artifact, entity and edge belongs to; deletion is soft.                                  |
-| `gb_ontologies`               | metadata of a loaded ontology (name, IRI, format, digest, counts); its classes and edges are in `gb_onto_classes` and `gb_onto_edges`.          |
+| `gb_ontologies`               | an ontology (YAML/JSON DSL): name, owner, version, spec (JSON), digest and counts.                                                              |
+| `gb_ontology_versions`        | the history of an ontology: the document and the spec of every version.                                                                         |
 | `gb_models`                   | the static list of AI models gligabao knows, referenced by entities, edges and inferences.                                                      |
 | `gb_inferences`               | one row per model invocation (LLM call, embedding, web search, Jev classification) with tokens, cost and reasoning level.                       |
 | `gb_remember_runs`            | one row per remember call, tracking its user, dataset, parameters, status, error and times.                                                    |
@@ -71,8 +72,7 @@
 | `gb_series`                   | timeseries identified by (provider, key, field) in a dataset, with a summary and stats of all their points.                                     |
 | `gb_series_points`            | the timestamped values of a series.                                                                                                             |
 | `gb_series_anchors`           | many-to-many link anchoring a series (optionally a window of it) to an artifact, entity or edge.                                                |
-| `gb_onto_classes`             | the classes (nodes) of a loaded ontology.                                                                                                       |
-| `gb_onto_edges`               | the relationships between ontology classes (subclass, equivalence, disjointness, properties).                                                   |
+| `gb_ontology_events`          | what grounding made of each node and edge of a remember call (outcome, reason, detail); see docs/ontologies/ontologies.md.                      |
 | `gb_training_job_runs`        | training jobs started on the sidecar, with status, settings, loss and timings.                                                                  |
 | `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
 | `gb_trained_models`           | one row per completed training job, the saved weights (LoRA adapter) that inference, evals and audits run on.                                   |
@@ -86,6 +86,7 @@
 | ----------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
 | `gb_datasets`                 | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
 | `gb_ontologies`               | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
+| `gb_ontology_versions`        | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
 | `gb_models`                   | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
 | `gb_inferences`               | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
 | `gb_remember_runs`            | `internal/db/relational/sqlite/sql/schema_remember_runs.sql` | `internal/db/relational/postgres/sql/schema_remember_runs.sql` |
@@ -111,8 +112,7 @@
 | `gb_series`                   | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_series_points`            | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_series_anchors`           | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
-| `gb_onto_classes`             | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
-| `gb_onto_edges`               | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_ontology_events`          | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
 | `gb_training_job_runs`        | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
 | `gb_training_job_events`      | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
 | `gb_trained_models`           | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |

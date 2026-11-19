@@ -69,6 +69,7 @@ type runState struct {
 // StageClassifyComplexity is in classify.go.
 const (
 	StageChunkText      = relational.RememberStageChunkText
+	StageGroundGraph    = relational.RememberStageGroundGraph
 	StageLoadCandidates = relational.RememberStageLoadCandidates
 	StageStore          = relational.RememberStageStore
 	StageStoreSeries    = relational.RememberStageStoreSeries

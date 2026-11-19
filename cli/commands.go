@@ -542,7 +542,7 @@ func (c *CLI) apiCmd() *cobra.Command {
 stdin. The query string can be part of PATH. The user (--user) is sent in the gb-user-id header, which is the only place the server takes it from.
 ` + clientHelp,
 		Example: `  gligabao api GET /v1/gb/timeseries
-  gligabao api POST /v1/gb/ontologies '{"name":"x","file":"x.owl"}'`,
+  gligabao api POST /v1/gb/ontologies '{"name":"x","file":"x.yaml"}'`,
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command,
 			args []string) error {
