@@ -7,7 +7,7 @@ package remember
 //
 // A run is the row of gb_remember_runs (its params are the flags the call was made with) plus cost_usd, the sum of the cost of
 // the inferences of all its stages. A run of another user is a 404. The user_id is removed from the params it returns (see
-// withoutUserID).
+// withoutUserID), and the errors of a failed run and its stages are replaced by a generic message (see withoutInternalErrors).
 
 import (
 	"context"
@@ -58,6 +58,31 @@ func runCost(ctx context.Context,
 	return total
 }
 
+// userFacingError is what the endpoints say of a failed run or stage: the generic message of the 502 of POST /v1/gb/remember.
+// The stored error (the cause, with provider, model, SQL or file details) is internal and stays in the run log and the admin API.
+const userFacingError = "failed to process text"
+
+// publicError maps a stored error to the user-facing one: nil stays nil (it did not fail), anything else becomes the generic message.
+func publicError(stored *string) *string {
+	if stored == nil {
+		return nil
+	}
+	msg := userFacingError
+	return &msg
+}
+
+// withoutInternalErrors returns the run with the errors of the run and of its stages replaced by publicError. The run is not changed.
+func withoutInternalErrors(run relational.RememberRun) relational.RememberRun {
+	stages := make(map[string]relational.RememberStage, len(run.Stages))
+	for name, stage := range run.Stages {
+		stage.Error = publicError(stage.Error)
+		stages[name] = stage
+	}
+	run.Stages = stages
+	run.Error = publicError(run.Error)
+	return run
+}
+
 // withoutUserID returns the run without the user_id of its params. REMOVAL OF THE user_id: the params of a run (as stored in
 // gb_remember_runs) hold the user_id of the call, but these endpoints only return the runs of the user of the request, so the
 // caller knows it already and a UI that shows the flags of a run does not need it. The stored params are not changed.
@@ -75,7 +100,7 @@ func withCost(ctx context.Context,
 	for _, run := range runs {
 		out = append(out,
 			runView{
-				RememberRun: withoutUserID(run),
+				RememberRun: withoutInternalErrors(withoutUserID(run)),
 				CostUSD: runCost(ctx,
 					d,
 					run),

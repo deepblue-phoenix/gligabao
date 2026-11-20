@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.219.1] - 2026-11-21
+
+### Fixed
+- **`GET /v1/gb/remember/runs` and `/runs/{id}` no longer return the internal error of a failed run or stage.** The `error` of a run or stage that failed is now the generic `failed to process text` (the same message as the `502` of `POST /v1/gb/remember`); the stored cause stays in the run log and the admin API.
+
 ## [0.219.0] - 2026-11-20
 
 ### Added
