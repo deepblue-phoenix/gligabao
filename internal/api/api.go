@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
 	"github.com/deepblue-phoenix/gligabao/internal/api/research"
 	"github.com/deepblue-phoenix/gligabao/internal/api/timeseries"
+	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -247,6 +248,7 @@ type options struct {
 	graphEmbedder memory_core.GraphEmbedder
 	trainingHook  memory_core.ClassifyingTrainingHook
 	research      *agent_research.Manager
+	trajectories  atifstore.Store
 }
 
 // Option configures Register.
@@ -262,6 +264,10 @@ func WithAuth(auth httputil.Authenticator) Option { return func(o *options) { o.
 // coordinates (see package memory_geo and memory_remember's resolve_geo stage), and query find the places the question mentions and give the
 // geo entities near them to the LLM that answers. Without it (or with nil) neither looks at places.
 func WithGeoResolver(r memory_geo.Resolver) Option { return func(o *options) { o.geo = r } }
+
+// WithTrajectoryStore makes the eval routes of RegisterEval store their ATIF trajectories in s (the evals use it to learn where a
+// trajectory went, and to keep it in the directory of the user). Without it (or with nil) the process default is used.
+func WithTrajectoryStore(s atifstore.Store) Option { return func(o *options) { o.trajectories = s } }
 
 // WithGeoRadius sets the default radius, in kilometers, of the proximity search of query (a request can override it with
 // geo_radius_km); 0 (the default) means memory_core.DefaultGeoRadiusKm.
@@ -306,21 +312,27 @@ func RegisterEval(mux *http.ServeMux,
 	for _, opt := range opts {
 		opt(&o)
 	}
+	var store []memory_core.Option
+	if o.trajectories != nil {
+		store = append(store[:len(store):len(store)], memory_core.WithTrajectoryStore(o.trajectories))
+	}
 	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr,
 		d.Relational,
 		llm,
-		memory.WithVectors(d.Vector, emb),
-		memory_core.WithChunking(d.Chunking),
-		memory_core.WithJev(jv),
-		memory_core.WithWebSearcher(ws),
-		memory_core.WithSeriesProviders(providers),
-		memory_core.WithGeoResolver(o.geo),
-		memory_core.WithGraphEmbedder(o.graphEmbedder),
-		memory_image.WithImageStore(d.ImageStore)))
+		append(store[:len(store):len(store)],
+			memory.WithVectors(d.Vector, emb),
+			memory_core.WithChunking(d.Chunking),
+			memory_core.WithJev(jv),
+			memory_core.WithWebSearcher(ws),
+			memory_core.WithSeriesProviders(providers),
+			memory_core.WithGeoResolver(o.geo),
+			memory_core.WithGraphEmbedder(o.graphEmbedder),
+			memory_image.WithImageStore(d.ImageStore))...))
 	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational,
 		llm,
-		memory.WithVectors(d.Vector, emb),
-		memory_core.WithGeoResolver(o.geo),
-		memory_core.WithGeoRadius(o.geoRadiusKm),
-		memory_core.WithGraphEmbedder(o.graphEmbedder)))
+		append(store[:len(store):len(store)],
+			memory.WithVectors(d.Vector, emb),
+			memory_core.WithGeoResolver(o.geo),
+			memory_core.WithGeoRadius(o.geoRadiusKm),
+			memory_core.WithGraphEmbedder(o.graphEmbedder))...))
 }

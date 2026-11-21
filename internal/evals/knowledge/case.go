@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http/httptest"
+	"net/http"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -19,18 +19,14 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
-	"github.com/deepblue-phoenix/gligabao/internal/training"
 )
 
-// EvalUser owns the eval datasets.
-const EvalUser = "eval"
-
-// DatasetName is the dataset a case remembers into and queries from: one per case and eval run ("<case>_run<evalRunID>"), so runs
-// are isolated from each other and the graph of every case of every run stays in the eval database (and can be viewed in the admin
-// UI). Characters a dataset name does not allow become "_"; the case part is cut so the whole name fits the 64-byte limit.
+// DatasetName is the eval dataset a case remembers into and queries from: one per case and eval run ("r<evalRunID>-<case>"), so runs
+// are isolated from each other. It is created with kind 'eval' (see memory_core.WithEvalRun), so no regular dataset function sees it.
+// Characters a dataset name does not allow become "_"; the case part is cut so the whole name fits the 64-byte limit.
 func DatasetName(caseName string,
 	evalRunID core.EvalRunID) string {
-	suffix := fmt.Sprintf("_run%d", evalRunID)
+	prefix := fmt.Sprintf("r%d-", evalRunID)
 	b := []byte(caseName)
 	for i, ch := range b {
 		ok := ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' ||
@@ -39,10 +35,10 @@ func DatasetName(caseName string,
 			b[i] = '_'
 		}
 	}
-	if max := 64 - len(suffix); len(b) > max {
+	if max := 64 - len(prefix); len(b) > max {
 		b = b[:max]
 	}
-	return string(b) + suffix
+	return prefix + string(b)
 }
 
 // outcome is what one case produced.
@@ -53,6 +49,8 @@ type outcome struct {
 	PassedChecks []string
 	// DatasetID is the dataset the case ran in (0 if it was never created); it holds the graph the case built.
 	DatasetID int64
+	// Locations are where the stores put the trajectories, by trajectory id.
+	Locations map[string]string
 	// ArtifactIDs[i] are the IDs, in DatasetID, of the artifacts of Trajectories[i]: the artifact a remember call stored, the
 	// artifacts a query's evidence was sourced from.
 	ArtifactIDs [][]int64
@@ -73,10 +71,11 @@ func (o *outcome) cost() (usd float64, steps int) {
 	return usd, steps
 }
 
-// runCase executes one case in the eval database through the eval endpoints, in a dataset of its own (see DatasetName): remember
+// runCase executes one case as the owner through the eval endpoints, in an eval dataset of its own (see DatasetName): remember
 // (once per text, in order), the checks of what was stored, then query. input has the texts read in. The outcome is returned even
 // when err is set, holding whatever was collected before the failure.
 func (x *Executor) runCase(ctx context.Context,
+	owner,
 	name string,
 	in core.KnowledgeCaseDefMeta,
 	input core.KnowledgeInput,
@@ -108,32 +107,34 @@ func (x *Executor) runCase(ctx context.Context,
 		}
 		database = &cp
 	}
-	mgrCtx, stopMgr := context.WithCancel(context.Background()) // stops the remember manager of the handler
-	defer stopMgr()
-	srv := httptest.NewServer(server.NewHandler(mgrCtx,
+	ctx = memory_core.WithEvalRun(ctx, int64(evalRunID)) // the datasets of the case are eval datasets of this run
+	mgrCtx, stopMgr := context.WithCancel(context.Background())
+	defer stopMgr() // stops what the case started: its remember manager (if it has its own) and its geo manager
+	locs := newLocStore(x.trajectoryStore())
+	defer func() { out.Locations = locs.snapshot() }()
+	mux := http.NewServeMux() // private: not mounted anywhere, so the eval routes are not reachable from outside
+	api.RegisterEval(mux,
+		x.rememberManager(mgrCtx,
+			database,
+			llm),
 		database,
 		llm,
 		x.Embedder,
 		nil,
 		x.WebSearch,
-		x.Geo,
 		nil,
-		training.Hooks{},
-		training.DefaultDirs(database.SQLitePath),
-		nil,
-		nil,
-		true,
-		true,
-		false,
-		nil))
-	defer srv.Close()
+		api.WithGeoResolver(server.StartGeoManager(mgrCtx,
+			x.Geo,
+			database)),
+		api.WithTrajectoryStore(locs))
+	caller := x.caller(mux)
 
 	dataset := DatasetName(name, evalRunID)
 	defer func() {
 		// Recorded with the result, so the graph can be read back from the dataset later (also after a failure).
-		if id, err := relational.DatasetID(context.WithoutCancel(ctx),
+		if id, err := memory_core.DatasetID(context.WithoutCancel(ctx),
 			database.Relational,
-			EvalUser,
+			owner,
 			dataset); err == nil {
 			out.DatasetID = id
 		}
@@ -181,7 +182,9 @@ func (x *Executor) runCase(ctx context.Context,
 			Trajectory *atif.Trajectory  `json:"trajectory"`
 		}
 		if err := post(ctx,
-			srv.URL+"/v1/gb/eval/remember",
+			caller,
+			owner,
+			"/v1/gb/eval/remember",
 			body,
 			&rem); err != nil {
 			return out, fmt.Errorf("remember #%d: %w",
@@ -199,12 +202,21 @@ func (x *Executor) runCase(ctx context.Context,
 		}
 	}
 	out.Chunks = len(reported)
-	edges, err := graph.ListEdges(ctx,
-		database.Graph,
-		EvalUser,
+	dsID, err := memory_core.DatasetID(ctx,
+		database.Relational,
+		owner,
 		dataset)
-	if err != nil {
-		return out, err
+	var edges []graph.Edge // none if nothing was remembered, so there is no dataset
+	switch {
+	case errors.Is(err, memory_core.ErrDatasetNotFound):
+	case err != nil:
+		return out, fmt.Errorf("the dataset of the case: %w", err)
+	default:
+		if edges, err = graph.ListEdgesOfDataset(ctx,
+			database.Graph,
+			dsID); err != nil {
+			return out, err
+		}
 	}
 	tstr := func(t *time.Time) string {
 		if t == nil {
@@ -282,6 +294,7 @@ func (x *Executor) runCase(ctx context.Context,
 	if in.ExpectMinChunks > 0 {
 		if err := checkChunks(ctx,
 			database,
+			owner,
 			dataset,
 			in.ExpectMinChunks,
 			parents,
@@ -293,6 +306,7 @@ func (x *Executor) runCase(ctx context.Context,
 	if in.ExpectWebSearches > 0 {
 		if err := checkWebSearches(ctx,
 			database,
+			owner,
 			dataset,
 			in.ExpectWebSearches,
 			check); err != nil {
@@ -306,6 +320,7 @@ func (x *Executor) runCase(ctx context.Context,
 		}
 		if err := checkSeries(ctx,
 			database,
+			owner,
 			dataset,
 			in.ExpectSeries,
 			w,
@@ -324,6 +339,7 @@ func (x *Executor) runCase(ctx context.Context,
 		}
 		if err := checkGeo(ctx,
 			database,
+			owner,
 			dataset,
 			in.ExpectGeo,
 			w,
@@ -354,7 +370,9 @@ func (x *Executor) runCase(ctx context.Context,
 		queryBody["reasoning"] = queryReasoning
 	}
 	if err := post(ctx,
-		srv.URL+"/v1/gb/eval/query",
+		caller,
+		owner,
+		"/v1/gb/eval/query",
 		queryBody,
 		&rec); err != nil {
 		return out, fmt.Errorf("query: %w", err)
@@ -370,6 +388,7 @@ func (x *Executor) runCase(ctx context.Context,
 	}
 	ids, err := sourceArtifactIDs(ctx,
 		database,
+		owner,
 		dataset,
 		cited)
 	if err != nil {
@@ -384,10 +403,10 @@ func (x *Executor) runCase(ctx context.Context,
 }
 
 // trajectoryRef builds the database reference to an ATIF trajectory: its ID, the operation that made it (taken from the agent name,
-// "gligabao-remember" or "gligabao-query"), its size and cost, and the path of its file in dir (empty dir = not stored).
+// "gligabao-remember" or "gligabao-query"), its size and cost, and where it was stored (the location the trajectory store returned; empty = not known).
 func trajectoryRef(seq int,
 	traj *atif.Trajectory,
-	dir string,
+	path string,
 	artifactIDs []int64) (core.KnowledgeTrajectory, error) {
 	if traj == nil || traj.TrajectoryID == "" {
 		return core.KnowledgeTrajectory{}, errors.New("trajectory has no trajectory_id")
@@ -409,9 +428,7 @@ func trajectoryRef(seq int,
 	if fm := traj.FinalMetrics; fm != nil {
 		ref.Steps, ref.CostUSD = fm.TotalSteps, fm.TotalCostUSD
 	}
-	if dir != "" {
-		ref.Path = filepath.Join(dir, traj.TrajectoryID+".json")
-	}
+	ref.Path = path
 	return ref, nil
 }
 

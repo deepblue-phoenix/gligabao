@@ -38,6 +38,7 @@ type EvalRerunner interface {
 	// errors: evalsdb.ErrNotFound (unknown case run), core.ErrRerunRefused (it cannot be rerun), core.ErrRerunBusy (one is running),
 	// memory_core.ErrInvalidModels (a model name is malformed), memory_core.ErrInvalidReasoning (a level is unknown).
 	Rerun(ctx context.Context,
+		owner string,
 		caseRun core.CaseRunID,
 		opts core.RerunOptions) (core.CaseRunID, error)
 }
@@ -258,6 +259,7 @@ func EvalCaseRunRerun(d *sql.DB,
 			return
 		}
 		newID, err := rr.Rerun(ctx,
+			evalOwner,
 			core.CaseRunID(id),
 			core.RerunOptions{
 				RememberModel:     req.RememberModel,

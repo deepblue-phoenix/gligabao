@@ -5,6 +5,23 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.223.0] - 2026-11-21
+
+Step 4 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the executor and the run manager. Library only: the
+manager is not wired into the server yet (the API of step 5 does it), and the config settings come with step 6.
+
+### Added
+- `internal/evals/runmanager`: starts the eval runs of a user (limits of runs in progress per user and per server, daily and per-run cost caps, supported models only; the eval file is re-read, validated and synced; the run is recorded `pending`, then claimed), executes them in the background with a heartbeat and a cancel that other servers can request, ends them `cancelled` (`server shutdown`) when the server stops, fails the runs a crash left behind (`FailStale`, at start and every minute), deletes the eval datasets (and vectors) of the runs that ended more than the retention ago (hourly), and reruns case runs under the same limits. It uses a remember manager of its own, so evals never delay the interactive `remember` calls.
+- `knowledge.Caller` and `knowledge.MuxCaller`: the executor calls the eval endpoints through a private in-process mux (`httptest.NewRecorder`), as the owner; no listener is opened and the routes are not mounted anywhere else.
+- `Executor` fields `Owner`, `Remember` (shared remember manager), `Trajectories` (store; the case runs reference the location it returned, e.g. an `s3://` key under the user's directory), `ReadText` (corpus files of a user) and `MaxCostUSD` (the run ends `errored` with `cost cap reached`); `knowledge.ErrCostCap`, `ValidateModels`, `ValidateReasoning`.
+- `runner.CreateRun` and `EvalOptions.Run`: a run is recorded `pending` and run later; `evals/db` `ListRunsWithEvalDatasetsBefore` (retention); `graph.ListEdgesOfDataset`; `api.WithTrajectoryStore` and `memory_core.WithTrajectoryStore`; `server.StartGeoManager`.
+
+### Changed
+- **Breaking:** eval datasets of a run are named `r<eval run id>-<case>` (were `<case>_run<id>`), are of kind `eval` and belong to the owner of the eval (the fixed user `eval` is gone: `knowledge.EvalUser` is deleted). The checks read them by dataset id.
+- **Breaking:** the knowledge runner (`./run_evals.sh`) needs `-user` (the owner of its evals, runs and datasets; not `system`).
+- `Rerunner` reruns as an owner (`Rerun(ctx, owner, ...)`, also in `admin.EvalRerunner`), uses the shared database when it has one (`EvalRerunEnv.DB`; the separate eval database of the admin UI is still opened by path until step 5), and allows one rerun at a time per user instead of one per server.
+- An eval run whose last case was cancelled now ends `cancelled`, not `completed`.
+
 ## [0.222.0] - 2026-11-21
 
 Step 3 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): user eval files. Library only; no route, setting or

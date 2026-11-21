@@ -295,6 +295,11 @@ func WithTrace(tr *Trace) Option { return func(o *CallOptions) { o.Trace = tr } 
 // WithTrajectoryDir overrides TrajectoryDir for this call.
 func WithTrajectoryDir(dir string) Option { return func(o *CallOptions) { o.Dir = dir } }
 
+// WithTrajectoryStore stores the trajectory of this call in s (instead of the directory or atifstore.Default).
+func WithTrajectoryStore(s atifstore.Store) Option {
+	return func(o *CallOptions) { o.TrajectoryStore = s }
+}
+
 //---------------------------------------------------------------------------------------------
 
 // Warn records something the operator should know about the call although it succeeded (e.g. a model that did not take the

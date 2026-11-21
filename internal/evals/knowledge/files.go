@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -126,6 +127,32 @@ func readTexts(dirs []string,
 				err)
 		}
 		out.Remember[i].Text = string(b)
+	}
+	return out, nil
+}
+
+// readTextsWith is readTexts with the files read by read (the corpus files of a user).
+func readTextsWith(ctx context.Context,
+	in core.KnowledgeInput,
+	read func(ctx context.Context,
+		path string) (string, error)) (core.KnowledgeInput, error) {
+	out := in
+	out.Remember = make([]core.KnowledgeArtifact, len(in.Remember))
+	copy(out.Remember, in.Remember)
+	for i, m := range out.Remember {
+		if m.TextFile == "" {
+			continue
+		}
+		if m.Text != "" {
+			return in, errors.New("remember #" + fmt.Sprint(i+1) + " has both text and text_file")
+		}
+		text, err := read(ctx, m.TextFile)
+		if err != nil {
+			return in, fmt.Errorf("remember #%d: %w",
+				i+1,
+				err)
+		}
+		out.Remember[i].Text = text
 	}
 	return out, nil
 }

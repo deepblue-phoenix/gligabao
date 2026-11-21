@@ -223,6 +223,12 @@ type Store struct {
 		reason string,
 		at time.Time) (int64, error)
 
+	// ListRunsWithEvalDatasetsBefore is for the retention sweep of the run manager (every user).
+	ListRunsWithEvalDatasetsBefore func(ctx context.Context,
+		q Execer,
+		cutoff time.Time,
+		limit int) ([]RunRef, error)
+
 	// Admin reads: every user, with an optional owner filter. Only internal/api/admin uses them.
 	AdminListEvalDefs func(ctx context.Context,
 		q Execer,

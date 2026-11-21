@@ -107,3 +107,16 @@ func ParseModels(s string) (memory_core.Models, error) {
 	}
 	return out, nil
 }
+
+// ValidateModels checks a models map of a run (stage -> model): the stages are those of ModelStages and the names are well formed.
+func ValidateModels(m map[string]string) error {
+	_, _, err := splitModels(m)
+	return err
+}
+
+// ValidateReasoning checks a reasoning map of a run (stage -> level): the stages are those of ReasoningStages and the levels are
+// reasoning levels.
+func ValidateReasoning(m map[string]string) error {
+	_, _, err := splitReasoning(m)
+	return err
+}

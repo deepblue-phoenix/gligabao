@@ -73,34 +73,45 @@ type EvalOptions struct {
 	// run is the one the recorder keeps: it changes as the cases finish, so a callback that keeps it must read it on the goroutine
 	// of RunEval (the executor's callbacks do) or copy it.
 	OnCreated func(run *core.EvalRun)
+	// Run is an eval run made by CreateRun (pending) and then claimed (db.Store.ClaimRun, which has made it running): RunEval runs
+	// it instead of creating one, so the other options (ExperimentRunID, Params, Meta) are those of CreateRun. Nil: RunEval creates it.
+	Run *core.EvalRun
 }
 
-// RunEval runs the cases of def (def.Cases; the caller selects them) with ex as one eval run: it records the eval run, calls
-// ex.Execute, and ends the run completed, errored (ex failed) or cancelled (ctx ended). It returns the eval run as it was left,
-// and the error of ex if it had one; an error of the database is returned as it is (and the run may be left running).
-func (r *Runner) RunEval(ctx context.Context,
+// CreateRun records the eval run of def as pending (the owner is the def's) and returns it, for RunEval to run (EvalOptions.Run) once
+// the caller has claimed it. runnerID is the server that is to run it (stored, see core.EvalRun.RunnerID). The options are those of
+// RunEval; Run and OnCreated are ignored.
+func (r *Runner) CreateRun(ctx context.Context,
 	def *core.EvalDef,
-	ex Executor,
+	runnerID string,
 	opts EvalOptions) (*core.EvalRun, error) {
-	start := now()
 	run := &core.EvalRun{
 		UserID:          def.UserID,
 		DefID:           def.ID,
 		Type:            def.Type,
 		ExperimentRunID: opts.ExperimentRunID,
-		Status:          core.StatusRunning,
+		Status:          core.StatusPending,
 		Params:          opts.Params,
 		Counts: core.Counts{
 			Total:   len(def.Cases),
 			Pending: len(def.Cases),
 		},
 		Timing: core.Timing{
-			CreatedAt: start,
-			StartedAt: &start,
+			CreatedAt: now(),
 		},
-		Meta: opts.Meta,
+		RunnerID: runnerID,
+		Meta:     opts.Meta,
 	}
-	err := r.tx(ctx, func(q db.Execer) error {
+	if err := r.createRun(ctx, run); err != nil {
+		return nil, err
+	}
+	return run, nil
+}
+
+// createRun stores run and its Meta in one transaction.
+func (r *Runner) createRun(ctx context.Context,
+	run *core.EvalRun) error {
+	return r.tx(ctx, func(q db.Execer) error {
 		if err := r.Store.CreateEvalRun(ctx,
 			q,
 			run); err != nil {
@@ -114,8 +125,44 @@ func (r *Runner) RunEval(ctx context.Context,
 			q,
 			run.Meta)
 	})
-	if err != nil {
-		return nil, err
+}
+
+// RunEval runs the cases of def (def.Cases; the caller selects them) with ex as one eval run: it records the eval run, calls
+// ex.Execute, and ends the run completed, errored (ex failed) or cancelled (ctx ended). It returns the eval run as it was left,
+// and the error of ex if it had one; an error of the database is returned as it is (and the run may be left running).
+func (r *Runner) RunEval(ctx context.Context,
+	def *core.EvalDef,
+	ex Executor,
+	opts EvalOptions) (*core.EvalRun, error) {
+	run := opts.Run
+	if run == nil {
+		start := now()
+		run = &core.EvalRun{
+			UserID:          def.UserID,
+			DefID:           def.ID,
+			Type:            def.Type,
+			ExperimentRunID: opts.ExperimentRunID,
+			Status:          core.StatusRunning,
+			Params:          opts.Params,
+			Counts: core.Counts{
+				Total:   len(def.Cases),
+				Pending: len(def.Cases),
+			},
+			Timing: core.Timing{
+				CreatedAt: start,
+				StartedAt: &start,
+			},
+			Meta: opts.Meta,
+		}
+		if err := r.createRun(ctx, run); err != nil {
+			return nil, err
+		}
+	} else {
+		run.Status = core.StatusRunning
+		if run.StartedAt == nil {
+			start := now()
+			run.StartedAt = &start
+		}
 	}
 	if opts.OnCreated != nil {
 		opts.OnCreated(run)

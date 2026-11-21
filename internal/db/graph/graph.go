@@ -560,6 +560,23 @@ func ListEdges(ctx context.Context,
 	return nil, unsupported()
 }
 
+// ListEdgesOfDataset returns every edge (expired ones included) of the dataset dsID, by ID.
+func ListEdgesOfDataset(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]Edge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEdgesOfDataset(ctx,
+			d,
+			dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListEdgesOfDataset(ctx,
+			d,
+			dsID)
+	}
+	return nil, unsupported()
+}
+
 // ListEdgeEvents returns the edge events (what Remember did to the facts, see model.EdgeEvent) of the artifact and of all
 // its descendants (the chunks of a long text, the web searches and observations made for it), oldest first, each with its
 // edge (current state, with the names of its endpoints). An artifact without events has none.

@@ -508,3 +508,41 @@ func (r Reads) FailStale(ctx context.Context,
 	}
 	return n, nil
 }
+
+// RunRef is a run with its owner.
+type RunRef struct {
+	UserID string
+	RunID  core.EvalRunID
+}
+
+// ListRunsWithEvalDatasetsBefore returns the eval runs (of every user) that ended before cutoff and still have a live eval dataset
+// (the retention sweep deletes those datasets), oldest first, at most limit.
+func (r Reads) ListRunsWithEvalDatasetsBefore(ctx context.Context,
+	q Execer,
+	cutoff time.Time,
+	limit int) ([]RunRef, error) {
+	rows, err := r.query(ctx,
+		q,
+		`SELECT id, user_id FROM gb_eval_runs
+		WHERE status IN ('completed', 'errored', 'cancelled') AND finished_at IS NOT NULL AND finished_at < ?
+		AND EXISTS (SELECT 1 FROM gb_datasets d WHERE d.eval_run_id = gb_eval_runs.id AND d.kind = 'eval' AND d.deleted = ?)
+		ORDER BY finished_at, id LIMIT ?`,
+		r.d.Time(cutoff),
+		false,
+		limit)
+	if err != nil {
+		return nil, fmt.Errorf("list runs with eval datasets: %w", err)
+	}
+	defer rows.Close()
+	out := []RunRef{}
+	for rows.Next() {
+		var id int64
+		var x RunRef
+		if err := rows.Scan(&id, &x.UserID); err != nil {
+			return nil, err
+		}
+		x.RunID = core.EvalRunID(id)
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}

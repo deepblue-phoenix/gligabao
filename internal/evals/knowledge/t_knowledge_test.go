@@ -28,6 +28,8 @@ import (
 )
 
 // testEvalsDir is the directory of the evals of the repository (relative to this package).
+const testOwner = "eval"
+
 const testEvalsDir = "../../../build/evals_knowledge"
 
 // scriptedLLM answers by what the prompt asks for: the query prompt gets an answer, anything else an extraction.
@@ -143,8 +145,9 @@ func newEnv(t *testing.T,
 		},
 	}
 	e.x = &knowledge.Executor{
-		DB:  database,
-		LLM: e.lm,
+		Owner: testOwner,
+		DB:    database,
+		LLM:   e.lm,
 		Embedder: fakeEmbedder{
 			dims: database.EmbeddingDimensions,
 		},
@@ -306,7 +309,7 @@ func TestExecutor(t *testing.T) {
 		JOIN gb_case_defs cd ON cd.id = c.def_id WHERE cd.name = 'good' AND c.eval_run_id = ?`, runID).Scan(&datasetID); err != nil {
 		t.Fatal(err)
 	}
-	all, err := relational.ListAllDatasets(context.Background(),
+	all, err := relational.ListAllDatasetsAnyKind(context.Background(),
 		d,
 		false)
 	if err != nil {
@@ -363,10 +366,11 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 	}
 	for _, id := range []core.EvalRunID{r1.ID, r2.ID} {
 		name := knowledge.DatasetName("c", id)
-		if _, err := relational.DatasetID(context.Background(),
+		if _, err := relational.EvalDatasetID(context.Background(),
 			e.db.Relational,
-			knowledge.EvalUser,
-			name); err != nil {
+			testOwner,
+			name,
+			int64(id)); err != nil {
 			t.Fatalf("dataset %q of run %d: %v",
 				name,
 				id,
@@ -473,10 +477,10 @@ func TestExpectGeo(t *testing.T) {
 
 func TestDatasetName(t *testing.T) {
 	for name, want := range map[string]string{
-		"remember_query":        "remember_query_run7",
-		"job change (v2)":       "job_change__v2__run7",
-		"-lead":                 "_lead_run7",
-		strings.Repeat("a", 80): strings.Repeat("a", 59) + "_run7",
+		"remember_query":        "r7-remember_query",
+		"job change (v2)":       "r7-job_change__v2_",
+		"-lead":                 "r7-_lead",
+		strings.Repeat("a", 80): "r7-" + strings.Repeat("a", 61),
 	} {
 		got := knowledge.DatasetName(name, 7)
 		if got != want || len(got) > 64 {
@@ -1064,9 +1068,9 @@ func TestRerunner(t *testing.T) {
 	orig := cases[0]
 	newRerunner := func(lm memory_core.LLM) admin.EvalRerunner {
 		return knowledge.NewRerunner(server.EvalRerunEnv{
-			Ctx:    ctx,
-			DBPath: e.db.SQLitePath,
-			LLM:    lm,
+			Ctx: ctx,
+			DB:  e.db,
+			LLM: lm,
 			Embedder: fakeEmbedder{
 				dims: e.db.EmbeddingDimensions,
 			},
@@ -1074,8 +1078,8 @@ func TestRerunner(t *testing.T) {
 		})
 	}
 	if knowledge.NewRerunner(server.EvalRerunEnv{
-		Ctx:    ctx,
-		DBPath: e.db.SQLitePath,
+		Ctx: ctx,
+		DB:  e.db,
 	}) != nil {
 		t.Error("a rerunner without an LLM")
 	}
@@ -1085,6 +1089,7 @@ func TestRerunner(t *testing.T) {
 		answer: "Bob.",
 	})
 	if _, err := rr.Rerun(ctx,
+		testOwner,
 		orig.ID,
 		core.RerunOptions{
 			RememberModel: "claude-opus-5-5",
@@ -1111,6 +1116,7 @@ func TestRerunner(t *testing.T) {
 		}, memory_core.ErrInvalidReasoning},
 	} {
 		if _, err := rr.Rerun(ctx,
+			testOwner,
 			bad.id,
 			bad.opts); !errors.Is(err, bad.want) {
 			t.Errorf("rerun %+v: %v, want %v",
@@ -1125,6 +1131,7 @@ func TestRerunner(t *testing.T) {
 	}
 	rr = newRerunner(lm)
 	id, err := rr.Rerun(ctx,
+		testOwner,
 		orig.ID,
 		core.RerunOptions{
 			RememberModel:     "claude-opus-5-5",
@@ -1208,6 +1215,7 @@ func TestRerunner(t *testing.T) {
 	}
 	rr = newRerunner(llm2)
 	id2, err := rr.Rerun(ctx,
+		testOwner,
 		id,
 		core.RerunOptions{})
 	if err != nil {

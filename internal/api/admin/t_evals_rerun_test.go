@@ -37,6 +37,7 @@ func (f *fakeRerunner) Models() []llm.ModelInfo {
 }
 
 func (f *fakeRerunner) Rerun(_ context.Context,
+	_ string,
 	id core.CaseRunID,
 	opts core.RerunOptions) (core.CaseRunID, error) {
 	f.calls = append(f.calls, fmt.Sprintf("%d %q %q %q %q",

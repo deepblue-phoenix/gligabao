@@ -274,8 +274,10 @@ func connectSidecar(ctx context.Context,
 type EvalRerunEnv struct {
 	// Ctx ends when the server shuts down: the reruns in progress stop with it.
 	Ctx context.Context
-	// DBPath is the SQLite file of the eval database (Options.EvalDBPath).
+	// DBPath is the SQLite file of the eval database (Options.EvalDBPath); DB, if set, is the shared database instead (never closed
+	// by the rerunner).
 	DBPath string
+	DB     *db.DB
 	// LLM, Embedder and WebSearch are the server's; LLM is never nil. Geo is its geo resolver (nil: geo is off).
 	LLM       memory_core.LLM
 	Embedder  memory_core.Embedder
@@ -341,6 +343,15 @@ func NewHandler(ctx context.Context,
 		adminExts,
 		nil,
 		extraAdminDBs...)
+}
+
+// StartGeoManager is startGeoManager for the packages that run the pipelines in process (the evals).
+func StartGeoManager(ctx context.Context,
+	r memory_geo.Resolver,
+	d *db.DB) memory_geo.Resolver {
+	return startGeoManager(ctx,
+		r,
+		d)
 }
 
 // startGeoManager puts the geo resolver behind the geo manager of the server (see memory_geo.Manager): ONE goroutine that asks the

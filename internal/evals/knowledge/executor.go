@@ -2,10 +2,13 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
+	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/ansi"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/commentary"
@@ -13,13 +16,17 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 )
 
 // Executor runs the cases of a knowledge eval (it implements runner.Executor). Start the eval run with a
 // *core.KnowledgeEvalRunMeta as EvalOptions.Meta; the Executor keeps it up to date.
 type Executor struct {
-	// DB is the eval database: the datasets of the cases are made in it (it should also be the database the runner records in, so
-	// the admin UI shows the graphs next to the runs). It is never reset.
+	// Owner is the user the eval runs as: the eval datasets and the trajectories of its cases are theirs. Required.
+	Owner string
+	// DB is the database the datasets of the cases are made in (the eval datasets, kind 'eval'); it should also be the database the
+	// runner records in. It is never reset.
 	DB *db.DB
 	// LLM is the model the knowledge extraction runs on, Embedder embeds the entities and edges into the vector store of DB (nil: they
 	// are not vector indexed) and WebSearch runs the web searches of the remember entries that ask for them (nil: none).
@@ -29,8 +36,18 @@ type Executor struct {
 	// Geo is the geo resolver of the in-process server (nil: geo is off, remember and query do not look for places). With it,
 	// remember stores the coordinates of the places it finds and query finds the places of the question.
 	Geo memory_geo.Resolver
-	// EvalsDirs are the directories the TextFiles of the cases are relative to, searched in order (default DefaultEvalDir).
+	// EvalsDirs are the directories the TextFiles of the cases are relative to, searched in order (default DefaultEvalDir). Ignored
+	// when ReadText is set.
 	EvalsDirs []string
+	// ReadText, if set, reads the text of a TextFile (the user's corpus files); it replaces EvalsDirs.
+	ReadText func(ctx context.Context,
+		path string) (string, error)
+	// Remember, if set, is the remember manager the cases submit to (the evals of a server share one, apart from the one of the
+	// interactive routes); the Executor does not stop it. Without it (and with Verbose, whose LLM wrapper a shared manager would not
+	// see) every case makes its own, stopped when the case ends.
+	Remember *memory_remember.Manager
+	// MaxCostUSD, if above 0, ends the run as errored (ErrCostCap) once the cases have cost more than that.
+	MaxCostUSD float64
 	// Models is the default LLM model of each stage of remember, and of the query with the key "query"; a case's own models win
 	// over it (see ParseModels). Reasoning is the reasoning level of each stage, and of the query with the key "query"; a case's own
 	// win over it (see ParseReasoning). "detect_geo" is a stage of both and applies to both.
@@ -46,7 +63,10 @@ type Executor struct {
 	// OnCaseStart, if set, is called with each case run once it is recorded as running, before the case executes. The run is the one
 	// the executor goes on to change: read it in the callback, do not keep it.
 	OnCaseStart func(cr *core.CaseRun)
-	// TrajectoryDir is where the server stored the ATIF trajectories (memory_core.TrajectoryDir); the case runs reference the files.
+	// Trajectories is where the ATIF trajectories of the cases are stored (under the Owner); nil: the directory TrajectoryDir, else
+	// atifstore.Default, else memory_core.TrajectoryDir. The case runs reference the location the store returned.
+	Trajectories atifstore.Store
+	// TrajectoryDir is the directory of the file store of the trajectories (see Trajectories).
 	TrajectoryDir string
 	// Verbose prints the input and output of every LLM call and what was stored, to Out.
 	Verbose bool
@@ -57,6 +77,53 @@ type Executor struct {
 	Out io.Writer
 	// Colors colours the PASS and FAIL lines (green, red; the "answer:" label yellow). The zero value does not colour.
 	Colors ansi.Palette
+}
+
+// ErrCostCap is why a run ends errored when its cases cost more than Executor.MaxCostUSD.
+var ErrCostCap = errors.New("cost cap reached")
+
+// trajectoryStore is where the trajectories go (see Executor.Trajectories).
+func (x *Executor) trajectoryStore() atifstore.Store {
+	switch {
+	case x.Trajectories != nil:
+		return x.Trajectories
+	case x.TrajectoryDir != "":
+		return atifstore.FS{Dir: x.TrajectoryDir}
+	case atifstore.Default != nil:
+		return atifstore.Default
+	}
+	return atifstore.FS{Dir: memory_core.TrajectoryDir}
+}
+
+// rememberManager is the manager a case submits to: the shared one, or a new one that ends with ctx.
+func (x *Executor) rememberManager(ctx context.Context,
+	database *db.DB,
+	llm memory_core.LLM) *memory_remember.Manager {
+	if x.Remember != nil && !x.Verbose {
+		return x.Remember
+	}
+	errSink, sinkErr := gberrors.SinkFor(database.Backend, database.Relational)
+	if sinkErr != nil {
+		errSink = nil
+	}
+	return memory_remember.NewManager(ctx,
+		database.Relational,
+		llm,
+		memory_remember.WithErrSink(errSink))
+}
+
+// caller makes the Caller of a case over its private mux.
+func (x *Executor) caller(mux *http.ServeMux) Caller { return MuxCaller{Mux: mux} }
+
+// readTexts reads the texts of the text files of in, as the Executor is set up to.
+func (x *Executor) readTexts(ctx context.Context,
+	in core.KnowledgeInput) (core.KnowledgeInput, error) {
+	if x.ReadText == nil {
+		return readTexts(x.EvalsDirs, in)
+	}
+	return readTextsWith(ctx,
+		in,
+		x.ReadText)
 }
 
 func (x *Executor) out() io.Writer {
@@ -75,10 +142,16 @@ func (x *Executor) Execute(ctx context.Context,
 	if !ok {
 		return fmt.Errorf("a knowledge eval run needs a *core.KnowledgeEvalRunMeta, not %T", rec.Run().Meta)
 	}
+	if x.Owner == "" {
+		return errors.New("the executor has no owner")
+	}
 	dbCtx := context.WithoutCancel(ctx) // what is recorded must outlive a cancelled run
 	for _, c := range def.Cases {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if x.MaxCostUSD > 0 && rec.Run().CostUSD > x.MaxCostUSD {
+			return ErrCostCap
 		}
 		if err := x.executeCase(ctx,
 			dbCtx,
@@ -88,7 +161,7 @@ func (x *Executor) Execute(ctx context.Context,
 			return err
 		}
 	}
-	return nil
+	return ctx.Err() // a cancel that came during the last case ends the run cancelled, not completed
 }
 
 func (x *Executor) executeCase(ctx,
@@ -121,9 +194,10 @@ func (x *Executor) executeCase(ctx,
 	}
 
 	out := &outcome{}
-	input, err := readTexts(x.EvalsDirs, m.KnowledgeInput)
+	input, err := x.readTexts(ctx, m.KnowledgeInput)
 	if err == nil {
 		out, err = x.runCase(ctx,
+			x.Owner,
 			c.Name,
 			*m,
 			input,
@@ -174,7 +248,7 @@ func (x *Executor) executeCase(ctx,
 		}
 		ref, refErr := trajectoryRef(i,
 			t,
-			x.TrajectoryDir,
+			out.Locations[t.TrajectoryID],
 			ids)
 		if refErr != nil {
 			if err == nil {

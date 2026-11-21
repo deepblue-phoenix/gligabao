@@ -10,7 +10,6 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
@@ -38,6 +37,7 @@ type rememberedChunk struct {
 //     facts evenly must produce edges from the whole text, not just from its start.
 func checkChunks(ctx context.Context,
 	database *db.DB,
+	owner,
 	dataset string,
 	minChunks int,
 	parents []int64,
@@ -45,9 +45,9 @@ func checkChunks(ctx context.Context,
 	check func(ok bool,
 		pass,
 		fail string)) error {
-	dsID, err := relational.DatasetID(ctx,
+	dsID, err := memory_core.DatasetID(ctx,
 		database.Relational,
-		EvalUser,
+		owner,
 		dataset)
 	if err != nil {
 		return err
@@ -184,14 +184,15 @@ func checkChunks(ctx context.Context,
 //   - each has entities of its own linked to it (the entities discovered on the web are stored like any other).
 func checkWebSearches(ctx context.Context,
 	database *db.DB,
+	owner,
 	dataset string,
 	min int,
 	check func(ok bool,
 		pass,
 		fail string)) error {
-	dsID, err := relational.DatasetID(ctx,
+	dsID, err := memory_core.DatasetID(ctx,
 		database.Relational,
-		EvalUser,
+		owner,
 		dataset)
 	if err != nil {
 		return err
@@ -258,15 +259,16 @@ func checkWebSearches(ctx context.Context,
 // that are given. The detection is the LLM's and the coordinates are the resolver's, so this is not independent of either.
 func checkGeo(ctx context.Context,
 	database *db.DB,
+	owner,
 	dataset string,
 	want []core.KnowledgeExpectGeo,
 	out io.Writer,
 	check func(ok bool,
 		pass,
 		fail string)) error {
-	dsID, err := relational.DatasetID(ctx,
+	dsID, err := memory_core.DatasetID(ctx,
 		database.Relational,
-		EvalUser,
+		owner,
 		dataset)
 	if err != nil {
 		return err
@@ -374,15 +376,16 @@ func distanceKm(lat1,
 // expected number of points and first/last values, and the expected anchors.
 func checkSeries(ctx context.Context,
 	database *db.DB,
+	owner,
 	dataset string,
 	want []core.KnowledgeExpectSeries,
 	out io.Writer,
 	check func(ok bool,
 		pass,
 		fail string)) error {
-	dsID, err := relational.DatasetID(ctx,
+	dsID, err := memory_core.DatasetID(ctx,
 		database.Relational,
-		EvalUser,
+		owner,
 		dataset)
 	if err != nil {
 		return err
@@ -523,11 +526,12 @@ func checkSeries(ctx context.Context,
 // artifact that created each edge and every later one that restated the fact (gb_edge_artifacts), ascending.
 func sourceArtifactIDs(ctx context.Context,
 	database *db.DB,
+	owner,
 	dataset string,
 	edgeArtifact map[int64]*int64) ([]int64, error) {
-	dsID, err := relational.DatasetID(ctx,
+	dsID, err := memory_core.DatasetID(ctx,
 		database.Relational,
-		EvalUser,
+		owner,
 		dataset)
 	if err != nil {
 		return nil, err

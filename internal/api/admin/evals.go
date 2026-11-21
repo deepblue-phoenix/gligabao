@@ -23,8 +23,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// evalOwner is the owner of the evals the admin API reads: the fixed user of the eval database (knowledge.EvalUser; it cannot be
-// imported here, see Named.EvalRerunner). A placeholder until the admin API reads the main database with the admin reads of
+// evalOwner is the owner of the evals the admin API reads: the fixed owner of the separate eval database (the CLI's -user of
+// that database must be this one). A placeholder until the admin API reads the main database with the admin reads of
 // evals/db (all users, with a user_id filter).
 const evalOwner = "eval"
 

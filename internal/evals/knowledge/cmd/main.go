@@ -5,11 +5,11 @@
 // later one) is a JSON object with a "name" and a list of "cases". The evals are put in the
 // eval database (-db) as eval defs, with a case def for each case (rewritten if the file changed), and run from there. The database is
 // never reset: every run of a case has a dataset of its own, named after the case and the eval run (see knowledge.DatasetName), so
-// runs do not interfere with each other and the graphs of all runs are kept. The cases are run behind an in-process HTTP server in
-// eval mode through the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/query): remember (once per text, in order), then
-// query. These return the ATIF trajectory of every call along with its result.
+// runs do not interfere with each other and the graphs of all runs are kept. The defs, the runs and the datasets belong to the user
+// of -user. The cases are run through the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/query) of a private in-process mux, with
+// no listener: remember (once per text, in order), then query. These return the ATIF trajectory of every call along with its result.
 //
-// Usage: go run ./internal/evals/knowledge/cmd [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// Usage: go run ./internal/evals/knowledge/cmd -user name [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -eval, only the cases of that eval run; -list-evals prints the available evals and exits.
 // With -v, every LLM call's input and output is printed.
 // With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file, since the case runs
@@ -102,7 +102,13 @@ func mainErr() error {
 	commentaryModel := flag.String("commentary-model",
 		knowledge.DefaultCommentaryModel,
 		"the model that writes the commentary (-commentary)")
+	user := flag.String("user",
+		"",
+		"the user the evals, their runs and their datasets belong to (required; not \"system\", which is the owner of the training evals)")
 	flag.Parse()
+	if *user == "" || *user == core.SystemUser {
+		return fmt.Errorf("-user is required and must not be %q", core.SystemUser)
+	}
 
 	configSet := false
 	flag.Visit(func(f *flag.Flag) { configSet = configSet || f.Name == "config" })
@@ -188,7 +194,7 @@ func mainErr() error {
 	var defIDs []core.EvalDefID
 	for _, e := range selected {
 		def, err := r.SyncEval(ctx,
-			knowledge.EvalUser,
+			*user,
 			knowledge.Spec(e))
 		if err != nil {
 			return err
@@ -214,7 +220,7 @@ func mainErr() error {
 	var xdef *core.ExperimentDef
 	if *experiment != "" {
 		if xdef, err = r.EnsureExperiment(ctx,
-			knowledge.EvalUser,
+			*user,
 			*experiment,
 			*experimentDesc,
 			defIDs); err != nil {
@@ -233,6 +239,7 @@ func mainErr() error {
 	}
 	colors := ansi.New(os.Stdout)
 	x := &knowledge.Executor{
+		Owner:         *user,
 		DB:            database,
 		LLM:           lm,
 		Embedder:      emb,

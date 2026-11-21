@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
@@ -17,11 +18,12 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 	log "github.com/sirupsen/logrus"
 )
 
-// Rerunner reruns a case of the eval database from the admin UI. It implements admin.EvalRerunner and is the implementation behind the
+// Rerunner reruns a case of the evals database (of the owner) from the admin UI or the run manager. It implements admin.EvalRerunner and is the implementation behind the
 // server's injected hook, server.Options.EvalRerunner.
 //
 // The hook exists because of an import cycle: this package imports internal/sys/server (runCase runs each case behind an in-process
@@ -37,23 +39,49 @@ import (
 // reasoning levels the run had, the checks and settings of the case)
 // stays. The rerun is recorded like any run: as an EvalRun of its own with that one case, in the experiment run that owns the case
 // run it repeats (whose counts and cost then include it), so it is listed with the experiment's runs. Its Params say what it is
-// (core.ParamRerunOf and its siblings). One rerun runs at a time.
+// (core.ParamRerunOf and its siblings). One rerun runs at a time per user.
 type Rerunner struct {
 	env  server.EvalRerunEnv
+	opts RerunnerOptions
 	mu   sync.Mutex
-	busy bool
+	busy map[string]bool // the owners that have a rerun going: one rerun at a time per user
 	wg   sync.WaitGroup
+}
+
+// RerunnerOptions are what a rerunner shares with the run manager that makes it.
+type RerunnerOptions struct {
+	// Remember is the remember manager of the evals (see Executor.Remember); nil: every case makes its own.
+	Remember *memory_remember.Manager
+	// Trajectories is where the trajectories are stored (see Executor.Trajectories).
+	Trajectories atifstore.Store
+	// TrajectoryDir is the directory of the file store (see Executor.TrajectoryDir).
+	TrajectoryDir string
+	// MaxRunCostUSD is the cost cap of the rerun (0: none).
+	MaxRunCostUSD float64
 }
 
 // NewRerunner is the factory the server's injected hook takes (its signature is that of server.Options.EvalRerunner, which the root
 // package sets to this function; see Rerunner for why it is injected). It returns the rerunner of the environment, or nil (no reruns:
 // the admin UI offers no button) if there is no LLM or no eval database.
 func NewRerunner(env server.EvalRerunEnv) admin.EvalRerunner {
-	if env.LLM == nil || env.DBPath == "" {
+	if r := NewRerunnerWith(env, RerunnerOptions{TrajectoryDir: memory_core.TrajectoryDir}); r != nil {
+		return r
+	}
+	return nil
+}
+
+// NewRerunnerWith is NewRerunner with options. The database is env.DB (the shared one of the server, never closed by the rerunner), or
+// else the SQLite file env.DBPath, opened for each rerun (the separate eval database of the admin UI, until it is removed). nil if
+// there is no LLM or no database.
+func NewRerunnerWith(env server.EvalRerunEnv,
+	opts RerunnerOptions) *Rerunner {
+	if env.LLM == nil || env.DB == nil && env.DBPath == "" {
 		return nil
 	}
 	return &Rerunner{
-		env: env,
+		env:  env,
+		opts: opts,
+		busy: map[string]bool{},
 	}
 }
 
@@ -71,19 +99,19 @@ func (r *Rerunner) Models() []llm.ModelInfo {
 // Wait waits for the reruns in progress to end (they stop with the context of the environment, and record how they ended).
 func (r *Rerunner) Wait() { r.wg.Wait() }
 
-func (r *Rerunner) acquire() bool {
+func (r *Rerunner) acquire(owner string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.busy {
+	if r.busy[owner] {
 		return false
 	}
-	r.busy = true
+	r.busy[owner] = true
 	return true
 }
 
-func (r *Rerunner) release() {
+func (r *Rerunner) release(owner string) {
 	r.mu.Lock()
-	r.busy = false
+	delete(r.busy, owner)
 	r.mu.Unlock()
 }
 
@@ -92,8 +120,12 @@ func (r *Rerunner) release() {
 // run), core.ErrRerunRefused (it cannot be rerun, the error says why), core.ErrRerunBusy, memory_core.ErrInvalidModels,
 // memory_core.ErrInvalidReasoning, or a failure of the database.
 func (r *Rerunner) Rerun(ctx context.Context,
+	owner string,
 	src core.CaseRunID,
 	opts core.RerunOptions) (core.CaseRunID, error) {
+	if owner == "" || owner == core.SystemUser {
+		return 0, evalsdb.ErrInvalidOwner
+	}
 	rememberModels, queryModels, err := PipelineModels(opts.RememberModel, opts.QueryModel)
 	if err != nil {
 		return 0, err
@@ -102,29 +134,23 @@ func (r *Rerunner) Rerun(ctx context.Context,
 	if err != nil {
 		return 0, err
 	}
-	if !r.acquire() {
+	if !r.acquire(owner) {
 		return 0, core.ErrRerunBusy
 	}
 	launched := false
 	defer func() {
 		if !launched {
-			r.release()
+			r.release(owner)
 		}
 	}()
 
-	// Opened like the runner opens it, geo index included (the runner has geo on unless told not to), and closed when the rerun ends.
-	database, err := dbfull.Open(db.Config{
-		SQLitePath: r.env.DBPath,
-		Geo:        true,
-		Models:     llm.SupportedModels(r.env.Prices),
-	})
+	database, closeDB, err := r.database()
 	if err != nil {
-		return 0, fmt.Errorf("open the eval database: %w", err)
+		return 0, err
 	}
-	closeDB := true
 	defer func() {
-		if closeDB {
-			database.Close()
+		if !launched {
+			closeDB()
 		}
 	}()
 	store, err := evals.StoreFor(database.Backend)
@@ -134,6 +160,7 @@ func (r *Rerunner) Rerun(ctx context.Context,
 	rn := runner.New(database.Relational, store)
 	p, err := planRerun(ctx,
 		rn,
+		owner,
 		src)
 	if err != nil {
 		return 0, err
@@ -166,6 +193,7 @@ func (r *Rerunner) Rerun(ctx context.Context,
 	}
 	started := make(chan core.CaseRunID, 1)
 	ex := &Executor{
+		Owner:             owner,
 		DB:                database,
 		LLM:               r.env.LLM,
 		Embedder:          r.env.Embedder,
@@ -177,7 +205,10 @@ func (r *Rerunner) Rerun(ctx context.Context,
 		QueryModels:       queryModels,
 		RememberReasoning: rememberReasoning,
 		QueryReasoning:    queryReasoning,
-		TrajectoryDir:     memory_core.TrajectoryDir,
+		Remember:          r.opts.Remember,
+		Trajectories:      r.opts.Trajectories,
+		TrajectoryDir:     r.opts.TrajectoryDir,
+		MaxCostUSD:        r.opts.MaxRunCostUSD,
 		OnCaseStart: func(cr *core.CaseRun) {
 			select {
 			case started <- cr.ID:
@@ -186,12 +217,12 @@ func (r *Rerunner) Rerun(ctx context.Context,
 		},
 	}
 	done := make(chan error, 1)
-	launched, closeDB = true, false
+	launched = true
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
-		defer r.release()
-		defer database.Close()
+		defer r.release(owner)
+		defer closeDB()
 		opts := runner.EvalOptions{
 			ExperimentRunID: p.evalRun.ExperimentRunID,
 			Params:          params,
@@ -231,6 +262,23 @@ func (r *Rerunner) Rerun(ctx context.Context,
 	}
 }
 
+// database is the database a rerun records in and its close function: the shared one (closing does nothing), or the legacy eval
+// database opened like the runner opens it, geo index included, and closed when the rerun ends.
+func (r *Rerunner) database() (*db.DB, func(), error) {
+	if r.env.DB != nil {
+		return r.env.DB, func() {}, nil
+	}
+	database, err := dbfull.Open(db.Config{
+		SQLitePath: r.env.DBPath,
+		Geo:        true,
+		Models:     llm.SupportedModels(r.env.Prices),
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("open the eval database: %w", err)
+	}
+	return database, func() { database.Close() }, nil
+}
+
 // rerunPlan is what a rerun runs and where it is recorded.
 type rerunPlan struct {
 	// def is the eval def with the one case to run, whose input is the one the case run was given.
@@ -245,6 +293,7 @@ type rerunPlan struct {
 // any) has ended, and its case still exists.
 func planRerun(ctx context.Context,
 	rn *runner.Runner,
+	owner string,
 	src core.CaseRunID) (*rerunPlan, error) {
 	refuse := func(format string,
 		args ...any) error {
@@ -255,7 +304,7 @@ func planRerun(ctx context.Context,
 	q, s := rn.DB, rn.Store
 	cr, err := s.GetCaseRun(ctx,
 		q,
-		EvalUser,
+		owner,
 		src)
 	if err != nil {
 		return nil, err
@@ -268,7 +317,7 @@ func planRerun(ctx context.Context,
 	}
 	er, err := s.GetEvalRun(ctx,
 		q,
-		EvalUser,
+		owner,
 		cr.EvalRunID)
 	if err != nil {
 		return nil, err
@@ -278,7 +327,7 @@ func planRerun(ctx context.Context,
 	}
 	if er.ExperimentRunID != nil {
 		if p.experiment, err = rn.ResumeExperimentRun(ctx,
-			EvalUser,
+			owner,
 			*er.ExperimentRunID); err != nil {
 			return nil, err
 		}
@@ -288,14 +337,14 @@ func planRerun(ctx context.Context,
 	}
 	ed, err := s.GetEvalDef(ctx,
 		q,
-		EvalUser,
+		owner,
 		er.DefID)
 	if err != nil {
 		return nil, err
 	}
 	full, err := s.GetEvalDefByName(ctx,
 		q,
-		EvalUser,
+		owner,
 		ed.Name)
 	if errors.Is(err, evalsdb.ErrNotFound) || err == nil && full.ID != ed.ID {
 		return nil, refuse("the eval %q no longer exists", ed.Name)

@@ -151,6 +151,23 @@ func ListEdges(ctx context.Context,
 	return collectEdges(rows)
 }
 
+// ListEdgesOfDataset returns every edge of the dataset dsID, by ID (expired ones included).
+func ListEdgesOfDataset(ctx context.Context,
+	d *sql.DB,
+	dsID int64) ([]model.Edge, error) {
+	rows, err := d.QueryContext(ctx,
+		`
+		SELECT `+edgeColumns+edgeFrom+`
+		WHERE e.dataset_id = $1
+		ORDER BY e.id`,
+		dsID)
+	if err != nil {
+		return nil, fmt.Errorf("list edges of dataset: %w", err)
+	}
+	defer rows.Close()
+	return collectEdges(rows)
+}
+
 //---------------------------------------------------------------------------------------------
 // Query retrieval
 
