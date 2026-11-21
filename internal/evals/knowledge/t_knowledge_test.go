@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -1066,8 +1065,8 @@ func TestRerunner(t *testing.T) {
 			err)
 	}
 	orig := cases[0]
-	newRerunner := func(lm memory_core.LLM) admin.EvalRerunner {
-		return knowledge.NewRerunner(server.EvalRerunEnv{
+	newRerunner := func(lm memory_core.LLM) *knowledge.Rerunner {
+		return knowledge.NewRerunnerWith(server.EvalEnv{
 			Ctx: ctx,
 			DB:  e.db,
 			LLM: lm,
@@ -1075,12 +1074,14 @@ func TestRerunner(t *testing.T) {
 				dims: e.db.EmbeddingDimensions,
 			},
 			Prices: llm.NewPriceTable(nil),
-		})
+		},
+			knowledge.RerunnerOptions{})
 	}
-	if knowledge.NewRerunner(server.EvalRerunEnv{
+	if knowledge.NewRerunnerWith(server.EvalEnv{
 		Ctx: ctx,
 		DB:  e.db,
-	}) != nil {
+	},
+		knowledge.RerunnerOptions{}) != nil {
 		t.Error("a rerunner without an LLM")
 	}
 
@@ -1144,7 +1145,7 @@ func TestRerunner(t *testing.T) {
 			id,
 			err)
 	}
-	rr.(interface{ Wait() }).Wait()
+	rr.Wait()
 
 	re, err := e.r.Store.GetCaseRun(ctx,
 		e.r.DB,
@@ -1221,7 +1222,7 @@ func TestRerunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rr.(interface{ Wait() }).Wait()
+	rr.Wait()
 	if fmt.Sprint(llm2.models) != "[base-extract  ]" {
 		t.Errorf("models of the second rerun: %v", llm2.models)
 	}

@@ -8,23 +8,59 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
-	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/usereval"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
-// TestEvals checks the admin eval endpoints: experiment counts, run details and trajectory files.
+// noManager is a run manager that cannot do anything (the admin views only read).
+type noManager struct{}
+
+func (noManager) Start(context.Context,
+	string,
+	string,
+	core.RunOptions) (core.EvalRunID, error) {
+	return 0, core.ErrNoLLM
+}
+
+func (noManager) Cancel(context.Context,
+	string,
+	core.EvalRunID) error {
+	return core.ErrNoLLM
+}
+
+func (noManager) Rerun(context.Context,
+	string,
+	core.CaseRunID,
+	core.RerunOptions) (core.CaseRunID, error) {
+	return 0, core.ErrNoLLM
+}
+func (noManager) CanRerun() bool          { return false }
+func (noManager) Models() []llm.ModelInfo { return nil }
+func (noManager) DeleteDatasets(context.Context,
+	string,
+	core.EvalRunID) error {
+	return nil
+}
+func (noManager) CheckBudget(context.Context,
+	string) error {
+	return nil
+}
+func (noManager) Env() usereval.Env { return usereval.Env{} }
+
+// TestEvals checks the admin eval endpoints over the evals of two users: the list with its user filter, an eval with its runs, a run
+// with its cases, the history of a case, the debug view and the trajectory files; each object is read as its owner, and an unknown one
+// is 404.
 func TestEvals(t *testing.T) { dbtest.Run(t, testEvals) }
 
 func testEvals(t *testing.T,
 	d *sql.DB) {
 	dir := t.TempDir()
-
 	b := atif.NewBuilder(atif.Agent{
 		Name:    "gligabao-query",
 		Version: "0.1",
@@ -38,284 +74,174 @@ func testEvals(t *testing.T,
 	if _, err := atif.WriteFile(dir, traj); err != nil {
 		t.Fatal(err)
 	}
-
-	rec := recordCase(t,
+	alice := recordCase(t,
 		d,
-		"base",
+		"alice",
 		"s",
 		"a",
 		0,
 		dir,
 		traj)
-	store := storeOf(t, d)
+	bob := recordCase(t,
+		d,
+		"bob",
+		"s",
+		"a",
+		0,
+		dir)
+	svc := &evals.Service{
+		DB:            d,
+		Store:         storeOf(t, d),
+		Mgr:           noManager{},
+		TrajectoryDir: dir,
+	}
 
 	get := func(h http.HandlerFunc,
 		pattern,
-		id string,
+		url string,
 		out any) int {
 		t.Helper()
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET "+pattern, h)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
-			"/x/"+id,
+			url,
 			nil))
 		if out != nil && w.Code == http.StatusOK {
 			if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
-				t.Fatal(err)
+				t.Fatalf("%s: %v",
+					w.Body,
+					err)
 			}
 		}
 		return w.Code
 	}
 
+	// The list: every user's evals, each with its owner; the filter keeps one user's.
 	var ov struct {
-		Totals      admin.EvalTotals `json:"totals"`
-		Experiments []struct {
-			Name         string `json:"name"`
-			Runs, Cases  int
-			RunsByStatus map[string]int      `json:"runs_by_status"`
-			LastRun      *struct{ ID int64 } `json:"last_run"`
-		} `json:"experiments"`
+		Totals evals.Totals `json:"totals"`
+		Evals  []struct {
+			ID      int64  `json:"id"`
+			UserID  string `json:"user_id"`
+			Name    string `json:"name"`
+			Runs    int    `json:"runs"`
+			Cases   int    `json:"cases"`
+			LastRun *struct {
+				ID int64 `json:"id"`
+			} `json:"last_run"`
+		} `json:"evals"`
 	}
-	if c := get(admin.EvalOverview(d, store),
-		"/x/",
-		"",
+	if c := get(admin.EvalOverview(svc),
+		"/x",
+		"/x",
 		&ov); c != 200 {
 		t.Fatal(c)
 	}
-	if ov.Totals.Experiments != 1 || ov.Totals.Runs != 1 || ov.Totals.Cases != 1 || ov.Totals.Counts.Passed != 1 ||
-		len(ov.Experiments) != 1 || ov.Experiments[0].RunsByStatus["completed"] != 1 || ov.Experiments[0].LastRun == nil {
+	if ov.Totals.Evals != 2 || ov.Totals.Runs != 2 || ov.Totals.Cases != 2 || ov.Totals.Counts.Passed != 2 || len(ov.Evals) != 2 ||
+		ov.Evals[0].UserID != "alice" || ov.Evals[1].UserID != "bob" || ov.Evals[0].Name != "s" || ov.Evals[0].Runs != 1 || ov.Evals[0].LastRun == nil {
 		t.Fatalf("overview: %+v", ov)
 	}
-
-	var exp struct{ Runs []struct{ ID int64 } }
-	if c := get(admin.EvalExperiment(d, store),
-		"/x/{id}",
-		strconv.FormatInt(int64(rec.ExperimentID), 10),
-		&exp); c != 200 || len(exp.Runs) != 1 {
-		t.Fatalf("experiment: %d %+v",
-			c,
-			exp)
-	}
-	if c := get(admin.EvalExperiment(d, store),
-		"/x/{id}",
-		"999",
-		nil); c != http.StatusNotFound {
-		t.Fatalf("missing experiment: %d", c)
-	}
-	if c := get(admin.EvalExperiment(d, store),
-		"/x/{id}",
-		"abc",
-		nil); c != http.StatusBadRequest {
-		t.Fatalf("bad id: %d", c)
+	if c := get(admin.EvalOverview(svc),
+		"/x",
+		"/x?user_id=bob",
+		&ov); c != 200 || len(ov.Evals) != 1 || ov.Evals[0].UserID != "bob" || ov.Totals.Evals != 1 {
+		t.Fatalf("filtered overview: %d %+v", c, ov)
 	}
 
+	// An eval with its cases and runs.
+	var def struct {
+		UserID string   `json:"user_id"`
+		Cases  []string `json:"cases"`
+		Runs   []struct {
+			ID int64 `json:"id"`
+		} `json:"runs"`
+	}
+	if c := get(admin.EvalDef(svc),
+		"/x/{id}",
+		"/x/"+strconv.FormatInt(int64(alice.DefID), 10),
+		&def); c != 200 || def.UserID != "alice" || len(def.Cases) != 1 || def.Cases[0] != "a" || len(def.Runs) != 1 || def.Runs[0].ID != int64(alice.RunID) {
+		t.Fatalf("eval: %d %+v", c, def)
+	}
+	for url, want := range map[string]int{"/x/999": http.StatusNotFound, "/x/abc": http.StatusBadRequest} {
+		if c := get(admin.EvalDef(svc),
+			"/x/{id}",
+			url,
+			nil); c != want {
+			t.Errorf("%s: %d", url, c)
+		}
+	}
+
+	// The history of a case.
 	var hist struct {
 		Points []struct {
 			RunID   int64  `json:"run_id"`
-			Status  string `json:"status"`
 			Verdict string `json:"verdict"`
 		}
 	}
-	if c := get(func(w http.ResponseWriter,
-		r *http.Request) {
-		r.URL.RawQuery = "eval=s&name=a"
-		admin.EvalCaseHistory(d, store)(w, r)
-	},
+	if c := get(admin.EvalCaseHistory(svc),
 		"/x/{id}",
-		strconv.FormatInt(int64(rec.ExperimentID), 10),
-		&hist); c != 200 || len(hist.Points) != 1 ||
-		hist.Points[0].RunID != int64(rec.RunID) || hist.Points[0].Status != "completed" || hist.Points[0].Verdict != "pass" {
-		t.Fatalf("history: %d %+v",
-			c,
-			hist)
+		"/x/"+strconv.FormatInt(int64(bob.DefID), 10)+"?case=a",
+		&hist); c != 200 || len(hist.Points) != 1 || hist.Points[0].RunID != int64(bob.RunID) || hist.Points[0].Verdict != "pass" {
+		t.Fatalf("history: %d %+v", c, hist)
 	}
-	if c := get(admin.EvalCaseHistory(d, store),
+	if c := get(admin.EvalCaseHistory(svc),
 		"/x/{id}",
-		strconv.FormatInt(int64(rec.ExperimentID), 10),
+		"/x/"+strconv.FormatInt(int64(bob.DefID), 10),
 		nil); c != http.StatusBadRequest {
-		t.Fatalf("history without case: %d", c)
+		t.Errorf("history without a case: %d", c)
 	}
 
-	var run struct {
-		CaseRuns []struct {
-			Trajectories []struct {
-				TrajectoryID string `json:"trajectory_id"`
-			}
-		} `json:"case_runs"`
+	// A run of either user, with its case runs and their trajectories.
+	for _, rec := range []recorded{alice, bob} {
+		var run struct {
+			Status string `json:"status"`
+			Cases  []struct {
+				ID           int64 `json:"id"`
+				Trajectories []struct {
+					TrajectoryID string `json:"trajectory_id"`
+				} `json:"trajectories"`
+			} `json:"cases"`
+		}
+		if c := get(admin.EvalRun(svc),
+			"/x/{id}",
+			"/x/"+strconv.FormatInt(int64(rec.RunID), 10),
+			&run); c != 200 || run.Status != "completed" || len(run.Cases) != 1 || run.Cases[0].ID != int64(rec.CaseRunID) {
+			t.Fatalf("run: %d %+v", c, run)
+		}
 	}
-	if c := get(admin.EvalRun(d, store),
+	if c := get(admin.EvalRun(svc),
 		"/x/{id}",
-		strconv.FormatInt(int64(rec.RunID), 10),
-		&run); c != 200 ||
-		len(run.CaseRuns) != 1 || len(run.CaseRuns[0].Trajectories) != 1 {
-		t.Fatalf("run: %d %+v",
-			c,
-			run)
-	}
-
-	var got atif.Trajectory
-	if c := get(admin.EvalTrajectory(d,
-		store,
-		dir),
-		"/x/{id}",
-		traj.TrajectoryID,
-		&got); c != 200 || got.TrajectoryID != traj.TrajectoryID || len(got.Steps) != 2 {
-		t.Fatalf("trajectory: %d %+v",
-			c,
-			got)
-	}
-	// Only recorded trajectories are served, never arbitrary files.
-	if c := get(admin.EvalTrajectory(d,
-		store,
-		dir),
-		"/x/{id}",
-		"..%2Fetc%2Fpasswd",
+		"/x/999",
 		nil); c != http.StatusNotFound {
-		t.Fatalf("unrecorded trajectory: %d", c)
-	}
-}
-
-// TestEvalCaseRunTemporal checks the temporal endpoint of a case run: the events of all its remember calls together (oldest first),
-// with the reference times; a query call is left out; a case without a dataset and unknown case runs are 404.
-func TestEvalCaseRunTemporal(t *testing.T) { dbtest.Run(t, testEvalCaseRunTemporal) }
-
-func testEvalCaseRunTemporal(t *testing.T,
-	d *sql.DB) {
-	ctx := context.Background()
-	fact := func(org string) string {
-		return `{"entities":[{"name":"Alice","type":"person"},{"name":"` + org + `","type":"organization"}],
-		"edges":[{"source":"Alice","target":"` + org + `","relation":"works_at","description":"Alice works at ` + org + `."}]}`
-	}
-	llm := &scriptedLLM{
-		extractions: []string{fact("Acme"), fact("Globex")},
-	}
-	ref1, ref2 := time.Date(2023,
-		1,
-		1,
-		0,
-		0,
-		0,
-		0,
-		time.UTC), time.Date(2024,
-		3,
-		1,
-		0,
-		0,
-		0,
-		0,
-		time.UTC)
-	r1, err := memory_remember.Remember(ctx,
-		d,
-		llm,
-		"eval",
-		"main",
-		"knowledge",
-		"Alice works at Acme.",
-		ref1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r2, err := memory_remember.Remember(ctx,
-		d,
-		llm,
-		"eval",
-		"main",
-		"knowledge",
-		"Alice started working at Globex.",
-		ref2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dsID, err := relational.DatasetID(ctx,
-		d,
-		"eval",
-		"main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	traj := func(agent string) *atif.Trajectory {
-		b := atif.NewBuilder(atif.Agent{
-			Name:    agent,
-			Version: "0.1",
-		})
-		b.User("x")
-		tr := b.Build()
-		if _, err := atif.WriteFile(dir, tr); err != nil {
-			t.Fatal(err)
-		}
-		return tr
-	}
-	// Two remember calls, then a query whose source artifact must not count as one.
-	rec := recordCaseArtifacts(t,
-		d,
-		"temporal",
-		"s",
-		"a",
-		dsID,
-		dir,
-		[][]int64{{r1.ArtifactID}, {r2.ArtifactID}, {r1.ArtifactID}},
-		traj("gligabao-remember"),
-		traj("gligabao-remember"),
-		traj("gligabao-query"))
-	none := recordCase(t,
-		d,
-		"temporal-none",
-		"s",
-		"b",
-		0,
-		dir)
-	store := storeOf(t, d)
-
-	h := admin.EvalCaseRunTemporal(d, store)
-	get := func(id string,
-		out any) int {
-		t.Helper()
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /x/{id}", h)
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
-			"/x/"+id,
-			nil))
-		if out != nil && w.Code == http.StatusOK {
-			if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return w.Code
-	}
-	var got struct {
-		CaseRunID   int64   `json:"case_run_id"`
-		ArtifactIDs []int64 `json:"artifact_ids"`
-		Artifacts   []struct {
-			ID      int64     `json:"id"`
-			ValidAt time.Time `json:"valid_at"`
-		} `json:"artifacts"`
-		Events []graph.EdgeEvent `json:"events"`
-	}
-	if c := get(strconv.FormatInt(int64(rec.CaseRunID), 10), &got); c != 200 || got.CaseRunID != int64(rec.CaseRunID) ||
-		len(got.ArtifactIDs) != 2 || got.ArtifactIDs[0] != r1.ArtifactID || got.ArtifactIDs[1] != r2.ArtifactID ||
-		len(got.Events) != 3 || len(got.Artifacts) != 2 {
-		t.Fatalf("case run: %d %+v",
-			c,
-			got)
-	}
-	// Acme created, Globex created, Acme invalidated by it; oldest first.
-	if got.Events[0].Event != graph.EdgeCreated || got.Events[0].Edge.Target != "Acme" || got.Events[1].Event != graph.EdgeCreated ||
-		got.Events[1].Edge.Target != "Globex" || got.Events[2].Event != graph.EdgeInvalidated || got.Events[2].Edge.Target != "Acme" {
-		t.Errorf("events: %+v", got.Events)
-	}
-	if got.Artifacts[0].ID != r1.ArtifactID || !got.Artifacts[0].ValidAt.Equal(ref1) || !got.Artifacts[1].ValidAt.Equal(ref2) {
-		t.Errorf("artifacts: %+v", got.Artifacts)
+		t.Errorf("missing run: %d", c)
 	}
 
-	for id, want := range map[string]int{strconv.FormatInt(int64(none.CaseRunID), 10): 404, "999999": 404, "abc": 400} {
-		if c := get(id, nil); c != want {
-			t.Errorf("%s: %d, want %d",
-				id,
-				c,
-				want)
-		}
+	// The debug view of a case run, read as its owner.
+	var dbg evals.DebugResponse
+	if c := get(admin.EvalCaseRunDebug(svc),
+		"/x/{id}",
+		"/x/"+strconv.FormatInt(int64(alice.CaseRunID), 10),
+		&dbg); c != 200 || dbg.Eval != "s" || dbg.Name != "a" || dbg.Commentable || dbg.RerunOptions != nil || len(dbg.Reruns) != 0 {
+		t.Fatalf("debug: %d %+v", c, dbg)
+	}
+	if c := get(admin.EvalCaseRunDebug(svc),
+		"/x/{id}",
+		"/x/999",
+		nil); c != http.StatusNotFound {
+		t.Errorf("missing case run: %d", c)
+	}
+
+	// The trajectory file; an unknown one is 404.
+	if c := get(admin.EvalTrajectory(svc),
+		"/x/{id}",
+		"/x/"+traj.TrajectoryID,
+		nil); c != 200 {
+		t.Fatalf("trajectory: %d", c)
+	}
+	if c := get(admin.EvalTrajectory(svc),
+		"/x/{id}",
+		"/x/nope",
+		nil); c != http.StatusNotFound {
+		t.Errorf("unknown trajectory: %d", c)
 	}
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/api/datasets"
+	evalsapi "github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/api/mcp"
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
@@ -78,6 +79,9 @@ func Register(mux *http.ServeMux,
 	mux.Handle("GET /v1/gb/ontologies", a(ontologies.List(d.Relational)))
 	mux.Handle("GET /v1/gb/ontologies/{name}", a(ontologies.Get(d.Relational)))
 	mux.Handle("GET /v1/gb/ontologies/{name}/events", a(ontologies.Events(d.Relational)))
+	evalsapi.Register(mux,
+		a,
+		o.evals)
 	if o.research != nil {
 		o.research.UseMemory(researchMemory(mgr,
 			d,
@@ -248,6 +252,7 @@ type options struct {
 	graphEmbedder memory_core.GraphEmbedder
 	trainingHook  memory_core.ClassifyingTrainingHook
 	research      *agent_research.Manager
+	evals         *evalsapi.Service
 	trajectories  atifstore.Store
 }
 
@@ -292,6 +297,10 @@ func WithClassifyingTrainingHook(f memory_core.ClassifyingTrainingHook) Option {
 // same WithAuth as the other routes of users) and their tools to RegisterMCP (research_start, research_list, research_get): m starts
 // the agents and reads their runs. Without it (or with nil) neither has them.
 func WithResearch(m *agent_research.Manager) Option { return func(o *options) { o.research = m } }
+
+// WithEvals adds the routes of the user evals to Register (GET /v1/gb/evals, ... see package api/evals, under the same WithAuth as the other
+// routes of users): s works on the evals of the user of each request. Without it (or with nil) there are none.
+func WithEvals(s *evalsapi.Service) Option { return func(o *options) { o.evals = s } }
 
 // WithOntologyDirs sets the directories ontology documents can be loaded from by file name (POST and PUT /v1/gb/ontologies with
 // "file"), searched in order. Without them only the "content" form works.

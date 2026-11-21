@@ -6,14 +6,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io"
 	"net/http"
 
+	"github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
@@ -40,19 +39,13 @@ type overview struct {
 	Totals Counts `json:"totals"`
 }
 
-// Named is a database shown in the admin UI under a name (e.g. "standard", "eval").
+// Named is a database shown in the admin UI under a name (e.g. "standard").
 type Named struct {
 	Name string
 	DB   *sql.DB
-	// TrajectoryDir is where the ATIF trajectories of the experiments recorded in DB are stored ("" = unknown);
-	// only used for the eval database.
-	TrajectoryDir string
-	// EvalStore is how the evals recorded in DB are read (nil: DB has none to show); only used for the eval database.
-	EvalStore *evalsdb.Store
-	// EvalRerunner reruns the case runs recorded in DB with other models (nil: the server cannot, and the case modal has no rerun);
-	// only used for the eval database. It is an interface, filled by the server from the hook server.Options.EvalRerunner, because the
-	// implementation (evals/knowledge.Rerunner) cannot be imported here: it imports the server, which imports this package.
-	EvalRerunner EvalRerunner
+	// Evals serves the evals of every user (the evals routes of the admin API read the main database, so only the first Named has
+	// them; nil: none are registered, and the web search statistics leave out the recorded trajectories).
+	Evals *evals.Service
 	// ImageDir is the directory of the image files of DB's image artifacts ("" = unknown: nothing is reported
 	// about the files on disk).
 	ImageDir string
@@ -61,27 +54,11 @@ type Named struct {
 	// Vectors is the vector store holding the embeddings of DB's datasets; nil if there is none (the vectors of a
 	// deleted dataset are then not cleaned up).
 	Vectors vector.Store
-	// OpenVectors, if set, is used instead of Vectors: it opens the vector store afresh each time it is needed. For a
-	// database whose vectors are written by another process (the eval runner), a store opened at startup would
-	// keep showing what it loaded then (chromem reads its directory only when opened).
-	OpenVectors func() (vector.Store, error)
 }
 
-// vectors returns the vector store of n (nil if there is none) and a function that releases it.
+// vectors returns the vector store of n (nil if there is none) and a function that releases it (nothing to release now).
 func (n Named) vectors() (vector.Store, func(), error) {
-	if n.OpenVectors == nil {
-		return n.Vectors, func() {}, nil
-	}
-	s, err := n.OpenVectors()
-	if err != nil {
-		return nil, nil, err
-	}
-	closer, _ := s.(io.Closer)
-	return s, func() {
-		if closer != nil {
-			closer.Close()
-		}
-	}, nil
+	return n.Vectors, func() {}, nil
 }
 
 // Databases serves GET /admin/api/databases: the names of the databases the UI can show, in display order.

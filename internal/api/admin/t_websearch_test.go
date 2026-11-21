@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
@@ -143,14 +144,18 @@ func testWebSearches(t *testing.T,
 	// The case that holds both calls.
 	rec := recordCase(t,
 		d,
-		"web",
+		"eval",
 		"s",
 		"a",
 		dsID,
 		dir,
 		res.Trajectory,
 		plain.Trajectory)
-	store := storeOf(t, d)
+	svc := &evals.Service{
+		DB:            d,
+		Store:         storeOf(t, d),
+		TrajectoryDir: dir,
+	}
 
 	// Per result (case), from the trajectory.
 	var perResult struct {
@@ -159,9 +164,7 @@ func testWebSearches(t *testing.T,
 			Searches []admin.WebSearch     `json:"searches"`
 		} `json:"case_runs"`
 	}
-	if c := get(admin.EvalRunWebSearches(d,
-		store,
-		dir),
+	if c := get(admin.EvalRunWebSearches(svc),
 		"/x/"+strconv.FormatInt(int64(rec.RunID), 10),
 		&perResult); c != 200 || len(perResult.CaseRuns) != 1 {
 		t.Fatalf("per result: %d %+v",
@@ -189,10 +192,9 @@ func testWebSearches(t *testing.T,
 
 	// The totals of the eval database: the same, from all the recorded trajectories.
 	named := []admin.Named{{
-		Name:          "eval",
-		DB:            d,
-		EvalStore:     &store,
-		TrajectoryDir: dir,
+		Name:  "eval",
+		DB:    d,
+		Evals: svc,
 	}}
 	var stats struct {
 		Database struct {

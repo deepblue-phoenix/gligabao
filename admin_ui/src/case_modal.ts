@@ -70,7 +70,7 @@ export function caseBookmark(run: Run, e: CaseRun, experiment: string): HTMLButt
 // Opens a bookmarked case: only the case modal, on top of whatever view the operator is in (the run it belongs to is not opened).
 async function openBookmarkedCase(b: Bookmark): Promise<void> {
   const run = await getJSON<Run>(`api/evals/runs/${Number(b.ref.run_id)}`);
-  const e = (run.case_runs ?? []).find((c) => c.id === Number(b.ref.case_run_id));
+  const e = (run.cases ?? []).find((c) => c.id === Number(b.ref.case_run_id));
   if (!e) throw new Error("the case run is not in its run any more");
   await showCase(run, e, String(b.ref.experiment));
 }
@@ -129,7 +129,7 @@ function caseLeft(d: CaseDebug, run: Run, e: CaseRun): HTMLElement[] {
 // The right pane: the way to rerun the case with other models, and the commentaries on the case (newest first) with, for a case that
 // failed, the way to ask for another.
 function caseRight(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
-  const out: HTMLElement[] = [...rerunSection(d, run, experiment), ...rerunList(d, run, experiment), h("h3", undefined, "LLM commentary and recommendation")];
+  const out: HTMLElement[] = [...rerunSection(d, run, experiment), ...rerunList(d, experiment), h("h3", undefined, "LLM commentary and recommendation")];
   const list = h("div");
   const render = (items: CaseCommentary[]): void => {
     if (items.length === 0) {
@@ -205,12 +205,12 @@ function optionSelect(values: string[], title: string): HTMLSelectElement {
 // The rerun of the case with a model of the price table and/or a thinking level for the remember pipeline and/or for the query, to see
 // whether a more powerful model (or more thinking) gets it right. One model and one level per pipeline is enough: the server uses them
 // for every LLM stage of that pipeline. The rerun is a
-// new run in the experiment run that owns this case run; its results open in the rerun modal. Nothing for a case that has not ended, or
+// new run of the same eval; its results open in the rerun modal. Nothing for a case that has not ended, or
 // when the server cannot rerun (no LLM).
 function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
   if (!d.rerun_options || !(["completed", "errored", "cancelled"] as Status[]).includes(d.status)) return [];
   const out: HTMLElement[] = [h("h3", undefined, "Re-run this case with another model or thinking level")];
-  out.push(h("p", "muted", "Runs the case again from the same input, as a new run of this experiment run. The model and the thinking level picked for a pipeline are used for all of its LLM stages; “as it ran” leaves that setting as it was. It costs LLM calls."));
+  out.push(h("p", "muted", "Runs the case again from the same input, as a new run of this eval. The model and the thinking level picked for a pipeline are used for all of its LLM stages; “as it ran” leaves that setting as it was. It costs LLM calls."));
   const remember = optionSelect(d.rerun_options.models, "The model of every LLM stage of the remember pipeline");
   const query = optionSelect(d.rerun_options.models, "The model of the query (its answering call and the detection of places)");
   const levels = d.rerun_options.reasoning ?? [];
@@ -249,7 +249,7 @@ function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[]
       }
       const started = (await res.json()) as RerunStarted;
       msg.textContent = `Started: case run #${started.case_run_id}.`;
-      refreshRun?.(started.experiment_run_id ?? run.id, experiment); // the run list behind (if it is open) lists the new case run
+      refreshRun?.(started.eval_run_id, experiment); // the runs of the eval behind (if open) list the new run
       void showRerun(started, d, run, experiment, {
         of: d.case_run_id, remember_model: remember.value, query_model: query.value,
         remember_reasoning: rememberThinking.value, query_reasoning: queryThinking.value,
@@ -265,8 +265,8 @@ function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[]
 
 // The reruns this case run already has (and those of its reruns), one row each: the models and thinking levels of the remember pipeline
 // and of the query ("as it ran": the pipeline kept its settings) and the final pass or fail (the status while it has no verdict: running, errored...).
-// Nothing when there are none. A rerun that is in the run's list opens as a case of its own.
-function rerunList(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
+// Nothing when there are none. A rerun opens as a case of its own.
+function rerunList(d: CaseDebug, experiment: string): HTMLElement[] {
   const reruns = d.reruns ?? [];
   if (reruns.length === 0) return [];
   const { table: tbl, body } = table([["Case run", false], ["Remember", false], ["Query", false], ["Result", false], ["", false]]);
@@ -277,13 +277,16 @@ function rerunList(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
     tr.insertCell().textContent = pipelineSetting(r.query_model, r.query_reasoning) || "as it ran";
     tr.insertCell().append(r.verdict ? verdictBadge(r.verdict) : statusBadge(r.status));
     const cell = tr.insertCell();
-    const e = (run.case_runs ?? []).find((c) => c.id === r.case_run_id);
-    if (e) {
-      const btn = h("button", "small", "Open");
-      btn.type = "button";
-      btn.addEventListener("click", () => void showCase(run, e, experiment));
-      cell.append(btn);
-    }
+    const btn = h("button", "small", "Open");
+    btn.type = "button";
+    btn.addEventListener("click", () => {
+      // A rerun is a run of its own: read that run, and open the case in it.
+      void getJSON<Run>(`api/evals/runs/${r.eval_run_id}`).then((rerunRun) => {
+        const e = (rerunRun.cases ?? []).find((c) => c.id === r.case_run_id);
+        if (e) void showCase(rerunRun, e, experiment);
+      });
+    });
+    cell.append(btn);
   }
   return [h("h3", undefined, `Re-runs (${reruns.length})`), tbl];
 }
@@ -325,7 +328,7 @@ async function showRerun(started: RerunStarted, orig: CaseDebug, run: Run, exper
     if (d.status === "running" || d.status === "pending") {
       const secs = Math.max(0, Math.round((Date.now() - new Date(d.started_at).getTime()) / 1000));
       content.replaceChildren(
-        h("p", "muted", `Running for ${secs} s. The case remembers its texts and answers its question again with the chosen models; this takes about as long as the case did. The page can be closed: the result is recorded in the experiment run either way.`),
+        h("p", "muted", `Running for ${secs} s. The case remembers its texts and answers its question again with the chosen models; this takes about as long as the case did. The page can be closed: the result is recorded in the eval's runs either way.`),
         rerunComparison(orig, d, started.case_run_id, info),
       );
       window.setTimeout(() => void tick(), RERUN_POLL_MS);
@@ -334,13 +337,11 @@ async function showRerun(started: RerunStarted, orig: CaseDebug, run: Run, exper
     // Ended: the case run as the run lists it (with its traces), if the run can be read.
     let cr: CaseRun = { id: d.case_run_id, eval: d.eval, name: d.name, status: d.status, steps: 0, cost_usd: d.cost_usd, started_at: d.started_at, finished_at: d.finished_at ?? "", trajectories: [] };
     let xrun: Run = run;
-    if (started.experiment_run_id !== undefined) {
-      try {
-        xrun = await getJSON<Run>(`api/evals/runs/${started.experiment_run_id}`);
-        cr = (xrun.case_runs ?? []).find((c) => c.id === started.case_run_id) ?? cr;
-      } catch { /* shown without its traces */ }
-      refreshRun?.(started.experiment_run_id, experiment); // the list behind (if it is open) now has its result
-    }
+    try {
+      xrun = await getJSON<Run>(`api/evals/runs/${started.eval_run_id}`);
+      cr = (xrun.cases ?? []).find((c) => c.id === started.case_run_id) ?? cr;
+    } catch { /* shown without its traces */ }
+    refreshRun?.(started.eval_run_id, experiment); // the list behind (if it is open) now has its result
     if (watch !== rerunWatch || !modal.open) return;
     const btns: HTMLElement[] = [];
     if (d.dataset_id != null) {
@@ -352,11 +353,11 @@ async function showRerun(started: RerunStarted, orig: CaseDebug, run: Run, exper
       tbtn.addEventListener("click", () => openTemporalCase(`${title} · temporal changes`, d.case_run_id));
       btns.push(gbtn, tbtn);
     }
-    if (started.experiment_run_id !== undefined) btns.push(caseBookmark(xrun, cr, experiment));
+    btns.push(caseBookmark(xrun, cr, experiment));
     actions.replaceChildren(...btns);
     content.replaceChildren(
       rerunComparison(orig, d, started.case_run_id, info),
-      h("p", "muted", "It is in the experiment run's list like any case: open it there for its commentary."),
+      h("p", "muted", "It is a run of the eval of its own: open it from the eval's runs for its commentary."),
       ...caseLeft(d, xrun, cr),
     );
   };

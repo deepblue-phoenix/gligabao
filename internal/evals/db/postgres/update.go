@@ -55,6 +55,7 @@ var Store = db.Store{
 	SumCostSince:                   reads.SumCostSince,
 	ListCaseHistoryOfEval:          reads.ListCaseHistoryOfEval,
 	DeleteEvalDef:                  reads.DeleteEvalDef,
+	DeleteEvalRun:                  reads.DeleteEvalRun,
 	ClaimRun:                       reads.ClaimRun,
 	Heartbeat:                      reads.Heartbeat,
 	RequestCancel:                  reads.RequestCancel,
@@ -62,6 +63,8 @@ var Store = db.Store{
 	ListRunsWithEvalDatasetsBefore: reads.ListRunsWithEvalDatasetsBefore,
 	AdminListEvalDefs:              reads.AdminListEvalDefs,
 	AdminListEvalRuns:              reads.AdminListEvalRuns,
+	AdminOwnerOf:                   reads.AdminOwnerOf,
+	AdminTrajectoryOwner:           reads.AdminTrajectoryOwner,
 	ListCaseCommentaries:           reads.ListCaseCommentaries,
 }
 

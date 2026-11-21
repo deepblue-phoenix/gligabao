@@ -203,6 +203,11 @@ type Store struct {
 		q Execer,
 		userID string,
 		defID core.EvalDefID) ([]core.EvalRunID, error)
+	// DeleteEvalRun deletes an eval run of the owner with its case runs (ErrNotFound if it is not the owner's).
+	DeleteEvalRun func(ctx context.Context,
+		q Execer,
+		userID string,
+		runID core.EvalRunID) error
 	ClaimRun func(ctx context.Context,
 		q Execer,
 		runID core.EvalRunID,
@@ -237,6 +242,14 @@ type Store struct {
 		q Execer,
 		f AdminFilter,
 		limit int) ([]core.EvalRun, error)
+
+	AdminOwnerOf func(ctx context.Context,
+		q Execer,
+		kind AdminKind,
+		id int64) (string, error)
+	AdminTrajectoryOwner func(ctx context.Context,
+		q Execer,
+		trajectoryID string) (string, error)
 
 	// Commentaries on failed case runs (see core.CaseCommentary).
 	CreateCaseCommentary func(ctx context.Context,

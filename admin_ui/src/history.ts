@@ -1,6 +1,6 @@
-// History of one case within an experiment (d3, in a modal), as three plots one under the other, one dot per run that
+// History of one case within an eval (d3, in a modal), as three plots one under the other, one dot per run that
 // executed the case and x = when the run started: its status (shows when a failing case started to pass), its latency,
-// and the number of checks that passed and failed. d3 is loaded as a global by index.html. Talks to /admin/api/evals/experiments/{id}/history.
+// and the number of checks that passed and failed. d3 is loaded as a global by index.html. Talks to /admin/api/evals/defs/{id}/history.
 
 declare const d3: typeof import("d3");
 
@@ -53,19 +53,19 @@ function clear(): void {
   el("history-canvas").replaceChildren();
 }
 
-// Opens the modal and plots the history of case eval/name in the experiment. onRun, when given, is called with a
+// Opens the modal and plots the history of case `name` of the eval (the def evalID) over its runs. onRun, when given, is called with a
 // run ID when its dot is clicked.
-export async function showCaseHistory(experimentID: number, experiment: string, evalName: string, name: string, onRun?: (runID: number) => void): Promise<void> {
+export async function showCaseHistory(evalID: number, label: string, evalName: string, name: string, onRun?: (runID: number) => void): Promise<void> {
   const modal = el<HTMLDialogElement>("history-modal");
   const status = el("history-status");
-  el("history-title").textContent = `${evalName}/${name} — history (${experiment})`;
+  el("history-title").textContent = `${evalName}/${name} — history (${label})`;
   status.className = "muted";
   status.textContent = "Loading…";
   clear();
   if (!modal.open) modal.showModal();
   try {
-    const params = new URLSearchParams({ eval: evalName, name });
-    const res = await fetch(`api/evals/experiments/${experimentID}/history?${params}`);
+    const params = new URLSearchParams({ case: name });
+    const res = await fetch(`api/evals/defs/${evalID}/history?${params}`);
     if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
     const data = (await res.json()) as History;
     if (!modal.open) return; // closed while loading

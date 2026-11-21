@@ -5,6 +5,25 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.224.0] - 2026-11-22
+
+Step 5 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the API. The evals are mounted in the server (the
+run manager is plugged in through a hook); the config settings and the removal of the old flags come with step 6.
+
+### Added
+- The user routes of the evals, under the same `gb-user-id`/API key rule as the other user routes (package `internal/api/evals`): `GET /v1/gb/evals`, `PUT|GET|DELETE /v1/gb/evals/{name}`, `PUT|DELETE /v1/gb/evals/{name}/files/{path...}`, `POST|GET /v1/gb/evals/{name}/runs`, `GET /v1/gb/evals/{name}/history?case=`, `GET|DELETE /v1/gb/evals/runs/{id}`, `POST /v1/gb/evals/runs/{id}/cancel`, `GET /v1/gb/evals/case_runs/{id}` with `/graph`, `/temporal`, `/debug`, `/commentary`, `/rerun`, and `GET /v1/gb/evals/trajectories/{id}`. Every object is read as the user of the request: an unknown id or one of another user is `404`; `409` for deleting an eval or a run that is going, `429` over the limits of runs or of the cost of the day, `410` for the graph of a run whose eval datasets were deleted (retention). A commentary counts in the cost cap of the day (`SumCostSince`).
+- `api.WithEvals`, `server.Options.EvalManager` (injected hook, like the old rerunner, because the run manager imports packages the server imports) and `server.EvalEnv`; the root package plugs in `runmanager` (`evals_manager.go`). The files of the users are in `userfiles.Default` or, without it, in an `evals_user` directory next to the database.
+- `evals/db`: `DeleteEvalRun`, `AdminOwnerOf` and `AdminTrajectoryOwner` (the admin API looks the owner of an object up, then reads it as that owner).
+- The admin API lists the evals of all users with an optional `?user_id=` filter and a `user_id` in each row; the admin UI has a user filter.
+
+### Changed
+- **Breaking:** the admin evals API (`/v1/gb/admin/api/evals/**`) reads the main database and is about evals, not experiments: `GET /evals` (evals of all users), `GET /evals/defs/{id}` (an eval with its cases and runs), `GET /evals/defs/{id}/history?case=`, `GET /evals/runs/{id}` (the run's case runs are `cases`), `.../runs/{id}/web-searches`, `.../case_runs/{id}/{graph,temporal,debug,commentary,rerun}`, `.../trajectories/{id}`. The handlers and views moved to `internal/api/evals` (the admin ones are thin wrappers). The admin UI follows.
+- **Breaking:** a rerun is an eval run of its own of the same eval (its debug view lists the reruns of the eval's runs), and `rerun`/`debug` take no experiment run.
+- `knowledge.Rerunner` always uses the shared database (`NewRerunnerWith`); `server.EvalRerunEnv` is `server.EvalEnv`.
+
+### Removed
+- The separate eval database of the admin UI: `admin.Named` has no `EvalStore`, `TrajectoryDir`, `EvalRerunner` or `OpenVectors` (it has `Evals`), `server.EvalDBName` and `server.Options.EvalRerunner` are gone, `--eval-db` is ignored with a warning (the flag goes in step 6), `knowledge.NewRerunner` and `admin.EvalRerunner` are deleted.
+
 ## [0.223.0] - 2026-11-21
 
 Step 4 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the executor and the run manager. Library only: the

@@ -9,9 +9,10 @@ export type Verdict = "pass" | "fail";
 // core.Counts: every case run is in exactly one of pending, running, completed, errored, cancelled; passed and failed split the
 // completed ones that have a verdict.
 export interface Counts { total: number; pending: number; running: number; completed: number; errored: number; cancelled: number; passed: number; failed: number }
+// An eval run (the run of one eval of a user). `cases` is set by the run detail only.
 export interface Run {
-  id: number; experiment_id: number; status: Status; error?: string; params?: Record<string, unknown>;
-  counts: Counts; cost_usd: number; started_at: string; finished_at?: string; case_runs?: CaseRun[];
+  id: number; eval: string; status: Status; error?: string; params?: Record<string, unknown>;
+  counts: Counts; cost_usd: number; started_at: string; finished_at?: string; cases?: CaseRun[];
 }
 export interface Trajectory {
   seq: number; kind: string; trajectory_id: string; agent_name: string; steps: number; cost_usd: number;
@@ -22,7 +23,7 @@ export interface Artifact { id: number; kind: string; text: string; valid_at: st
 export interface RerunInfo { of: number; remember_model?: string; query_model?: string; remember_reasoning?: string; query_reasoning?: string }
 // One rerun in the list of the reruns of a case run: the case run it made, what it repeated, the models, the thinking levels and how it ended.
 export interface RerunItem {
-  case_run_id: number; of: number; remember_model?: string; query_model?: string; remember_reasoning?: string; query_reasoning?: string;
+  case_run_id: number; eval_run_id: number; of: number; remember_model?: string; query_model?: string; remember_reasoning?: string; query_reasoning?: string;
   status: Status; verdict?: Verdict; cost_usd: number;
 }
 // The outcome of one case of an eval in one run.
@@ -113,7 +114,7 @@ export function countsLine(c: Counts): string {
   return `${shown.length ? shown.join(" · ") : "no case runs"} of ${c.total}`;
 }
 
-// The statuses of the runs of an experiment as "3 completed · 1 errored".
+// The statuses of the runs of an eval as "3 completed · 1 errored".
 export function statusLine(by: Partial<Record<Status, number>>): string {
   const parts = Object.entries(by).filter(([, n]) => (n ?? 0) > 0).map(([s, n]) => `${n} ${s}`);
   return parts.length ? parts.join(" · ") : "–";

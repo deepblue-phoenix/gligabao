@@ -11,8 +11,8 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
@@ -276,15 +276,8 @@ func RememberRunOutputsOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
-// rememberRunTemporalArtifact is an artifact the temporal events of a run belong to: the run's own, and those of its chunks and of
-// the web searches and series observations made for it. ValidAt is its event time (the reference time of the text).
-type rememberRunTemporalArtifact struct {
-	ID        int64     `json:"id"`
-	ParentID  int64     `json:"parent_id,omitempty"`
-	Kind      string    `json:"kind"`
-	ValidAt   time.Time `json:"valid_at"`
-	CreatedAt time.Time `json:"created_at"`
-}
+// rememberRunTemporalArtifact is an artifact the temporal events of a run belong to (see evals.TemporalArtifact).
+type rememberRunTemporalArtifact = evals.TemporalArtifact
 
 type rememberRunTemporalResponse struct {
 	RunID int64 `json:"run_id"`
@@ -370,42 +363,11 @@ func RememberRunTemporalOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
-// temporalArtifacts returns the artifacts the events belong to, by ID (each in the dataset of its events, which may be several: a
-// research agent remembers into any); empty for no events.
+// temporalArtifacts returns the artifacts the events belong to, by ID (see evals.TemporalArtifacts).
 func temporalArtifacts(ctx context.Context,
 	d *sql.DB,
 	events []graph.EdgeEvent) ([]rememberRunTemporalArtifact, error) {
-	out := []rememberRunTemporalArtifact{}
-	var datasets []int64
-	ids := map[int64][]int64{}
-	seen := map[int64]bool{}
-	for _, e := range events {
-		if e.ArtifactID == 0 || seen[e.ArtifactID] {
-			continue
-		}
-		seen[e.ArtifactID] = true
-		if _, ok := ids[e.DatasetID]; !ok {
-			datasets = append(datasets, e.DatasetID)
-		}
-		ids[e.DatasetID] = append(ids[e.DatasetID], e.ArtifactID)
-	}
-	for _, ds := range datasets {
-		arts, err := graph.ArtifactsByID(ctx,
-			d,
-			ds,
-			ids[ds])
-		if err != nil {
-			return nil, err
-		}
-		for _, a := range arts {
-			out = append(out, rememberRunTemporalArtifact{
-				ID:        a.ID,
-				ParentID:  a.ParentID,
-				Kind:      a.Kind,
-				ValidAt:   a.ValidAt,
-				CreatedAt: a.CreatedAt,
-			})
-		}
-	}
-	return out, nil
+	return evals.TemporalArtifacts(ctx,
+		d,
+		events)
 }

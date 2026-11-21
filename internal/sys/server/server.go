@@ -25,6 +25,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	evalsroutes "github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
@@ -32,10 +33,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/userfiles"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -139,29 +140,25 @@ type Options struct {
 	TrajectoryS3 atifstore.S3Config
 	// OntologyS3 ("" bucket: off) also stores the ontology documents in an Amazon S3 bucket, one directory per user (see memory_ontology.Archive).
 	OntologyS3 memory_ontology.S3Config
-	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
-	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
-	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
-	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
+	// EvalDBPath is IGNORED (a warning is logged when it is set): the separate eval database was removed, the evals are in the main
+	// database. The field goes away with the --eval-db flag.
 	EvalDBPath string
-	// EvalRerunner is an INJECTED HOOK: a factory for the thing that reruns an eval case (the "Re-run this case with another model"
-	// button of the case modal of the admin UI's Evals view; see admin.EvalRerunner). Nil means the server cannot rerun: the button is
-	// not offered and the rerun endpoint answers 503.
+	// EvalManager is an INJECTED HOOK: a factory for the run manager of the user evals (package evals/runmanager), which starts and
+	// supervises their runs, reruns case runs and cleans up their datasets. The routes of the evals (/v1/gb/evals, and the evals views of
+	// the admin UI) work through it. Nil means the server has no evals: no eval route is registered.
 	//
 	// Why it is injected and not just called: it was added because of an IMPORT CYCLE. Running an eval case is the job of package
-	// internal/evals/knowledge (Executor, Rerunner), and that package runs every case behind an in-process server of this package
-	// (it calls NewHandler, to get the eval endpoints). So knowledge imports server, and the admin package, which server imports to
-	// serve the admin UI, cannot import knowledge either. Had the server (or admin) called knowledge.NewRerunner directly, the
-	// import graph would be server -> knowledge -> server, which Go forbids. The way out is to invert the dependency: this package
-	// and admin define what they need (this function type, EvalRerunEnv, and the interface admin.EvalRerunner), and a package above
-	// both, the root package (gligabao.go, serverOptions), which may import everything, plugs the implementation in:
-	// EvalRerunner: knowledge.NewRerunner. Nothing but that line knows which type does the work.
+	// internal/evals/knowledge (Executor, Rerunner), which runs every case through the eval routes of package api, and the run manager
+	// that uses it imports it. The server imports api and the admin package, which serve the routes, so the server (or the packages it
+	// imports) cannot import the manager: server -> runmanager -> knowledge -> api would not be a cycle by itself, but runmanager and
+	// knowledge also import this package (for EvalEnv). The way out is to invert the dependency: package api/evals defines what the
+	// handlers need (the interface evals.Manager), this package the factory type (given an EvalEnv), and a package above all of them,
+	// the root package (gligabao.go, serverOptions), which may import everything, plugs the implementation in.
 	//
-	// prepare calls it once at startup, and only when the admin UI shows the eval database (EvalDBPath) and the server has an LLM, with
-	// the server's own clients (EvalRerunEnv). It returns the rerunner, or nil for none (for example if it finds the setup unusable).
-	// If the returned value also has a Wait() method, the server calls it on shutdown, after cancelling EvalRerunEnv.Ctx, so a rerun
-	// in progress can record how it ended before the databases close.
-	EvalRerunner func(EvalRerunEnv) admin.EvalRerunner
+	// prepare calls it once at startup with the server's own clients (EvalEnv). It returns the manager, or nil for none. If the
+	// returned value also has a Wait() method, the server calls it on shutdown, after cancelling EvalEnv.Ctx, so the runs in progress can
+	// record how they ended before the databases close.
+	EvalManager func(EvalEnv) evalsroutes.Manager
 	// Auth, if set, makes the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API key
 	// ("Authorization: Bearer <key>"): it is called with the key and returns the ID of the user it belongs to, which the request then
 	// acts as; an error rejects the request (401). See docs/identity.md. Nil: the routes act as the user in the "gb-user-id" header, trusted as is.
@@ -266,30 +263,30 @@ func connectSidecar(ctx context.Context,
 	return c, true
 }
 
-// EvalRerunEnv is what the injected hook Options.EvalRerunner is given to build its rerunner with: the server's own clients (so a rerun
-// uses the same LLM, price table, embedder, web search and geo resolver as the server, configured once) and where the eval database is.
-// It exists so that the package that implements the rerunner (internal/evals/knowledge) can get these without the server importing
-// that package (see Options.EvalRerunner for the import cycle this avoids). It holds only plain values and the server's interfaces,
-// never types of the implementing package.
-type EvalRerunEnv struct {
-	// Ctx ends when the server shuts down: the reruns in progress stop with it.
+// EvalEnv is what the injected hook Options.EvalManager is given to build the run manager with: the server's own clients (so the evals
+// use the same LLM, price table, embedder, web search and geo resolver as the server, configured once), the database and where the eval
+// files and the trajectories are kept. It exists so that the package that implements the manager (internal/evals/runmanager) can get these
+// without the server importing that package (see Options.EvalManager for the import cycle this avoids). It holds only plain values and
+// the server's interfaces, never types of the implementing package.
+type EvalEnv struct {
+	// Ctx ends when the server shuts down: the runs in progress stop with it.
 	Ctx context.Context
-	// DBPath is the SQLite file of the eval database (Options.EvalDBPath); DB, if set, is the shared database instead (never closed
-	// by the rerunner).
-	DBPath string
-	DB     *db.DB
-	// LLM, Embedder and WebSearch are the server's; LLM is never nil. Geo is its geo resolver (nil: geo is off).
+	// DB is the main database, shared (never closed by the manager).
+	DB *db.DB
+	// LLM, Embedder and WebSearch are the server's; LLM is nil without an Anthropic API key (no run starts then). Geo is its geo
+	// resolver (nil: geo is off).
 	LLM       memory_core.LLM
 	Embedder  memory_core.Embedder
 	WebSearch memory_core.WebSearcher
 	Geo       memory_geo.Resolver
-	// Prices is the price table, whose models are the ones a rerun can pick.
+	// Prices is the price table, whose models are the ones a run can pick.
 	Prices *llm.PriceTable
+	// Files holds the eval files of the users (the S3 meta bucket, or a local directory).
+	Files userfiles.Store
+	// Trajectories is where the trajectories are stored (nil: the directory TrajectoryDir), TrajectoryDir the directory of the file store.
+	Trajectories  atifstore.Store
+	TrajectoryDir string
 }
-
-// EvalDBName is the name of the eval database in the admin UI (see Options.EvalDBPath). It holds the evaluation
-// datasets, the experiments and their runs, kept apart from the main database.
-const EvalDBName = "eval"
 
 // NewHandler builds the HTTP handler for the given databases and LLM. ctx bounds the remember manager (see memory_remember.Manager).
 // lm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
@@ -341,6 +338,7 @@ func NewHandler(ctx context.Context,
 		trainingMode,
 		adminUI,
 		adminExts,
+		nil,
 		nil,
 		extraAdminDBs...)
 }
@@ -402,6 +400,7 @@ func newMux(ctx context.Context,
 	adminUI bool,
 	adminExts []admin.Extension,
 	prices *llm.PriceTable,
+	evalSvc *evalsroutes.Service,
 	extraAdminDBs ...admin.Named) http.Handler {
 	geoResolver = startGeoManager(ctx,
 		geoResolver,
@@ -448,7 +447,8 @@ func newMux(ctx context.Context,
 		api.WithGeoRadius(geoRadiusKm),
 		api.WithGraphEmbedder(graphEmbedder),
 		api.WithClassifyingTrainingHook(trainingHook),
-		api.WithResearch(research))
+		api.WithResearch(research),
+		api.WithEvals(evalSvc))
 	if mcpEnable {
 		api.RegisterMCP(mux,
 			mgr,
@@ -483,6 +483,7 @@ func newMux(ctx context.Context,
 		Vectors:  d.Vector,
 		ImageDir: d.ImageDir,
 		Images:   d.ImageStore,
+		Evals:    evalSvc,
 	}}, extraAdminDBs...)
 	if trainingMode {
 		registerTraining(ctx,
@@ -712,38 +713,22 @@ func registerAdminUI(mux *http.ServeMux,
 	mux.HandleFunc("GET "+appActions, admin.SidecarBackendProxy(sidecarOpen, ""))
 	mux.HandleFunc("GET "+appActions+"/events", admin.SidecarBackendProxy(sidecarOpen, "/events"))
 	mux.HandleFunc("POST "+appActions+"/cancel", admin.SidecarBackendProxy(sidecarOpen, "/cancel"))
-	// The experiments live in the eval database; without one there are none to show.
-	for _, e := range dbs {
-		if e.Name != EvalDBName || e.EvalStore == nil {
-			continue
-		}
-		mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(e.DB, *e.EvalStore))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(e.DB, *e.EvalStore))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}/history", admin.EvalCaseHistory(e.DB, *e.EvalStore))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB, *e.EvalStore))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB,
-			*e.EvalStore,
-			e.TrajectoryDir))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e.DB, *e.EvalStore))
-		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request with lm; nil: none can be made).
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB,
-			*e.EvalStore,
-			e.TrajectoryDir,
-			lm,
-			e.EvalRerunner))
-		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e.DB,
-			*e.EvalStore,
-			e.TrajectoryDir,
-			lm))
-		// The rerun of a case with other models, recorded in the experiment run of the case run (e.EvalRerunner nil: the server cannot).
-		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/rerun", admin.EvalCaseRunRerun(e.DB,
-			*e.EvalStore,
-			e.EvalRerunner))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB,
-			*e.EvalStore,
-			e.TrajectoryDir))
-		break
+	// The evals of every user live in the main database (the first Named); without them there is nothing to show.
+	if len(dbs) > 0 && dbs[0].Evals != nil {
+		e := dbs[0].Evals
+		mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(e))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/defs/{id}", admin.EvalDef(e))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/defs/{id}/history", admin.EvalCaseHistory(e))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e))
+		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request when the server has an LLM).
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e))
+		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e))
+		// The rerun of a case with other models, made as the owner of the case run.
+		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/rerun", admin.EvalCaseRunRerun(e))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e))
 	}
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
 	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter,
@@ -1155,33 +1140,10 @@ func prepare(ctx context.Context,
 		log.WithField("model", jevModel(opts)).Info("Jev is active: remember classifies the complexity of each text")
 	}
 
-	var extra []admin.Named
-	if opts.AdminUIenable && opts.EvalDBPath != "" {
-		if database.Backend != config.DBBackendSQLite {
-			log.Warn("eval database not shown in the admin UI: only supported with the sqlite backend")
-		} else if evalDB, err := openAdminDB(opts.EvalDBPath); err != nil {
-			log.WithError(err).WithField("path", opts.EvalDBPath).Warn("eval database not shown in the admin UI")
-		} else {
-			cleanups = append(cleanups, func() { evalDB.Close() })
-			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
-			// The eval runner (a separate process) keeps the eval database's vectors next to it, always in chromem with the
-			// default dimensions (see internal/evals/knowledge/cmd), so open that directory afresh whenever it is needed.
-			vecDir := db.DefaultVectorDir(opts.EvalDBPath)
-			evalStore, err := evals.StoreFor(database.Backend)
-			if err != nil {
-				return nil, nil, err
-			}
-			extra = append(extra, admin.Named{
-				Name:          EvalDBName,
-				DB:            evalDB,
-				EvalStore:     &evalStore,
-				TrajectoryDir: filepath.Join(filepath.Dir(opts.EvalDBPath), "atif"),
-				OpenVectors: func() (vector.Store, error) {
-					return vector.NewChromem(vecDir, config.DefaultEmbeddingDimensions)
-				},
-			})
-		}
+	if opts.EvalDBPath != "" {
+		log.WithField("path", opts.EvalDBPath).Warn("the eval database is ignored (--eval-db): the evals are in the main database")
 	}
+	var extra []admin.Named
 
 	// The sidecar is pinged once on startup. If it is not operating correctly, the flag is off and sc stays nil, which
 	// makes everything that needs the sidecar answer 503 (or do nothing) instead of failing.
@@ -1225,40 +1187,52 @@ func prepare(ctx context.Context,
 		stopMgr()
 		return nil, nil, err
 	}
-	// The reruns of eval cases (admin UI): this is where the injected hook Options.EvalRerunner is called (it is injected because the
-	// package that implements it imports this one, see its comment). The reruns need the LLM, so without one there are none. The eval
-	// database named EvalDBName is the only one that can have reruns; its Named gets the rerunner, and the routes (registerAdminUI)
-	// pick it from there. Reruns are given the time to record how they ended before the databases close, like the research agents:
-	// the cleanup below cancels mgrCtx (which the rerunner got as EvalRerunEnv.Ctx) and then waits for them, if it can be waited for.
-	var reruns interface{ Wait() }
-	if opts.EvalRerunner != nil && lm != nil {
-		for i := range extra {
-			if extra[i].Name != EvalDBName || extra[i].EvalStore == nil {
-				continue
+	// The run manager of the evals: this is where the injected hook Options.EvalManager is called (it is injected because the package
+	// that implements it imports this one, see its comment). It runs the evals of the users and their reruns, and is given the time to
+	// record how the runs ended before the databases close, like the research agents: the cleanup below cancels mgrCtx (which the
+	// manager got as EvalEnv.Ctx) and then waits for it, if it can be waited for.
+	var evalSvc *evalsroutes.Service
+	var evalWait interface{ Wait() }
+	if opts.EvalManager != nil {
+		files := userfiles.Default
+		if files == nil {
+			files = userfiles.FS{Dir: filepath.Join(filepath.Dir(dbPath), "evals_user")}
+		}
+		evalStore, err := evals.StoreFor(database.Backend)
+		if err != nil {
+			stopMgr()
+			return nil, nil, err
+		}
+		mgr := opts.EvalManager(EvalEnv{
+			Ctx:           mgrCtx,
+			DB:            database,
+			LLM:           lm,
+			Embedder:      emb,
+			WebSearch:     ws,
+			Geo:           geoResolver,
+			Prices:        llm.NewPriceTable(opts.Prices),
+			Files:         files,
+			Trajectories:  traceStore,
+			TrajectoryDir: memory_core.TrajectoryDir,
+		})
+		if mgr != nil {
+			evalSvc = &evalsroutes.Service{
+				DB:            database.Relational,
+				Store:         evalStore,
+				Mgr:           mgr,
+				LLM:           lm,
+				TrajectoryDir: memory_core.TrajectoryDir,
+				Trajectories:  traceStore,
 			}
-			rr := opts.EvalRerunner(EvalRerunEnv{
-				Ctx:       mgrCtx,
-				DBPath:    opts.EvalDBPath,
-				LLM:       lm,
-				Embedder:  emb,
-				WebSearch: ws,
-				Geo:       geoResolver,
-				Prices:    llm.NewPriceTable(opts.Prices),
-			})
-			if rr == nil {
-				break
-			}
-			extra[i].EvalRerunner = rr
-			reruns, _ = rr.(interface{ Wait() })
-			log.Info("eval reruns are available: the case modal of the Evals view can run a case again with other models")
-			break
+			evalWait, _ = mgr.(interface{ Wait() })
+			log.Info("evals are available: /v1/gb/evals")
 		}
 	}
 	cleanups = append(cleanups, func() {
 		stopMgr()
 		research.Wait()
-		if reruns != nil {
-			reruns.Wait()
+		if evalWait != nil {
+			evalWait.Wait()
 		}
 	})
 	mux := newMux(mgrCtx,
@@ -1285,6 +1259,7 @@ func prepare(ctx context.Context,
 		opts.AdminUIenable,
 		adminExts,
 		llm.NewPriceTable(opts.Prices),
+		evalSvc,
 		extra...)
 	// The agents that have a schedule start running by it now that their knowledge base is set up (by newMux). They stop with mgrCtx.
 	if n := research.RunSchedules(); n > 0 {

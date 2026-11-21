@@ -43,14 +43,12 @@ const (
 )
 
 var (
-	// ErrTooManyRuns means the user (or the server) has the most runs allowed in progress (HTTP 429, "too many runs in progress").
-	ErrTooManyRuns = errors.New("too many runs in progress")
-	// ErrDailyCap means the user has reached the cost cap of the day (HTTP 429).
-	ErrDailyCap = errors.New("the daily cost cap of evals is reached")
-	// ErrNoLLM means the server has no LLM (HTTP 503).
-	ErrNoLLM = errors.New("LLM not configured (set ANTHROPIC_API_KEY)")
-	// ErrBadOptions is the error of run options that are not valid (HTTP 400); it wraps the reason.
-	ErrBadOptions = errors.New("invalid run options")
+	// ErrTooManyRuns, ErrDailyCap, ErrNoLLM and ErrBadOptions are those of package core (the API package maps them to HTTP statuses
+	// and cannot import this one).
+	ErrTooManyRuns = core.ErrTooManyRuns
+	ErrDailyCap    = core.ErrDailyCap
+	ErrNoLLM       = core.ErrNoLLM
+	ErrBadOptions  = core.ErrBadOptions
 	// ErrNotFound is the error of an unknown eval, run or case run of the owner (HTTP 404).
 	ErrNotFound = evalsdb.ErrNotFound
 )
@@ -140,14 +138,7 @@ type Config struct {
 }
 
 // RunOptions say how a run is started.
-type RunOptions struct {
-	// Cases are the cases to run (all if empty).
-	Cases []string
-	// Models and Reasoning are the model and the reasoning level per stage (a case's own win).
-	Models, Reasoning map[string]string
-	// Geo is whether geo is on (default true; off if the server has no geo resolver).
-	Geo *bool
-}
+type RunOptions = core.RunOptions
 
 // Manager starts and supervises the eval runs of the users. Make it with New; it stops with the context it was made with.
 type Manager struct {
@@ -237,7 +228,7 @@ func New(ctx context.Context,
 		Limits: cfg.FileLimits,
 		Sync:   m.sync,
 	}
-	m.rerun = knowledge.NewRerunnerWith(server.EvalRerunEnv{
+	m.rerun = knowledge.NewRerunnerWith(server.EvalEnv{
 		Ctx:       ctx,
 		DB:        cfg.DB,
 		LLM:       cfg.LLM,
@@ -269,6 +260,39 @@ func (m *Manager) Store() evalsdb.Store { return m.store }
 
 // Runner is the runner that records in the database of the manager.
 func (m *Manager) Runner() *runner.Runner { return m.rn }
+
+// Models are the LLM models of the price table: the ones a run or a rerun may pick.
+func (m *Manager) Models() []llm.ModelInfo {
+	var out []llm.ModelInfo
+	for _, mi := range llm.SupportedModels(m.cfg.Prices) {
+		if mi.Kind == llm.KindLLM {
+			out = append(out, mi)
+		}
+	}
+	return out
+}
+
+// CanRerun is whether the manager can rerun case runs (it has an LLM).
+func (m *Manager) CanRerun() bool { return m.rerun != nil }
+
+// CheckBudget returns ErrDailyCap if the owner has reached the cost cap of the day (what a commentary checks before it spends).
+func (m *Manager) CheckBudget(ctx context.Context,
+	owner string) error {
+	if err := checkOwner(owner); err != nil {
+		return err
+	}
+	spent, err := m.store.SumCostSince(ctx,
+		m.cfg.DB.Relational,
+		owner,
+		time.Now().Add(-24*time.Hour))
+	if err != nil {
+		return err
+	}
+	if spent >= m.limits.MaxUserCostUSDPerDay {
+		return ErrDailyCap
+	}
+	return nil
+}
 
 // Rerunner is the rerunner of the manager, nil if the server has no LLM. Use Rerun, which checks the limits.
 func (m *Manager) Rerunner() *knowledge.Rerunner { return m.rerun }

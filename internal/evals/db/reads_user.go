@@ -140,7 +140,8 @@ func (r Reads) CountActiveEvalRuns(ctx context.Context,
 	return n, nil
 }
 
-// SumCostSince returns the LLM cost of the eval runs of the owner created at or after since (the daily cost cap).
+// SumCostSince returns the LLM cost of the owner's eval runs created at or after since, plus that of the commentaries written at or
+// after since on the owner's case runs (the daily cost cap).
 func (r Reads) SumCostSince(ctx context.Context,
 	q Execer,
 	userID string,
@@ -148,15 +149,24 @@ func (r Reads) SumCostSince(ctx context.Context,
 	if err := CheckOwner(userID); err != nil {
 		return 0, err
 	}
-	var sum float64
+	var runs, commentaries float64
 	if err := r.queryRow(ctx,
 		q,
 		`SELECT COALESCE(SUM(cost_usd), 0) FROM gb_eval_runs WHERE user_id = ? AND created_at >= ?`,
 		userID,
-		r.d.Time(since)).Scan(&sum); err != nil {
+		r.d.Time(since)).Scan(&runs); err != nil {
 		return 0, fmt.Errorf("sum the cost of eval runs: %w", err)
 	}
-	return sum, nil
+	if err := r.queryRow(ctx,
+		q,
+		`SELECT COALESCE(SUM(cc.cost_usd), 0) FROM gb_case_run_commentaries cc
+		JOIN gb_case_runs cr ON cr.id = cc.case_run_id
+		WHERE cr.user_id = ? AND cc.created_at >= ?`,
+		userID,
+		r.d.Time(since)).Scan(&commentaries); err != nil {
+		return 0, fmt.Errorf("sum the cost of commentaries: %w", err)
+	}
+	return runs + commentaries, nil
 }
 
 // ListCaseHistoryOfEval returns the case runs of the case caseName of an eval def of the owner, over the runs of the eval, oldest
@@ -320,6 +330,27 @@ func (r Reads) deleteEvalDef(ctx context.Context,
 	return ids, nil
 }
 
+// DeleteEvalRun deletes an eval run of the owner (its case runs, their metadata and commentaries go with it). It returns ErrNotFound
+// if the owner has no such run. The caller deletes the run's eval datasets (and refuses a run that is going).
+func (r Reads) DeleteEvalRun(ctx context.Context,
+	q Execer,
+	userID string,
+	runID core.EvalRunID) error {
+	if err := CheckOwner(userID); err != nil {
+		return err
+	}
+	res, err := q.ExecContext(ctx,
+		r.d.Rebind(`DELETE FROM gb_eval_runs WHERE user_id = ? AND id = ?`),
+		userID,
+		int64(runID))
+	if err != nil {
+		return fmt.Errorf("delete eval run %d: %w",
+			runID,
+			err)
+	}
+	return Affected(res, fmt.Sprintf("eval run %d", runID))
+}
+
 //---------------------------------------------------------------------------------------------
 // Admin reads (all users, with an optional owner filter)
 
@@ -356,6 +387,59 @@ func adminWhere(f AdminFilter) (string, []any) {
 		return ``, []any{}
 	}
 	return `WHERE user_id = ?`, []any{f.UserID}
+}
+
+// AdminKind is the kind of record AdminOwnerOf looks the owner of up.
+type AdminKind string
+
+// The kinds of record whose owner the admin API resolves, to then read them as that owner.
+const (
+	AdminEvalDef AdminKind = "eval_def"
+	AdminEvalRun AdminKind = "eval_run"
+	AdminCaseRun AdminKind = "case_run"
+)
+
+var adminOwnerSQL = map[AdminKind]string{
+	AdminEvalDef: `SELECT user_id FROM gb_eval_defs WHERE id = ?`,
+	AdminEvalRun: `SELECT user_id FROM gb_eval_runs WHERE id = ?`,
+	AdminCaseRun: `SELECT user_id FROM gb_case_runs WHERE id = ?`,
+}
+
+// AdminOwnerOf returns the owner of the eval def, eval run or case run with the ID id (ErrNotFound if there is none). Only the admin
+// API uses it: it spans users, and then reads the record as its owner.
+func (r Reads) AdminOwnerOf(ctx context.Context,
+	q Execer,
+	kind AdminKind,
+	id int64) (string, error) {
+	query, ok := adminOwnerSQL[kind]
+	if !ok {
+		return "", fmt.Errorf("owner of %q: unknown kind", kind)
+	}
+	var owner string
+	if err := r.queryRow(ctx,
+		q,
+		query,
+		id).Scan(&owner); err != nil {
+		return "", notFound(err, fmt.Sprintf("%s %d", kind, id))
+	}
+	return owner, nil
+}
+
+// AdminTrajectoryOwner returns the owner of the case run that has the trajectory with the ATIF trajectory ID trajectoryID
+// (ErrNotFound if there is none). Only the admin API uses it.
+func (r Reads) AdminTrajectoryOwner(ctx context.Context,
+	q Execer,
+	trajectoryID string) (string, error) {
+	var owner string
+	if err := r.queryRow(ctx,
+		q,
+		`SELECT cr.user_id FROM gb_case_runs_meta_knowledge_trajectories t
+		JOIN gb_case_runs cr ON cr.id = t.case_run_id
+		WHERE t.trajectory_id = ? ORDER BY t.id LIMIT 1`,
+		trajectoryID).Scan(&owner); err != nil {
+		return "", notFound(err, fmt.Sprintf("trajectory %q", trajectoryID))
+	}
+	return owner, nil
 }
 
 //---------------------------------------------------------------------------------------------

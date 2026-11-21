@@ -48,16 +48,16 @@ func (c caseExecutor) Execute(ctx context.Context,
 
 // recorded is what recordCase made.
 type recorded struct {
-	ExperimentID core.ExperimentDefID
-	RunID        core.ExperimentRunID
-	CaseRunID    core.CaseRunID
+	DefID     core.EvalDefID
+	RunID     core.EvalRunID
+	CaseRunID core.CaseRunID
 }
 
-// recordCase records, as the knowledge runner does, a run of the experiment with one eval of one case that passed, with the ATIF
+// recordCase records, as the knowledge runner does, a run of the eval of the user with one case that passed, with the ATIF
 // trajectories trajs (stored in dir) as its calls and the dataset datasetID (0: none) as its graph.
 func recordCase(t *testing.T,
 	d *sql.DB,
-	experiment,
+	user,
 	eval,
 	name string,
 	datasetID int64,
@@ -66,7 +66,7 @@ func recordCase(t *testing.T,
 	t.Helper()
 	return recordCaseArtifacts(t,
 		d,
-		experiment,
+		user,
 		eval,
 		name,
 		datasetID,
@@ -78,7 +78,7 @@ func recordCase(t *testing.T,
 // recordCaseArtifacts is recordCase with the artifacts of the trajectories: artifactIDs[i] are those of trajs[i].
 func recordCaseArtifacts(t *testing.T,
 	d *sql.DB,
-	experiment,
+	user,
 	eval,
 	name string,
 	datasetID int64,
@@ -89,7 +89,7 @@ func recordCaseArtifacts(t *testing.T,
 	ctx := context.Background()
 	r := runner.New(d, storeOf(t, d))
 	def, err := r.SyncEval(ctx,
-		"eval",
+		user,
 		runner.EvalSpec{
 			Name: eval,
 			Type: core.TypeKnowledge,
@@ -101,22 +101,8 @@ func recordCaseArtifacts(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	xd, err := r.EnsureExperiment(ctx,
-		"eval",
-		experiment,
-		"",
-		[]core.EvalDefID{def.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	xr, err := r.StartExperimentRun(ctx,
-		xd,
-		nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var out recorded
-	out.ExperimentID, out.RunID = xd.ID, xr.Run().ID
+	out.DefID = def.ID
 	ex := caseExecutor{func(ctx context.Context,
 		rec *runner.EvalRecorder,
 		def *core.EvalDef) error {
@@ -155,17 +141,11 @@ func recordCaseArtifacts(t *testing.T,
 		def,
 		ex,
 		runner.EvalOptions{
-			ExperimentRunID: &out.RunID,
-			Meta:            &core.KnowledgeEvalRunMeta{},
+			Meta: &core.KnowledgeEvalRunMeta{},
 		})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := xr.Add(ctx, run); err != nil {
-		t.Fatal(err)
-	}
-	if err := xr.Finish(ctx, nil); err != nil {
-		t.Fatal(err)
-	}
+	out.RunID = run.ID
 	return out
 }

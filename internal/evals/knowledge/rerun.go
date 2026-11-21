@@ -7,41 +7,29 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
-	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
-	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 	log "github.com/sirupsen/logrus"
 )
 
-// Rerunner reruns a case of the evals database (of the owner) from the admin UI or the run manager. It implements admin.EvalRerunner and is the implementation behind the
-// server's injected hook, server.Options.EvalRerunner.
-//
-// The hook exists because of an import cycle: this package imports internal/sys/server (runCase runs each case behind an in-process
-// server, through server.NewHandler), and the server, which serves the admin UI that has the rerun button, imports the admin package.
-// So neither the server nor admin can import this package (server -> knowledge -> server). Instead they define the interface
-// (admin.EvalRerunner) and the factory type (server.Options.EvalRerunner, given a server.EvalRerunEnv), and this package supplies the
-// implementation (NewRerunner, which has exactly the factory's signature); the root package plugs it in. That is why this file imports
-// admin and server although a rerunner is not otherwise about either: it only names the types of the contract it fulfils.
-//
+// Rerunner reruns a case of the evals database (of the owner) for the run manager (package runmanager, whose Rerun checks the limits first).
 // The case is run again,
 // from the input it was given the first time, with another model for every LLM stage of the remember pipeline and/or of the query
 // (see PipelineModels) and/or another reasoning level for them (see PipelineReasoning); everything else (the other models and
 // reasoning levels the run had, the checks and settings of the case)
-// stays. The rerun is recorded like any run: as an EvalRun of its own with that one case, in the experiment run that owns the case
-// run it repeats (whose counts and cost then include it), so it is listed with the experiment's runs. Its Params say what it is
+// stays. The rerun is recorded like any run: as an EvalRun of its own with that one case (of the same eval), in the experiment run that owns the case
+// run it repeats if it had one (whose counts and cost then include it). Its Params say what it is
 // (core.ParamRerunOf and its siblings). One rerun runs at a time per user.
 type Rerunner struct {
-	env  server.EvalRerunEnv
+	env  server.EvalEnv
 	opts RerunnerOptions
 	mu   sync.Mutex
 	busy map[string]bool // the owners that have a rerun going: one rerun at a time per user
@@ -60,22 +48,11 @@ type RerunnerOptions struct {
 	MaxRunCostUSD float64
 }
 
-// NewRerunner is the factory the server's injected hook takes (its signature is that of server.Options.EvalRerunner, which the root
-// package sets to this function; see Rerunner for why it is injected). It returns the rerunner of the environment, or nil (no reruns:
-// the admin UI offers no button) if there is no LLM or no eval database.
-func NewRerunner(env server.EvalRerunEnv) admin.EvalRerunner {
-	if r := NewRerunnerWith(env, RerunnerOptions{TrajectoryDir: memory_core.TrajectoryDir}); r != nil {
-		return r
-	}
-	return nil
-}
-
-// NewRerunnerWith is NewRerunner with options. The database is env.DB (the shared one of the server, never closed by the rerunner), or
-// else the SQLite file env.DBPath, opened for each rerun (the separate eval database of the admin UI, until it is removed). nil if
-// there is no LLM or no database.
-func NewRerunnerWith(env server.EvalRerunEnv,
+// NewRerunnerWith makes the rerunner of the environment with options: it records in the shared database env.DB (never closed by the
+// rerunner). nil if there is no LLM or no database.
+func NewRerunnerWith(env server.EvalEnv,
 	opts RerunnerOptions) *Rerunner {
-	if env.LLM == nil || env.DB == nil && env.DBPath == "" {
+	if env.LLM == nil || env.DB == nil {
 		return nil
 	}
 	return &Rerunner{
@@ -85,7 +62,7 @@ func NewRerunnerWith(env server.EvalRerunEnv,
 	}
 }
 
-// Models implements admin.EvalRerunner: the LLM models of the price table.
+// Models are the LLM models of the price table.
 func (r *Rerunner) Models() []llm.ModelInfo {
 	var out []llm.ModelInfo
 	for _, m := range llm.SupportedModels(r.env.Prices) {
@@ -115,7 +92,7 @@ func (r *Rerunner) release(owner string) {
 	r.mu.Unlock()
 }
 
-// Rerun implements admin.EvalRerunner. It starts the rerun of case run src, which goes on in the background, and returns the ID of the
+// Rerun starts the rerun of case run src, which goes on in the background, and returns the ID of the
 // new case run as soon as it is recorded (running); follow it through the eval database. The errors are ErrNotFound (no such case
 // run), core.ErrRerunRefused (it cannot be rerun, the error says why), core.ErrRerunBusy, memory_core.ErrInvalidModels,
 // memory_core.ErrInvalidReasoning, or a failure of the database.
@@ -262,21 +239,9 @@ func (r *Rerunner) Rerun(ctx context.Context,
 	}
 }
 
-// database is the database a rerun records in and its close function: the shared one (closing does nothing), or the legacy eval
-// database opened like the runner opens it, geo index included, and closed when the rerun ends.
+// database is the database a rerun records in and its close function: the shared one (closing does nothing).
 func (r *Rerunner) database() (*db.DB, func(), error) {
-	if r.env.DB != nil {
-		return r.env.DB, func() {}, nil
-	}
-	database, err := dbfull.Open(db.Config{
-		SQLitePath: r.env.DBPath,
-		Geo:        true,
-		Models:     llm.SupportedModels(r.env.Prices),
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("open the eval database: %w", err)
-	}
-	return database, func() { database.Close() }, nil
+	return r.env.DB, func() {}, nil
 }
 
 // rerunPlan is what a rerun runs and where it is recorded.

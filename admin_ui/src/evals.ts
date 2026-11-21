@@ -1,4 +1,4 @@
-// Evals block of the admin UI: experiments (counts + listing), their runs, a run's results with their records, and
+// Evals block of the admin UI: the evals of every user (counts + listing, filter by user), their runs, a run's results with their records, and
 // the ATIF trajectories of each case (opened as a flow graph by trace.ts). Talks to /admin/api/evals/*.
 
 import { artifactsPanel, caseBookmark, rerunModels, setRunRefresher, showCase } from "./case_modal.js";
@@ -12,45 +12,48 @@ import { openTemporalCase } from "./temporal.js";
 import { showTrace } from "./trace.js";
 import { showWebSearches, totalsLine } from "./websearch.js";
 
-interface ExperimentRow {
-  id: number; name: string; description?: string; created_at: string;
+interface EvalRow {
+  id: number; user_id: string; name: string; description?: string; updated_at: string;
   runs: number; cases: number; runs_by_status: Partial<Record<Status, number>>; cost_usd: number; last_run?: Run;
 }
 interface Overview {
-  totals: { experiments: number; runs: number; cases: number; counts: Counts; cost_usd: number };
-  experiments: ExperimentRow[];
+  totals: { evals: number; runs: number; cases: number; counts: Counts; cost_usd: number };
+  evals: EvalRow[];
 }
-interface ExperimentDetail {
-  id: number; name: string; description?: string; config?: Record<string, unknown>;
-  cases?: { eval: string; name: string }[]; runs: Run[];
+interface EvalDetail {
+  id: number; user_id: string; name: string; description?: string; cases: string[]; runs: Run[];
 }
 
+// The evals of every user are listed (filter: the user id); a click lists the runs of one eval.
+let selectedEval: number | undefined;
 
-let selectedExperiment: number | undefined;
+const label = (user: string, name: string): string => `${user}/${name}`;
 
 async function loadOverview(): Promise<void> {
   const status = $("evals-status");
   const stats = $("evals-stats");
   const body = $("evals-experiments");
+  const user = $<HTMLInputElement>("evals-user").value.trim();
   status.className = "muted";
   status.textContent = "Loading…";
   try {
-    const data = await getJSON<Overview>("api/evals");
+    const data = await getJSON<Overview>(user ? `api/evals?user_id=${encodeURIComponent(user)}` : "api/evals");
     const t = data.totals;
     stats.replaceChildren(
-      stat("Experiments", String(t.experiments)), stat("Runs", String(t.runs)), stat("Distinct cases", String(t.cases)),
+      stat("Evals", String(t.evals)), stat("Runs", String(t.runs)), stat("Cases", String(t.cases)),
       stat("Case runs", t.counts.total ? countsLine(t.counts) : "–"), stat("Cost", fmtCost(t.cost_usd)),
     );
-    const list = data.experiments ?? [];
-    status.textContent = list.length === 0 ? "No experiments yet. Run ./run_evals.sh to record one." : "Click an experiment to list its runs.";
+    const list = data.evals ?? [];
+    status.textContent = list.length === 0 ? "No evals yet. Users create them with PUT /v1/gb/evals/{name}." : "Click an eval to list its runs.";
     const { table: tbl, body: tbody } = table([
-      ["Experiment", false], ["Description", false], ["Runs", true], ["Run statuses", false], ["Cases", true],
+      ["User", false], ["Eval", false], ["Description", false], ["Runs", true], ["Run statuses", false], ["Cases", true],
       ["Cost", true], ["Last run", false],
     ]);
     tbl.className = "clickable";
     for (const e of list) {
       const tr = tbody.insertRow();
-      tr.classList.toggle("selected", e.id === selectedExperiment);
+      tr.classList.toggle("selected", e.id === selectedEval);
+      tr.insertCell().textContent = e.user_id;
       tr.insertCell().textContent = e.name;
       tr.insertCell().textContent = e.description ?? "";
       numCell(tr, String(e.runs));
@@ -61,35 +64,35 @@ async function loadOverview(): Promise<void> {
       if (e.last_run) last.append(statusBadge(e.last_run.status), ` ${countsLine(e.last_run.counts)} · ${fmtTime(e.last_run.started_at)}`);
       else last.textContent = "–";
       tr.addEventListener("click", () => {
-        selectedExperiment = e.id;
+        selectedEval = e.id;
         tbody.querySelectorAll("tr").forEach((r) => r.classList.toggle("selected", r === tr));
-        void loadExperiment(e.id);
+        void loadEval(e.id);
       });
     }
     body.replaceChildren(...(list.length ? [tbl] : []));
   } catch (err) {
     status.className = "error";
-    status.textContent = `Failed to load experiments: ${errText(err)}`;
+    status.textContent = `Failed to load evals: ${errText(err)}`;
   }
 }
 
-async function loadExperiment(id: number): Promise<void> {
+async function loadEval(id: number): Promise<void> {
   const box = $("evals-runs");
   box.replaceChildren(h("p", "muted", "Loading…"));
   try {
-    const exp = await getJSON<ExperimentDetail>(`api/evals/experiments/${id}`);
-    const head = h("h3", undefined, `${exp.name} — ${exp.runs.length} run${exp.runs.length === 1 ? "" : "s"}`);
+    const ev = await getJSON<EvalDetail>(`api/evals/defs/${id}`);
+    const name = label(ev.user_id, ev.name);
+    const head = h("h3", undefined, `${name} — ${ev.runs.length} run${ev.runs.length === 1 ? "" : "s"}`);
     const extra: HTMLElement[] = [];
-    if (exp.description) extra.push(h("p", "muted", exp.description));
-    if (exp.config && Object.keys(exp.config).length) extra.push(props([["config", JSON.stringify(exp.config)]]));
-    if (exp.cases?.length) {
+    if (ev.description) extra.push(h("p", "muted", ev.description));
+    if (ev.cases?.length) {
       const ul = h("ul", "case-list");
-      for (const e of exp.cases) {
+      for (const c of ev.cases) {
         const li = h("li");
         const btn = h("button", "small", "History");
         btn.type = "button";
-        btn.addEventListener("click", () => void showCaseHistory(exp.id, exp.name, e.eval, e.name, (id) => void showRun(id, exp.name)));
-        li.append(btn, " ", h("code", undefined, `${e.eval}/${e.name}`));
+        btn.addEventListener("click", () => void showCaseHistory(ev.id, name, ev.name, c, (runID) => void showRun(runID, name, ev.id)));
+        li.append(btn, " ", h("code", undefined, c));
         ul.append(li);
       }
       extra.push(h("h4", undefined, "Cases"), ul);
@@ -99,7 +102,7 @@ async function loadExperiment(id: number): Promise<void> {
       ["Run", false], ["Status", false], ["Case runs", false], ["Cost", true], ["Started (UTC)", false], ["Duration", true],
     ]);
     tbl.className = "clickable";
-    for (const r of exp.runs) {
+    for (const r of ev.runs) {
       const tr = body.insertRow();
       tr.insertCell().textContent = `#${r.id}`;
       tr.insertCell().append(statusBadge(r.status));
@@ -107,9 +110,9 @@ async function loadExperiment(id: number): Promise<void> {
       numCell(tr, fmtCost(r.cost_usd));
       tr.insertCell().textContent = fmtTime(r.started_at);
       numCell(tr, fmtDuration(r.started_at, r.finished_at));
-      tr.addEventListener("click", () => void showRun(r.id, exp.name));
+      tr.addEventListener("click", () => void showRun(r.id, name, ev.id));
     }
-    box.replaceChildren(head, ...extra, exp.runs.length ? tbl : h("p", "muted", "No runs."));
+    box.replaceChildren(head, ...extra, ev.runs.length ? tbl : h("p", "muted", "No runs."));
   } catch (err) {
     box.replaceChildren(h("p", "error", `Failed to load runs: ${errText(err)}`));
   }
@@ -118,7 +121,7 @@ async function loadExperiment(id: number): Promise<void> {
 //---------------------------------------------------------------------------------------------
 
 // Opens the run modal: the run's results; clicking one shows its record (answer, problems, trajectories).
-async function showRun(runID: number, experiment: string): Promise<void> {
+async function showRun(runID: number, experiment: string, defID?: number): Promise<void> {
   const modal = $<HTMLDialogElement>("run-modal");
   const status = $("run-status");
   const content = $("run-content");
@@ -134,7 +137,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       getJSON<{ case_runs: EvalWebSearches[] }>(`api/evals/runs/${runID}/web-searches`).then((r) => r.case_runs ?? [], () => [] as EvalWebSearches[]),
     ]);
     const webByCase = new Map(webSearches.map((w) => [w.case_run_id, w]));
-    const cases = run.case_runs ?? [];
+    const cases = run.cases ?? [];
     status.replaceChildren(statusBadge(run.status), ` ${countsLine(run.counts)} · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
     content.append(props([
       ["started", `${fmtTime(run.started_at)} UTC`], ["finished", run.finished_at ? `${fmtTime(run.finished_at)} UTC` : undefined],
@@ -167,7 +170,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       detail.className = "detail";
       const cell = detail.insertCell();
       cell.colSpan = 9;
-      cell.append(...caseRecord(run, e, experiment, webByCase.get(e.id)));
+      cell.append(...caseRecord(run, e, experiment, defID, webByCase.get(e.id)));
       tr.addEventListener("click", () => {
         detail.hidden = !detail.hidden;
         tr.classList.toggle("selected", !detail.hidden);
@@ -183,7 +186,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
 }
 
 // The detail of one case: its result and the list of its ATIF trajectories, each opening the flow graph.
-function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearches): HTMLElement[] {
+function caseRecord(run: Run, e: CaseRun, experiment: string, defID: number | undefined, web?: EvalWebSearches): HTMLElement[] {
   const out: HTMLElement[] = [
     props([
       ["status", e.status], ["verdict", e.verdict], ["score", e.score != null ? String(e.score) : undefined],
@@ -208,13 +211,15 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
     for (const p of failed) ul.append(h("li", "fail", p));
     out.push(ul);
   }
-  const hbtn = h("button", "small", "History");
-  hbtn.type = "button";
-  hbtn.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    void showCaseHistory(run.experiment_id, experiment, e.eval, e.name, (id) => void showRun(id, experiment));
-  });
-  out.push(h("h4", undefined, "History"), hbtn);
+  if (defID !== undefined) {
+    const hbtn = h("button", "small", "History");
+    hbtn.type = "button";
+    hbtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void showCaseHistory(defID, experiment, e.eval, e.name, (id) => void showRun(id, experiment, defID));
+    });
+    out.push(h("h4", undefined, "History"), hbtn);
+  }
   out.push(h("h4", undefined, "Knowledge graph"));
   if (e.dataset_id != null) {
     const gbtn = h("button", "small", "View graph");
@@ -294,10 +299,15 @@ export function initEvals(): void {
   $("run-close").addEventListener("click", () => modal.close());
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
   // A rerun made in the case modal changes its run: draw it again if it is open (it is not opened if the case modal came from elsewhere).
-  setRunRefresher((runID, experiment) => { if (modal.open) void showRun(runID, experiment); });
+  // A rerun is a run of its own: the runs of the selected eval are listed again too.
+  setRunRefresher((runID, experiment) => {
+    if (modal.open) void showRun(runID, experiment, selectedEval);
+    if (selectedEval !== undefined) void loadEval(selectedEval);
+  });
   $("evals-refresh").addEventListener("click", () => {
     void loadOverview();
-    if (selectedExperiment !== undefined) void loadExperiment(selectedExperiment);
+    if (selectedEval !== undefined) void loadEval(selectedEval);
   });
+  $("evals-user").addEventListener("change", () => void loadOverview());
   void loadOverview();
 }

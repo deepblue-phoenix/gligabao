@@ -788,4 +788,98 @@ func RunIsolation(t *testing.T,
 			t.Errorf("the case run is still there: %v", err)
 		}
 	})
+
+	t.Run("delete eval run, admin owner lookups, cost with commentaries", func(t *testing.T) {
+		// Another user cannot delete the run; the owner can, with its case runs.
+		notFound("DeleteEvalRun", s.DeleteEvalRun(ctx,
+			d,
+			"b",
+			a.standalo.ID))
+		if err := s.DeleteEvalRun(ctx,
+			d,
+			"",
+			a.standalo.ID); !errors.Is(err, db.ErrInvalidOwner) {
+			t.Errorf("DeleteEvalRun with an empty owner: err = %v", err)
+		}
+		// The owner of an eval def, a run and a case run is found by id, with no owner given (the admin API).
+		for _, c := range []struct {
+			kind db.AdminKind
+			id   int64
+			want string
+		}{
+			{db.AdminEvalDef, int64(a.def.ID), "a"},
+			{db.AdminEvalDef, int64(b.def.ID), "b"},
+			{db.AdminEvalRun, int64(b.run.ID), "b"},
+		} {
+			got, err := s.AdminOwnerOf(ctx,
+				d,
+				c.kind,
+				c.id)
+			if err != nil || got != c.want {
+				t.Errorf("AdminOwnerOf(%s, %d) = %q, %v; want %q", c.kind, c.id, got, err, c.want)
+			}
+		}
+		if _, err := s.AdminOwnerOf(ctx,
+			d,
+			db.AdminEvalRun,
+			999999); !errors.Is(err, db.ErrNotFound) {
+			t.Errorf("AdminOwnerOf of a missing run: err = %v", err)
+		}
+		crs, err := s.ListCaseRuns(ctx,
+			d,
+			"b",
+			b.run.ID)
+		must(t, err)
+		if len(crs) == 0 {
+			t.Fatal("b has no case run")
+		}
+		if got, err := s.AdminOwnerOf(ctx,
+			d,
+			db.AdminCaseRun,
+			int64(crs[0].ID)); err != nil || got != "b" {
+			t.Errorf("AdminOwnerOf(case run) = %q, %v", got, err)
+		}
+		must(t, s.DeleteEvalRun(ctx,
+			d,
+			"a",
+			a.standalo.ID))
+		notFound("GetEvalRun after the delete", func() error {
+			_, err := s.GetEvalRun(ctx,
+				d,
+				"a",
+				a.standalo.ID)
+			return err
+		}())
+
+		// The cost of the day counts the commentaries on the owner's case runs.
+		since := at.Add(-time.Hour)
+		before, err := s.SumCostSince(ctx,
+			d,
+			"b",
+			since)
+		must(t, err)
+		must(t, s.CreateCaseCommentary(ctx,
+			d,
+			"b",
+			&core.CaseCommentary{
+				CaseRunID: crs[0].ID,
+				Model:     "m",
+				Text:      "t",
+				CostUSD:   0.5,
+			}))
+		after, err := s.SumCostSince(ctx,
+			d,
+			"b",
+			since)
+		must(t, err)
+		if after-before < 0.49 || after-before > 0.51 {
+			t.Errorf("SumCostSince grew by %v, want 0.5", after-before)
+		}
+		if other, err := s.SumCostSince(ctx,
+			d,
+			"a",
+			since); err != nil || other >= after {
+			t.Errorf("the commentary of b counted for a: %v, %v", other, err)
+		}
+	})
 }
