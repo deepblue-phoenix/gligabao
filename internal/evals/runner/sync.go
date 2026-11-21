@@ -43,7 +43,13 @@ const tempPosition = 1 << 30
 // case that is in the database but not in the spec is kept (it may have runs), after the others, and is not in the returned def.
 // The returned def has the cases of the spec only, each with its Meta (pointers: see db.Store.GetEvalDefByName).
 func (r *Runner) SyncEval(ctx context.Context,
+	userID string,
 	spec EvalSpec) (*core.EvalDef, error) {
+	if err := db.CheckOwner(userID); err != nil {
+		return nil, fmt.Errorf("sync eval %q: %w",
+			spec.Name,
+			err)
+	}
 	if spec.Name == "" || spec.Type == "" {
 		return nil, errors.New("sync eval: the name and type are required")
 	}
@@ -59,6 +65,7 @@ func (r *Runner) SyncEval(ctx context.Context,
 	err := r.tx(ctx, func(q db.Execer) error {
 		def, err := r.syncEvalDef(ctx,
 			q,
+			userID,
 			spec)
 		if err != nil {
 			return err
@@ -82,12 +89,15 @@ func (r *Runner) SyncEval(ctx context.Context,
 // syncEvalDef creates or updates the eval def itself (not its cases).
 func (r *Runner) syncEvalDef(ctx context.Context,
 	q db.Execer,
+	userID string,
 	spec EvalSpec) (*core.EvalDef, error) {
 	def, err := r.Store.GetEvalDefByName(ctx,
 		q,
+		userID,
 		spec.Name)
 	if errors.Is(err, db.ErrNotFound) {
 		def = &core.EvalDef{
+			UserID:      userID,
 			Name:        spec.Name,
 			Type:        spec.Type,
 			Description: spec.Description,
@@ -278,10 +288,12 @@ func sameJSON(a,
 // EnsureExperiment returns the experiment def called name, creating it (with the description) if it does not exist. Its evals are
 // the given ones, in this order, appended to the ones it has when they are not among them.
 func (r *Runner) EnsureExperiment(ctx context.Context,
+	userID,
 	name,
 	description string,
 	evals []core.EvalDefID) (*core.ExperimentDef, error) {
 	return r.EnsureExperimentWith(ctx,
+		userID,
 		name,
 		description,
 		nil,
@@ -291,6 +303,7 @@ func (r *Runner) EnsureExperiment(ctx context.Context,
 // EnsureExperimentWith is EnsureExperiment for a caller that has the settings under test: params are stored when the experiment is
 // created (an existing experiment keeps its own).
 func (r *Runner) EnsureExperimentWith(ctx context.Context,
+	userID,
 	name,
 	description string,
 	params core.Params,
@@ -303,9 +316,11 @@ func (r *Runner) EnsureExperimentWith(ctx context.Context,
 		var err error
 		def, err = r.Store.GetExperimentDefByName(ctx,
 			q,
+			userID,
 			name)
 		if errors.Is(err, db.ErrNotFound) {
 			def = &core.ExperimentDef{
+				UserID:      userID,
 				Name:        name,
 				Description: description,
 				Params:      params,

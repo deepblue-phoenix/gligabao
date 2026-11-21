@@ -240,7 +240,9 @@ func (m *Manager) Start(ctx context.Context,
 	dbCtx := context.WithoutCancel(ctx)
 	r := runner.New(m.DB, m.Store)
 	// The whole eval is put in the database (so that its order stays that of the file); the run asks the chosen cases of it.
-	def, err := r.SyncEval(dbCtx, Spec(selectedFull(evals, name)))
+	def, err := r.SyncEval(dbCtx,
+		core.SystemUser,
+		Spec(selectedFull(evals, name)))
 	if err != nil {
 		release()
 		log.WithError(err).WithField("model_id", tm.ID).Error("training evals: putting the eval in the database failed")
@@ -256,6 +258,7 @@ func (m *Manager) Start(ctx context.Context,
 			cfgParams = core.Params(opts.ExperimentConfig)
 		}
 		xd, err := r.EnsureExperimentWith(dbCtx,
+			core.SystemUser,
 			x,
 			opts.ExperimentDescription,
 			cfgParams,
@@ -456,6 +459,7 @@ func (m *Manager) publishEnd(ctx context.Context,
 	m.mu.Unlock()
 	if run, err := m.Store.GetEvalRun(ctx,
 		m.DB,
+		core.SystemUser,
 		id); err == nil {
 		f.End(ViewOfRun(run, eval))
 	} else {

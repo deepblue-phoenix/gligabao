@@ -1,4 +1,10 @@
 
+-- OWNERS. Every table with a user_id column belongs to one user (never empty; the training evals are owned by core.SystemUser,
+-- 'system'). The names of the defs are unique per owner. The composite foreign keys (def_id, user_id) etc. make the database refuse
+-- a record whose owner differs from its parent's. The tables without a user_id (case defs, the *_meta_* tables, trajectories,
+-- commentaries) are reached only through an owner-checked parent. Eval runs also hold the bookkeeping of the server that executes
+-- them: runner_id ("<hostname>:<pid>:<start unix time>", '' for CLI runs), heartbeat_at (the last beat; NULL until the run starts) and
+-- cancel_requested (set by the cancel request; the executing server sees it at its next beat).
 -- ---------------------------------------------------------------------------------------------------------------------
 -- DEFINITIONS (what to run; edited and reused)
 -- ---------------------------------------------------------------------------------------------------------------------
@@ -6,13 +12,16 @@
 -- core.EvalDef: a named collection of cases of one type. params: JSON object; tags: JSON array of strings.
 CREATE TABLE IF NOT EXISTS gb_eval_defs (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	name        TEXT NOT NULL UNIQUE,
+	user_id     TEXT NOT NULL CHECK (user_id <> ''),
+	name        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	type        TEXT NOT NULL CHECK (type <> ''),
 	tags        TEXT NOT NULL DEFAULT '[]',
 	params      TEXT NOT NULL DEFAULT '{}',
 	created_at  DATETIME NOT NULL,
 	updated_at  DATETIME NOT NULL,
+	UNIQUE (user_id, name),
+	UNIQUE (id, user_id),
 	UNIQUE (id, type)
 );
 
@@ -72,11 +81,14 @@ CREATE TABLE IF NOT EXISTS gb_case_def_meta_training (
 -- core.ExperimentDef: a named group of evals run together, plus the settings under test.
 CREATE TABLE IF NOT EXISTS gb_experiment_defs (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	name        TEXT NOT NULL UNIQUE,
+	user_id     TEXT NOT NULL CHECK (user_id <> ''),
+	name        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	params      TEXT NOT NULL DEFAULT '{}',
 	created_at  DATETIME NOT NULL,
-	updated_at  DATETIME NOT NULL
+	updated_at  DATETIME NOT NULL,
+	UNIQUE (user_id, name),
+	UNIQUE (id, user_id)
 );
 
 -- core.ExperimentDef.EvalDefIDs: the evals of an experiment, in the order they run (many-to-many: an eval may be in many
@@ -102,7 +114,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_def_evals_eval ON gb_experiment_def
 
 CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	id               INTEGER PRIMARY KEY AUTOINCREMENT,
-	def_id           INTEGER NOT NULL REFERENCES gb_experiment_defs(id) ON DELETE RESTRICT,
+	user_id     TEXT NOT NULL CHECK (user_id <> ''),
+	def_id           INTEGER NOT NULL,
 	status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
 	error            TEXT NOT NULL DEFAULT '',
 	params           TEXT NOT NULL DEFAULT '{}',
@@ -117,7 +130,9 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	cost_usd         REAL NOT NULL DEFAULT 0,
 	created_at       DATETIME NOT NULL,
 	started_at       DATETIME,
-	finished_at      DATETIME
+	finished_at      DATETIME,
+	UNIQUE (id, user_id),
+	FOREIGN KEY (def_id, user_id) REFERENCES gb_experiment_defs(id, user_id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_def ON gb_experiment_runs(def_id);
 
@@ -126,8 +141,9 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_def ON gb_experiment_runs(def_
 -- gb_eval_runs_meta_<type> table of that type, one row per eval run.
 CREATE TABLE IF NOT EXISTS gb_eval_runs (
 	id                INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id     TEXT NOT NULL CHECK (user_id <> ''),
 	def_id            INTEGER NOT NULL,
-	experiment_run_id INTEGER REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
+	experiment_run_id INTEGER,
 	type              TEXT NOT NULL CHECK (type <> ''),
 	status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
 	error             TEXT NOT NULL DEFAULT '',
@@ -144,11 +160,18 @@ CREATE TABLE IF NOT EXISTS gb_eval_runs (
 	created_at        DATETIME NOT NULL,
 	started_at        DATETIME,
 	finished_at       DATETIME,
+	runner_id         TEXT NOT NULL DEFAULT '',
+	heartbeat_at      DATETIME,
+	cancel_requested  INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1)),
 	UNIQUE (id, type),
-	FOREIGN KEY (def_id, type) REFERENCES gb_eval_defs(id, type) ON DELETE RESTRICT
+	UNIQUE (id, user_id),
+	FOREIGN KEY (def_id, type) REFERENCES gb_eval_defs(id, type) ON DELETE RESTRICT,
+	FOREIGN KEY (def_id, user_id) REFERENCES gb_eval_defs(id, user_id) ON DELETE RESTRICT,
+	FOREIGN KEY (experiment_run_id, user_id) REFERENCES gb_experiment_runs(id, user_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_def ON gb_eval_runs(def_id);
 CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_experiment_run ON gb_eval_runs(experiment_run_id);
+CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_user_def ON gb_eval_runs(user_id, def_id, id DESC);
 
 -- The metadata of the eval runs of each type: one table per type, keyed by the eval run (one row per eval run of that type), tied
 -- to its type like the case def and case run metadata. They hold the statistics of the run as a whole, which differ between the
@@ -202,6 +225,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_meta_training_model ON gb_eval_runs_
 -- database check it); what is specific to the type is in the gb_case_runs_meta_<type> table of that type, one row per case run.
 CREATE TABLE IF NOT EXISTS gb_case_runs (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id     TEXT NOT NULL CHECK (user_id <> ''),
 	def_id      INTEGER NOT NULL,
 	eval_run_id INTEGER NOT NULL,
 	type        TEXT NOT NULL CHECK (type <> ''),
@@ -217,9 +241,11 @@ CREATE TABLE IF NOT EXISTS gb_case_runs (
 	UNIQUE (eval_run_id, def_id),
 	UNIQUE (id, type),
 	FOREIGN KEY (def_id, type) REFERENCES gb_case_defs(id, type) ON DELETE RESTRICT,
-	FOREIGN KEY (eval_run_id, type) REFERENCES gb_eval_runs(id, type) ON DELETE CASCADE
+	FOREIGN KEY (eval_run_id, type) REFERENCES gb_eval_runs(id, type) ON DELETE CASCADE,
+	FOREIGN KEY (eval_run_id, user_id) REFERENCES gb_eval_runs(id, user_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_case_runs_def ON gb_case_runs(def_id);
+CREATE INDEX IF NOT EXISTS idx_gb_case_runs_user ON gb_case_runs(user_id, eval_run_id);
 
 -- The metadata of the case runs of each type: one table per type, keyed by the case run (one row per case run of that type),
 -- tied to its type like the case def metadata above. Deleting the case run deletes the row. A new type of eval adds a table.

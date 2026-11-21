@@ -4,6 +4,9 @@
 -- Names are unique per user. Deletion is soft (deleted = 1); the rows stay but are invisible, and the name can
 -- be reused by a new dataset (with a new id and an empty graph).
 --   tags: JSON array of strings
+--   kind: 'data' (a regular dataset) or 'eval' (a dataset made by an eval run, hidden from the dataset API); names are unique per
+--     (user, kind). eval_run_id: the eval run (gb_eval_runs.id, not a foreign key) an eval dataset belongs to; NULL for kind 'data'
+--     (enforced in code: SQLite cannot add a CHECK across columns to an existing table; PostgreSQL has gb_datasets_eval_run_check).
 -- All DATETIME columns hold RFC 3339 UTC strings (SQLite has no real datetime type; see db_time.go).
 CREATE TABLE IF NOT EXISTS gb_datasets (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -13,11 +16,16 @@ CREATE TABLE IF NOT EXISTS gb_datasets (
 	tags        TEXT NOT NULL DEFAULT '[]',
 	created_at  DATETIME NOT NULL,
 	deleted     INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
-	deleted_at  DATETIME
+	deleted_at  DATETIME,
+	kind        TEXT NOT NULL DEFAULT 'data' CHECK (kind IN ('data', 'eval')),
+	eval_run_id INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name
-	ON gb_datasets(user_id, name)
+	ON gb_datasets(user_id, kind, name)
 	WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_gb_datasets_eval_run
+	ON gb_datasets(eval_run_id)
+	WHERE eval_run_id IS NOT NULL;
 
 -- An ontology: a typed property graph (classes, relations, properties) written in the YAML/JSON DSL of
 -- internal/memory/memory_ontology/ontospec. Names are unique per user.

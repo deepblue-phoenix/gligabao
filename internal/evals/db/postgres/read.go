@@ -18,14 +18,19 @@ import (
 // struct of its type: *core.KnowledgeCaseDefMeta, *core.TrainingCaseDefMeta).
 func GetEvalDefByName(ctx context.Context,
 	q db.Execer,
+	userID string,
 	name string) (*core.EvalDef, error) {
+	if err := db.CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	var d core.EvalDef
 	var id int64
 	var typ string
 	var tags, params []byte
 	var created, updated time.Time
 	err := q.QueryRowContext(ctx,
-		`SELECT id, name, description, type, tags, params, created_at, updated_at FROM gb_eval_defs WHERE name = $1`,
+		`SELECT id, name, description, type, tags, params, created_at, updated_at FROM gb_eval_defs WHERE user_id = $1 AND name = $2`,
+		userID,
 		name).
 		Scan(&id,
 			&d.Name,
@@ -45,7 +50,7 @@ func GetEvalDefByName(ctx context.Context,
 			name,
 			err)
 	}
-	d.ID, d.Type = core.EvalDefID(id), core.Type(typ)
+	d.ID, d.Type, d.UserID = core.EvalDefID(id), core.Type(typ), userID
 	if err := db.Unmarshal(tags, &d.Tags); err != nil {
 		return nil, err
 	}
@@ -205,13 +210,18 @@ func getCaseDefMeta(ctx context.Context,
 // GetExperimentDefByName returns the experiment def called name, with its EvalDefIDs in the order the evals run.
 func GetExperimentDefByName(ctx context.Context,
 	q db.Execer,
+	userID string,
 	name string) (*core.ExperimentDef, error) {
+	if err := db.CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	var d core.ExperimentDef
 	var id int64
 	var params []byte
 	var created, updated time.Time
 	err := q.QueryRowContext(ctx,
-		`SELECT id, name, description, params, created_at, updated_at FROM gb_experiment_defs WHERE name = $1`,
+		`SELECT id, name, description, params, created_at, updated_at FROM gb_experiment_defs WHERE user_id = $1 AND name = $2`,
+		userID,
 		name).
 		Scan(&id,
 			&d.Name,
@@ -229,7 +239,7 @@ func GetExperimentDefByName(ctx context.Context,
 			name,
 			err)
 	}
-	d.ID = core.ExperimentDefID(id)
+	d.ID, d.UserID = core.ExperimentDefID(id), userID
 	if err := db.Unmarshal(params, &d.Params); err != nil {
 		return nil, err
 	}

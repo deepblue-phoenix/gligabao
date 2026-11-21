@@ -32,6 +32,7 @@ func (e *evalNames) of(ctx context.Context,
 	}
 	d, err := e.m.Store.GetEvalDef(ctx,
 		e.m.DB,
+		core.SystemUser,
 		id)
 	if err != nil {
 		return "", err
@@ -80,6 +81,7 @@ func (m *Manager) run0(ctx context.Context,
 	id core.EvalRunID) (*core.EvalRun, error) {
 	run, err := m.Store.GetEvalRun(ctx,
 		m.DB,
+		core.SystemUser,
 		id)
 	if errors.Is(err, db.ErrNotFound) || (err == nil && run.Type != core.TypeTraining) {
 		return nil, notFoundErr("unknown eval")
@@ -114,6 +116,7 @@ func (m *Manager) caseViews(ctx context.Context,
 	id core.EvalRunID) ([]CaseView, error) {
 	run, err := m.Store.GetEvalRun(ctx,
 		m.DB,
+		core.SystemUser,
 		id)
 	if err != nil {
 		log.WithError(err).Error("training evals: read eval failed")
@@ -121,6 +124,7 @@ func (m *Manager) caseViews(ctx context.Context,
 	}
 	defs, err := m.Store.ListCaseDefs(ctx,
 		m.DB,
+		core.SystemUser,
 		run.DefID)
 	if err != nil {
 		log.WithError(err).Error("training evals: list the case defs failed")
@@ -132,6 +136,7 @@ func (m *Manager) caseViews(ctx context.Context,
 	}
 	cases, err := m.Store.ListCaseRuns(ctx,
 		m.DB,
+		core.SystemUser,
 		id)
 	if err != nil {
 		log.WithError(err).Error("training evals: list eval case runs failed")
@@ -294,6 +299,7 @@ func (m *Manager) isTraining(ctx context.Context,
 		if !ok {
 			e, err := m.Store.GetEvalDef(ctx,
 				m.DB,
+				core.SystemUser,
 				id)
 			if err != nil {
 				return false, err
@@ -326,7 +332,9 @@ func experimentView(d *core.ExperimentDef,
 
 // ListExperiments returns the training experiments, newest first. Errors are *Error: KindInternal.
 func (m *Manager) ListExperiments(ctx context.Context) ([]ExperimentView, error) {
-	defs, err := m.Store.ListExperimentDefs(ctx, m.DB)
+	defs, err := m.Store.ListExperimentDefs(ctx,
+		m.DB,
+		core.SystemUser)
 	if err != nil {
 		log.WithError(err).Error("training evals: list experiments failed")
 		return nil, internalErr("failed to list the experiments", err)
@@ -341,6 +349,7 @@ func (m *Manager) ListExperiments(ctx context.Context) ([]ExperimentView, error)
 			var runs []core.ExperimentRun
 			if runs, err = m.Store.ListExperimentRuns(ctx,
 				m.DB,
+				core.SystemUser,
 				defs[i].ID); err == nil {
 				out = append(out, experimentView(&defs[i], len(runs)))
 			}
@@ -360,6 +369,7 @@ func (m *Manager) GetExperiment(ctx context.Context,
 	id int64) (*ExperimentView, []ExperimentRunView, error) {
 	def, err := m.Store.GetExperimentDef(ctx,
 		m.DB,
+		core.SystemUser,
 		core.ExperimentDefID(id))
 	if err == nil {
 		var ok bool
@@ -377,11 +387,13 @@ func (m *Manager) GetExperiment(ctx context.Context,
 	}
 	xruns, err := m.Store.ListExperimentRuns(ctx,
 		m.DB,
+		core.SystemUser,
 		def.ID)
 	var evals []core.EvalRun
 	if err == nil {
 		evals, err = m.Store.ListEvalRunsOfExperiment(ctx,
 			m.DB,
+			core.SystemUser,
 			def.ID)
 	}
 	if err != nil {

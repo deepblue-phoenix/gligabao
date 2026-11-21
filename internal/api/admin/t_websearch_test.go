@@ -83,7 +83,7 @@ func testWebSearches(t *testing.T,
 	res, err := memory_remember.Remember(ctx,
 		d,
 		webLLM{},
-		"u1",
+		"eval",
 		"main",
 		"knowledge",
 		"Alice works at Acme, which acquired Globex.",
@@ -113,7 +113,7 @@ func testWebSearches(t *testing.T,
 	}
 	dsID, err := relational.DatasetID(ctx,
 		d,
-		"u1",
+		"eval",
 		"main")
 	if err != nil {
 		t.Fatal(err)

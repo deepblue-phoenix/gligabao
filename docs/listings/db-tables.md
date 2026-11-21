@@ -44,7 +44,7 @@
 
 | Table                         | Description                                                                                                                                     |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gb_datasets`                 | hard logical containers (owned by one user) that every artifact, entity and edge belongs to; deletion is soft.                                  |
+| `gb_datasets`                 | hard logical containers (owned by one user) that every artifact, entity and edge belongs to; deletion is soft. `kind` is `data` (regular) or `eval` (made by an eval run, with its `eval_run_id`; hidden from the dataset API).                                  |
 | `gb_ontologies`               | an ontology (YAML/JSON DSL): name, owner, version, spec (JSON), digest and counts.                                                              |
 | `gb_ontology_versions`        | the history of an ontology: the document and the spec of every version.                                                                         |
 | `gb_models`                   | the static list of AI models gligabao knows, referenced by entities, edges and inferences.                                                      |
@@ -165,14 +165,14 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `dbfull.O
 
 | Table                                         | Description                                                                                                                       |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `gb_eval_defs`                            | one row per eval definition: a named set of cases of one type (`knowledge`, `training`).                                          |
+| `gb_eval_defs`                            | one row per eval definition: a named set of cases of one type (`knowledge`, `training`). Owned by `user_id` (names unique per owner).                                          |
 | `gb_case_defs`                            | one row per case definition of an eval: its name and position; the type-specific part is in the `gb_case_def_meta_*` table.   |
 | `gb_case_def_meta_knowledge`              | the texts to remember, the question, the checks and the settings of a knowledge case.                                             |
 | `gb_case_def_meta_training`               | the question and the expected answer of a training case.                                                                          |
-| `gb_experiment_defs`                      | one row per experiment definition: a named group of evals run together, with the settings under test.                             |
+| `gb_experiment_defs`                      | one row per experiment definition: a named group of evals run together, with the settings under test. Owned by `user_id` (names unique per owner).                             |
 | `gb_experiment_def_evals`                 | the evals of an experiment, in the order they run.                                                                                |
 | `gb_experiment_runs`                      | one row per execution of an experiment: status, counts and cost over the case runs of its eval runs.                              |
-| `gb_eval_runs`                            | one row per execution of an eval (on its own or in an experiment run): status, params, counts, cost and times.                    |
+| `gb_eval_runs`                            | one row per execution of an eval (on its own or in an experiment run): owner, status, params, counts, cost and times, and the bookkeeping of the server that runs it (`runner_id`, `heartbeat_at`, `cancel_requested`).                    |
 | `gb_eval_runs_meta_knowledge`             | the statistics of a knowledge eval run as a whole: chunks, steps, remember and query calls and cost, checks held and failed.     |
 | `gb_eval_runs_meta_training`              | the statistics of a training eval run: the trained model, the judge, the split of the scores, the judge's calls, tokens and cost. |
 | `gb_case_runs`                            | one row per execution of a case in an eval run: status (lifecycle), verdict (pass or fail), score, cost and times.                |

@@ -79,6 +79,7 @@ func TestCreate(t *testing.T) {
 
 	// Definitions.
 	ev := &core.EvalDef{
+		UserID: "u1",
 		Name:   "kn",
 		Type:   core.TypeKnowledge,
 		Tags:   []string{"a"},
@@ -94,14 +95,16 @@ func TestCreate(t *testing.T) {
 	if err := postgres.CreateEvalDef(ctx,
 		d,
 		&core.EvalDef{
-			Name: "kn",
-			Type: core.TypeKnowledge,
+			UserID: "u1",
+			Name:   "kn",
+			Type:   core.TypeKnowledge,
 		}); err == nil {
 		t.Error("accepted a second eval def with the same name")
 	}
 	tr := &core.EvalDef{
-		Name: "tr",
-		Type: core.TypeTraining,
+		UserID: "u1",
+		Name:   "tr",
+		Type:   core.TypeTraining,
 	}
 	if err := postgres.CreateEvalDef(ctx,
 		d,
@@ -179,6 +182,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	ex := &core.ExperimentDef{
+		UserID: "u1",
 		Name:   "x",
 		Params: core.Params{"k": 1},
 	}
@@ -206,6 +210,7 @@ func TestCreate(t *testing.T) {
 
 	// Runs.
 	xr := &core.ExperimentRun{
+		UserID: "u1",
 		DefID:  ex.ID,
 		Params: core.Params{"only": "kn"},
 	}
@@ -218,6 +223,7 @@ func TestCreate(t *testing.T) {
 	}
 	started := time.Now()
 	er := &core.EvalRun{
+		UserID:          "u1",
 		DefID:           ev.ID,
 		Type:            core.TypeKnowledge,
 		ExperimentRunID: &xr.ID,
@@ -239,14 +245,16 @@ func TestCreate(t *testing.T) {
 	if err := postgres.CreateEvalRun(ctx,
 		d,
 		&core.EvalRun{
-			DefID: tr.ID,
-			Type:  core.TypeKnowledge,
+			UserID: "u1",
+			DefID:  tr.ID,
+			Type:   core.TypeKnowledge,
 		}); err == nil {
 		t.Error("accepted an eval run whose type is not that of its eval def")
 	}
 	alone := &core.EvalRun{
-		DefID: tr.ID,
-		Type:  core.TypeTraining,
+		UserID: "u1",
+		DefID:  tr.ID,
+		Type:   core.TypeTraining,
 	}
 	if err := postgres.CreateEvalRun(ctx,
 		d,
@@ -261,6 +269,7 @@ func TestCreate(t *testing.T) {
 
 	score := 1.0
 	cr := &core.CaseRun{
+		UserID:    "u1",
 		DefID:     kc.ID,
 		EvalRunID: er.ID,
 		Type:      core.TypeKnowledge,
@@ -278,6 +287,7 @@ func TestCreate(t *testing.T) {
 	if err := postgres.CreateCaseRun(ctx,
 		d,
 		&core.CaseRun{
+			UserID:    "u1",
 			DefID:     kc.ID,
 			EvalRunID: er.ID,
 			Type:      core.TypeKnowledge,
@@ -287,6 +297,7 @@ func TestCreate(t *testing.T) {
 	if err := postgres.CreateCaseRun(ctx,
 		d,
 		&core.CaseRun{
+			UserID:    "u1",
 			DefID:     kc.ID,
 			EvalRunID: alone.ID,
 			Type:      core.TypeKnowledge,
@@ -294,8 +305,9 @@ func TestCreate(t *testing.T) {
 		t.Error("accepted a case run whose type is not that of its eval run")
 	}
 	er2 := &core.EvalRun{
-		DefID: ev.ID,
-		Type:  core.TypeKnowledge,
+		UserID: "u1",
+		DefID:  ev.ID,
+		Type:   core.TypeKnowledge,
 	}
 	if err := postgres.CreateEvalRun(ctx,
 		d,
@@ -305,6 +317,7 @@ func TestCreate(t *testing.T) {
 	if err := postgres.CreateCaseRun(ctx,
 		d,
 		&core.CaseRun{
+			UserID:    "u1",
 			DefID:     kc.ID,
 			EvalRunID: er2.ID,
 			Type:      core.TypeKnowledge,
@@ -353,6 +366,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	tcr := &core.CaseRun{
+		UserID:    "u1",
 		DefID:     tc.ID,
 		EvalRunID: alone.ID,
 		Type:      core.TypeTraining,
@@ -475,8 +489,9 @@ func TestCreate(t *testing.T) {
 	if err := postgres.CreateEvalDef(ctx,
 		tx,
 		&core.EvalDef{
-			Name: "tmp",
-			Type: core.TypeKnowledge,
+			UserID: "u1",
+			Name:   "tmp",
+			Type:   core.TypeKnowledge,
 		}); err != nil {
 		t.Fatal(err)
 	}

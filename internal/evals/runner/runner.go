@@ -84,6 +84,7 @@ func (r *Runner) RunEval(ctx context.Context,
 	opts EvalOptions) (*core.EvalRun, error) {
 	start := now()
 	run := &core.EvalRun{
+		UserID:          def.UserID,
 		DefID:           def.ID,
 		Type:            def.Type,
 		ExperimentRunID: opts.ExperimentRunID,
@@ -199,6 +200,7 @@ func (e *EvalRecorder) StartCase(ctx context.Context,
 	def core.CaseDef) (*core.CaseRun, error) {
 	start := now()
 	cr := &core.CaseRun{
+		UserID:    e.run.UserID,
 		DefID:     def.ID,
 		EvalRunID: e.run.ID,
 		Type:      def.Type,
@@ -291,6 +293,7 @@ func (e *EvalRecorder) RecordCases(ctx context.Context,
 	err := e.r.tx(ctx, func(q db.Execer) error {
 		for _, c := range cases {
 			c.Run.EvalRunID = e.run.ID
+			c.Run.UserID = e.run.UserID
 			if c.Run.FinishedAt == nil {
 				end := now()
 				c.Run.FinishedAt = &end

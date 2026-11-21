@@ -158,7 +158,9 @@ func newEnv(t *testing.T,
 func (e *env) run(ev knowledge.Eval) (*core.EvalRun, *core.EvalDef) {
 	e.t.Helper()
 	ctx := context.Background()
-	def, err := e.r.SyncEval(ctx, knowledge.Spec(ev))
+	def, err := e.r.SyncEval(ctx,
+		"eval",
+		knowledge.Spec(ev))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -686,7 +688,9 @@ func TestCancelled(t *testing.T) {
 			"Who?",
 			"alice")},
 	}
-	def, err := e.r.SyncEval(ctx, knowledge.Spec(ev))
+	def, err := e.r.SyncEval(ctx,
+		"eval",
+		knowledge.Spec(ev))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1015,11 +1019,14 @@ func TestRerunner(t *testing.T) {
 			"Who?",
 			"bob")},
 	}
-	def, err := e.r.SyncEval(ctx, knowledge.Spec(ev))
+	def, err := e.r.SyncEval(ctx,
+		"eval",
+		knowledge.Spec(ev))
 	if err != nil {
 		t.Fatal(err)
 	}
 	xdef, err := e.r.EnsureExperiment(ctx,
+		"eval",
 		"rerun-exp",
 		"",
 		[]core.EvalDefID{def.ID})
@@ -1047,6 +1054,7 @@ func TestRerunner(t *testing.T) {
 	}
 	cases, err := e.r.Store.ListCaseRuns(ctx,
 		e.r.DB,
+		"eval",
 		run.ID)
 	if err != nil || len(cases) != 1 {
 		t.Fatalf("case runs: %v %v",
@@ -1133,6 +1141,7 @@ func TestRerunner(t *testing.T) {
 
 	re, err := e.r.Store.GetCaseRun(ctx,
 		e.r.DB,
+		"eval",
 		id)
 	if err != nil {
 		t.Fatal(err)
@@ -1145,6 +1154,7 @@ func TestRerunner(t *testing.T) {
 	}
 	rer, err := e.r.Store.GetEvalRun(ctx,
 		e.r.DB,
+		"eval",
 		re.EvalRunID)
 	if err != nil {
 		t.Fatal(err)
@@ -1166,6 +1176,7 @@ func TestRerunner(t *testing.T) {
 	}
 	xrun, err := e.r.Store.GetExperimentRun(ctx,
 		e.r.DB,
+		"eval",
 		xr.Run().ID)
 	if err != nil {
 		t.Fatal(err)
@@ -1175,6 +1186,7 @@ func TestRerunner(t *testing.T) {
 	}
 	evalRuns, err := e.r.Store.ListEvalRunsOfExperimentRun(ctx,
 		e.r.DB,
+		"eval",
 		xr.Run().ID)
 	if err != nil || len(evalRuns) != 2 {
 		t.Errorf("eval runs of the experiment run: %d, %v",
@@ -1183,6 +1195,7 @@ func TestRerunner(t *testing.T) {
 	}
 	if o, err := e.r.Store.GetCaseRun(ctx,
 		e.r.DB,
+		"eval",
 		orig.ID); err != nil || o.Verdict != core.VerdictFail {
 		t.Errorf("the original case run changed: %+v, %v",
 			o,
@@ -1206,6 +1219,7 @@ func TestRerunner(t *testing.T) {
 	}
 	if re2, err := e.r.Store.GetCaseRun(ctx,
 		e.r.DB,
+		"eval",
 		id2); err != nil || re2.Verdict != core.VerdictPass || re2.DefID != orig.DefID {
 		t.Errorf("rerun of a rerun: %+v, %v",
 			re2,

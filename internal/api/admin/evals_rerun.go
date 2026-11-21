@@ -115,6 +115,7 @@ func rerunsOf(ctx context.Context,
 	}
 	evalRuns, err := s.ListEvalRunsOfExperimentRun(ctx,
 		d,
+		evalOwner,
 		*er.ExperimentRunID)
 	if err != nil {
 		return nil, err
@@ -128,6 +129,7 @@ func rerunsOf(ctx context.Context,
 		}
 		cases, err := s.ListCaseRuns(ctx,
 			d,
+			evalOwner,
 			evalRuns[i].ID)
 		if err != nil {
 			return nil, err
@@ -292,12 +294,14 @@ func EvalCaseRunRerun(d *sql.DB,
 		// The rerun is recorded by a connection of its own: read where it was put from this one (it is committed before Rerun returns).
 		c, err := s.GetCaseRun(ctx,
 			d,
+			evalOwner,
 			newID)
 		if err == nil {
 			out.EvalRunID = int64(c.EvalRunID)
 			var er *core.EvalRun
 			if er, err = s.GetEvalRun(ctx,
 				d,
+				evalOwner,
 				c.EvalRunID); err == nil && er.ExperimentRunID != nil {
 				x := int64(*er.ExperimentRunID)
 				out.ExperimentRunID = &x

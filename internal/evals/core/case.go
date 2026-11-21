@@ -41,7 +41,9 @@ type CaseDefMeta interface {
 // and how it went. What is specific to the Type (what was given, what came back, the details of the judgement) is in Meta,
 // which has its own table per Type.
 type CaseRun struct {
-	ID        CaseRunID `json:"id"`
+	ID CaseRunID `json:"id"`
+	// UserID is the owner. Training evals are owned by SystemUser. Required by every create.
+	UserID    string    `json:"user_id,omitempty"`
 	DefID     CaseDefID `json:"def_id"`
 	EvalRunID EvalRunID `json:"eval_run_id"`
 	// Type is the Type of the CaseDef (kept here so that the type-specific tables can be tied to the right kind of run).

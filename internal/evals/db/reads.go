@@ -136,7 +136,7 @@ func (r Reads) queryRow(ctx context.Context,
 }
 
 const experimentRunCols = `id, def_id, status, error, params, counts_total, counts_pending, counts_running, counts_completed,
-	counts_errored, counts_cancelled, counts_passed, counts_failed, cost_usd, created_at, started_at, finished_at`
+	counts_errored, counts_cancelled, counts_passed, counts_failed, cost_usd, created_at, started_at, finished_at, user_id`
 
 func scanExperimentRun(s scanner) (*core.ExperimentRun, error) {
 	var x core.ExperimentRun
@@ -160,7 +160,8 @@ func scanExperimentRun(s scanner) (*core.ExperimentRun, error) {
 		&x.CostUSD,
 		timeScan{&x.CreatedAt},
 		nullTimeScan{&x.StartedAt},
-		nullTimeScan{&x.FinishedAt})
+		nullTimeScan{&x.FinishedAt},
+		&x.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +173,8 @@ func scanExperimentRun(s scanner) (*core.ExperimentRun, error) {
 }
 
 const evalRunCols = `id, def_id, experiment_run_id, type, status, error, params, counts_total, counts_pending, counts_running,
-	counts_completed, counts_errored, counts_cancelled, counts_passed, counts_failed, cost_usd, created_at, started_at, finished_at`
+	counts_completed, counts_errored, counts_cancelled, counts_passed, counts_failed, cost_usd, created_at, started_at, finished_at,
+	user_id, runner_id, heartbeat_at, cancel_requested`
 
 func scanEvalRun(s scanner) (*core.EvalRun, error) {
 	var x core.EvalRun
@@ -199,7 +201,11 @@ func scanEvalRun(s scanner) (*core.EvalRun, error) {
 		&x.CostUSD,
 		timeScan{&x.CreatedAt},
 		nullTimeScan{&x.StartedAt},
-		nullTimeScan{&x.FinishedAt})
+		nullTimeScan{&x.FinishedAt},
+		&x.UserID,
+		&x.RunnerID,
+		nullTimeScan{&x.HeartbeatAt},
+		&x.CancelRequested)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +231,7 @@ func unmarshalParams(text []byte,
 	return nil
 }
 
-const caseRunCols = `id, def_id, eval_run_id, type, status, error, verdict, score, cost_usd, created_at, started_at, finished_at`
+const caseRunCols = `id, def_id, eval_run_id, type, status, error, verdict, score, cost_usd, created_at, started_at, finished_at, user_id`
 
 func scanCaseRun(s scanner) (*core.CaseRun, error) {
 	var x core.CaseRun
@@ -242,7 +248,8 @@ func scanCaseRun(s scanner) (*core.CaseRun, error) {
 		&x.CostUSD,
 		timeScan{&x.CreatedAt},
 		nullTimeScan{&x.StartedAt},
-		nullTimeScan{&x.FinishedAt})
+		nullTimeScan{&x.FinishedAt},
+		&x.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -269,9 +276,14 @@ func notFound(err error,
 
 // ListExperimentDefs returns every experiment def, oldest first, each with its EvalDefIDs.
 func (r Reads) ListExperimentDefs(ctx context.Context,
-	q Execer) ([]core.ExperimentDef, error) {
+	q Execer,
+	userID string) ([]core.ExperimentDef, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	return r.experimentDefs(ctx,
 		q,
+		userID,
 		``,
 		nil)
 }
@@ -279,10 +291,15 @@ func (r Reads) ListExperimentDefs(ctx context.Context,
 // GetExperimentDef returns the experiment def with the ID, with its EvalDefIDs.
 func (r Reads) GetExperimentDef(ctx context.Context,
 	q Execer,
+	userID string,
 	id core.ExperimentDefID) (*core.ExperimentDef, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	list, err := r.experimentDefs(ctx,
 		q,
-		`WHERE id = ?`,
+		userID,
+		`AND id = ?`,
 		[]any{int64(id)})
 	if err != nil {
 		return nil, err
@@ -297,12 +314,13 @@ func (r Reads) GetExperimentDef(ctx context.Context,
 
 func (r Reads) experimentDefs(ctx context.Context,
 	q Execer,
+	userID string,
 	where string,
 	args []any) ([]core.ExperimentDef, error) {
 	rows, err := r.query(ctx,
 		q,
-		`SELECT id, name, description, params, created_at, updated_at FROM gb_experiment_defs `+where+` ORDER BY id`,
-		args...)
+		`SELECT id, name, description, params, created_at, updated_at FROM gb_experiment_defs WHERE user_id = ? `+where+` ORDER BY id`,
+		append([]any{userID}, args...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment defs: %w", err)
 	}
@@ -321,7 +339,7 @@ func (r Reads) experimentDefs(ctx context.Context,
 			timeScan{&d.UpdatedAt}); err != nil {
 			return nil, fmt.Errorf("list experiment defs: %w", err)
 		}
-		d.ID, d.EvalDefIDs = core.ExperimentDefID(id), []core.EvalDefID{}
+		d.ID, d.UserID, d.EvalDefIDs = core.ExperimentDefID(id), userID, []core.EvalDefID{}
 		if err := unmarshalParams(params, &d.Params); err != nil {
 			return nil, err
 		}
@@ -337,7 +355,11 @@ func (r Reads) experimentDefs(ctx context.Context,
 	}
 	links, err := r.query(ctx,
 		q,
-		`SELECT experiment_def_id, eval_def_id FROM gb_experiment_def_evals ORDER BY experiment_def_id, position`)
+		`
+		SELECT experiment_def_id, eval_def_id FROM gb_experiment_def_evals
+		WHERE experiment_def_id IN (SELECT id FROM gb_experiment_defs WHERE user_id = ?)
+		ORDER BY experiment_def_id, position`,
+		userID)
 	if err != nil {
 		return nil, fmt.Errorf("list the evals of the experiment defs: %w", err)
 	}
@@ -357,13 +379,18 @@ func (r Reads) experimentDefs(ctx context.Context,
 // GetEvalDef returns the eval def with the ID, without its Cases (see ListCaseDefs).
 func (r Reads) GetEvalDef(ctx context.Context,
 	q Execer,
+	userID string,
 	id core.EvalDefID) (*core.EvalDef, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	var d core.EvalDef
 	var typ string
 	var tags, params []byte
 	err := r.queryRow(ctx,
 		q,
-		`SELECT name, description, type, tags, params, created_at, updated_at FROM gb_eval_defs WHERE id = ?`,
+		`SELECT name, description, type, tags, params, created_at, updated_at FROM gb_eval_defs WHERE user_id = ? AND id = ?`,
+		userID,
 		int64(id)).
 		Scan(&d.Name,
 			&d.Description,
@@ -375,7 +402,7 @@ func (r Reads) GetEvalDef(ctx context.Context,
 	if err != nil {
 		return nil, notFound(err, fmt.Sprintf("eval def %d", id))
 	}
-	d.ID, d.Type = id, core.Type(typ)
+	d.ID, d.UserID, d.Type = id, userID, core.Type(typ)
 	if err := Unmarshal(tags, &d.Tags); err != nil {
 		return nil, err
 	}
@@ -388,13 +415,18 @@ func (r Reads) GetEvalDef(ctx context.Context,
 // ListCaseDefs returns the case defs of an eval def ordered by position, without their Meta.
 func (r Reads) ListCaseDefs(ctx context.Context,
 	q Execer,
+	userID string,
 	evalDefID core.EvalDefID) ([]core.CaseDef, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	rows, err := r.query(ctx,
 		q,
 		`
 		SELECT id, type, name, position, description, tags, created_at, updated_at FROM gb_case_defs
-		WHERE eval_def_id = ? ORDER BY position`,
-		int64(evalDefID))
+		WHERE eval_def_id = ? AND eval_def_id IN (SELECT id FROM gb_eval_defs WHERE user_id = ?) ORDER BY position`,
+		int64(evalDefID),
+		userID)
 	if err != nil {
 		return nil, fmt.Errorf("list case defs of eval def %d: %w",
 			evalDefID,
@@ -433,7 +465,11 @@ func (r Reads) ListCaseDefs(ctx context.Context,
 // ListExperimentCases returns the cases (eval and case name) that the runs of an experiment executed, ordered by eval and name.
 func (r Reads) ListExperimentCases(ctx context.Context,
 	q Execer,
+	userID string,
 	experimentDefID core.ExperimentDefID) ([]core.CaseRef, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	rows, err := r.query(ctx,
 		q,
 		`
@@ -443,8 +479,10 @@ func (r Reads) ListExperimentCases(ctx context.Context,
 		JOIN gb_experiment_runs xr ON xr.id = er.experiment_run_id
 		JOIN gb_case_defs cd ON cd.id = cr.def_id
 		JOIN gb_eval_defs ed ON ed.id = cd.eval_def_id
-		WHERE xr.def_id = ?
+		WHERE xr.user_id = ? AND cr.user_id = ? AND xr.def_id = ?
 		ORDER BY ed.name, cd.name`,
+		userID,
+		userID,
 		int64(experimentDefID))
 	if err != nil {
 		return nil, fmt.Errorf("list the cases of experiment def %d: %w",
@@ -471,10 +509,15 @@ func (r Reads) ListExperimentCases(ctx context.Context,
 // ListExperimentRuns returns the runs of an experiment def, oldest first.
 func (r Reads) ListExperimentRuns(ctx context.Context,
 	q Execer,
+	userID string,
 	defID core.ExperimentDefID) ([]core.ExperimentRun, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	rows, err := r.query(ctx,
 		q,
-		`SELECT `+experimentRunCols+` FROM gb_experiment_runs WHERE def_id = ? ORDER BY id`,
+		`SELECT `+experimentRunCols+` FROM gb_experiment_runs WHERE user_id = ? AND def_id = ? ORDER BY id`,
+		userID,
 		int64(defID))
 	if err != nil {
 		return nil, fmt.Errorf("list runs of experiment def %d: %w",
@@ -498,10 +541,15 @@ func (r Reads) ListExperimentRuns(ctx context.Context,
 // GetExperimentRun returns the experiment run with the ID (without its EvalRuns).
 func (r Reads) GetExperimentRun(ctx context.Context,
 	q Execer,
+	userID string,
 	id core.ExperimentRunID) (*core.ExperimentRun, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	x, err := scanExperimentRun(r.queryRow(ctx,
 		q,
-		`SELECT `+experimentRunCols+` FROM gb_experiment_runs WHERE id = ?`,
+		`SELECT `+experimentRunCols+` FROM gb_experiment_runs WHERE user_id = ? AND id = ?`,
+		userID,
 		int64(id)))
 	if err != nil {
 		return nil, notFound(err, fmt.Sprintf("experiment run %d", id))
@@ -512,10 +560,15 @@ func (r Reads) GetExperimentRun(ctx context.Context,
 // GetEvalRun returns the eval run with the ID with its Meta, without its CaseRuns (see ListCaseRuns).
 func (r Reads) GetEvalRun(ctx context.Context,
 	q Execer,
+	userID string,
 	id core.EvalRunID) (*core.EvalRun, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	x, err := scanEvalRun(r.queryRow(ctx,
 		q,
-		`SELECT `+evalRunCols+` FROM gb_eval_runs WHERE id = ?`,
+		`SELECT `+evalRunCols+` FROM gb_eval_runs WHERE user_id = ? AND id = ?`,
+		userID,
 		int64(id)))
 	if err != nil {
 		return nil, notFound(err, fmt.Sprintf("eval run %d", id))
@@ -532,21 +585,29 @@ func (r Reads) GetEvalRun(ctx context.Context,
 // ListEvalRunsOfExperimentRun returns the eval runs of an experiment run, oldest first, with their Meta.
 func (r Reads) ListEvalRunsOfExperimentRun(ctx context.Context,
 	q Execer,
+	userID string,
 	id core.ExperimentRunID) ([]core.EvalRun, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	return r.evalRuns(ctx,
 		q,
-		`WHERE experiment_run_id = ? ORDER BY id`,
-		[]any{int64(id)})
+		`WHERE user_id = ? AND experiment_run_id = ? ORDER BY id`,
+		[]any{userID, int64(id)})
 }
 
 // ListEvalRunsOfExperiment returns the eval runs of every run of an experiment def, oldest first, with their Meta.
 func (r Reads) ListEvalRunsOfExperiment(ctx context.Context,
 	q Execer,
+	userID string,
 	defID core.ExperimentDefID) ([]core.EvalRun, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	return r.evalRuns(ctx,
 		q,
-		`WHERE experiment_run_id IN (SELECT id FROM gb_experiment_runs WHERE def_id = ?) ORDER BY id`,
-		[]any{int64(defID)})
+		`WHERE user_id = ? AND experiment_run_id IN (SELECT id FROM gb_experiment_runs WHERE user_id = ? AND def_id = ?) ORDER BY id`,
+		[]any{userID, userID, int64(defID)})
 }
 
 // ListTrainingEvalRuns returns the training eval runs of a trained model, newest first, at most limit (all if 0), with their Meta.
@@ -677,12 +738,17 @@ func (r Reads) evalRunMeta(ctx context.Context,
 // of its type; a knowledge one with its Trajectories).
 func (r Reads) ListCaseRuns(ctx context.Context,
 	q Execer,
+	userID string,
 	evalRunID core.EvalRunID) ([]core.CaseRun, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	rows, err := r.query(ctx,
 		q,
 		`
 		SELECT `+prefixed("cr.", caseRunCols)+` FROM gb_case_runs cr JOIN gb_case_defs cd ON cd.id = cr.def_id
-		WHERE cr.eval_run_id = ? ORDER BY cd.position, cr.id`,
+		WHERE cr.user_id = ? AND cr.eval_run_id = ? ORDER BY cd.position, cr.id`,
+		userID,
 		int64(evalRunID))
 	if err != nil {
 		return nil, fmt.Errorf("list case runs of eval run %d: %w",
@@ -731,10 +797,15 @@ func prefixed(prefix,
 // GetCaseRun returns the case run with the ID with its Meta (a knowledge one with its Trajectories).
 func (r Reads) GetCaseRun(ctx context.Context,
 	q Execer,
+	userID string,
 	id core.CaseRunID) (*core.CaseRun, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	x, err := scanCaseRun(r.queryRow(ctx,
 		q,
-		`SELECT `+caseRunCols+` FROM gb_case_runs WHERE id = ?`,
+		`SELECT `+caseRunCols+` FROM gb_case_runs WHERE user_id = ? AND id = ?`,
+		userID,
 		int64(id)))
 	if err != nil {
 		return nil, notFound(err, fmt.Sprintf("case run %d", id))
@@ -879,7 +950,11 @@ func (r Reads) trajectories(ctx context.Context,
 // FindKnowledgeTrajectory returns the trajectory with the given ATIF trajectory ID and the case run it belongs to.
 func (r Reads) FindKnowledgeTrajectory(ctx context.Context,
 	q Execer,
+	userID string,
 	trajectoryID string) (*TrajectoryRef, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	var ref TrajectoryRef
 	var caseRun int64
 	var artifacts []byte
@@ -887,8 +962,10 @@ func (r Reads) FindKnowledgeTrajectory(ctx context.Context,
 	err := r.queryRow(ctx,
 		q,
 		`
-		SELECT case_run_id, `+trajectoryCols+` FROM gb_case_runs_meta_knowledge_trajectories WHERE trajectory_id = ? ORDER BY id LIMIT 1`,
-		trajectoryID).
+		SELECT case_run_id, `+trajectoryCols+` FROM gb_case_runs_meta_knowledge_trajectories
+		WHERE trajectory_id = ? AND case_run_id IN (SELECT id FROM gb_case_runs WHERE user_id = ?) ORDER BY id LIMIT 1`,
+		trajectoryID,
+		userID).
 		Scan(&caseRun,
 			&t.Seq,
 			&t.Kind,
@@ -913,9 +990,13 @@ func (r Reads) FindKnowledgeTrajectory(ctx context.Context,
 // run first, each with its Meta (without the Trajectories).
 func (r Reads) ListCaseHistory(ctx context.Context,
 	q Execer,
+	userID string,
 	defID core.ExperimentDefID,
 	eval,
 	name string) ([]CaseHistoryEntry, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	rows, err := r.query(ctx,
 		q,
 		`
@@ -925,8 +1006,10 @@ func (r Reads) ListCaseHistory(ctx context.Context,
 		JOIN gb_experiment_runs xr ON xr.id = er.experiment_run_id
 		JOIN gb_case_defs cd ON cd.id = cr.def_id
 		JOIN gb_eval_defs ed ON ed.id = cd.eval_def_id
-		WHERE xr.def_id = ? AND ed.name = ? AND cd.name = ?
+		WHERE cr.user_id = ? AND xr.user_id = ? AND xr.def_id = ? AND ed.name = ? AND cd.name = ?
 		ORDER BY xr.id, cr.id`,
+		userID,
+		userID,
 		int64(defID),
 		eval,
 		name)
@@ -956,7 +1039,8 @@ func (r Reads) ListCaseHistory(ctx context.Context,
 			&c.CostUSD,
 			timeScan{&c.CreatedAt},
 			nullTimeScan{&c.StartedAt},
-			nullTimeScan{&c.FinishedAt}); err != nil {
+			nullTimeScan{&c.FinishedAt},
+			&c.UserID); err != nil {
 			return nil, fmt.Errorf("list the history of case %s/%s: %w",
 				eval,
 				name,
@@ -1041,7 +1125,11 @@ func (r Reads) FailRunning(ctx context.Context,
 // same for both backends, so it is here with the reads. It returns ErrNotFound if the case run does not exist.
 func (r Reads) CreateCaseCommentary(ctx context.Context,
 	q Execer,
+	userID string,
 	c *core.CaseCommentary) error {
+	if err := CheckOwner(userID); err != nil {
+		return err
+	}
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now()
 	}
@@ -1049,7 +1137,8 @@ func (r Reads) CreateCaseCommentary(ctx context.Context,
 	var exists int
 	if err := r.queryRow(ctx,
 		q,
-		`SELECT 1 FROM gb_case_runs WHERE id = ?`,
+		`SELECT 1 FROM gb_case_runs WHERE user_id = ? AND id = ?`,
+		userID,
 		int64(c.CaseRunID)).Scan(&exists); err != nil {
 		return notFound(err, fmt.Sprintf("case run %d", c.CaseRunID))
 	}
@@ -1076,13 +1165,18 @@ func (r Reads) CreateCaseCommentary(ctx context.Context,
 // ListCaseCommentaries returns the commentaries of a case run, newest first (empty, not nil, if it has none).
 func (r Reads) ListCaseCommentaries(ctx context.Context,
 	q Execer,
+	userID string,
 	caseRunID core.CaseRunID) ([]core.CaseCommentary, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
 	rows, err := r.query(ctx,
 		q,
 		`
 		SELECT id, model, text, input_tokens, output_tokens, cost_usd, created_at FROM gb_case_run_commentaries
-		WHERE case_run_id = ? ORDER BY id DESC`,
-		int64(caseRunID))
+		WHERE case_run_id = ? AND case_run_id IN (SELECT id FROM gb_case_runs WHERE user_id = ?) ORDER BY id DESC`,
+		int64(caseRunID),
+		userID)
 	if err != nil {
 		return nil, fmt.Errorf("list commentaries of case run %d: %w",
 			caseRunID,

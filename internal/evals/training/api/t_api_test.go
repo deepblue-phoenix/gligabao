@@ -643,14 +643,17 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 			Path:          "trained/j1",
 		})
 	store := storeOf(d)
-	def, err := runner.New(d, store).SyncEval(ctx, training.Spec(training.Eval{
-		Name:  theEval,
-		Cases: evalCases(t)[:2],
-	}))
+	def, err := runner.New(d, store).SyncEval(ctx,
+		"u1",
+		training.Spec(training.Eval{
+			Name:  theEval,
+			Cases: evalCases(t)[:2],
+		}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	run := &core.EvalRun{
+		UserID: "u1",
 		DefID:  def.ID,
 		Type:   core.TypeTraining,
 		Status: core.StatusRunning,
@@ -678,6 +681,7 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 		nil)
 	ev, err := store.GetEvalRun(ctx,
 		d,
+		"u1",
 		run.ID)
 	if err != nil || ev.Status != core.StatusErrored || ev.FinishedAt == nil || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v",

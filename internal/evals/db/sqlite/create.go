@@ -47,6 +47,9 @@ func status(s core.Status) core.Status {
 func CreateEvalDef(ctx context.Context,
 	q db.Execer,
 	d *core.EvalDef) error {
+	if err := db.CheckOwner(d.UserID); err != nil {
+		return err
+	}
 	tags, err := db.JSON(d.Tags, "[]")
 	if err != nil {
 		return err
@@ -60,8 +63,8 @@ func CreateEvalDef(ctx context.Context,
 	var id int64
 	if err := q.QueryRowContext(ctx,
 		`
-		INSERT INTO gb_eval_defs (name, description, type, tags, params, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO gb_eval_defs (name, description, type, tags, params, created_at, updated_at, user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		d.Name,
 		d.Description,
@@ -69,7 +72,8 @@ func CreateEvalDef(ctx context.Context,
 		tags,
 		params,
 		text(d.CreatedAt),
-		text(d.UpdatedAt)).Scan(&id); err != nil {
+		text(d.UpdatedAt),
+		d.UserID).Scan(&id); err != nil {
 		return fmt.Errorf("create eval def %q: %w",
 			d.Name,
 			err)
@@ -193,6 +197,9 @@ func CreateTrainingCaseDefMeta(ctx context.Context,
 func CreateExperimentDef(ctx context.Context,
 	q db.Execer,
 	d *core.ExperimentDef) error {
+	if err := db.CheckOwner(d.UserID); err != nil {
+		return err
+	}
 	params, err := db.JSON(d.Params, "{}")
 	if err != nil {
 		return err
@@ -202,14 +209,15 @@ func CreateExperimentDef(ctx context.Context,
 	var id int64
 	if err := q.QueryRowContext(ctx,
 		`
-		INSERT INTO gb_experiment_defs (name, description, params, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO gb_experiment_defs (name, description, params, created_at, updated_at, user_id)
+		VALUES (?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		d.Name,
 		d.Description,
 		params,
 		text(d.CreatedAt),
-		text(d.UpdatedAt)).Scan(&id); err != nil {
+		text(d.UpdatedAt),
+		d.UserID).Scan(&id); err != nil {
 		return fmt.Errorf("create experiment def %q: %w",
 			d.Name,
 			err)
@@ -244,6 +252,9 @@ func CreateExperimentDefEval(ctx context.Context,
 func CreateExperimentRun(ctx context.Context,
 	q db.Execer,
 	r *core.ExperimentRun) error {
+	if err := db.CheckOwner(r.UserID); err != nil {
+		return err
+	}
 	params, err := db.JSON(r.Params, "{}")
 	if err != nil {
 		return err
@@ -255,8 +266,8 @@ func CreateExperimentRun(ctx context.Context,
 		`
 		INSERT INTO gb_experiment_runs (def_id, status, error, params,
 			counts_total, counts_pending, counts_running, counts_completed, counts_errored, counts_cancelled, counts_passed, counts_failed,
-			cost_usd, created_at, started_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			cost_usd, created_at, started_at, finished_at, user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		int64(r.DefID),
 		string(r.Status),
@@ -273,7 +284,8 @@ func CreateExperimentRun(ctx context.Context,
 		r.CostUSD,
 		text(r.CreatedAt),
 		textPtr(r.StartedAt),
-		textPtr(r.FinishedAt)).Scan(&id); err != nil {
+		textPtr(r.FinishedAt),
+		r.UserID).Scan(&id); err != nil {
 		return fmt.Errorf("create experiment run of experiment def %d: %w",
 			r.DefID,
 			err)
@@ -287,6 +299,9 @@ func CreateExperimentRun(ctx context.Context,
 func CreateEvalRun(ctx context.Context,
 	q db.Execer,
 	r *core.EvalRun) error {
+	if err := db.CheckOwner(r.UserID); err != nil {
+		return err
+	}
 	params, err := db.JSON(r.Params, "{}")
 	if err != nil {
 		return err
@@ -302,8 +317,8 @@ func CreateEvalRun(ctx context.Context,
 		`
 		INSERT INTO gb_eval_runs (def_id, experiment_run_id, type, status, error, params,
 			counts_total, counts_pending, counts_running, counts_completed, counts_errored, counts_cancelled, counts_passed, counts_failed,
-			cost_usd, created_at, started_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			cost_usd, created_at, started_at, finished_at, user_id, runner_id, heartbeat_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		int64(r.DefID),
 		experimentRunID,
@@ -322,7 +337,10 @@ func CreateEvalRun(ctx context.Context,
 		r.CostUSD,
 		text(r.CreatedAt),
 		textPtr(r.StartedAt),
-		textPtr(r.FinishedAt)).Scan(&id); err != nil {
+		textPtr(r.FinishedAt),
+		r.UserID,
+		r.RunnerID,
+		textPtr(r.HeartbeatAt)).Scan(&id); err != nil {
 		return fmt.Errorf("create eval run of eval def %d: %w",
 			r.DefID,
 			err)
@@ -393,13 +411,16 @@ func CreateTrainingEvalRunMeta(ctx context.Context,
 func CreateCaseRun(ctx context.Context,
 	q db.Execer,
 	r *core.CaseRun) error {
+	if err := db.CheckOwner(r.UserID); err != nil {
+		return err
+	}
 	r.Status = status(r.Status)
 	r.CreatedAt = fill(r.CreatedAt)
 	var id int64
 	if err := q.QueryRowContext(ctx,
 		`
-		INSERT INTO gb_case_runs (def_id, eval_run_id, type, status, error, verdict, score, cost_usd, created_at, started_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO gb_case_runs (def_id, eval_run_id, type, status, error, verdict, score, cost_usd, created_at, started_at, finished_at, user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
 		int64(r.DefID),
 		int64(r.EvalRunID),
@@ -411,7 +432,8 @@ func CreateCaseRun(ctx context.Context,
 		r.CostUSD,
 		text(r.CreatedAt),
 		textPtr(r.StartedAt),
-		textPtr(r.FinishedAt)).Scan(&id); err != nil {
+		textPtr(r.FinishedAt),
+		r.UserID).Scan(&id); err != nil {
 		return fmt.Errorf("create case run of case def %d: %w",
 			r.DefID,
 			err)

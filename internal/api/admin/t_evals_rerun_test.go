@@ -74,12 +74,14 @@ func testEvalCaseRunRerun(t *testing.T,
 	// Make the second one look like a rerun: its eval run says so.
 	cr, err := store.GetCaseRun(ctx,
 		d,
+		"eval",
 		again.CaseRunID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	er, err := store.GetEvalRun(ctx,
 		d,
+		"eval",
 		cr.EvalRunID)
 	if err != nil {
 		t.Fatal(err)

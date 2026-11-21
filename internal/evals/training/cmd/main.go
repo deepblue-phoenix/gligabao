@@ -222,7 +222,9 @@ func mainErr() error {
 		return err
 	}
 	r := runner.New(database.Relational, store)
-	def, err := r.SyncEval(ctx, training.Spec(ev))
+	def, err := r.SyncEval(ctx,
+		core.SystemUser,
+		training.Spec(ev))
 	if err != nil {
 		return err
 	}
@@ -297,6 +299,7 @@ func mainErr() error {
 	var xr *runner.ExperimentRecorder
 	if *experiment != "" {
 		xdef, err := r.EnsureExperiment(ctx,
+			core.SystemUser,
 			*experiment,
 			*experimentDesc,
 			[]core.EvalDefID{def.ID})

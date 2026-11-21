@@ -25,14 +25,16 @@ func testEvalCaseRunDebugReruns(t *testing.T,
 	store := storeOf(t, d)
 	r := runner.New(d, store)
 	mk := func(name string) *core.EvalDef {
-		def, err := r.SyncEval(ctx, runner.EvalSpec{
-			Name: name,
-			Type: core.TypeKnowledge,
-			Cases: []runner.CaseSpec{{
-				Name: "c",
-				Meta: &core.KnowledgeCaseDefMeta{},
-			}},
-		})
+		def, err := r.SyncEval(ctx,
+			"eval",
+			runner.EvalSpec{
+				Name: name,
+				Type: core.TypeKnowledge,
+				Cases: []runner.CaseSpec{{
+					Name: "c",
+					Meta: &core.KnowledgeCaseDefMeta{},
+				}},
+			})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,6 +42,7 @@ func testEvalCaseRunDebugReruns(t *testing.T,
 	}
 	defA, defB := mk("a"), mk("b")
 	xd, err := r.EnsureExperiment(ctx,
+		"eval",
 		"x",
 		"",
 		[]core.EvalDefID{defA.ID, defB.ID})

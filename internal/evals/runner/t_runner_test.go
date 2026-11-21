@@ -83,9 +83,11 @@ func TestSyncEval(t *testing.T) {
 	ctx := context.Background()
 	r := newRunner(t)
 
-	def, err := r.SyncEval(ctx, trainingSpec("a",
-		"b",
-		"c"))
+	def, err := r.SyncEval(ctx,
+		"u1",
+		trainingSpec("a",
+			"b",
+			"c"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,9 +102,11 @@ func TestSyncEval(t *testing.T) {
 	}
 
 	// Syncing the same eval again changes nothing.
-	again, err := r.SyncEval(ctx, trainingSpec("a",
-		"b",
-		"c"))
+	again, err := r.SyncEval(ctx,
+		"u1",
+		trainingSpec("a",
+			"b",
+			"c"))
 	if err != nil || again.ID != def.ID || !reflect.DeepEqual(caseNames(again), []string{"a", "b", "c"}) {
 		t.Fatalf("again: %+v %v",
 			again,
@@ -122,7 +126,9 @@ func TestSyncEval(t *testing.T) {
 		},
 	}
 	spec.Description = "new description"
-	got, err := r.SyncEval(ctx, spec)
+	got, err := r.SyncEval(ctx,
+		"u1",
+		spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +146,7 @@ func TestSyncEval(t *testing.T) {
 	// What is stored: the dropped case is kept, after the others.
 	stored, err := r.Store.GetEvalDefByName(ctx,
 		r.DB,
+		"u1",
 		"tr")
 	if err != nil {
 		t.Fatal(err)
@@ -149,10 +156,12 @@ func TestSyncEval(t *testing.T) {
 	}
 
 	// A different type is refused, and so is a case of the wrong type.
-	if _, err := r.SyncEval(ctx, runner.EvalSpec{
-		Name: "tr",
-		Type: core.TypeKnowledge,
-	}); err == nil {
+	if _, err := r.SyncEval(ctx,
+		"u1",
+		runner.EvalSpec{
+			Name: "tr",
+			Type: core.TypeKnowledge,
+		}); err == nil {
 		t.Error("accepted an eval of another type")
 	}
 	bad := runner.EvalSpec{
@@ -163,7 +172,9 @@ func TestSyncEval(t *testing.T) {
 			Meta: &core.TrainingCaseDefMeta{},
 		}},
 	}
-	if _, err := r.SyncEval(ctx, bad); err == nil {
+	if _, err := r.SyncEval(ctx,
+		"u1",
+		bad); err == nil {
 		t.Error("accepted a case whose metadata is of another type")
 	}
 }
@@ -171,12 +182,17 @@ func TestSyncEval(t *testing.T) {
 func TestEnsureExperiment(t *testing.T) {
 	ctx := context.Background()
 	r := newRunner(t)
-	a, _ := r.SyncEval(ctx, trainingSpec("a"))
+	a, _ := r.SyncEval(ctx,
+		"u1",
+		trainingSpec("a"))
 	spec := trainingSpec("b")
 	spec.Name = "tr2"
-	b, _ := r.SyncEval(ctx, spec)
+	b, _ := r.SyncEval(ctx,
+		"u1",
+		spec)
 
 	x, err := r.EnsureExperiment(ctx,
+		"u1",
 		"x",
 		"desc",
 		[]core.EvalDefID{a.ID})
@@ -186,6 +202,7 @@ func TestEnsureExperiment(t *testing.T) {
 			err)
 	}
 	x2, err := r.EnsureExperiment(ctx,
+		"u1",
 		"x",
 		"",
 		[]core.EvalDefID{b.ID, a.ID})
@@ -195,6 +212,7 @@ func TestEnsureExperiment(t *testing.T) {
 			err)
 	}
 	if _, err := r.EnsureExperiment(ctx,
+		"u1",
 		"",
 		"",
 		nil); err == nil {
@@ -229,6 +247,7 @@ func (f fakeExec) Execute(ctx context.Context,
 	err = rec.RecordCases(ctx, []runner.CaseRecord{
 		{
 			Run: &core.CaseRun{
+				UserID: "u1",
 				DefID:  def.Cases[1].ID,
 				Type:   def.Type,
 				Status: core.StatusErrored,
@@ -240,6 +259,7 @@ func (f fakeExec) Execute(ctx context.Context,
 		},
 		{
 			Run: &core.CaseRun{
+				UserID:  "u1",
 				DefID:   def.Cases[2].ID,
 				Type:    def.Type,
 				Status:  core.StatusCompleted,
@@ -261,14 +281,17 @@ func (f fakeExec) Execute(ctx context.Context,
 func TestRunEval(t *testing.T) {
 	ctx := context.Background()
 	r := newRunner(t)
-	def, err := r.SyncEval(ctx, trainingSpec("a",
-		"b",
-		"c",
-		"d"))
+	def, err := r.SyncEval(ctx,
+		"u1",
+		trainingSpec("a",
+			"b",
+			"c",
+			"d"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	x, err := r.EnsureExperiment(ctx,
+		"u1",
 		"x",
 		"",
 		[]core.EvalDefID{def.ID})

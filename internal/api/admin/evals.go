@@ -23,6 +23,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// evalOwner is the owner of the evals the admin API reads: the fixed user of the eval database (knowledge.EvalUser; it cannot be
+// imported here, see Named.EvalRerunner). A placeholder until the admin API reads the main database with the admin reads of
+// evals/db (all users, with a user_id filter).
+const evalOwner = "eval"
+
 // The evals views of the admin UI show the knowledge evals of internal/evals: an experiment (core.ExperimentDef), its runs
 // (core.ExperimentRun) and, in a run, the case runs of its knowledge eval runs, each with its trajectories. The JSON is what the UI
 // (admin_ui/src/evals.ts) reads. It carries the model's own words, not statuses made from them: a run and a case run have the
@@ -251,6 +256,7 @@ func knowledgeCaseRuns(ctx context.Context,
 	id core.ExperimentRunID) ([]knowledgeCaseRun, error) {
 	evalRuns, err := s.ListEvalRunsOfExperimentRun(ctx,
 		d,
+		evalOwner,
 		id)
 	if err != nil {
 		return nil, err
@@ -262,12 +268,14 @@ func knowledgeCaseRuns(ctx context.Context,
 		}
 		def, err := s.GetEvalDef(ctx,
 			d,
+			evalOwner,
 			er.DefID)
 		if err != nil {
 			return nil, err
 		}
 		cases, err := s.ListCaseDefs(ctx,
 			d,
+			evalOwner,
 			er.DefID)
 		if err != nil {
 			return nil, err
@@ -278,6 +286,7 @@ func knowledgeCaseRuns(ctx context.Context,
 		}
 		runs, err := s.ListCaseRuns(ctx,
 			d,
+			evalOwner,
 			er.ID)
 		if err != nil {
 			return nil, err
@@ -311,6 +320,7 @@ func (k *experimentKinds) isKnowledge(def *core.ExperimentDef) (bool, error) {
 		if !ok {
 			e, err := k.s.GetEvalDef(k.ctx,
 				k.d,
+				evalOwner,
 				id)
 			if err != nil {
 				return false, err
@@ -329,7 +339,9 @@ func (k *experimentKinds) isKnowledge(def *core.ExperimentDef) (bool, error) {
 func knowledgeExperiments(ctx context.Context,
 	d *sql.DB,
 	s evalsdb.Store) ([]core.ExperimentDef, error) {
-	all, err := s.ListExperimentDefs(ctx, d)
+	all, err := s.ListExperimentDefs(ctx,
+		d,
+		evalOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -387,6 +399,7 @@ func EvalOverview(d *sql.DB,
 		for i := range list {
 			cases, err := s.ListExperimentCases(ctx,
 				d,
+				evalOwner,
 				list[i].ID)
 			if err != nil {
 				evalFail(w,
@@ -396,6 +409,7 @@ func EvalOverview(d *sql.DB,
 			}
 			runs, err := s.ListExperimentRuns(ctx,
 				d,
+				evalOwner,
 				list[i].ID)
 			if err != nil {
 				evalFail(w,
@@ -457,6 +471,7 @@ func EvalExperiment(d *sql.DB,
 		ctx := r.Context()
 		def, err := s.GetExperimentDef(ctx,
 			d,
+			evalOwner,
 			core.ExperimentDefID(id))
 		if err != nil {
 			evalFail(w,
@@ -466,6 +481,7 @@ func EvalExperiment(d *sql.DB,
 		}
 		cases, err := s.ListExperimentCases(ctx,
 			d,
+			evalOwner,
 			def.ID)
 		if err != nil {
 			evalFail(w,
@@ -475,6 +491,7 @@ func EvalExperiment(d *sql.DB,
 		}
 		runs, err := s.ListExperimentRuns(ctx,
 			d,
+			evalOwner,
 			def.ID)
 		if err != nil {
 			evalFail(w,
@@ -574,6 +591,7 @@ func EvalCaseHistory(d *sql.DB,
 		}
 		results, err := s.ListCaseHistory(r.Context(),
 			d,
+			evalOwner,
 			core.ExperimentDefID(id),
 			eval,
 			name)
@@ -585,6 +603,7 @@ func EvalCaseHistory(d *sql.DB,
 		}
 		runs, err := s.ListExperimentRuns(r.Context(),
 			d,
+			evalOwner,
 			core.ExperimentDefID(id))
 		if err != nil {
 			evalFail(w,
@@ -615,6 +634,7 @@ func EvalRun(d *sql.DB,
 		ctx := r.Context()
 		run, err := s.GetExperimentRun(ctx,
 			d,
+			evalOwner,
 			core.ExperimentRunID(id))
 		if err != nil {
 			evalFail(w,
@@ -719,6 +739,7 @@ func EvalCaseRunGraph(d *sql.DB,
 		ctx := r.Context()
 		c, err := s.GetCaseRun(ctx,
 			d,
+			evalOwner,
 			core.CaseRunID(id))
 		if err == nil && (c.Type != core.TypeKnowledge || knowledgeMeta(c).DatasetID == nil) {
 			err = evalsdb.ErrNotFound
@@ -795,6 +816,7 @@ func EvalCaseRunTemporal(d *sql.DB,
 		ctx := r.Context()
 		c, err := s.GetCaseRun(ctx,
 			d,
+			evalOwner,
 			core.CaseRunID(id))
 		if err == nil && (c.Type != core.TypeKnowledge || knowledgeMeta(c).DatasetID == nil) {
 			err = evalsdb.ErrNotFound
@@ -858,6 +880,7 @@ func EvalTrajectory(d *sql.DB,
 		r *http.Request) {
 		ref, err := s.FindKnowledgeTrajectory(r.Context(),
 			d,
+			evalOwner,
 			r.PathValue("id"))
 		if err != nil {
 			evalFail(w,

@@ -255,6 +255,7 @@ func planRerun(ctx context.Context,
 	q, s := rn.DB, rn.Store
 	cr, err := s.GetCaseRun(ctx,
 		q,
+		EvalUser,
 		src)
 	if err != nil {
 		return nil, err
@@ -267,6 +268,7 @@ func planRerun(ctx context.Context,
 	}
 	er, err := s.GetEvalRun(ctx,
 		q,
+		EvalUser,
 		cr.EvalRunID)
 	if err != nil {
 		return nil, err
@@ -275,7 +277,9 @@ func planRerun(ctx context.Context,
 		evalRun: er,
 	}
 	if er.ExperimentRunID != nil {
-		if p.experiment, err = rn.ResumeExperimentRun(ctx, *er.ExperimentRunID); err != nil {
+		if p.experiment, err = rn.ResumeExperimentRun(ctx,
+			EvalUser,
+			*er.ExperimentRunID); err != nil {
 			return nil, err
 		}
 		if st := p.experiment.Run().Status; !st.Finished() {
@@ -284,12 +288,14 @@ func planRerun(ctx context.Context,
 	}
 	ed, err := s.GetEvalDef(ctx,
 		q,
+		EvalUser,
 		er.DefID)
 	if err != nil {
 		return nil, err
 	}
 	full, err := s.GetEvalDefByName(ctx,
 		q,
+		EvalUser,
 		ed.Name)
 	if errors.Is(err, evalsdb.ErrNotFound) || err == nil && full.ID != ed.ID {
 		return nil, refuse("the eval %q no longer exists", ed.Name)

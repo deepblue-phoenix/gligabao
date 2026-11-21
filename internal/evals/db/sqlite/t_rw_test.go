@@ -20,16 +20,19 @@ func TestGetAndUpdate(t *testing.T) {
 
 	if _, err := s.GetEvalDefByName(ctx,
 		d,
+		"u1",
 		"nope"); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("GetEvalDefByName of a missing eval: %v", err)
 	}
 	if _, err := s.GetExperimentDefByName(ctx,
 		d,
+		"u1",
 		"nope"); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("GetExperimentDefByName of a missing experiment: %v", err)
 	}
 
 	ev := &core.EvalDef{
+		UserID: "u1",
 		Name:   "kn",
 		Type:   core.TypeKnowledge,
 		Tags:   []string{"a"},
@@ -89,6 +92,7 @@ func TestGetAndUpdate(t *testing.T) {
 
 	got, err := s.GetEvalDefByName(ctx,
 		d,
+		"u1",
 		"kn")
 	if err != nil {
 		t.Fatal(err)
@@ -107,8 +111,9 @@ func TestGetAndUpdate(t *testing.T) {
 
 	// A training eval, with its case.
 	tr := &core.EvalDef{
-		Name: "tr",
-		Type: core.TypeTraining,
+		UserID: "u1",
+		Name:   "tr",
+		Type:   core.TypeTraining,
 	}
 	if err := s.CreateEvalDef(ctx,
 		d,
@@ -141,6 +146,7 @@ func TestGetAndUpdate(t *testing.T) {
 	}
 	gt, err := s.GetEvalDefByName(ctx,
 		d,
+		"u1",
 		"tr")
 	if err != nil {
 		t.Fatal(err)
@@ -185,6 +191,7 @@ func TestGetAndUpdate(t *testing.T) {
 	}
 	again, err := s.GetEvalDefByName(ctx,
 		d,
+		"u1",
 		"kn")
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +209,7 @@ func TestGetAndUpdate(t *testing.T) {
 
 	// Experiment defs.
 	ex := &core.ExperimentDef{
+		UserID: "u1",
 		Name:   "x",
 		Params: core.Params{"k": "v"},
 	}
@@ -226,6 +234,7 @@ func TestGetAndUpdate(t *testing.T) {
 	}
 	gx, err := s.GetExperimentDefByName(ctx,
 		d,
+		"u1",
 		"x")
 	if err != nil || gx.ID != ex.ID || !reflect.DeepEqual(gx.EvalDefIDs, []core.EvalDefID{tr.ID, ev.ID}) || gx.Params["k"] != "v" {
 		t.Fatalf("experiment def: %+v %v",
@@ -235,7 +244,8 @@ func TestGetAndUpdate(t *testing.T) {
 
 	// A run through its life: the case run starts, finishes with its metadata, the eval run follows.
 	xr := &core.ExperimentRun{
-		DefID: ex.ID,
+		UserID: "u1",
+		DefID:  ex.ID,
 	}
 	if err := s.CreateExperimentRun(ctx,
 		d,
@@ -250,6 +260,7 @@ func TestGetAndUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	er := &core.EvalRun{
+		UserID:          "u1",
 		DefID:           ev.ID,
 		Type:            core.TypeKnowledge,
 		ExperimentRunID: &xr.ID,
@@ -275,6 +286,7 @@ func TestGetAndUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	cr := &core.CaseRun{
+		UserID:    "u1",
 		DefID:     again.Cases[0].ID,
 		EvalRunID: er.ID,
 		Type:      core.TypeKnowledge,
@@ -379,6 +391,7 @@ func TestGetAndUpdate(t *testing.T) {
 
 	// A training case run and eval run meta.
 	ter := &core.EvalRun{
+		UserID: "u1",
 		DefID:  tr.ID,
 		Type:   core.TypeTraining,
 		Status: core.StatusRunning,
@@ -404,6 +417,7 @@ func TestGetAndUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	tcr := &core.CaseRun{
+		UserID:    "u1",
 		DefID:     tc.ID,
 		EvalRunID: ter.ID,
 		Type:      core.TypeTraining,

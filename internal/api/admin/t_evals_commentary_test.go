@@ -72,6 +72,7 @@ func testEvalCaseRunCommentary(t *testing.T,
 		traj)
 	cr, err := store.GetCaseRun(ctx,
 		d,
+		"eval",
 		failed.CaseRunID)
 	if err != nil {
 		t.Fatal(err)

@@ -31,6 +31,7 @@ func Run(t *testing.T,
 
 	// Defs: a knowledge eval of two cases and a training one of one, both in one experiment.
 	kn := &core.EvalDef{
+		UserID: "u1",
 		Name:   "kn",
 		Type:   core.TypeKnowledge,
 		Tags:   []string{"a"},
@@ -40,8 +41,9 @@ func Run(t *testing.T,
 		d,
 		kn))
 	tr := &core.EvalDef{
-		Name: "tr",
-		Type: core.TypeTraining,
+		UserID: "u1",
+		Name:   "tr",
+		Type:   core.TypeTraining,
 	}
 	must(t, s.CreateEvalDef(ctx,
 		d,
@@ -85,6 +87,7 @@ func Run(t *testing.T,
 			},
 		}))
 	xd := &core.ExperimentDef{
+		UserID:      "u1",
 		Name:        "x",
 		Description: "d",
 		Params:      core.Params{"lr": 0.1},
@@ -103,13 +106,16 @@ func Run(t *testing.T,
 		tr.ID,
 		1))
 	empty := &core.ExperimentDef{
-		Name: "empty",
+		UserID: "u1",
+		Name:   "empty",
 	}
 	must(t, s.CreateExperimentDef(ctx,
 		d,
 		empty))
 
-	defs, err := s.ListExperimentDefs(ctx, d)
+	defs, err := s.ListExperimentDefs(ctx,
+		d,
+		"u1")
 	must(t, err)
 	if len(defs) != 2 || defs[0].Name != "x" || defs[1].Name != "empty" || !reflect.DeepEqual(defs[0].EvalDefIDs, []core.EvalDefID{kn.ID, tr.ID}) ||
 		len(defs[1].EvalDefIDs) != 0 || defs[0].Params["lr"] != 0.1 || defs[0].CreatedAt.IsZero() {
@@ -117,6 +123,7 @@ func Run(t *testing.T,
 	}
 	if x, err := s.GetExperimentDef(ctx,
 		d,
+		"u1",
 		xd.ID); err != nil || x.Name != "x" || len(x.EvalDefIDs) != 2 {
 		t.Fatalf("GetExperimentDef: %+v %v",
 			x,
@@ -124,11 +131,13 @@ func Run(t *testing.T,
 	}
 	if _, err := s.GetExperimentDef(ctx,
 		d,
+		"u1",
 		999); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("GetExperimentDef of a missing one: %v", err)
 	}
 	if e, err := s.GetEvalDef(ctx,
 		d,
+		"u1",
 		kn.ID); err != nil || e.Name != "kn" || e.Type != core.TypeKnowledge || !reflect.DeepEqual(e.Tags, []string{"a"}) || e.Params["judge"] != "x" || e.Cases != nil {
 		t.Fatalf("GetEvalDef: %+v %v",
 			e,
@@ -136,11 +145,13 @@ func Run(t *testing.T,
 	}
 	if _, err := s.GetEvalDef(ctx,
 		d,
+		"u1",
 		999); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("GetEvalDef of a missing one: %v", err)
 	}
 	if cs, err := s.ListCaseDefs(ctx,
 		d,
+		"u1",
 		kn.ID); err != nil || len(cs) != 2 || cs[0].Name != "c0" || cs[1].Name != "c1" || cs[1].Position != 1 || cs[0].Meta != nil {
 		t.Fatalf("ListCaseDefs: %+v %v",
 			cs,
@@ -156,6 +167,7 @@ func Run(t *testing.T,
 		at := start.Add(time.Duration(i) * time.Minute)
 		end := at.Add(time.Second)
 		xr := &core.ExperimentRun{
+			UserID: "u1",
 			DefID:  xd.ID,
 			Status: core.StatusRunning,
 			Params: core.Params{"i": i},
@@ -169,6 +181,7 @@ func Run(t *testing.T,
 			xr))
 		xruns = append(xruns, xr)
 		kr := &core.EvalRun{
+			UserID:          "u1",
 			DefID:           kn.ID,
 			Type:            core.TypeKnowledge,
 			ExperimentRunID: &xr.ID,
@@ -203,6 +216,7 @@ func Run(t *testing.T,
 		var crs []*core.CaseRun
 		for j, c := range kcases {
 			cr := &core.CaseRun{
+				UserID:    "u1",
 				DefID:     c.ID,
 				EvalRunID: kr.ID,
 				Type:      core.TypeKnowledge,
@@ -258,6 +272,7 @@ func Run(t *testing.T,
 		caseRuns = append(caseRuns, crs)
 		if i == 0 {
 			tev = &core.EvalRun{
+				UserID:          "u1",
 				DefID:           tr.ID,
 				Type:            core.TypeTraining,
 				ExperimentRunID: &xr.ID,
@@ -288,6 +303,7 @@ func Run(t *testing.T,
 					ScoreSum:       5,
 				}))
 			tcr := &core.CaseRun{
+				UserID:    "u1",
 				DefID:     tc.ID,
 				EvalRunID: tev.ID,
 				Type:      core.TypeTraining,
@@ -322,6 +338,7 @@ func Run(t *testing.T,
 	// The experiment runs, oldest first, with their counts, params and times.
 	xs, err := s.ListExperimentRuns(ctx,
 		d,
+		"u1",
 		xd.ID)
 	must(t, err)
 	if len(xs) != 2 || xs[0].ID != xruns[0].ID || xs[1].ID != xruns[1].ID || xs[0].Status != core.StatusRunning || xs[1].Params["i"] != float64(1) ||
@@ -330,6 +347,7 @@ func Run(t *testing.T,
 	}
 	if xs, err := s.ListExperimentRuns(ctx,
 		d,
+		"u1",
 		empty.ID); err != nil || xs == nil || len(xs) != 0 {
 		t.Fatalf("runs of an experiment without: %v %v",
 			xs,
@@ -346,6 +364,7 @@ func Run(t *testing.T,
 		xruns[0]))
 	if x, err := s.GetExperimentRun(ctx,
 		d,
+		"u1",
 		xruns[0].ID); err != nil || x.Status != core.StatusCompleted || x.Counts.Passed != 2 || x.Counts.Total != 3 {
 		t.Fatalf("GetExperimentRun: %+v %v",
 			x,
@@ -353,6 +372,7 @@ func Run(t *testing.T,
 	}
 	if _, err := s.GetExperimentRun(ctx,
 		d,
+		"u1",
 		999); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("GetExperimentRun of a missing one: %v", err)
 	}
@@ -360,6 +380,7 @@ func Run(t *testing.T,
 	// The eval runs of an experiment run, with the metadata of their type.
 	evs, err := s.ListEvalRunsOfExperimentRun(ctx,
 		d,
+		"u1",
 		xruns[0].ID)
 	must(t, err)
 	if len(evs) != 2 || evs[0].ID != kruns[0].ID || evs[1].ID != tev.ID || evs[0].Type != core.TypeKnowledge || evs[0].ExperimentRunID == nil || *evs[0].ExperimentRunID != xruns[0].ID ||
@@ -374,6 +395,7 @@ func Run(t *testing.T,
 	}
 	if all, err := s.ListEvalRunsOfExperiment(ctx,
 		d,
+		"u1",
 		xd.ID); err != nil || len(all) != 3 || all[2].ID != kruns[1].ID {
 		t.Fatalf("eval runs of an experiment: %+v %v",
 			all,
@@ -381,6 +403,7 @@ func Run(t *testing.T,
 	}
 	if got, err := s.GetEvalRun(ctx,
 		d,
+		"u1",
 		tev.ID); err != nil || got.Type != core.TypeTraining || got.CaseRuns != nil {
 		t.Fatalf("GetEvalRun: %+v %v",
 			got,
@@ -388,6 +411,7 @@ func Run(t *testing.T,
 	}
 	if _, err := s.GetEvalRun(ctx,
 		d,
+		"u1",
 		999); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("GetEvalRun of a missing one: %v", err)
 	}
@@ -411,6 +435,7 @@ func Run(t *testing.T,
 	// The case runs of an eval run, in the order of the cases, with their metadata and trajectories.
 	crs, err := s.ListCaseRuns(ctx,
 		d,
+		"u1",
 		kruns[0].ID)
 	must(t, err)
 	if len(crs) != 2 || crs[0].ID != caseRuns[0][0].ID || crs[1].Verdict != core.VerdictFail || crs[0].Verdict != core.VerdictPass || crs[0].Score != nil || crs[0].CostUSD != 0.25 {
@@ -424,6 +449,7 @@ func Run(t *testing.T,
 	}
 	tcrs, err := s.ListCaseRuns(ctx,
 		d,
+		"u1",
 		tev.ID)
 	must(t, err)
 	if len(tcrs) != 1 || tcrs[0].Score == nil || *tcrs[0].Score != 1 {
@@ -434,6 +460,7 @@ func Run(t *testing.T,
 	}
 	if c, err := s.GetCaseRun(ctx,
 		d,
+		"u1",
 		caseRuns[1][1].ID); err != nil || c.Verdict != core.VerdictPass || knowledgeDataset(c) != 41 {
 		t.Fatalf("GetCaseRun: %+v %v",
 			c,
@@ -441,6 +468,7 @@ func Run(t *testing.T,
 	}
 	if _, err := s.GetCaseRun(ctx,
 		d,
+		"u1",
 		999); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("GetCaseRun of a missing one: %v", err)
 	}
@@ -449,6 +477,7 @@ func Run(t *testing.T,
 	failed := caseRuns[0][1].ID
 	if cs, err := s.ListCaseCommentaries(ctx,
 		d,
+		"u1",
 		failed); err != nil || cs == nil || len(cs) != 0 {
 		t.Fatalf("commentaries of a case run without: %v %v",
 			cs,
@@ -465,6 +494,7 @@ func Run(t *testing.T,
 	}
 	must(t, s.CreateCaseCommentary(ctx,
 		d,
+		"u1",
 		first))
 	second := &core.CaseCommentary{
 		CaseRunID: failed,
@@ -473,9 +503,11 @@ func Run(t *testing.T,
 	}
 	must(t, s.CreateCaseCommentary(ctx,
 		d,
+		"u1",
 		second))
 	cs, err := s.ListCaseCommentaries(ctx,
 		d,
+		"u1",
 		failed)
 	must(t, err)
 	if first.ID == 0 || second.ID <= first.ID || len(cs) != 2 || cs[0].ID != second.ID || cs[0].Text != "second\nline" || cs[0].CreatedAt.IsZero() ||
@@ -484,6 +516,7 @@ func Run(t *testing.T,
 	}
 	if err := s.CreateCaseCommentary(ctx,
 		d,
+		"u1",
 		&core.CaseCommentary{
 			CaseRunID: 999,
 			Model:     "m",
@@ -495,6 +528,7 @@ func Run(t *testing.T,
 	// Trajectories by ID.
 	ref, err := s.FindKnowledgeTrajectory(ctx,
 		d,
+		"u1",
 		"tr-b1-1")
 	if err != nil || ref.CaseRunID != caseRuns[1][1].ID || ref.Kind != "query" || ref.AgentName != "gligabao-query" {
 		t.Fatalf("FindKnowledgeTrajectory: %+v %v",
@@ -503,6 +537,7 @@ func Run(t *testing.T,
 	}
 	if _, err := s.FindKnowledgeTrajectory(ctx,
 		d,
+		"u1",
 		"nope"); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("FindKnowledgeTrajectory of a missing one: %v", err)
 	}
@@ -510,6 +545,7 @@ func Run(t *testing.T,
 	// The cases the experiment executed, and the history of one.
 	cases, err := s.ListExperimentCases(ctx,
 		d,
+		"u1",
 		xd.ID)
 	must(t, err)
 	if !reflect.DeepEqual(cases, []core.CaseRef{{
@@ -526,6 +562,7 @@ func Run(t *testing.T,
 	}
 	hist, err := s.ListCaseHistory(ctx,
 		d,
+		"u1",
 		xd.ID,
 		"kn",
 		"c1")
@@ -539,6 +576,7 @@ func Run(t *testing.T,
 	}
 	if h, err := s.ListCaseHistory(ctx,
 		d,
+		"u1",
 		xd.ID,
 		"kn",
 		"nope"); err != nil || h == nil || len(h) != 0 {
@@ -550,6 +588,7 @@ func Run(t *testing.T,
 	// A restart: what is running of the type is errored, with the experiment run it was in if all of it was of that type; the rest is
 	// left alone.
 	alone := &core.ExperimentRun{
+		UserID: "u1",
 		DefID:  xd.ID,
 		Status: core.StatusRunning,
 		Timing: core.Timing{
@@ -561,6 +600,7 @@ func Run(t *testing.T,
 		d,
 		alone))
 	arun := &core.EvalRun{
+		UserID:          "u1",
 		DefID:           tr.ID,
 		Type:            core.TypeTraining,
 		ExperimentRunID: &alone.ID,
@@ -584,6 +624,7 @@ func Run(t *testing.T,
 			TrainedModelID: 7,
 		}))
 	run := &core.EvalRun{
+		UserID:          "u1",
 		DefID:           tr.ID,
 		Type:            core.TypeTraining,
 		ExperimentRunID: &xruns[1].ID,
@@ -607,6 +648,7 @@ func Run(t *testing.T,
 			TrainedModelID: 7,
 		}))
 	krun := &core.EvalRun{
+		UserID: "u1",
 		DefID:  kn.ID,
 		Type:   core.TypeKnowledge,
 		Status: core.StatusRunning,
@@ -627,6 +669,7 @@ func Run(t *testing.T,
 	must(t, err)
 	if got, err := s.GetExperimentRun(ctx,
 		d,
+		"u1",
 		alone.ID); n != 2 || err != nil || got.Status != core.StatusErrored || got.Error != "restart" || got.FinishedAt == nil {
 		t.Fatalf("FailRunning, the experiment run of a training eval alone: %d %+v %v",
 			n,
@@ -635,6 +678,7 @@ func Run(t *testing.T,
 	}
 	if got, err := s.GetExperimentRun(ctx,
 		d,
+		"u1",
 		xruns[1].ID); err != nil || got.Status != core.StatusRunning {
 		t.Fatalf("FailRunning, an experiment run with an eval of another type: %+v %v",
 			got,
@@ -642,6 +686,7 @@ func Run(t *testing.T,
 	}
 	if got, err := s.GetEvalRun(ctx,
 		d,
+		"u1",
 		run.ID); n != 2 || err != nil || got.Status != core.StatusErrored || got.Error != "restart" || got.FinishedAt == nil {
 		t.Fatalf("FailRunning: %d %+v %v",
 			n,
@@ -650,6 +695,7 @@ func Run(t *testing.T,
 	}
 	if got, err := s.GetEvalRun(ctx,
 		d,
+		"u1",
 		krun.ID); err != nil || got.Status != core.StatusRunning {
 		t.Fatalf("a running eval run of another type: %+v %v",
 			got,

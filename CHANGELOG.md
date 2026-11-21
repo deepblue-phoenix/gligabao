@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.220.0] - 2026-11-21
+
+Step 1 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the evals tables and store have owners. Nothing user-facing is exposed yet.
+
+### Added
+- **Owners in the evals tables (breaking).** `gb_eval_defs`, `gb_experiment_defs`, `gb_experiment_runs`, `gb_eval_runs` and `gb_case_runs` have a `user_id` (never empty; `core.SystemUser` = `system` owns the training evals). Names of evals and experiments are unique per owner, not globally; composite foreign keys make the database refuse a run whose owner differs from its parent's. `gb_eval_runs` also has the run bookkeeping columns `runner_id`, `heartbeat_at` and `cancel_requested`.
+- **`gb_datasets.kind` and `eval_run_id`.** A dataset is `data` (all existing ones) or `eval` (for the datasets of eval runs, built in a later step); the live names are unique per user and kind. Databases made before are upgraded in place (`sql/upgrade_dataset_kind.sql`, run once).
+- **Store functions of the user API**: `ListEvalDefs`, `ListEvalRunsOfDef`, `CountActiveEvalRuns`, `SumCostSince`, `ListCaseHistoryOfEval`, `DeleteEvalDef`; the run bookkeeping `ClaimRun`, `Heartbeat`, `RequestCancel`, `FailStale` (never fails a CLI run, which has no `runner_id`); and the admin reads `AdminListEvalDefs` and `AdminListEvalRuns` (all users, optional `user_id` filter).
+- `evals.Open` guard: when the evals tables have the old shape (no owner) it drops and recreates them if they are all empty, and fails with an instruction to drop them by hand if one has rows.
+- Isolation test suite (`readstest.RunIsolation`, SQLite and PostgreSQL).
+
+### Changed
+- **Every owner-scoped read of the evals store takes the owner** (`userID` after the database): an empty owner is `ErrInvalidOwner`, and a record of another user is `ErrNotFound`. `runner.SyncEval`, `EnsureExperiment`, `EnsureExperimentWith` and `ResumeExperimentRun` take the owner. The training evals use `core.SystemUser`; the knowledge CLI, the rerunner and the admin API keep the fixed owner `eval` until the next steps.
+
 ## [0.219.1] - 2026-11-21
 
 ### Fixed

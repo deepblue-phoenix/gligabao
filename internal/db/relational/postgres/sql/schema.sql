@@ -7,11 +7,17 @@ CREATE TABLE IF NOT EXISTS gb_datasets (
 	tags        JSONB NOT NULL DEFAULT '[]',
 	created_at  TIMESTAMPTZ NOT NULL,
 	deleted     BOOLEAN NOT NULL DEFAULT FALSE,
-	deleted_at  TIMESTAMPTZ
+	deleted_at  TIMESTAMPTZ,
+	kind        TEXT NOT NULL DEFAULT 'data' CHECK (kind IN ('data', 'eval')),
+	eval_run_id BIGINT,
+	CONSTRAINT gb_datasets_eval_run_check CHECK (kind = 'eval' OR eval_run_id IS NULL)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name
-	ON gb_datasets(user_id, name)
+	ON gb_datasets(user_id, kind, name)
 	WHERE NOT deleted;
+CREATE INDEX IF NOT EXISTS idx_gb_datasets_eval_run
+	ON gb_datasets(eval_run_id)
+	WHERE eval_run_id IS NOT NULL;
 
 -- An ontology: a typed property graph (classes, relations, properties) written in the YAML/JSON DSL of
 -- internal/memory/memory_ontology/ontospec (see sqlite/sql/schema.sql). Names are unique per user.

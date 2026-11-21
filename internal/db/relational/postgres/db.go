@@ -93,7 +93,7 @@ func CreateDataset(ctx context.Context,
 		`
 		INSERT INTO gb_datasets (user_id, name, description, tags, created_at)
 		VALUES ($1, $2, $3, $4::jsonb, $5)
-		ON CONFLICT (user_id, name) WHERE NOT deleted DO NOTHING
+		ON CONFLICT (user_id, kind, name) WHERE NOT deleted DO NOTHING
 		RETURNING `+datasetColumns,
 		userID,
 		name,
@@ -231,7 +231,7 @@ func EnsureDataset(ctx context.Context,
 		`
 		INSERT INTO gb_datasets (user_id, name, created_at)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (user_id, name) WHERE NOT deleted DO NOTHING`,
+		ON CONFLICT (user_id, kind, name) WHERE NOT deleted DO NOTHING`,
 		userID,
 		name,
 		Now()); err != nil {

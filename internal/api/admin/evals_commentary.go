@@ -79,6 +79,7 @@ func knowledgeCaseRunOf(ctx context.Context,
 	id int64) (*core.CaseRun, error) {
 	c, err := s.GetCaseRun(ctx,
 		d,
+		evalOwner,
 		core.CaseRunID(id))
 	if err == nil && c.Type != core.TypeKnowledge {
 		err = evalsdb.ErrNotFound
@@ -94,18 +95,21 @@ func caseDefOf(ctx context.Context,
 	c *core.CaseRun) (eval string, def *core.CaseDef, er *core.EvalRun, err error) {
 	er, err = s.GetEvalRun(ctx,
 		d,
+		evalOwner,
 		c.EvalRunID)
 	if err != nil {
 		return "", nil, nil, err
 	}
 	ed, err := s.GetEvalDef(ctx,
 		d,
+		evalOwner,
 		er.DefID)
 	if err != nil {
 		return "", nil, nil, err
 	}
 	full, err := s.GetEvalDefByName(ctx,
 		d,
+		evalOwner,
 		ed.Name)
 	if errors.Is(err, evalsdb.ErrNotFound) {
 		return ed.Name, nil, er, nil
@@ -198,6 +202,7 @@ func EvalCaseRunDebug(d *sql.DB,
 		}
 		if out.Commentaries, err = s.ListCaseCommentaries(ctx,
 			d,
+			evalOwner,
 			c.ID); err != nil {
 			evalFail(w,
 				err,
@@ -328,6 +333,7 @@ func EvalCaseRunCommentary(d *sql.DB,
 		// The commentary was paid for: store it even if the browser has gone away.
 		if err := s.CreateCaseCommentary(context.WithoutCancel(ctx),
 			d,
+			evalOwner,
 			&out); err != nil {
 			evalFail(w,
 				err,

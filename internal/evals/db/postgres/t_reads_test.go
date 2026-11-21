@@ -13,3 +13,10 @@ func TestReads(t *testing.T) {
 		open(t),
 		postgres.Store)
 }
+
+// TestIsolation is the isolation suite of the owners.
+func TestIsolation(t *testing.T) {
+	readstest.RunIsolation(t,
+		open(t),
+		postgres.Store)
+}

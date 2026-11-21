@@ -88,18 +88,21 @@ func recordCaseArtifacts(t *testing.T,
 	t.Helper()
 	ctx := context.Background()
 	r := runner.New(d, storeOf(t, d))
-	def, err := r.SyncEval(ctx, runner.EvalSpec{
-		Name: eval,
-		Type: core.TypeKnowledge,
-		Cases: []runner.CaseSpec{{
-			Name: name,
-			Meta: &core.KnowledgeCaseDefMeta{},
-		}},
-	})
+	def, err := r.SyncEval(ctx,
+		"eval",
+		runner.EvalSpec{
+			Name: eval,
+			Type: core.TypeKnowledge,
+			Cases: []runner.CaseSpec{{
+				Name: name,
+				Meta: &core.KnowledgeCaseDefMeta{},
+			}},
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	xd, err := r.EnsureExperiment(ctx,
+		"eval",
 		experiment,
 		"",
 		[]core.EvalDefID{def.ID})

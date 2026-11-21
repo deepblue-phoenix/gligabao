@@ -32,6 +32,7 @@ func TestHistoryPoints(t *testing.T) {
 	done := func(verdict core.Verdict,
 		meta *core.KnowledgeCaseRunMeta) core.CaseRun {
 		return core.CaseRun{
+			UserID:  "eval",
 			Status:  core.StatusCompleted,
 			Verdict: verdict,
 			CostUSD: 1,

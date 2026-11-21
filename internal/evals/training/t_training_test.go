@@ -370,7 +370,9 @@ func TestExecutor(t *testing.T) {
 			},
 		})
 	}
-	def, err := r.SyncEval(ctx, training.Spec(ev))
+	def, err := r.SyncEval(ctx,
+		"u1",
+		training.Spec(ev))
 	if err != nil {
 		t.Fatal(err)
 	}

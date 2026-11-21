@@ -22,6 +22,7 @@ func (r *Runner) StartExperimentRun(ctx context.Context,
 	params core.Params) (*ExperimentRecorder, error) {
 	start := now()
 	run := &core.ExperimentRun{
+		UserID: def.UserID,
 		DefID:  def.ID,
 		Status: core.StatusRunning,
 		Params: params,
@@ -45,9 +46,11 @@ func (r *Runner) StartExperimentRun(ctx context.Context,
 // for example a rerun of a case. It does not change the run. The run's Counts are those stored, so add only eval runs that it does not
 // have yet.
 func (r *Runner) ResumeExperimentRun(ctx context.Context,
+	userID string,
 	id core.ExperimentRunID) (*ExperimentRecorder, error) {
 	run, err := r.Store.GetExperimentRun(ctx,
 		r.DB,
+		userID,
 		id)
 	if err != nil {
 		return nil, err

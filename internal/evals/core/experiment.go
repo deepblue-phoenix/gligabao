@@ -3,11 +3,13 @@ package core
 import "time"
 
 // ExperimentDef is the definition of an experiment, held in the DB: a named group of evals that are run together, plus the
-// settings under test. Names are unique. It does not say what happened (see ExperimentRun).
+// settings under test. Names are unique per owner. It does not say what happened (see ExperimentRun).
 type ExperimentDef struct {
-	ID          ExperimentDefID `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
+	ID ExperimentDefID `json:"id"`
+	// UserID is the owner. Training evals are owned by SystemUser. Required by every create.
+	UserID      string `json:"user_id,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 	// EvalDefIDs are the evals that make up the experiment, in the order they run. An EvalDef may be in many experiments.
 	EvalDefIDs []EvalDefID `json:"eval_def_ids"`
 	// Params are the settings under test (models, prompts, judge, ...), for every eval run of the experiment.
@@ -19,8 +21,10 @@ type ExperimentDef struct {
 // ExperimentRun is one execution of an ExperimentDef: it runs each of the def's evals once (one EvalRun each, which point
 // back here through EvalRun.ExperimentRunID). It holds no list of its eval runs.
 type ExperimentRun struct {
-	ID    ExperimentRunID `json:"id"`
-	DefID ExperimentDefID `json:"def_id"`
+	ID ExperimentRunID `json:"id"`
+	// UserID is the owner. Training evals are owned by SystemUser. Required by every create.
+	UserID string          `json:"user_id,omitempty"`
+	DefID  ExperimentDefID `json:"def_id"`
 
 	Status Status `json:"status"`
 	Error  string `json:"error,omitempty"` // why it errored (StatusErrored only)

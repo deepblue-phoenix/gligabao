@@ -342,6 +342,7 @@ func EvalRunWebSearches(d *sql.DB,
 		}
 		run, err := s.GetExperimentRun(r.Context(),
 			d,
+			evalOwner,
 			core.ExperimentRunID(id))
 		if err != nil {
 			evalFail(w,
@@ -398,6 +399,7 @@ func allRecordedSearches(ctx context.Context,
 	for _, e := range exps {
 		runs, err := s.ListExperimentRuns(ctx,
 			d,
+			evalOwner,
 			e.ID)
 		if err != nil {
 			return nil, 0, err

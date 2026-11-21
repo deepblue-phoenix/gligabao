@@ -11,9 +11,15 @@ import (
 //go:embed sql/schema.sql
 var schema string
 
+//go:embed sql/upgrade_dataset_kind.sql
+var upgradeDatasetKindSQL string
+
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {
 	if err := dropOWLOntologies(d); err != nil {
+		return err
+	}
+	if err := upgradeDatasetKind(d); err != nil {
 		return err
 	}
 	if _, err := d.Exec(schema + rememberRunsSchema + queryRunsSchema); err != nil {
@@ -33,6 +39,22 @@ func dropOWLOntologies(d *sql.DB) error {
 		if _, err := d.Exec(`DROP TABLE IF EXISTS ` + table); err != nil {
 			return fmt.Errorf("drop %s: %w", table, err)
 		}
+	}
+	return nil
+}
+
+// upgradeDatasetKind adds the columns kind and eval_run_id to the gb_datasets of a database made before the eval datasets, and drops
+// the unique index of the names, which schema.sql makes again per kind. It does nothing on a new database (no table) or an upgraded one.
+func upgradeDatasetKind(d *sql.DB) error {
+	var cols, kind int
+	if err := d.QueryRow(`SELECT COUNT(*), COALESCE(SUM(CASE WHEN name = 'kind' THEN 1 ELSE 0 END), 0) FROM pragma_table_info('gb_datasets')`).Scan(&cols, &kind); err != nil {
+		return fmt.Errorf("check gb_datasets.kind: %w", err)
+	}
+	if cols == 0 || kind > 0 {
+		return nil
+	}
+	if _, err := d.Exec(upgradeDatasetKindSQL); err != nil {
+		return fmt.Errorf("upgrade gb_datasets (kind): %w", err)
 	}
 	return nil
 }

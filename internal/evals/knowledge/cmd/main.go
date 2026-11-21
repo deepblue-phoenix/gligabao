@@ -187,7 +187,9 @@ func mainErr() error {
 	var defs []*core.EvalDef
 	var defIDs []core.EvalDefID
 	for _, e := range selected {
-		def, err := r.SyncEval(ctx, knowledge.Spec(e))
+		def, err := r.SyncEval(ctx,
+			knowledge.EvalUser,
+			knowledge.Spec(e))
 		if err != nil {
 			return err
 		}
@@ -212,6 +214,7 @@ func mainErr() error {
 	var xdef *core.ExperimentDef
 	if *experiment != "" {
 		if xdef, err = r.EnsureExperiment(ctx,
+			knowledge.EvalUser,
 			*experiment,
 			*experimentDesc,
 			defIDs); err != nil {

@@ -2,14 +2,16 @@ package core
 
 import "time"
 
-// EvalDef is the definition of an eval, held in the DB: a named collection of cases of one Type. Names are unique. It is
+// EvalDef is the definition of an eval, held in the DB: a named collection of cases of one Type. Names are unique per owner. It is
 // reusable: any number of ExperimentDefs may include it, and it can be run on its own. Its cases are the CaseDefs whose
 // EvalDefID is its ID.
 type EvalDef struct {
-	ID          EvalDefID `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Type        Type      `json:"type"`
+	ID EvalDefID `json:"id"`
+	// UserID is the owner. Training evals are owned by SystemUser. Required by every create.
+	UserID      string `json:"user_id,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Type        Type   `json:"type"`
 	// Tags are free labels, to select and group evals.
 	Tags []string `json:"tags,omitempty"`
 	// Params are eval-level settings that apply to every case (for example the judge to use), interpreted by the Type.
@@ -26,8 +28,10 @@ type EvalDef struct {
 // counts, cost, timing); the statistics of the run as a whole that are specific to the Type (what the cases cannot say alone:
 // the judge of a training eval, the chunks of a knowledge eval, ...) are in Meta, which has its own table per Type.
 type EvalRun struct {
-	ID    EvalRunID `json:"id"`
-	DefID EvalDefID `json:"def_id"`
+	ID EvalRunID `json:"id"`
+	// UserID is the owner. Training evals are owned by SystemUser. Required by every create.
+	UserID string    `json:"user_id,omitempty"`
+	DefID  EvalDefID `json:"def_id"`
 	// Type is the Type of the EvalDef (kept here so that the type-specific tables can be tied to the right kind of run).
 	Type Type `json:"type"`
 	// ExperimentRunID is the experiment run this eval run is part of; nil when the eval was run on its own.
@@ -41,6 +45,13 @@ type EvalRun struct {
 	Counts  Counts  `json:"counts"`
 	CostUSD float64 `json:"cost_usd"` // LLM cost of all its case runs
 	Timing
+
+	// RunnerID is "<hostname>:<pid>:<start unix time>" of the server that executes the run ('' for CLI runs). HeartbeatAt is the
+	// last beat of that server (nil until the run starts). CancelRequested is set by the cancel endpoint; the executing server sees
+	// it at its next beat or case boundary.
+	RunnerID        string     `json:"runner_id,omitempty"`
+	HeartbeatAt     *time.Time `json:"heartbeat_at,omitempty"`
+	CancelRequested bool       `json:"cancel_requested,omitempty"`
 
 	// Meta is the type-specific part (KnowledgeEvalRunMeta, TrainingEvalRunMeta, ...), one row of the table of its Type. Its
 	// EvalType is this run's Type. Filled by getters only; not stored with the universal row.

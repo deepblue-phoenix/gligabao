@@ -49,6 +49,18 @@ var Store = db.Store{
 	ListCaseHistory:             reads.ListCaseHistory,
 	FailRunning:                 reads.FailRunning,
 	CreateCaseCommentary:        reads.CreateCaseCommentary,
+	ListEvalDefs:                reads.ListEvalDefs,
+	ListEvalRunsOfDef:           reads.ListEvalRunsOfDef,
+	CountActiveEvalRuns:         reads.CountActiveEvalRuns,
+	SumCostSince:                reads.SumCostSince,
+	ListCaseHistoryOfEval:       reads.ListCaseHistoryOfEval,
+	DeleteEvalDef:               reads.DeleteEvalDef,
+	ClaimRun:                    reads.ClaimRun,
+	Heartbeat:                   reads.Heartbeat,
+	RequestCancel:               reads.RequestCancel,
+	FailStale:                   reads.FailStale,
+	AdminListEvalDefs:           reads.AdminListEvalDefs,
+	AdminListEvalRuns:           reads.AdminListEvalRuns,
 	ListCaseCommentaries:        reads.ListCaseCommentaries,
 }
 

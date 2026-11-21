@@ -14,6 +14,17 @@ import (
 // ErrNotFound means the record asked for (or to be updated) does not exist.
 var ErrNotFound = errors.New("evals: not found")
 
+// ErrInvalidOwner means the owner (user id) is empty. An empty owner is an error, never "all users".
+var ErrInvalidOwner = errors.New("evals: invalid owner")
+
+// CheckOwner returns ErrInvalidOwner if userID is empty.
+func CheckOwner(userID string) error {
+	if userID == "" {
+		return ErrInvalidOwner
+	}
+	return nil
+}
+
 // Execer is what *sql.DB and *sql.Tx share for running statements; the functions of the backends take it, so they can run in a
 // transaction.
 type Execer interface {
@@ -41,6 +52,7 @@ type Store struct {
 		d *core.EvalDef) error
 	GetEvalDefByName func(ctx context.Context,
 		q Execer,
+		userID string,
 		name string) (*core.EvalDef, error)
 	CreateCaseDef func(ctx context.Context,
 		q Execer,
@@ -65,6 +77,7 @@ type Store struct {
 		position int) error
 	GetExperimentDefByName func(ctx context.Context,
 		q Execer,
+		userID string,
 		name string) (*core.ExperimentDef, error)
 
 	// Runs.
@@ -99,33 +112,43 @@ type Store struct {
 
 	// Reads of the defs and the runs (see Reads, written once for both backends).
 	ListExperimentDefs func(ctx context.Context,
-		q Execer) ([]core.ExperimentDef, error)
+		q Execer,
+		userID string) ([]core.ExperimentDef, error)
 	GetExperimentDef func(ctx context.Context,
 		q Execer,
+		userID string,
 		id core.ExperimentDefID) (*core.ExperimentDef, error)
 	GetEvalDef func(ctx context.Context,
 		q Execer,
+		userID string,
 		id core.EvalDefID) (*core.EvalDef, error)
 	ListCaseDefs func(ctx context.Context,
 		q Execer,
+		userID string,
 		evalDefID core.EvalDefID) ([]core.CaseDef, error)
 	ListExperimentCases func(ctx context.Context,
 		q Execer,
+		userID string,
 		experimentDefID core.ExperimentDefID) ([]core.CaseRef, error)
 	ListExperimentRuns func(ctx context.Context,
 		q Execer,
+		userID string,
 		defID core.ExperimentDefID) ([]core.ExperimentRun, error)
 	GetExperimentRun func(ctx context.Context,
 		q Execer,
+		userID string,
 		id core.ExperimentRunID) (*core.ExperimentRun, error)
 	GetEvalRun func(ctx context.Context,
 		q Execer,
+		userID string,
 		id core.EvalRunID) (*core.EvalRun, error)
 	ListEvalRunsOfExperimentRun func(ctx context.Context,
 		q Execer,
+		userID string,
 		id core.ExperimentRunID) ([]core.EvalRun, error)
 	ListEvalRunsOfExperiment func(ctx context.Context,
 		q Execer,
+		userID string,
 		defID core.ExperimentDefID) ([]core.EvalRun, error)
 	ListTrainingEvalRuns func(ctx context.Context,
 		q Execer,
@@ -133,15 +156,19 @@ type Store struct {
 		limit int) ([]core.EvalRun, error)
 	ListCaseRuns func(ctx context.Context,
 		q Execer,
+		userID string,
 		evalRunID core.EvalRunID) ([]core.CaseRun, error)
 	GetCaseRun func(ctx context.Context,
 		q Execer,
+		userID string,
 		id core.CaseRunID) (*core.CaseRun, error)
 	FindKnowledgeTrajectory func(ctx context.Context,
 		q Execer,
+		userID string,
 		trajectoryID string) (*TrajectoryRef, error)
 	ListCaseHistory func(ctx context.Context,
 		q Execer,
+		userID string,
 		defID core.ExperimentDefID,
 		eval,
 		name string) ([]CaseHistoryEntry, error)
@@ -151,12 +178,68 @@ type Store struct {
 		reason string,
 		at time.Time) (int64, error)
 
+	// Reads of the user API, and the run bookkeeping (see reads_user.go).
+	ListEvalDefs func(ctx context.Context,
+		q Execer,
+		userID string) ([]core.EvalDef, error)
+	ListEvalRunsOfDef func(ctx context.Context,
+		q Execer,
+		userID string,
+		defID core.EvalDefID,
+		limit int) ([]core.EvalRun, error)
+	CountActiveEvalRuns func(ctx context.Context,
+		q Execer,
+		userID string) (int, error)
+	SumCostSince func(ctx context.Context,
+		q Execer,
+		userID string,
+		since time.Time) (float64, error)
+	ListCaseHistoryOfEval func(ctx context.Context,
+		q Execer,
+		userID string,
+		defID core.EvalDefID,
+		caseName string) ([]CaseHistoryEntry, error)
+	DeleteEvalDef func(ctx context.Context,
+		q Execer,
+		userID string,
+		defID core.EvalDefID) ([]core.EvalRunID, error)
+	ClaimRun func(ctx context.Context,
+		q Execer,
+		runID core.EvalRunID,
+		runnerID string,
+		at time.Time) error
+	Heartbeat func(ctx context.Context,
+		q Execer,
+		runID core.EvalRunID,
+		at time.Time) (bool, error)
+	RequestCancel func(ctx context.Context,
+		q Execer,
+		userID string,
+		runID core.EvalRunID) error
+	FailStale func(ctx context.Context,
+		q Execer,
+		typ core.Type,
+		cutoff time.Time,
+		reason string,
+		at time.Time) (int64, error)
+
+	// Admin reads: every user, with an optional owner filter. Only internal/api/admin uses them.
+	AdminListEvalDefs func(ctx context.Context,
+		q Execer,
+		f AdminFilter) ([]core.EvalDef, error)
+	AdminListEvalRuns func(ctx context.Context,
+		q Execer,
+		f AdminFilter,
+		limit int) ([]core.EvalRun, error)
+
 	// Commentaries on failed case runs (see core.CaseCommentary).
 	CreateCaseCommentary func(ctx context.Context,
 		q Execer,
+		userID string,
 		c *core.CaseCommentary) error
 	ListCaseCommentaries func(ctx context.Context,
 		q Execer,
+		userID string,
 		caseRunID core.CaseRunID) ([]core.CaseCommentary, error)
 }
 

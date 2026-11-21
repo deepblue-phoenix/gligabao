@@ -12,6 +12,9 @@ type (
 	CaseRunID       int64
 )
 
+// SystemUser is the reserved owner of the training evals (admin only). A real user id equal to it must be rejected by the API.
+const SystemUser = "system"
+
 // Type is the kind of an eval ("knowledge", "training", ...). It says which metadata (CaseDefMeta, CaseRunMeta) its cases and
 // case runs have, and which runner executes them. An EvalDef has one Type and all its cases share it.
 type Type string
