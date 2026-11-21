@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.222.0] - 2026-11-21
+
+Step 3 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): user eval files. Library only; no route, setting or
+server wiring yet.
+
+### Added
+- `internal/evals/userfiles`: the store of the files of the user evals (`evals/<user>/<name>.json` and corpus files), with `S3` (the meta bucket, default prefix `evals`) and `FS` (local directory; refuses any path that leaves `<dir>/<user>`, symlinks included) behind one `Store` interface (`Put`, `Get`, `Delete`, `List`), `ErrNotFound` and `ErrBadPath`, and `Default`.
+- `evalfile.ValidateUser(data, name, limits)`: validates a user eval file and returns every problem (name rules and reserved words, case names, limits, `text`/`text_file`, `text_file` paths, `reference_time`, `models`/`reasoning` values and stages, `chunk_size`); plus `ParseUser` (strict), `TextFiles`, `ValidName`, `ValidTextFile`, `Limits` and `DefaultLimits`.
+- `internal/evals/usereval`: the save/get/list/delete logic of an eval and of its corpus files, and `Prepare` (re-read, validate and sync at the start of a run). A failed database sync undoes the write (a new JSON is deleted, an old one restored).
+- `internal/sys/userpath`: the shared encoding of a user id into one path segment.
+
+### Changed
+- `atifstore` uses `userpath.Segment` instead of its own copy.
+
 ## [0.221.0] - 2026-11-21
 
 Step 2 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): eval datasets. Nothing user-facing is exposed yet.

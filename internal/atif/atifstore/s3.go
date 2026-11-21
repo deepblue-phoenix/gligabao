@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/userpath"
 )
 
 // DefaultS3Prefix is the "subdirectory" of the bucket the traces go to when no prefix is configured.
@@ -98,19 +98,13 @@ func NewS3WithClient(client S3API,
 	}, nil
 }
 
-// userSegment encodes a user id into one safe path segment (injective, and never "." or "..").
+// userSegment encodes a user id into one safe path segment (see userpath.Segment).
 func userSegment(user string) (string, error) {
-	if strings.TrimSpace(user) == "" {
-		return "", errors.New("atif store: the user id is required")
+	seg, err := userpath.Segment(user)
+	if err != nil {
+		return "", fmt.Errorf("atif store: %w", err)
 	}
-	switch enc := url.QueryEscape(user); enc {
-	case ".":
-		return "%2E", nil
-	case "..":
-		return "%2E%2E", nil
-	default:
-		return enc, nil
-	}
+	return seg, nil
 }
 
 // root is the "s3://bucket/prefix" of the store.
