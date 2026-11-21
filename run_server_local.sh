@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # LOCAL/DEV ONLY (not for production): runs the server binary ./build/gligabao (build it first with ./run_build.sh). Extra args are passed to `serve`.
 # The admin UI (--admin-ui) and the training endpoints (--training) are turned on.
-# The admin UI shows two databases: the standard one and the eval one (build/gligabao-eval.db, written by ./run_evals.sh, never reset:
-# it holds the evaluation datasets, the experiments and their runs; override the path with EVAL_DB=...).
 # Run from the project root so the default DB path (build/gligabao.db) resolves into build/;
 # the config is read from build/gligabao.toml (next to the binary).
 set -euo pipefail
@@ -45,7 +43,7 @@ else
 fi
 
 # Not exec'd, so the trap above can stop the sidecar when the server ends or this script is killed.
-./build/gligabao serve --training --admin-ui --eval-db "${EVAL_DB:-build/gligabao-eval.db}" "$@" &
+./build/gligabao serve --training --admin-ui "$@" &
 SERVER_PID=$!
 rc=0
 wait "$SERVER_PID" || rc=$?

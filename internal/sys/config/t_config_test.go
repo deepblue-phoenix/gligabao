@@ -5,7 +5,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T,
@@ -195,17 +197,80 @@ func TestLoadPostgres(t *testing.T) {
 	}
 }
 
-func TestLoadEval(t *testing.T) {
-	cfg, err := Load(write(t, ""))
-	if err != nil || cfg.EvalModeEnable {
-		t.Fatalf("default: %v %+v",
-			err,
-			cfg)
+func TestLoadEvalRemovedSettings(t *testing.T) {
+	for _, body := range []string{"eval = true\n", "eval = false\n", "eval_db = \"x.db\"\n"} {
+		_, err := Load(write(t, body))
+		if err == nil || !strings.Contains(err.Error(), "was removed") {
+			t.Fatalf("%q: want a removed-setting error, got %v", body, err)
+		}
 	}
-	if cfg, err = Load(write(t, "eval = true\n")); err != nil || !cfg.EvalModeEnable {
-		t.Fatalf("eval = true: %v %+v",
-			err,
-			cfg)
+	if _, err := Load(write(t, "eval = true\n")); err == nil || !strings.Contains(err.Error(), `the "eval" setting was removed: evals are always on`) {
+		t.Fatalf("eval message: %v", err)
+	}
+	// A typo is an ordinary unknown key.
+	if _, err := Load(write(t, "evall = true\n")); err == nil || strings.Contains(err.Error(), "was removed") || !strings.Contains(err.Error(), "unknown key") {
+		t.Fatalf("typo: %v", err)
+	}
+}
+
+func TestLoadEvalsDefaults(t *testing.T) {
+	t.Setenv(EnvEvalsS3Bucket, "")
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EvalsS3Bucket != "" || cfg.EvalsS3Prefix != DefaultEvalsS3Prefix || cfg.EvalsMaxCases != 100 || cfg.EvalsMaxFileBytes != 1<<20 ||
+		cfg.EvalsMaxTextBytes != 256<<10 || cfg.EvalsMaxRunsPerUser != 2 || cfg.EvalsMaxRuns != 8 || cfg.EvalsMaxRunCostUSD != 5 ||
+		cfg.EvalsMaxUserCostUSDPerDay != 20 || cfg.EvalsDatasetRetentionDays != 14 || cfg.EvalsHeartbeatInterval.Std() != 15*time.Second ||
+		cfg.EvalsHeartbeatStale.Std() != 2*time.Minute {
+		t.Fatalf("defaults: %+v", cfg)
+	}
+}
+
+func TestLoadEvalsSettings(t *testing.T) {
+	body := `
+evals_s3_bucket = "meta-dev"
+evals_s3_prefix = "user-evals"
+evals_max_cases = 10
+evals_max_runs = 3
+evals_max_run_cost_usd = 1.5
+evals_heartbeat_interval = "5s"
+evals_heartbeat_stale = "1m"
+evals_local_dir = "evals_here"
+evals_trajectory_dir = "/abs/atif"
+`
+	cfg, err := Load(write(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EvalsS3Bucket != "meta-dev" || cfg.EvalsS3Prefix != "user-evals" || cfg.EvalsMaxCases != 10 || cfg.EvalsMaxRuns != 3 ||
+		cfg.EvalsMaxRunCostUSD != 1.5 || cfg.EvalsHeartbeatInterval.Std() != 5*time.Second || cfg.EvalsHeartbeatStale.Std() != time.Minute {
+		t.Fatalf("settings: %+v", cfg)
+	}
+	if !filepath.IsAbs(cfg.EvalsLocalDir) || filepath.Base(cfg.EvalsLocalDir) != "evals_here" {
+		t.Fatalf("relative local dir not resolved against the config file: %q", cfg.EvalsLocalDir)
+	}
+	if cfg.EvalsTrajectoryDir != "/abs/atif" {
+		t.Fatalf("absolute trajectory dir changed: %q", cfg.EvalsTrajectoryDir)
+	}
+	t.Setenv(EnvEvalsS3Bucket, "from-env")
+	t.Setenv(EnvEvalsS3Prefix, "env-prefix")
+	if cfg, err = Load(write(t, "")); err != nil || cfg.EvalsS3Bucket != "from-env" || cfg.EvalsS3Prefix != "env-prefix" {
+		t.Fatalf("env: %v %+v", err, cfg)
+	}
+}
+
+func TestLoadEvalsInvalid(t *testing.T) {
+	for _, body := range []string{
+		"evals_max_cases = 0\n",
+		"evals_max_run_cost_usd = -1\n",
+		"evals_dataset_retention_days = 0\n",
+		"evals_heartbeat_interval = \"soon\"\n",
+		"evals_heartbeat_interval = \"2m\"\nevals_heartbeat_stale = \"1m\"\n",
+	} {
+		if _, err := Load(write(t, body)); err == nil {
+			t.Fatalf("%q: no error", body)
+		}
 	}
 }
 

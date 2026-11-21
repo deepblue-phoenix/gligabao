@@ -14,12 +14,14 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/userfiles"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -224,10 +226,8 @@ type ServeOptions struct {
 	// TrainedModelDeployDir is the directory the files of trained models are fetched to for a deployment, one subdirectory per training
 	// job (gligabao never deletes them). Default: a "trained_models" directory next to DBPath.
 	TrainedModelDeployDir string
-	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
-	// the admin UI on it is shown next to the main database and feeds its Evals block.
-	EvalDBPath string
-	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON. Default: "atif" next to DBPath.
+	// TrajectoryDir is where the ATIF trajectories of the eval runs are stored as JSON, when there is no ATIF bucket. Default: the config's
+	// evals_trajectory_dir, else "atif" next to DBPath.
 	TrajectoryDir string
 	// App identifies the embedding program; if set, the server reports its version next to gligabao's
 	// (GET /version) and logs it at startup.
@@ -448,24 +448,56 @@ func serverOptions(cfg *Config,
 		TrainedModelInferenceHooks: opts.TrainedModelInferenceHooks,
 		AdminExtensions:            opts.AdminExtensions,
 
-		TrajectoryDir: opts.TrajectoryDir,
-		TrajectoryS3:  trajectoryS3(cfg),
+		TrajectoryDir: trajectoryDir(opts,
+			cfg),
+		TrajectoryS3: trajectoryS3(cfg),
 		OntologyS3: memory_ontology.S3Config{
 			Bucket: cfg.OntologyS3Bucket,
 			Region: cfg.OntologyS3Region,
 			Prefix: cfg.OntologyS3Prefix,
 		},
-		EvalDBPath: opts.EvalDBPath,
-
 		// The run manager of the user evals. This line is the one place that plugs the implementation into the server: the server cannot
 		// import internal/evals/runmanager (see server.Options.EvalManager for the whole story of the import cycle it avoids), so it takes
 		// this factory as an injected hook.
 		EvalManager: newEvalManager,
 
-		EvalModeEnable:     cfg.EvalModeEnable,
+		Evals:              evalSettings(cfg),
 		TrainingModeEnable: cfg.TrainingModeEnable,
 		AdminUIenable:      cfg.AdminUIenable,
 	}, restore
+}
+
+// trajectoryDir is the directory of the ATIF trajectories without an ATIF bucket: ServeOptions.TrajectoryDir, else the config's
+// evals_trajectory_dir (empty: the server's default, next to the database).
+func trajectoryDir(opts ServeOptions,
+	cfg *Config) string {
+	if opts.TrajectoryDir != "" {
+		return opts.TrajectoryDir
+	}
+	return cfg.EvalsTrajectoryDir
+}
+
+// evalSettings are the evals_* settings of the config, as the server gets them for the user evals.
+func evalSettings(cfg *Config) server.EvalSettings {
+	return server.EvalSettings{
+		S3: userfiles.S3Config{
+			Bucket:   cfg.EvalsS3Bucket,
+			Region:   cfg.EvalsS3Region,
+			Prefix:   cfg.EvalsS3Prefix,
+			Endpoint: cfg.EvalsS3Endpoint,
+		},
+		LocalDir:             cfg.EvalsLocalDir,
+		MaxCases:             cfg.EvalsMaxCases,
+		MaxFileBytes:         cfg.EvalsMaxFileBytes,
+		MaxTextBytes:         cfg.EvalsMaxTextBytes,
+		MaxRunsPerUser:       cfg.EvalsMaxRunsPerUser,
+		MaxRuns:              cfg.EvalsMaxRuns,
+		MaxRunCostUSD:        cfg.EvalsMaxRunCostUSD,
+		MaxUserCostUSDPerDay: cfg.EvalsMaxUserCostUSDPerDay,
+		DatasetRetention:     time.Duration(cfg.EvalsDatasetRetentionDays) * 24 * time.Hour,
+		HeartbeatInterval:    cfg.EvalsHeartbeatInterval.Std(),
+		HeartbeatStale:       cfg.EvalsHeartbeatStale.Std(),
+	}
 }
 
 // aiPrices converts the configured prices; omitted cache prices default to the input price.

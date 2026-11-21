@@ -37,7 +37,6 @@ func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 			},
 			nil,
 			nil,
-			false,
 			true,
 			false,
 			nil)

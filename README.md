@@ -144,7 +144,7 @@ With `serve --mcp` (or `mcp = true` in the config; default `false`) the server a
 
 ### Eval mode
 
-With `serve --eval` (or `eval = true` in the config; default `false`) the server also registers `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/query`. They take the same bodies as the regular endpoints, record the call as an [ATIF](https://github.com/laude-institute/harbor) trajectory, store it as pretty-printed JSON in an `atif/` directory next to the SQLite file, and return the full `trajectory` (and its `trajectory_id`) in the response. They are not registered otherwise, and the regular endpoints never generate trajectories. Details: [docs/evals.md](docs/evals/knowledge.md). `go run ./internal/evals/knowledge/cmd` runs through these endpoints (`-atif <dir>` also keeps the trajectories as files).
+The user evals are always on: the server serves `/v1/gb/evals` (an eval is a JSON file of the user, in the meta bucket with `evals_s3_bucket` or in a local directory; its runs are executed in the server, with limits on their number and cost, see the `evals_*` settings of `gligabao.toml`). The regular endpoints never generate trajectories; the eval runs record theirs as an [ATIF](https://github.com/laude-institute/harbor) trajectory, stored as JSON in `evals_trajectory_dir` (default: an `atif/` directory next to the SQLite file) or in the ATIF bucket. Details: [docs/evals/knowledge.md](docs/evals/knowledge.md). The `eval` setting and `serve --eval` / `--eval-db` were removed: a config file that still sets `eval` or `eval_db` fails to load. `go run ./internal/evals/knowledge/cmd` runs the knowledge evals of a developer's file on a database of its own (`-user` is required; `-atif <dir>` also keeps the trajectories as files).
 
 ### Training mode
 

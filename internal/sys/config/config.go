@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -50,6 +51,10 @@ const (
 	EnvAtifS3Region          = "ATIF_S3_REGION"
 	EnvAtifS3Prefix          = "ATIF_S3_PREFIX"
 	EnvAtifS3Endpoint        = "ATIF_S3_ENDPOINT"
+	EnvEvalsS3Bucket         = "EVALS_S3_BUCKET"
+	EnvEvalsS3Region         = "EVALS_S3_REGION"
+	EnvEvalsS3Prefix         = "EVALS_S3_PREFIX"
+	EnvEvalsS3Endpoint       = "EVALS_S3_ENDPOINT"
 	EnvSidecarURL            = "SIDECAR_URL"
 )
 
@@ -81,7 +86,44 @@ const DefaultPort = 7878
 // DefaultGeoRadiusKm is the default of geo_radius_km: the radius, in kilometers, of the proximity search of query.
 const DefaultGeoRadiusKm = 50.0
 
+// The defaults of the evals_* settings (the per-user evals).
+const (
+	DefaultEvalsS3Prefix             = "evals"
+	DefaultEvalsMaxCases             = 100
+	DefaultEvalsMaxFileBytes         = 1 << 20
+	DefaultEvalsMaxTextBytes         = 256 << 10
+	DefaultEvalsMaxRunsPerUser       = 2
+	DefaultEvalsMaxRuns              = 8
+	DefaultEvalsMaxRunCostUSD        = 5.0
+	DefaultEvalsMaxUserCostUSDPerDay = 20.0
+	DefaultEvalsDatasetRetentionDays = 14
+	DefaultEvalsHeartbeatInterval    = 15 * time.Second
+	DefaultEvalsHeartbeatStale       = 2 * time.Minute
+)
+
+// removedSettings are the settings that were removed, with what the operator has to do instead. A file that still has one fails to load.
+var removedSettings = map[string]string{
+	"eval":    `the "eval" setting was removed: evals are always on`,
+	"eval_db": `the "eval_db" setting was removed: the evals are in the main database`,
+}
+
 //---------------------------------------------------------------------------------------------
+
+// Duration is a time.Duration that the TOML file writes as text, e.g. "15s" or "2m".
+type Duration time.Duration
+
+// UnmarshalText parses a duration with time.ParseDuration.
+func (d *Duration) UnmarshalText(text []byte) error {
+	v, err := time.ParseDuration(string(text))
+	if err != nil {
+		return fmt.Errorf("duration %q: %w", string(text), err)
+	}
+	*d = Duration(v)
+	return nil
+}
+
+// Std is the duration as a time.Duration.
+func (d Duration) Std() time.Duration { return time.Duration(d) }
 
 // Config holds the application configuration.
 //
@@ -145,9 +187,6 @@ type Config struct {
 	// ChunkOverlapPercent is how much of a chunk repeats the end of the previous one, as a percentage of ChunkSize
 	// (0 = no overlap, at most chunk.MaxOverlapPercent). Default chunk.DefaultOverlapPercent (20).
 	ChunkOverlapPercent int `toml:"chunk_overlap_percent"`
-	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/query) that return ATIF trajectories
-	// with their results. Default false; `serve --eval` turns it on.
-	EvalModeEnable bool `toml:"eval"`
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...: jobs, models, datasets, evals, audits, the
 	// progress feed) and starts the training monitor. Default false (deployments that do not train have no use for them);
 	// `serve --training` turns it on.
@@ -187,6 +226,40 @@ type Config struct {
 	// to with text_file), searched in order like EvalsTrainingDirs. Read by the knowledge eval runner, not by the server. Default
 	// (runner): build/evals_knowledge. The runner's -evals (repeatable) overrides it.
 	EvalsKnowledgeDirs []string `toml:"evals_knowledge_dirs"`
+	// EvalsS3Bucket is the (existing) meta bucket of the user evals (also EVALS_S3_BUCKET): each user's eval files are the objects
+	// "<prefix>/<user>/<name>.json" and the corpus files they name, under the same user directory. Empty (default): the files are in
+	// the local directory EvalsLocalDir. There is no fallback to another bucket. Credentials come from the standard AWS chain.
+	EvalsS3Bucket string `toml:"evals_s3_bucket"`
+	// EvalsS3Region is its AWS region (also EVALS_S3_REGION); empty = the AWS SDK default.
+	EvalsS3Region string `toml:"evals_s3_region"`
+	// EvalsS3Prefix is the "subdirectory" of the bucket of the eval files (also EVALS_S3_PREFIX); default "evals".
+	EvalsS3Prefix string `toml:"evals_s3_prefix"`
+	// EvalsS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also EVALS_S3_ENDPOINT). Empty = AWS.
+	EvalsS3Endpoint string `toml:"evals_s3_endpoint"`
+	// EvalsLocalDir is the directory of the eval files when there is no bucket: one subdirectory per user. Default: an evals_user
+	// directory next to the SQLite database file. A relative path is relative to the config file.
+	EvalsLocalDir string `toml:"evals_local_dir"`
+	// EvalsTrajectoryDir is the directory the ATIF trajectories of the eval runs are stored in when there is no ATIF bucket. Default: an
+	// atif directory next to the SQLite database file (`serve --trajectory-dir` overrides it). A relative path is relative to the config file.
+	EvalsTrajectoryDir string `toml:"evals_trajectory_dir"`
+	// EvalsMaxCases, EvalsMaxFileBytes and EvalsMaxTextBytes are the limits of an eval: cases per eval, bytes of its JSON file, bytes of a
+	// text or of a corpus file. Defaults: 100, 1 MiB, 256 KiB.
+	EvalsMaxCases     int `toml:"evals_max_cases"`
+	EvalsMaxFileBytes int `toml:"evals_max_file_bytes"`
+	EvalsMaxTextBytes int `toml:"evals_max_text_bytes"`
+	// EvalsMaxRunsPerUser and EvalsMaxRuns are the eval runs in progress at once, per user and on this server. Defaults: 2 and 8.
+	EvalsMaxRunsPerUser int `toml:"evals_max_runs_per_user"`
+	EvalsMaxRuns        int `toml:"evals_max_runs"`
+	// EvalsMaxRunCostUSD stops a run whose cases cost more (USD); EvalsMaxUserCostUSDPerDay refuses a run of a user whose runs cost
+	// more than that in the last 24 hours. Defaults: 5 and 20.
+	EvalsMaxRunCostUSD        float64 `toml:"evals_max_run_cost_usd"`
+	EvalsMaxUserCostUSDPerDay float64 `toml:"evals_max_user_cost_usd_per_day"`
+	// EvalsDatasetRetentionDays is how many days after a run ended its eval datasets (their graphs) are kept. Default 14.
+	EvalsDatasetRetentionDays int `toml:"evals_dataset_retention_days"`
+	// EvalsHeartbeatInterval is how often a running eval run records that it is alive; a run without a beat for EvalsHeartbeatStale is
+	// stale (its server crashed). Defaults: 15s and 2m.
+	EvalsHeartbeatInterval Duration `toml:"evals_heartbeat_interval"`
+	EvalsHeartbeatStale    Duration `toml:"evals_heartbeat_stale"`
 	// OntologyDirs are the directories ontology documents (YAML or JSON) are loaded from by file name: a request to
 	// POST /v1/gb/ontologies or PUT /v1/gb/ontologies/{name} with "file" instead of "content" names a file that is looked up in
 	// these directories in order. Nothing is scanned or loaded at startup. Default: none (the "file" form is then rejected).
@@ -315,6 +388,21 @@ func Default() *Config {
 		S3VectorsRegion:   os.Getenv(EnvS3VectorsRegion),
 		S3VectorsPrefix:   os.Getenv(EnvS3VectorsPrefix),
 
+		EvalsS3Bucket:             os.Getenv(EnvEvalsS3Bucket),
+		EvalsS3Region:             os.Getenv(EnvEvalsS3Region),
+		EvalsS3Prefix:             envOr(EnvEvalsS3Prefix, DefaultEvalsS3Prefix),
+		EvalsS3Endpoint:           os.Getenv(EnvEvalsS3Endpoint),
+		EvalsMaxCases:             DefaultEvalsMaxCases,
+		EvalsMaxFileBytes:         DefaultEvalsMaxFileBytes,
+		EvalsMaxTextBytes:         DefaultEvalsMaxTextBytes,
+		EvalsMaxRunsPerUser:       DefaultEvalsMaxRunsPerUser,
+		EvalsMaxRuns:              DefaultEvalsMaxRuns,
+		EvalsMaxRunCostUSD:        DefaultEvalsMaxRunCostUSD,
+		EvalsMaxUserCostUSDPerDay: DefaultEvalsMaxUserCostUSDPerDay,
+		EvalsDatasetRetentionDays: DefaultEvalsDatasetRetentionDays,
+		EvalsHeartbeatInterval:    Duration(DefaultEvalsHeartbeatInterval),
+		EvalsHeartbeatStale:       Duration(DefaultEvalsHeartbeatStale),
+
 		ImageStore:      envOr(EnvImageStore, ImageStoreFS),
 		ImageS3Bucket:   os.Getenv(EnvImageS3Bucket),
 		ImageS3Region:   os.Getenv(EnvImageS3Region),
@@ -419,6 +507,9 @@ func (c *Config) Validate() error {
 	if err := c.Chunking().Validate(); err != nil {
 		return fmt.Errorf("config: chunk_size / chunk_overlap_percent: %w", err)
 	}
+	if err := c.validateEvals(); err != nil {
+		return err
+	}
 	for key, dirs := range map[string][]string{
 		"datasets_training_dirs": c.DatasetsTrainingDirs, "evals_training_dirs": c.EvalsTrainingDirs,
 		"evals_knowledge_dirs": c.EvalsKnowledgeDirs, "ontology_dirs": c.OntologyDirs,
@@ -440,6 +531,47 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// validateEvals checks the evals_* limits and intervals: each limit must be positive (an omitted one keeps its default), and a run is
+// stale only after several missed beats.
+func (c *Config) validateEvals() error {
+	limits := []struct {
+		key   string
+		value float64
+	}{
+		{"evals_max_cases", float64(c.EvalsMaxCases)},
+		{"evals_max_file_bytes", float64(c.EvalsMaxFileBytes)},
+		{"evals_max_text_bytes", float64(c.EvalsMaxTextBytes)},
+		{"evals_max_runs_per_user", float64(c.EvalsMaxRunsPerUser)},
+		{"evals_max_runs", float64(c.EvalsMaxRuns)},
+		{"evals_max_run_cost_usd", c.EvalsMaxRunCostUSD},
+		{"evals_max_user_cost_usd_per_day", c.EvalsMaxUserCostUSDPerDay},
+		{"evals_dataset_retention_days", float64(c.EvalsDatasetRetentionDays)},
+		{"evals_heartbeat_interval", float64(c.EvalsHeartbeatInterval.Std())},
+		{"evals_heartbeat_stale", float64(c.EvalsHeartbeatStale.Std())},
+	}
+	for _, l := range limits {
+		if l.value <= 0 || math.IsNaN(l.value) || math.IsInf(l.value, 0) {
+			return fmt.Errorf("config: %s %v must be a positive number", l.key, l.value)
+		}
+	}
+	if c.EvalsHeartbeatStale.Std() <= c.EvalsHeartbeatInterval.Std() {
+		return fmt.Errorf("config: evals_heartbeat_stale (%s) must be longer than evals_heartbeat_interval (%s)",
+			c.EvalsHeartbeatStale.Std(),
+			c.EvalsHeartbeatInterval.Std())
+	}
+	return nil
+}
+
+// removedSetting is the message for the first key of keys that is a removed setting, "" if none is.
+func removedSetting(keys []toml.Key) string {
+	for _, key := range keys {
+		if msg, ok := removedSettings[key.String()]; ok {
+			return msg
+		}
+	}
+	return ""
 }
 
 func deref(p *float64) float64 {
@@ -464,6 +596,11 @@ func Load(path string) (*Config, error) {
 			err)
 	}
 	if undec := md.Undecoded(); len(undec) > 0 {
+		if msg := removedSetting(undec); msg != "" {
+			return nil, fmt.Errorf("config: %s: %s",
+				path,
+				msg)
+		}
 		return nil, fmt.Errorf("config: %s: unknown key %q",
 			path,
 			undec[0].String())
@@ -485,6 +622,12 @@ func (c *Config) resolveDirs(base string) {
 	}
 	if c.ResearchNotesDir != "" && !filepath.IsAbs(c.ResearchNotesDir) {
 		c.ResearchNotesDir = filepath.Join(base, c.ResearchNotesDir)
+	}
+	if c.EvalsLocalDir != "" && !filepath.IsAbs(c.EvalsLocalDir) {
+		c.EvalsLocalDir = filepath.Join(base, c.EvalsLocalDir)
+	}
+	if c.EvalsTrajectoryDir != "" && !filepath.IsAbs(c.EvalsTrajectoryDir) {
+		c.EvalsTrajectoryDir = filepath.Join(base, c.EvalsTrajectoryDir)
 	}
 	for _, list := range []*[]string{&c.DatasetsTrainingDirs, &c.EvalsTrainingDirs, &c.EvalsKnowledgeDirs, &c.OntologyDirs} {
 		for i, d := range *list {

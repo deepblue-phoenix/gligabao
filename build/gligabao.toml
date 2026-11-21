@@ -63,10 +63,6 @@ embedding_dimensions = 1536
 chunk_size = 1024
 chunk_overlap_percent = 20
 
-# Register the eval endpoints (POST /v1/gb/eval/remember, /v1/gb/eval/query), which return ATIF trajectories
-# with their results. Default false; `serve --eval` turns it on.
-eval = false
-
 # Register the training endpoints (/v1/gb/training/...: jobs, models, datasets, evals, audits, progress feed) and start
 # the training monitor. Default false (not needed, and better off, in deployments that do not train);
 # `serve --training` turns it on.
@@ -112,6 +108,36 @@ evals_training_dirs = ["evals_training"]
 # Knowledge evals: one JSON file per eval, and the corpus files their cases refer to with text_file (looked up in these directories in order).
 # Read by the eval runner (./run_evals.sh), not by the server. Default if unset: build/evals_knowledge.
 evals_knowledge_dirs = ["evals_knowledge"]
+
+# Per-user evals (the /v1/gb/evals routes; always on). The eval files of each user are JSON files "<prefix>/<user>/<name>.json" and
+# the corpus files they name, in the meta bucket when evals_s3_bucket is set (an existing bucket; no fallback to another bucket).
+# Without a bucket they are in a local directory, one subdirectory per user: evals_local_dir (default: evals_user next to the database).
+# Also settable with EVALS_S3_BUCKET / EVALS_S3_REGION / EVALS_S3_PREFIX / EVALS_S3_ENDPOINT.
+# evals_s3_bucket = "my-gligabao-meta"
+# evals_s3_region = "us-east-1"
+# evals_s3_prefix = "evals"
+# evals_s3_endpoint = ""
+# evals_local_dir = "evals_user"
+# The trajectories of the eval runs are kept here when there is no ATIF bucket (default: an atif directory next to the database).
+# evals_trajectory_dir = "atif"
+
+# Limits of an eval, with their defaults: cases per eval, bytes of its JSON file, bytes of one text or corpus file.
+# evals_max_cases = 100
+# evals_max_file_bytes = 1048576
+# evals_max_text_bytes = 262144
+# Eval runs in progress at once, per user and on this server.
+# evals_max_runs_per_user = 2
+# evals_max_runs = 8
+# Cost caps in USD: a run stops once its cases cost more than evals_max_run_cost_usd; a user's runs past evals_max_user_cost_usd_per_day
+# in the last 24 hours are refused.
+# evals_max_run_cost_usd = 5
+# evals_max_user_cost_usd_per_day = 20
+# Days after a run ended that its eval datasets (the graphs its cases built) are kept before they are deleted.
+# evals_dataset_retention_days = 14
+# A running eval run records that it is alive every evals_heartbeat_interval; a run without a beat for evals_heartbeat_stale is stale
+# (its server crashed) and is recovered as errored.
+# evals_heartbeat_interval = "15s"
+# evals_heartbeat_stale = "2m"
 
 # Ontologies: directories of OWL documents (RDF/XML). Nothing is loaded at startup: a request to POST /v1/gb/ontologies (or PUT
 # /v1/gb/ontologies/{name}) with "file": "market.owl" instead of "content" loads that file, the first one of these directories that has it,

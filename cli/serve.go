@@ -12,11 +12,11 @@ func newServe(c *CLI,
 	var (
 		dbPath, vectorDir, imageDir string
 		host                        string
-		evalDB, deployDir           string
+		deployDir                   string
 		agentDefsDir                string
 		datasetDirs, evalDirs       []string
 		ontologyDirs                []string
-		eval, training, adminUI     bool
+		training, adminUI           bool
 		geoOn, mcpOn                bool
 	)
 	cmd := &cobra.Command{
@@ -29,9 +29,6 @@ func newServe(c *CLI,
 			cfg := c.cfg
 			if cmd.Flags().Changed("host") {
 				cfg.Host = host
-			}
-			if cmd.Flags().Changed("eval") {
-				cfg.EvalModeEnable = eval
 			}
 			if cmd.Flags().Changed("training") {
 				cfg.TrainingModeEnable = training
@@ -54,7 +51,6 @@ func newServe(c *CLI,
 				OntologyDirs:          ontologyDirs,
 				AgentDefsDir:          agentDefsDir,
 				TrainedModelDeployDir: deployDir,
-				EvalDBPath:            evalDB,
 			}
 			if o.ServeOptions != nil {
 				cleanup, err := o.ServeOptions(cmd,
@@ -109,14 +105,6 @@ func newServe(c *CLI,
 		"trained-model-deploy-dir",
 		"",
 		"directory the files of trained models are fetched to for a deployment, one subdirectory per training job (default: a trained_models directory next to --db)")
-	f.StringVar(&evalDB,
-		"eval-db",
-		"",
-		"eval database: SQLite file with the eval datasets, experiments and runs (./run_evals.sh); shown next to the main database in the admin UI, which reads the Evals block from it")
-	f.BoolVar(&eval,
-		"eval",
-		false,
-		"register the eval endpoints that return ATIF trajectories (config: eval)")
 	f.BoolVar(&training,
 		"training",
 		false,

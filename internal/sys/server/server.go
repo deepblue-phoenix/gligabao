@@ -112,9 +112,6 @@ type Options struct {
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
 	// Default: an "atif" directory next to the SQLite file (memory_core.TrajectoryDir if there is none).
 	TrajectoryDir string
-	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/query), which return ATIF
-	// trajectories with their results. Off by default.
-	EvalModeEnable bool
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...) and starts the training monitor. Off by default.
 	TrainingModeEnable bool
 	// TrainingDirs are the directories the training endpoints keep files in. An empty field gets its default, next to the SQLite
@@ -140,9 +137,9 @@ type Options struct {
 	TrajectoryS3 atifstore.S3Config
 	// OntologyS3 ("" bucket: off) also stores the ontology documents in an Amazon S3 bucket, one directory per user (see memory_ontology.Archive).
 	OntologyS3 memory_ontology.S3Config
-	// EvalDBPath is IGNORED (a warning is logged when it is set): the separate eval database was removed, the evals are in the main
-	// database. The field goes away with the --eval-db flag.
-	EvalDBPath string
+	// Evals are the settings of the user evals (the evals_* config keys): the store of the eval files, the limits and the liveness of
+	// the runs. They reach the EvalManager hook in EvalEnv.Settings.
+	Evals EvalSettings
 	// EvalManager is an INJECTED HOOK: a factory for the run manager of the user evals (package evals/runmanager), which starts and
 	// supervises their runs, reruns case runs and cleans up their datasets. The routes of the evals (/v1/gb/evals, and the evals views of
 	// the admin UI) work through it. Nil means the server has no evals: no eval route is registered.
@@ -263,6 +260,27 @@ func connectSidecar(ctx context.Context,
 	return c, true
 }
 
+// EvalSettings are the settings of the user evals. A zero field takes the default of the run manager (see package runmanager); the
+// config file sets them all (the evals_* keys).
+type EvalSettings struct {
+	// S3 is the meta bucket of the eval files; with no bucket (S3.Bucket empty) the files are in the local directory LocalDir.
+	S3 userfiles.S3Config
+	// LocalDir is the directory of the eval files without a bucket, one subdirectory per user. Default: an evals_user directory next to
+	// the SQLite file.
+	LocalDir string
+	// MaxCases, MaxFileBytes and MaxTextBytes are the limits of an eval: cases per eval, bytes of its JSON file, bytes of a text or a
+	// corpus file.
+	MaxCases, MaxFileBytes, MaxTextBytes int
+	// MaxRunsPerUser and MaxRuns are the runs in progress at once, per user and on this server.
+	MaxRunsPerUser, MaxRuns int
+	// MaxRunCostUSD stops a run whose cases cost more; MaxUserCostUSDPerDay refuses the runs of a user past it in the last 24 hours.
+	MaxRunCostUSD, MaxUserCostUSDPerDay float64
+	// DatasetRetention is how long the eval datasets of a finished run are kept.
+	DatasetRetention time.Duration
+	// HeartbeatInterval is how often a running run records that it is alive; HeartbeatStale is when a run without a beat is stale.
+	HeartbeatInterval, HeartbeatStale time.Duration
+}
+
 // EvalEnv is what the injected hook Options.EvalManager is given to build the run manager with: the server's own clients (so the evals
 // use the same LLM, price table, embedder, web search and geo resolver as the server, configured once), the database and where the eval
 // files and the trajectories are kept. It exists so that the package that implements the manager (internal/evals/runmanager) can get these
@@ -286,6 +304,8 @@ type EvalEnv struct {
 	// Trajectories is where the trajectories are stored (nil: the directory TrajectoryDir), TrajectoryDir the directory of the file store.
 	Trajectories  atifstore.Store
 	TrajectoryDir string
+	// Settings are the settings of the user evals (Options.Evals).
+	Settings EvalSettings
 }
 
 // NewHandler builds the HTTP handler for the given databases and LLM. ctx bounds the remember manager (see memory_remember.Manager).
@@ -293,7 +313,7 @@ type EvalEnv struct {
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
 // geoResolver turns geo on (remember and query find the places of a text, see package memory_geo); nil: geo is off.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model deployers (with none a deployment request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model deployers (with none a deployment request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The training endpoints (/v1/gb/training/) are registered only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context,
@@ -308,7 +328,6 @@ func NewHandler(ctx context.Context,
 	dirs coretraining.Dirs,
 	ontologyDirs []string,
 	sc coretraining.Sidecar,
-	eval,
 	trainingMode,
 	adminUI bool,
 	adminExts []admin.Extension,
@@ -334,7 +353,6 @@ func NewHandler(ctx context.Context,
 		dirs,
 		ontologyDirs,
 		sc,
-		eval,
 		trainingMode,
 		adminUI,
 		adminExts,
@@ -395,7 +413,6 @@ func newMux(ctx context.Context,
 	dirs coretraining.Dirs,
 	ontologyDirs []string,
 	sc coretraining.Sidecar,
-	eval,
 	trainingMode,
 	adminUI bool,
 	adminExts []admin.Extension,
@@ -463,19 +480,6 @@ func newMux(ctx context.Context,
 			api.WithGeoRadius(geoRadiusKm),
 			api.WithGraphEmbedder(graphEmbedder),
 			api.WithResearch(research))
-	}
-	if eval {
-		api.RegisterEval(mux,
-			mgr,
-			d,
-			lm,
-			emb,
-			jv,
-			ws,
-			providers,
-			api.WithGeoResolver(geoResolver),
-			api.WithGeoRadius(geoRadiusKm),
-			api.WithGraphEmbedder(graphEmbedder))
 	}
 	dbs := append([]admin.Named{{
 		Name:     "standard",
@@ -1019,9 +1023,6 @@ func prepare(ctx context.Context,
 		memory_ontology.Archive = ontoStore
 		log.WithField("ontology_s3", ontoStore.Location()).Info("ontology documents are also stored in S3, one directory per user")
 	}
-	if opts.EvalModeEnable {
-		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/query are enabled")
-	}
 	dbPath := opts.DB.SQLitePath
 	if dbPath == "" {
 		dbPath = db.DefaultSQLitePath
@@ -1031,9 +1032,6 @@ func prepare(ctx context.Context,
 		log.WithFields(log.Fields{"datasets_dirs": dirs.Datasets, "evals_dirs": dirs.Evals, "model_deploy_dir": dirs.ModelDeploy}).Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
 	} else {
 		log.Info("training mode is off: the training endpoints are not registered (enable with training = true or --training)")
-	}
-	if opts.EvalModeEnable {
-		log.WithField("trajectory_dir", memory_core.TrajectoryDir).Info("ATIF trajectories are stored here")
 	}
 
 	switch {
@@ -1140,9 +1138,6 @@ func prepare(ctx context.Context,
 		log.WithField("model", jevModel(opts)).Info("Jev is active: remember classifies the complexity of each text")
 	}
 
-	if opts.EvalDBPath != "" {
-		log.WithField("path", opts.EvalDBPath).Warn("the eval database is ignored (--eval-db): the evals are in the main database")
-	}
 	var extra []admin.Named
 
 	// The sidecar is pinged once on startup. If it is not operating correctly, the flag is off and sc stays nil, which
@@ -1194,10 +1189,14 @@ func prepare(ctx context.Context,
 	var evalSvc *evalsroutes.Service
 	var evalWait interface{ Wait() }
 	if opts.EvalManager != nil {
-		files := userfiles.Default
-		if files == nil {
-			files = userfiles.FS{Dir: filepath.Join(filepath.Dir(dbPath), "evals_user")}
+		files, filesErr := evalFiles(mgrCtx,
+			opts.Evals,
+			dbPath)
+		if filesErr != nil {
+			stopMgr()
+			return nil, nil, filesErr
 		}
+		userfiles.Default = files
 		evalStore, err := evals.StoreFor(database.Backend)
 		if err != nil {
 			stopMgr()
@@ -1214,6 +1213,7 @@ func prepare(ctx context.Context,
 			Files:         files,
 			Trajectories:  traceStore,
 			TrajectoryDir: memory_core.TrajectoryDir,
+			Settings:      opts.Evals,
 		})
 		if mgr != nil {
 			evalSvc = &evalsroutes.Service{
@@ -1254,7 +1254,6 @@ func prepare(ctx context.Context,
 		dirs,
 		opts.OntologyDirs,
 		sc,
-		opts.EvalModeEnable,
 		opts.TrainingModeEnable,
 		opts.AdminUIenable,
 		adminExts,
@@ -1266,6 +1265,27 @@ func prepare(ctx context.Context,
 		log.Infof("agent research: %d agent(s) run on a schedule", n)
 	}
 	return mux, closeAll, nil
+}
+
+// evalFiles is the store of the eval files of the users: the meta bucket (opts.S3) if it has one, else the local directory (opts.LocalDir,
+// by default an evals_user directory next to the SQLite file dbPath).
+func evalFiles(ctx context.Context,
+	opts EvalSettings,
+	dbPath string) (userfiles.Store, error) {
+	if opts.S3.Bucket != "" {
+		store, err := userfiles.NewS3(ctx, opts.S3)
+		if err != nil {
+			return nil, err
+		}
+		log.WithField("evals_s3", store.Location()).Info("eval files are stored in S3, one directory per user")
+		return store, nil
+	}
+	dir := opts.LocalDir
+	if dir == "" {
+		dir = filepath.Join(filepath.Dir(dbPath), "evals_user")
+	}
+	log.WithField("evals_dir", dir).Info("eval files are stored in a local directory, one per user")
+	return userfiles.FS{Dir: dir}, nil
 }
 
 // newJev builds the Jev client from the options.

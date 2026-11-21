@@ -6,7 +6,7 @@
 // eval database (-db) as eval defs, with a case def for each case (rewritten if the file changed), and run from there. The database is
 // never reset: every run of a case has a dataset of its own, named after the case and the eval run (see knowledge.DatasetName), so
 // runs do not interfere with each other and the graphs of all runs are kept. The defs, the runs and the datasets belong to the user
-// of -user. The cases are run through the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/query) of a private in-process mux, with
+// of -user. The cases are run through the eval routes (/v1/gb/evals, the remember and query handlers) of a private in-process mux, with
 // no listener: remember (once per text, in order), then query. These return the ATIF trajectory of every call along with its result.
 //
 // Usage: go run ./internal/evals/knowledge/cmd -user name [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
@@ -86,7 +86,7 @@ func mainErr() error {
 		"description of the experiment, used when it is created")
 	evalDBPath := flag.String("db",
 		"build/gligabao-eval.db",
-		"SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; show it with ./run_server_local.sh)")
+		"SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; the server does not read it: its evals are in its own database)")
 	modelsFlag := flag.String("models",
 		"",
 		`LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)

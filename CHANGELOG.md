@@ -5,6 +5,23 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.225.0] - 2026-11-21
+
+Step 6 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the configuration and the CLI. The evals are always on, and the switches for them are gone.
+
+### Added
+- The `evals_*` settings of `gligabao.toml` (and `EVALS_S3_BUCKET`, `EVALS_S3_REGION`, `EVALS_S3_PREFIX`, `EVALS_S3_ENDPOINT`): the meta bucket of the eval files (`evals_s3_bucket`, with the prefix `evals` and one directory per user); without a bucket the files are in the local directory `evals_local_dir` (default: `evals_user` next to the database). Also `evals_trajectory_dir` (the trajectories of the eval runs, default: `atif` next to the database), the limits of an eval (`evals_max_cases`, `evals_max_file_bytes`, `evals_max_text_bytes`), the runs in progress (`evals_max_runs_per_user`, `evals_max_runs`), the cost caps (`evals_max_run_cost_usd`, `evals_max_user_cost_usd_per_day`), the retention of the eval datasets (`evals_dataset_retention_days`) and the heartbeat of a run (`evals_heartbeat_interval`, `evals_heartbeat_stale`, durations such as `"15s"`). Values that are not positive, or a stale time that is not longer than the heartbeat, stop the server at startup. The template `build/gligabao.toml` documents them.
+- The eval files and the trajectories of the eval runs are read from and written to the configured places: before, the meta bucket was never used and the files always went to the local directory.
+
+### Changed
+- **Breaking:** the evals are always on: `/v1/gb/evals` is served by every server (the user routes, under the same `gb-user-id` / API key rule as the others).
+- The knowledge eval runner (`./run_evals.sh`, `internal/evals/knowledge/cmd`) only needs `-user` (required) and any SQLite file as `-db`: the server does not read that file.
+
+### Removed
+- **Breaking:** the `eval` setting (`gligabao.toml`, `config.Config.EvalModeEnable`, `server.Options.EvalModeEnable`, `gligabao.ServeOptions`), `serve --eval`, `serve --eval-db`, `ServeOptions.EvalDBPath` and `server.Options.EvalDBPath` (ignored since 0.224.0). A config file that still has `eval` or `eval_db` fails to load with a message that says the setting was removed.
+- The public routes `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/query` (they were registered by `eval = true`). The knowledge eval runner calls the same handlers in-process, through its own private mux, as before.
+- `run_server_local.sh` no longer passes `--eval-db`.
+
 ## [0.224.0] - 2026-11-22
 
 Step 5 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the API. The evals are mounted in the server (the
