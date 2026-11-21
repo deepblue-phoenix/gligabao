@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.225.1] - 2026-11-22
+
+Step 9 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the docs.
+
+### Added
+- `docs/evals/user-evals.md`: the user evals (files in the meta bucket, validation, the `/v1/gb/evals` API, runs, limits, heartbeat and recovery, eval datasets and retention, owners in the database, the admin API).
+
+### Changed
+- `docs/evals/knowledge.md`, `docs/evals/experiments.md`, `docs/hooks.md`, `docs/images.md`, `docs/remember/remember-manager.md`, `README.md`: no longer describe the removed eval mode (`serve --eval`, `eval = true`, `--eval-db`, the public `/v1/gb/eval/remember` and `/v1/gb/eval/query`); they describe the private eval mux, the owner of the runs, the eval datasets (`r<eval run id>-<case>`), the admin Evals block on the main database and the rerun on the server's own database.
+- The roadmap row of the eval refactor is Done.
+
 ## [0.225.0] - 2026-11-21
 
 Step 6 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the configuration and the CLI. The evals are always on, and the switches for them are gone.

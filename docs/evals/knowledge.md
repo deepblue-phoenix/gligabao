@@ -4,29 +4,26 @@ Evals are end-to-end checks that run `remember` and `query` against the real LLM
 
 Trajectories are generated **only for eval calls** (the calls the eval cases make). The regular endpoints and regular Go calls never build, store or return them.
 
-For the eval format and the runner's usage see [`internal/evals/README.md`](../../internal/evals/README.md). This page is about the knowledge-extraction evals; the other eval system, which judges trained models with an LLM, is in [training/EVALS.md](training.md) (the two are described together in [`internal/evals/README.md`](../../internal/evals/README.md)).
+The evals of the users, their API and their limits are in [user-evals.md](user-evals.md). For the eval format and the runner's usage see [`internal/evals/README.md`](../../internal/evals/README.md). This page is about the knowledge-extraction evals; the other eval system, which judges trained models with an LLM, is in [training/EVALS.md](training.md) (the two are described together in [`internal/evals/README.md`](../../internal/evals/README.md)).
 
-## Eval mode
+## Eval calls
 
-The eval endpoints are not registered by default. They exist only when the server runs in eval mode:
+There is no eval mode and no public eval route any more (the `eval` setting, `serve --eval` and the routes `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/query` were removed): the evals are always on, and they are the user evals of [user-evals.md](user-evals.md) (`/v1/gb/evals`). What stays is the pair of handlers that record a call as a trajectory. They are registered (`api.RegisterEval`) only on a **private** `http.ServeMux` that the knowledge runner calls in process (`knowledge.MuxCaller`, an implementation of `knowledge.Caller`: `Do(ctx, owner, method, path, body)`; it records the request with `httptest.NewRecorder` and sets `gb-user-id` to the owner). The mux is never mounted on the server's public mux and no listener is opened, so the handlers cannot be reached from outside.
 
-- `gligabao serve --eval`, or
-- `eval = true` in `gligabao.toml` (default `false`).
-
-The flag wins when given. In eval mode the server logs a warning at startup. Do not enable it on a server you expose to untrusted clients; the responses are larger and each call writes a file.
-
-### `POST /v1/gb/eval/remember`
+### `remember` (`/v1/gb/eval/remember` on the private mux)
 
 Same request body and behavior as [`POST /v1/gb/remember`](../remember/remember.md), including `models` (the LLM model of each stage, see [Models](#models)). The response is the usual remember result plus:
 
 - `trajectory_id`: the ID of the trajectory (also the file name, see [Storage](#storage)).
 - `trajectory`: the full ATIF trajectory.
 
-### `POST /v1/gb/eval/query`
+### `query` (`/v1/gb/eval/query` on the private mux)
 
 Same request body and behavior as [`POST /v1/gb/query`](../query/query.md). The response is the usual query result (`answer`, `evidence`) plus `trajectory_id` and `trajectory`.
 
-Errors are the same as for the regular endpoints, except that a `502` also puts the cause in its message (`failed to process text: <cause>`, `failed to answer query: <cause>`; the regular endpoints keep the generic message), which the runner records, without the JSON around it, as the reason the case errored (e.g. the provider's own error text). A failed call returns no trajectory (it is still stored, see below). Without eval mode both routes answer `404`/`405`.
+Errors are the same as for the regular endpoints, except that a `502` also puts the cause in its message (`failed to process text: <cause>`, `failed to answer query: <cause>`; the regular endpoints keep the generic message), which the runner records, without the JSON around it, as the reason the case errored (e.g. the provider's own error text). A failed call returns no trajectory (it is still stored, see below).
+
+The case's datasets are **eval datasets** (`gb_datasets.kind = 'eval'`, named `r<eval run id>-<case>`): the handlers reach them through a context value (`memory_dataset.WithEval`) set by the caller, and the regular dataset endpoints never see them (see [user-evals.md](user-evals.md#eval-datasets)).
 
 ## From Go
 
@@ -47,11 +44,11 @@ Without `WithEval()`, `TrajectoryID` and `Trajectory` are empty and nothing is w
 Each trajectory is written as pretty-printed JSON to `<dir>/<trajectory_id>.json` when the call finishes. The directory is, in order of precedence:
 
 1. `memory.WithTrajectoryDir` (per call);
-2. `ServeOptions.TrajectoryDir` / `server.Options.TrajectoryDir`;
-3. an `atif/` directory next to the SQLite file (`build/atif/` with the default `build/gligabao.db`);
+2. `ServeOptions.TrajectoryDir` / `server.Options.TrajectoryDir` (the server sets it from `evals_trajectory_dir`);
+3. an `atif/` directory next to the SQLite file (`build/atif/` with the default `build/gligabao.db`; `evals_trajectory_dir` is where the eval runs of the server put theirs);
 4. `memory.TrajectoryDir`, default `build/atif`, when there is no SQLite file.
 
-**In S3.** With `atif_s3_bucket` (`ATIF_S3_BUCKET`) set the traces go to that Amazon S3 bucket instead of the directory (no bucket: the directory; there is no other switch), one directory per user: `s3://<bucket>/<prefix>/<user>/<creation timestamp>_<trajectory_id>.json`, the timestamp being the UTC time of the trace's first step (`20260304T050607Z`, so a user's traces list in creation order). The bucket must exist, and no other bucket (such as the research one) is used in its place. `atif_s3_prefix` (`ATIF_S3_PREFIX`) defaults to `traces/atif`; `atif_s3_region` and `atif_s3_endpoint` (MinIO, LocalStack) are optional. The traces have their own S3 client (not the one of the [images](../images.md) or the ontologies); users are kept apart by it the same way (the user is one encoded path segment and the client builds every key itself); to enforce it in AWS too, limit the credentials by prefix. With the S3 store the server's research agents also record a trace of every [research](../deep-research-agent.md#the-trajectory-atif) for the user who started it. The eval database keeps the `s3://` location as the `path` of a trajectory reference and the admin UI reads it from the bucket. The code is `internal/atif/atifstore`.
+**In S3.** With `atif_s3_bucket` (`ATIF_S3_BUCKET`) set the traces go to that Amazon S3 bucket instead of the directory (no bucket: the directory; there is no other switch), one directory per user: `s3://<bucket>/<prefix>/<user>/<creation timestamp>_<trajectory_id>.json`, the timestamp being the UTC time of the trace's first step (`20260304T050607Z`, so a user's traces list in creation order). The bucket must exist, and no other bucket (such as the research one) is used in its place. `atif_s3_prefix` (`ATIF_S3_PREFIX`) defaults to `traces/atif`; `atif_s3_region` and `atif_s3_endpoint` (MinIO, LocalStack) are optional. The traces have their own S3 client (not the one of the [images](../images.md) or the ontologies); users are kept apart by it the same way (the user is one encoded path segment and the client builds every key itself); to enforce it in AWS too, limit the credentials by prefix. With the S3 store the server's research agents also record a trace of every [research](../deep-research-agent.md#the-trajectory-atif) for the user who started it. The eval tables keep the `s3://` location as the `path` of a trajectory reference and the admin UI reads it from the bucket. The code is `internal/atif/atifstore`.
 
 A call that fails is stored too, with `notes` set to `failed: <error>`, but the caller only gets the trajectory of a successful call. A failure to write the file is logged and never fails the call.
 
@@ -59,7 +56,7 @@ The evals are read from the directories listed in `evals_knowledge_dirs` of the 
 
 The `text` of an entry of `remember` is a string, or a list of strings that are joined with a single space, so a long text can be written on several lines in the file and stay readable (`"text": ["First part,", "second part."]` is `"First part, second part."`). Use `text_file` for a text too long even for that.
 
-The eval runner (`go run ./internal/evals/knowledge/cmd`) writes everything to the eval database, `build/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<eval run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
+The server keeps the evals of its users in its main database (see [user-evals.md](user-evals.md)). The developer runner (`go run ./internal/evals/knowledge/cmd`, `./run_evals.sh -user <user>`) records into a database of its own, `build/gligabao-eval.db` (`-db`, any SQLite file), under the owner given with `-user` (required). It holds the datasets the cases build (artifacts, entities and edges, as eval datasets), the evals, experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run creates its own datasets (`r<eval run id>-<case>`), so executions do not interfere. The runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to that database (`-atif <dir>` changes it), see [experiments.md](experiments.md). The runner reads the evals from `evals_knowledge_dirs` (files of the developer, not the evals of the users, which the server reads from the meta bucket or `evals_local_dir`); the server does not read `evals_knowledge_dirs`.
 
 ## Trajectory format
 
@@ -153,9 +150,9 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ## How the evals use it
 
-The in-process server has geo on: the runner gives it a geo resolver, Nominatim of OpenStreetMap (cached) by default, so `remember` stores the coordinates of the places it finds and `query` finds those of the question (one more LLM call each, and a lookup per place; it needs internet). `-geo=false` turns it off; a program that runs the evals sets `knowledge.Executor.Geo` (nil: off). A failed lookup never fails a case (see [geo.md](../geo.md)).
+The eval caller has geo on: the runner gives it a geo resolver, Nominatim of OpenStreetMap (cached) by default, so `remember` stores the coordinates of the places it finds and `query` finds those of the question (one more LLM call each, and a lookup per place; it needs internet). `-geo=false` turns it off; a program that runs the evals sets `knowledge.Executor.Geo` (nil: off). A failed lookup never fails a case (see [geo.md](../geo.md)).
 
-`internal/evals/knowledge` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/query`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the query's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
+`internal/evals/knowledge` runs each case through the private eval mux (`knowledge.Caller`, no listener, as the owner of the run), calling `remember` (once per memory, in order) and `query`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the query's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
 
 ### The `geo` eval and `expect_geo`
 
@@ -241,7 +238,7 @@ A case can also pin its own models (`"models"` in the eval), for example to run 
 **How do models behave?** Beyond pass or fail, a run keeps what each model did:
 
 - the **trajectories** hold the raw output of every LLM step with its `model_name`, tokens and cost, so you can read how a model extracted (the entities and edges it listed, how it typed and named them, what dates it gave) and what `resolve_edges` decided, side by side with another model's on the same text;
-- the **graph** of every case of every run is kept in its own dataset (`<case>_run<eval run id>`), and its entities and edges carry the `extract_graph` model as `model_id`, so the graphs two models built from the same text can be opened in the admin UI and compared (more or fewer entities, finer or coarser relations, different validity);
+- the **graph** of every case of every run is kept in its own eval dataset (`r<eval run id>-<case>`), and its entities and edges carry the `extract_graph` model as `model_id`, so the graphs two models built from the same text can be opened in the admin UI and compared (more or fewer entities, finer or coarser relations, different validity);
 - the **cost** of each case and of the whole run is recorded, so a model can be judged on what it costs for the quality it gives (a cheaper model for `resolve_edges` and a stronger one for `extract_graph`, say), and the steps and tokens show how verbose it is;
 - the **experiment run** records the `models` of the invocation in its `params` (see [experiments.md](experiments.md)), so a result can always be traced back to the setting that produced it. Runs of one experiment can then be compared by their `params`, results, and cost.
 

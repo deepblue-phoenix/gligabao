@@ -55,7 +55,7 @@ type Hooks struct {
 - **Read-only event.** The `SystemEvent` map must not be modified, and should not be retained after returning if you may change it: copy it first.
 - **Panics are contained.** A callback that panics does not affect the request or stop the remaining callbacks; the panic is silently discarded, so recover and log yourself if you want to know.
 - **`ctx`** is the context of the HTTP request that caused the event (cancelled if the client leaves).
-- Events are emitted by the regular endpoints **and** by their `eval` variants (`POST /v1/gb/eval/remember`, `POST /v1/gb/eval/query`), which use the same handlers.
+- Events are emitted by the regular endpoints **and** by the eval runs (the private eval mux of the [evals](evals/knowledge.md#eval-calls) calls the same handlers).
 
 ### Event types
 

@@ -64,7 +64,7 @@ From the CLI, `gligabao remember --image FILE` sends the file the same way (see 
 }
 ```
 
-`path` is where the file is, relative to the [image directory](#where-the-files-are). `cached` is `false` here and `true` for an [already processed image](#repeated-images). `pipeline` is always `image`; it tells this response from the text one. `text_blocks` is always an array. In eval mode (`POST /v1/gb/eval/remember`) the response also carries the call's ATIF trajectory, as for text; the trajectory notes the image (`[image: image/png, 20481 bytes]`) instead of embedding it.
+`path` is where the file is, relative to the [image directory](#where-the-files-are). `cached` is `false` here and `true` for an [already processed image](#repeated-images). `pipeline` is always `image`; it tells this response from the text one. `text_blocks` is always an array. In an eval run (the eval `remember` call) the response also carries the call's ATIF trajectory, as for text; the trajectory notes the image (`[image: image/png, 20481 bytes]`) instead of embedding it.
 
 | Status | Meaning |
 | ------ | ------- |
