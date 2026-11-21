@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
@@ -54,7 +53,7 @@ func storeParent(ctx context.Context,
 	sessionID string,
 	ref,
 	now time.Time) (int64, error) {
-	dsID, err := relational.EnsureDataset(ctx,
+	dsID, err := memory_core.EnsureDataset(ctx,
 		d,
 		userID,
 		dataset)

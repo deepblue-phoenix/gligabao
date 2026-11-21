@@ -322,7 +322,7 @@ func RememberImage(ctx context.Context,
 		map[string]any{"media_type": mediaType, "size_bytes": len(data)})
 
 	// Seen before in this dataset? Then the stored result is the answer (a dataset that does not exist has none).
-	if dsID, err := relational.DatasetID(ctx,
+	if dsID, err := memory_core.DatasetID(ctx,
 		d,
 		userID,
 		dataset); err == nil {
@@ -364,7 +364,7 @@ func RememberImage(ctx context.Context,
 		case !errors.Is(err, graph.ErrNotFound):
 			return nil, err
 		}
-	} else if !errors.Is(err, relational.ErrNotFound) {
+	} else if !errors.Is(err, memory_core.ErrDatasetNotFound) {
 		return nil, err
 	}
 
@@ -386,7 +386,7 @@ func RememberImage(ctx context.Context,
 		map[string]any{"media_type": mediaType, "size_bytes": len(data)},
 		map[string]any{"theme": x.Theme, "title": x.Title, "text_blocks": x.TextBlocks})
 
-	dsID, err := relational.EnsureDataset(ctx,
+	dsID, err := memory_core.EnsureDataset(ctx,
 		d,
 		userID,
 		dataset)
@@ -612,7 +612,7 @@ func LoadImage(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := relational.DatasetID(ctx,
+	dsID, err := memory_core.DatasetID(ctx,
 		d,
 		userID,
 		dataset)

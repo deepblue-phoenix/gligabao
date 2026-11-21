@@ -130,7 +130,7 @@ func Overview(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		ctx := r.Context()
-		list, err := relational.ListAllDatasets(ctx,
+		list, err := relational.ListAllDatasetsAnyKind(ctx,
 			d,
 			r.URL.Query().Get("include_deleted") == "true")
 		if err != nil {

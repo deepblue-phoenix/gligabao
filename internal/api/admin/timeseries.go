@@ -147,7 +147,7 @@ func TimeseriesOf(dbs []Named) http.HandlerFunc {
 func allSeries(ctx context.Context,
 	d *sql.DB,
 	includeDeleted bool) ([]tsSeries, error) {
-	datasets, err := relational.ListAllDatasets(ctx,
+	datasets, err := relational.ListAllDatasetsAnyKind(ctx,
 		d,
 		includeDeleted)
 	if err != nil {

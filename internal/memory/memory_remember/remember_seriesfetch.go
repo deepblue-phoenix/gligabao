@@ -535,7 +535,7 @@ func (j *job) storeFetchedSeries(ctx context.Context,
 // in the specs: there is no artifact to default to.
 func (j *job) storeSeriesSpecs(ctx context.Context,
 	specs []memory_core.SeriesSpec) ([]memory_timeseries.Result, error) {
-	dsID, err := relational.EnsureDataset(ctx,
+	dsID, err := memory_core.EnsureDataset(ctx,
 		j.d,
 		j.userID,
 		j.dataset)

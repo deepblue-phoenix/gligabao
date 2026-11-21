@@ -85,6 +85,12 @@ var QueryStages = model.QueryStages
 // NewQueryRun returns a query run that has just started, with all its stages not started.
 var NewQueryRun = model.NewQueryRun
 
+// The kinds of a dataset (gb_datasets.kind): the regular ones and the datasets of eval runs.
+const (
+	KindData = model.KindData
+	KindEval = model.KindEval
+)
+
 // Errors returned by the functions below.
 var (
 	ErrNotFound = model.ErrNotFound
@@ -162,7 +168,7 @@ func CreateDataset(ctx context.Context,
 	return nil, unsupported()
 }
 
-// ListDatasets returns userID's datasets oldest first; deleted ones only if includeDeleted.
+// ListDatasets returns userID's regular datasets (kind 'data') oldest first; deleted ones only if includeDeleted.
 func ListDatasets(ctx context.Context,
 	d *sql.DB,
 	userID string,
@@ -182,7 +188,7 @@ func ListDatasets(ctx context.Context,
 	return nil, unsupported()
 }
 
-// ListAllDatasets returns the datasets of all users, oldest first; deleted ones only if includeDeleted.
+// ListAllDatasets returns the regular datasets (kind 'data') of all users, oldest first; deleted ones only if includeDeleted.
 // It is meant for admin tooling; the user-facing API only ever lists a single user's datasets.
 func ListAllDatasets(ctx context.Context,
 	d *sql.DB,
@@ -256,6 +262,133 @@ func EnsureDataset(ctx context.Context,
 			d,
 			userID,
 			name)
+	}
+	return 0, unsupported()
+}
+
+// CreateEvalDataset creates a dataset of kind 'eval' that belongs to the eval run evalRunID (eval datasets are hidden from every other
+// dataset function of this package). It returns ErrExists if the user has a live eval dataset with that name.
+func CreateEvalDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string,
+	evalRunID int64) (*Dataset, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.CreateEvalDataset(ctx,
+			d,
+			userID,
+			name,
+			evalRunID)
+	case config.DBBackendPostgres:
+		return postgres.CreateEvalDataset(ctx,
+			d,
+			userID,
+			name,
+			evalRunID)
+	}
+	return nil, unsupported()
+}
+
+// ListAllDatasetsAnyKind is ListAllDatasets over the datasets of both kinds (regular and eval), for the admin and the vector accounting.
+func ListAllDatasetsAnyKind(ctx context.Context,
+	d *sql.DB,
+	includeDeleted bool) ([]Dataset, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListAllDatasetsAnyKind(ctx,
+			d,
+			includeDeleted)
+	case config.DBBackendPostgres:
+		return postgres.ListAllDatasetsAnyKind(ctx,
+			d,
+			includeDeleted)
+	}
+	return nil, unsupported()
+}
+
+// ListEvalDatasets returns the live eval datasets of userID that belong to the eval run evalRunID, oldest first.
+func ListEvalDatasets(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	evalRunID int64) ([]Dataset, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEvalDatasets(ctx,
+			d,
+			userID,
+			evalRunID)
+	case config.DBBackendPostgres:
+		return postgres.ListEvalDatasets(ctx,
+			d,
+			userID,
+			evalRunID)
+	}
+	return nil, unsupported()
+}
+
+// DeleteEvalDatasets soft-deletes the live eval datasets of userID that belong to the eval run evalRunID, and returns their ids.
+func DeleteEvalDatasets(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	evalRunID int64) ([]int64, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.DeleteEvalDatasets(ctx,
+			d,
+			userID,
+			evalRunID)
+	case config.DBBackendPostgres:
+		return postgres.DeleteEvalDatasets(ctx,
+			d,
+			userID,
+			evalRunID)
+	}
+	return nil, unsupported()
+}
+
+// EvalDatasetID returns the ID of userID's live eval dataset called name of the eval run evalRunID, or ErrNotFound.
+func EvalDatasetID(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string,
+	evalRunID int64) (int64, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.EvalDatasetID(ctx,
+			d,
+			userID,
+			name,
+			evalRunID)
+	case config.DBBackendPostgres:
+		return postgres.EvalDatasetID(ctx,
+			d,
+			userID,
+			name,
+			evalRunID)
+	}
+	return 0, unsupported()
+}
+
+// EnsureEvalDataset returns the ID of userID's live eval dataset called name of the eval run evalRunID, creating it first if needed.
+func EnsureEvalDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string,
+	evalRunID int64) (int64, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.EnsureEvalDataset(ctx,
+			d,
+			userID,
+			name,
+			evalRunID)
+	case config.DBBackendPostgres:
+		return postgres.EnsureEvalDataset(ctx,
+			d,
+			userID,
+			name,
+			evalRunID)
 	}
 	return 0, unsupported()
 }

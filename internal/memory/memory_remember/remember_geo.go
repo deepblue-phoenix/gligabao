@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -388,7 +387,7 @@ func (j *job) geoUnresolved(ctx context.Context,
 	if len(cands) == 0 {
 		return ids, nil, nil
 	}
-	dsID, err := relational.EnsureDataset(ctx,
+	dsID, err := memory_core.EnsureDataset(ctx,
 		j.d,
 		j.userID,
 		j.dataset)

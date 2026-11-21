@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.221.0] - 2026-11-21
+
+Step 2 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): eval datasets. Nothing user-facing is exposed yet.
+
+### Added
+- **Eval datasets (`gb_datasets.kind = 'eval'`).** `relational.{CreateEvalDataset, EnsureEvalDataset, EvalDatasetID, ListEvalDatasets, DeleteEvalDatasets}` (SQLite and PostgreSQL) and `memory_dataset.{WithEval, EnsureEvalDataset, DeleteEvalDatasets}`. A context made with `memory_dataset.WithEval(ctx, evalRunID)` makes the remember and query pipelines (`memory_core.DatasetID` / `memory_core.EnsureDataset`) resolve and create the eval datasets of that run; `DeleteEvalDatasets` soft-deletes them and removes their vectors.
+- `relational.ListAllDatasetsAnyKind` (both kinds), used by the admin API and the vector accounting; `model.Dataset` has `kind` and `eval_run_id`.
+
+### Changed
+- **Regular dataset functions only see `data` datasets.** `relational.{CreateDataset, ListDatasets, ListAllDatasets, DatasetID, EnsureDataset, DeleteDataset}` are restricted to kind `data`, so the dataset API never lists or deletes an eval dataset, and a regular name can exist next to an eval one. Datasets in API answers now include `kind` (`data`). The admin overview and its dataset-by-id lookups show both kinds.
+- The remember pipeline resolves its dataset through `memory_core.DatasetID`/`EnsureDataset` instead of calling `relational` directly.
+
 ## [0.220.0] - 2026-11-21
 
 Step 1 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the evals tables and store have owners. Nothing user-facing is exposed yet.

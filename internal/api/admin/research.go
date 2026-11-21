@@ -663,7 +663,7 @@ func ResearchProvenanceOf(m *agent_research.Manager) http.HandlerFunc {
 			dataset(e.DatasetID).Edges++
 		}
 		if len(datasets) > 0 {
-			all, err := relational.ListAllDatasets(ctx,
+			all, err := relational.ListAllDatasetsAnyKind(ctx,
 				m.DB,
 				true)
 			if err != nil {

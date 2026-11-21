@@ -669,7 +669,7 @@ func WebSearchStatsOf(dbs []Named) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
-		list, err := relational.ListAllDatasets(ctx,
+		list, err := relational.ListAllDatasetsAnyKind(ctx,
 			n.DB,
 			r.URL.Query().Get("include_deleted") == "true")
 		if err != nil {
@@ -758,7 +758,7 @@ func WebSearchDatasetOf(dbs []Named) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
-		all, err := relational.ListAllDatasets(ctx,
+		all, err := relational.ListAllDatasetsAnyKind(ctx,
 			n.DB,
 			true)
 		if err != nil {

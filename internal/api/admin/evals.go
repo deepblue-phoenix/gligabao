@@ -750,7 +750,7 @@ func EvalCaseRunGraph(d *sql.DB,
 				"graph")
 			return
 		}
-		all, err := relational.ListAllDatasets(ctx,
+		all, err := relational.ListAllDatasetsAnyKind(ctx,
 			d,
 			true)
 		if err != nil {

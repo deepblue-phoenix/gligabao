@@ -81,17 +81,64 @@ func ResolveDatasetName(name string) (string, error) {
 // Key normalizes an entity name for comparison: lowercase, with whitespace collapsed.
 func Key(name string) string { return strings.ToLower(strings.Join(strings.Fields(name), " ")) }
 
-// DatasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound.
+// DatasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound: a regular dataset, or the
+// eval dataset of the run set by WithEvalRun.
 func DatasetID(ctx context.Context,
 	d *sql.DB,
 	userID,
 	name string) (int64, error) {
-	id, err := relational.DatasetID(ctx,
-		d,
-		userID,
-		name)
+	var (
+		id  int64
+		err error
+	)
+	if runID, ok := EvalRunOf(ctx); ok {
+		id, err = relational.EvalDatasetID(ctx,
+			d,
+			userID,
+			name,
+			runID)
+	} else {
+		id, err = relational.DatasetID(ctx,
+			d,
+			userID,
+			name)
+	}
 	if errors.Is(err, relational.ErrNotFound) {
 		return 0, ErrDatasetNotFound
 	}
 	return id, err
+}
+
+type evalRunKey struct{}
+
+// WithEvalRun returns a context that makes DatasetID and EnsureDataset resolve the datasets of the eval run evalRunID (kind 'eval', see
+// gb_datasets) instead of the regular ones. Only the eval path sets it, so it is the only one that can create or read an eval dataset.
+func WithEvalRun(ctx context.Context,
+	evalRunID int64) context.Context {
+	return context.WithValue(ctx, evalRunKey{}, evalRunID)
+}
+
+// EvalRunOf returns the eval run set by WithEvalRun; ok is false for a regular context.
+func EvalRunOf(ctx context.Context) (evalRunID int64, ok bool) {
+	evalRunID, ok = ctx.Value(evalRunKey{}).(int64)
+	return evalRunID, ok
+}
+
+// EnsureDataset returns the ID of userID's live dataset called name (both already resolved), creating it first if needed: a regular
+// dataset, or the eval dataset of the run set by WithEvalRun.
+func EnsureDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (int64, error) {
+	if runID, ok := EvalRunOf(ctx); ok {
+		return relational.EnsureEvalDataset(ctx,
+			d,
+			userID,
+			name,
+			runID)
+	}
+	return relational.EnsureDataset(ctx,
+		d,
+		userID,
+		name)
 }

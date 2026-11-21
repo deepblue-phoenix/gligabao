@@ -733,7 +733,7 @@ func store(ctx context.Context,
 		return nil, err
 	}
 	// The dataset belongs to the relational store and the graph to the graph store, so they are written separately.
-	dsID, err := relational.EnsureDataset(ctx,
+	dsID, err := memory_core.EnsureDataset(ctx,
 		d,
 		userID,
 		dataset)

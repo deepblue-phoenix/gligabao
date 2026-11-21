@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -52,11 +51,11 @@ func LoadCandidates(ctx context.Context,
 	out := &Candidates{
 		Via: map[int64]string{},
 	}
-	dsID, err := relational.DatasetID(ctx,
+	dsID, err := memory_core.DatasetID(ctx,
 		d,
 		userID,
 		dataset)
-	if errors.Is(err, relational.ErrNotFound) {
+	if errors.Is(err, memory_core.ErrDatasetNotFound) {
 		return out, nil
 	}
 	if err != nil {

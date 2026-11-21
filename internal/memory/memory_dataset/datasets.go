@@ -153,7 +153,8 @@ func ChunkDataset(datasetID int64) string { return VectorDataset(datasetID, Inde
 // SummaryDataset is the vector store dataset of the chunk summary index of a dataset (VectorDataset with IndexSummaries).
 func SummaryDataset(datasetID int64) string { return VectorDataset(datasetID, IndexSummaries) }
 
-// DeleteDataset soft-deletes userID's live dataset called name (sets deleted = 1) and removes the dataset's vectors
+// DeleteDataset soft-deletes userID's live regular dataset called name (sets deleted = 1; eval datasets are never reached, see
+// DeleteEvalDatasets) and removes the dataset's vectors
 // from vectors, which may be nil. The relational rows are kept; the vectors are not, because a deleted dataset can
 // never be read again (its name gets a new dataset with a new ID) and they would only occupy memory/storage.
 // It returns ErrDatasetNotFound if there is no such dataset.
@@ -196,4 +197,83 @@ func DeleteDataset(ctx context.Context,
 		}
 	}
 	return nil
+}
+
+// WithEval returns a context that makes the remember and query pipelines resolve (and create) the datasets of the eval run evalRunID,
+// which are of kind 'eval' (hidden from every regular dataset function), instead of the regular ones. Only the eval path sets it.
+func WithEval(ctx context.Context,
+	evalRunID int64) context.Context {
+	return memory_core.WithEvalRun(ctx, evalRunID)
+}
+
+// EnsureEvalDataset returns the dataset called name of the eval run evalRunID owned by userID, creating it (kind 'eval') first if needed.
+// The name is validated like a regular one.
+func EnsureEvalDataset(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string,
+	evalRunID int64) (*Dataset, error) {
+	userID, err := memory_core.ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("%w: name is required", memory_core.ErrInvalidDataset)
+	}
+	name, err = memory_core.ResolveDatasetName(name)
+	if err != nil {
+		return nil, err
+	}
+	id, err := relational.EnsureEvalDataset(ctx,
+		d,
+		userID,
+		name,
+		evalRunID)
+	if err != nil {
+		return nil, err
+	}
+	list, err := relational.ListEvalDatasets(ctx,
+		d,
+		userID,
+		evalRunID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		if list[i].ID == id {
+			return &list[i], nil
+		}
+	}
+	return nil, memory_core.ErrDatasetNotFound
+}
+
+// DeleteEvalDatasets soft-deletes the eval datasets of the eval run evalRunID owned by userID and removes their vectors from vectors,
+// which may be nil (a failure to remove vectors is logged, as in DeleteDataset). It is called when an eval or a run is deleted and by
+// the retention sweep. It returns the number of datasets deleted.
+func DeleteEvalDatasets(ctx context.Context,
+	d *sql.DB,
+	vectors vector.Store,
+	userID string,
+	evalRunID int64) (int, error) {
+	userID, err := memory_core.ResolveUserID(userID)
+	if err != nil {
+		return 0, err
+	}
+	ids, err := relational.DeleteEvalDatasets(ctx,
+		d,
+		userID,
+		evalRunID)
+	if err != nil {
+		return 0, err
+	}
+	if vectors != nil {
+		for _, id := range ids {
+			for _, idx := range VectorIndexes {
+				if err := vectors.DeleteAll(ctx, VectorDataset(id, idx)); err != nil {
+					log.WithError(err).WithFields(log.Fields{"dataset_id": id, "index": idx}).Error("delete eval datasets: removing vectors")
+				}
+			}
+		}
+	}
+	return len(ids), nil
 }

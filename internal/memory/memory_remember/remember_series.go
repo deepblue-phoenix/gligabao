@@ -9,14 +9,14 @@ import (
 	"context"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
 // storeSeries stores the series of the call (j.co.Series), anchored to the artifact artifactID, in a transaction.
 func (j *job) storeSeries(ctx context.Context,
 	artifactID int64) ([]memory_timeseries.Result, error) {
-	dsID, err := relational.EnsureDataset(ctx,
+	dsID, err := memory_core.EnsureDataset(ctx,
 		j.d,
 		j.userID,
 		j.dataset)

@@ -32,7 +32,16 @@ type Dataset struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	Deleted     bool       `json:"deleted"`
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
+	// Kind is KindData (a regular dataset) or KindEval (a dataset of an eval run); EvalRunID is set for the latter.
+	Kind      string `json:"kind"`
+	EvalRunID *int64 `json:"eval_run_id,omitempty"`
 }
+
+// The kinds of a dataset (gb_datasets.kind).
+const (
+	KindData = "data"
+	KindEval = "eval"
+)
 
 // Ontology is a stored ontology: its metadata and its spec (the YAML/JSON DSL of internal/memory/memory_ontology/ontospec, kept as
 // JSON). Every save bumps Version and keeps the document of the version in gb_ontology_versions.

@@ -111,7 +111,7 @@ func VectorStats(ctx context.Context,
 func VectorStatsAll(ctx context.Context,
 	d *sql.DB,
 	vectors vector.Store) ([]DatasetVectors, error) {
-	list, err := relational.ListAllDatasets(ctx,
+	list, err := relational.ListAllDatasetsAnyKind(ctx,
 		d,
 		false)
 	if err != nil {
