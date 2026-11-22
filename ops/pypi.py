@@ -45,7 +45,7 @@ ROOT = gb_build.ROOT
 CLIENT_DIR = ROOT / "clients" / "py"
 SERVER_DIR = ROOT / "clients" / "py_server"
 STAGE_ROOT = ROOT / "build" / "pypi"
-WHEEL_HOOK = ROOT / "ops" / "wheel_platform_tag_hook.py"  # copied next to pyproject.toml in each staging directory
+WHEEL_HOOK = ROOT / "ops" / "pypi_wheel_platform_tag_hook.py"  # copied next to pyproject.toml in each staging directory
 
 PY_TOOLS = ("build", "twine", "pytest")  # pip distributions this program runs with `python -m`
 
@@ -56,7 +56,7 @@ PY_TOOLS = ("build", "twine", "pytest")  # pip distributions this program runs w
 
 @dataclass(frozen=True)
 class WheelTarget:
-    """One server wheel: the Go target and the platform tag of the wheel (see ops/wheel_platform_tag_hook.py)."""
+    """One server wheel: the Go target and the platform tag of the wheel (see ops/pypi_wheel_platform_tag_hook.py)."""
 
     target: gb_build.Target
     tag: str

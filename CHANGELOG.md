@@ -22,7 +22,7 @@ The PyPI packaging moved into `ops/pypi.py`, and the Linux server wheels now inc
 
 ### Changed
 - `run_pypi.sh` is a wrapper that calls `ops/pypi.py` with the same flags.
-- `clients/py_server/hatch_build.py` is now `ops/wheel_platform_tag_hook.py` (copied into each staging directory).
+- `clients/py_server/hatch_build.py` is now `ops/pypi_wheel_platform_tag_hook.py` (copied into each staging directory).
 
 ## [0.231.1] - 2026-11-22
 

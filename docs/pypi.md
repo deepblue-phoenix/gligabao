@@ -21,7 +21,7 @@ All of the packaging logic is in `ops/`; `clients/py_server` only holds the pack
 | File | What it does |
 |---|---|
 | `ops/pypi.py` | The pipeline: tests, staging directories, wheels, `twine check`, upload. Uses `ops/build.py` for the admin UI, sargo and the Go server binary. |
-| `ops/wheel_platform_tag_hook.py` | The hatchling build hook that marks the server wheel as platform specific and sets its tag from `GLIGABAO_WHEEL_TAG`. It is copied next to `pyproject.toml` in each staging directory, where hatchling finds it. |
+| `ops/pypi_wheel_platform_tag_hook.py` | The hatchling build hook that marks the server wheel as platform specific and sets its tag from `GLIGABAO_WHEEL_TAG`. It is copied next to `pyproject.toml` in each staging directory, where hatchling finds it. |
 | `ops/build.py` | The Go, npm and cargo build steps (`server` command, `build_sargo`, `build_admin_ui`). |
 | `run_pypi.sh` | Wrapper: `python3 ops/pypi.py "$@"`. |
 
@@ -33,7 +33,7 @@ pip cannot compile Go, so the wheels contain a binary that was cross-compiled be
 
 1. builds `./cmd/gligabao` with `CGO_ENABLED=0 GOOS=<os> GOARCH=<arch>` (the build is pure Go and static, so cross-compiling needs nothing but the Go toolchain); with [sargo](#sargo-in-the-wheels) it first builds sargo and puts it in `rust/sargo/bin/`, where the Go build embeds it;
 2. assembles a staging directory `build/pypi/server-<os>-<arch>/` with the package sources, the binary and a copy of `build/gligabao.toml`, and writes the version of the `VERSION` file into `_version.py` there (the server package has the version of the server; the client has its own, in `clients/py/pyproject.toml`);
-3. builds a wheel from it with hatchling. `ops/wheel_platform_tag_hook.py` marks the wheel as platform specific and sets its tag from `GLIGABAO_WHEEL_TAG`.
+3. builds a wheel from it with hatchling. `ops/pypi_wheel_platform_tag_hook.py` marks the wheel as platform specific and sets its tag from `GLIGABAO_WHEEL_TAG`.
 
 `pip install gligabao-server` then picks the wheel matching the machine. An sdist is not published (it would have no binary). Nothing is generated inside `clients/py_server` itself; its `_bin/` directory only exists in the staging directories.
 
