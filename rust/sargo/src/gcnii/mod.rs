@@ -10,9 +10,12 @@
 //!   embed.rs     graph embeddings
 //!   weights.rs   the weights file
 //!   math.rs      RNG, matrix products, softmax
+//!   users.rs     one model per user id: training on request (background thread), the models on disk and in memory
 //!   cli.rs       `sargo gcnii train|eval|infer`
 //!
-//! Inference is also served over HTTP, `POST /v1/gcnii/infer` and `POST /v1/gcnii/embed` (see `router.rs`), when `[gcnii] weights` is set.
+//! Inference is also served over HTTP, `POST /v1/gcnii/infer` and `POST /v1/gcnii/embed`, and per-user training with
+//! `POST /v1/gcnii/train` and `POST /v1/gcnii/train/status` (see `router.rs`; `[gcnii] weights` for one global model,
+//! `[gcnii] models_dir` for the models of users).
 
 pub mod cli;
 pub mod dataset;
@@ -23,4 +26,5 @@ pub mod math;
 pub mod metrics;
 pub mod model;
 pub mod train;
+pub mod users;
 pub mod weights;

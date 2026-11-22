@@ -32,6 +32,9 @@ pub struct GcniiConfig {
     pub weights: String,
     /// Class names of the outputs, in order (the sorted class names of the training data). Optional.
     pub classes: Vec<String>,
+    /// Directory of the per-user models (`POST /v1/gcnii/train` trains one per `user_id`, saved here). Empty = the per-user
+    /// endpoints are disabled. gligabao sets it through `$SARGO_GCNII_MODELS_DIR`, which overrides this key.
+    pub models_dir: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,6 +128,20 @@ impl Config {
     /// Parses config text (TOML). Missing keys get their defaults; unknown keys are an error (typo guard).
     pub fn parse(text: &str) -> Result<Config, String> {
         toml::from_str(text).map_err(|err| err.to_string())
+    }
+
+    /// The same config with `[gcnii] models_dir` taken from `$SARGO_GCNII_MODELS_DIR` when that is set and not empty.
+    pub fn with_env_overrides(self) -> Config {
+        match env::var("SARGO_GCNII_MODELS_DIR") {
+            Ok(dir) if !dir.is_empty() => Config {
+                gcnii: GcniiConfig {
+                    models_dir: dir,
+                    ..self.gcnii
+                },
+                ..self
+            },
+            _ => self,
+        }
     }
 }
 

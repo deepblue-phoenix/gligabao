@@ -260,8 +260,10 @@ fn write_response(stream: &TcpStream, response: &HttpResponse) -> std::io::Resul
 fn reason_phrase(status: u16) -> &'static str {
     match status {
         200 => "OK",
+        202 => "Accepted",
         400 => "Bad Request",
         404 => "Not Found",
+        409 => "Conflict",
         500 => "Internal Server Error",
         502 => "Bad Gateway",
         503 => "Service Unavailable",

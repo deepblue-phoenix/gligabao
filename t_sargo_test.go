@@ -3,6 +3,7 @@ package gligabao
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -30,9 +31,12 @@ func TestSargoEnv(t *testing.T) {
 
 func TestStartSargoOffDoesNothing(t *testing.T) {
 	for _, cfg := range []*Config{nil, {}} {
-		stop, err := startSargo(context.Background(), cfg)
+		client, stop, err := startSargo(context.Background(), cfg)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if client != nil || gcniiService(client) != nil {
+			t.Fatal("sargo is off: there must be no client and no gcnii service")
 		}
 		stop()
 	}
@@ -43,8 +47,20 @@ func TestStartSargoOnWithoutBinaryFails(t *testing.T) {
 	if sargoembed.Available() {
 		t.Skip("this build embeds sargo")
 	}
-	_, err := startSargo(context.Background(), &Config{Sargo: true})
+	_, _, err := startSargo(context.Background(), &Config{Sargo: true})
 	if !errors.Is(err, sargo.ErrNotEmbedded) {
 		t.Fatalf("got %v, want ErrNotEmbedded", err)
+	}
+}
+
+func TestSargoGCNIIDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "gcnii")
+	got, err := sargoGCNIIDir(&Config{SargoGCNIIDir: dir})
+	if err != nil || got != dir {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	got, err = sargoGCNIIDir(&Config{})
+	if err != nil || !filepath.IsAbs(got) || filepath.Base(got) != "gcnii_models" {
+		t.Fatalf("default: got %q, %v", got, err)
 	}
 }

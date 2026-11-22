@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.232.0] - 2026-11-23
+
+Per-user GCNII* training and inference, run by sargo and driven by gligabao over HTTP.
+
+### Added
+- sargo: `POST /v1/gcnii/train` starts the training of the GCNII* model of a `user_id` on the graphs in the request, in the background (`202`; `409` if that user is already training), and `POST /v1/gcnii/train/status` reports it (`running`, `done` with accuracy and loss, `failed`). `POST /v1/gcnii/infer` and `/v1/gcnii/embed` take an optional `user_id` to use that user's model. The models are saved per user in `[gcnii] models_dir` (also set by `$SARGO_GCNII_MODELS_DIR`); without it the per-user endpoints answer `503`.
+- gligabao: the model routes `POST /v1/gb/model/train`, `GET /v1/gb/model/train?model_type=...`, `POST /v1/gb/model/infer` and `POST /v1/gb/model/embed` (with `sargo = true`); the type of model is the `model_type` argument, `"gcnii"` for now, which act as the user of the request and pass the user ID on to sargo. New config `sargo_gcnii_dir` (default `gcnii_models` in the working directory). See `docs/gcnii.md`.
+- `internal/sargo`: the client methods `GCNIITrain`, `GCNIITrainStatus`, `GCNIIInfer` and `GCNIIEmbed`.
+
+### Changed
+- The sargo client accepts any 2xx reply (a started training answers `202`). sargo is still started once, at startup, and then only talked to over HTTP.
+
 ## [0.231.3] - 2026-11-22
 
 `./run_pypi.sh` has a default release.

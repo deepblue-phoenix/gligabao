@@ -3,7 +3,9 @@
 use sargo::config::Config;
 use sargo::http_server::{HttpServer, StdHttpServer};
 use sargo::providers::{AnthropicProvider, OpenAiProvider};
+use sargo::gcnii::users::UserModels;
 use sargo::router::Router;
+use std::sync::Arc;
 
 fn main() {
     // `sargo gcnii train|eval|infer ...`: the GCNII* command line, no server
@@ -14,7 +16,7 @@ fn main() {
 
     // The config is loaded once and then only borrowed (`&config`, `&config.server`, ...).
     let config = match Config::load() {
-        Ok(config) => config,
+        Ok(config) => config.with_env_overrides(),
         Err(message) => {
             eprintln!("{}", message);
             std::process::exit(1);
@@ -42,9 +44,21 @@ fn main() {
         },
     };
 
-    if anthropic.is_none() && openai.is_none() && gcnii.is_none() {
+    // the optional per-user models of `[gcnii] models_dir`
+    let users = match config.gcnii.models_dir.as_str() {
+        "" => None,
+        dir => match UserModels::new(std::path::Path::new(dir)) {
+            Ok(users) => Some(Arc::new(users)),
+            Err(message) => {
+                eprintln!("{}", message);
+                std::process::exit(1);
+            }
+        },
+    };
+
+    if anthropic.is_none() && openai.is_none() && gcnii.is_none() && users.is_none() {
         eprintln!(
-            "no provider enabled: set {} and/or {} (or [gcnii] weights)",
+            "no provider enabled: set {} and/or {} (or [gcnii] weights / models_dir)",
             config.providers.anthropic.api_key_env, config.providers.openai.api_key_env
         );
         std::process::exit(1);
@@ -55,6 +69,10 @@ fn main() {
     let router = Router::new(anthropic, openai);
     let router = match gcnii {
         Some(model) => router.with_gcnii(model, config.gcnii.classes.clone()),
+        None => router,
+    };
+    let router = match users {
+        Some(users) => router.with_gcnii_users(users),
         None => router,
     };
     let server = StdHttpServer::new(&config.server);

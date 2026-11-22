@@ -32,6 +32,16 @@ sargo gcnii embed DIR|graph.json --load w.bin --out e.jsonl [--normalize]
 
 DIR holds graph documents `{"n": N, "edges": [[a,b],...], "nodes": [{"name", "type"}, ...], "class": "..."}` as `.json` files or `.jsonl` lines (a `.json` without `class` takes its parent dir name). The weights file stores the size and node types and is compatible with the `gcnii_star` files of deepblue. To serve it, set `[gcnii] weights = "w.bin"` (and optionally `classes`) in `config.toml`, then `POST /v1/gcnii/infer` with `{"graph": {"n": 4, "edges": [[0,1],[1,2]]}}` answers `{"class", "index", "logits", "probabilities", "nodes", "edges"}`; `POST /v1/gcnii/embed` with `{"graph": {...}, "normalize": true}` answers `{"embedding", "dim"}`.
 
+### Per-user training and inference over HTTP
+
+With `[gcnii] models_dir` set (gligabao sets it, through `$SARGO_GCNII_MODELS_DIR`, to `sargo_gcnii_dir`), sargo trains and serves one GCNII* model **per user id**, saved in `<models_dir>/<hex of the user id>/` (`model.weights`, `classes.json`) and loaded on first use:
+
+- `POST /v1/gcnii/train` with `{"user_id", "graphs": [{"n", "edges", "nodes"?, "class"}, ...], "epochs"?, "lr"?, "batch"?, "hidden"?, "depth"?, "seed"?}` checks the data and starts the training on a background thread: `202 {"user_id", "job"}`. `400` bad data, `409` if that user is already training, `503` without `models_dir`.
+- `POST /v1/gcnii/train/status` with `{"user_id"}` answers `{"user_id", "trained", "job"}`; `job.status` is `running`, `done` (with `accuracy` and `loss` on the training graphs) or `failed` (with `error`). A finished training replaces the user's model.
+- `POST /v1/gcnii/infer` and `/v1/gcnii/embed` take an optional `"user_id"`: with it they use that user's model (`404` if the user has none), without it the global `[gcnii] weights` model.
+
+gligabao's Go side (`internal/sargo/gcnii.go`, `internal/api/model`) starts sargo once at startup and then only calls these endpoints; see `docs/gcnii.md`.
+
 ## Embedded in the gligabao binary
 
 `./run_build.sh --sargo` (in the repo root) builds sargo as a static musl binary (`./run_build_rust.sh --embed`: needs cargo and
@@ -55,7 +65,7 @@ build machine; without `--sargo`, `bin/` only holds `.gitkeep` and the gligabao 
 
 `config.toml` (all keys optional, the shipped file lists the defaults): `[server]` address, read timeout and
 max body size; `[http_client]` provider timeout; `[providers.anthropic]` / `[providers.openai]` base URL and the
-name of the env var holding the API key (keys are never in the file); `[gcnii]` the weights file and class names. Unknown keys are rejected.
+name of the env var holding the API key (keys are never in the file); `[gcnii]` the weights file, class names and `models_dir` (per-user models; `$SARGO_GCNII_MODELS_DIR` overrides it). Unknown keys are rejected.
 It is loaded once in `src/main.rs` into the `Config` struct (`src/config.rs`) and passed by reference to the
 server and the providers. If no config path is given and `./config.toml` does not exist, defaults are used.
 

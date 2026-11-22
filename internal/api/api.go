@@ -8,6 +8,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/datasets"
 	evalsapi "github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/api/mcp"
+	"github.com/deepblue-phoenix/gligabao/internal/api/model"
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
@@ -80,6 +81,12 @@ func Register(mux *http.ServeMux,
 	evalsapi.Register(mux,
 		a,
 		o.evals)
+	if o.gcnii != nil {
+		mux.Handle("POST /v1/gb/model/train", a(model.Train(o.gcnii)))
+		mux.Handle("GET /v1/gb/model/train", a(model.TrainStatus(o.gcnii)))
+		mux.Handle("POST /v1/gb/model/infer", a(model.Infer(o.gcnii)))
+		mux.Handle("POST /v1/gb/model/embed", a(model.Embed(o.gcnii)))
+	}
 	if o.research != nil {
 		o.research.UseMemory(researchMemory(mgr,
 			d,
@@ -251,6 +258,7 @@ type options struct {
 	trainingHook  memory_core.ClassifyingTrainingHook
 	research      *agent_research.Manager
 	evals         *evalsapi.Service
+	gcnii         model.Service
 }
 
 // Option configures Register.
@@ -294,6 +302,11 @@ func WithResearch(m *agent_research.Manager) Option { return func(o *options) { 
 // WithEvals adds the routes of the user evals to Register (GET /v1/gb/evals, ... see package api/evals, under the same WithAuth as the other
 // routes of users): s works on the evals of the user of each request. Without it (or with nil) there are none.
 func WithEvals(s *evalsapi.Service) Option { return func(o *options) { o.evals = s } }
+
+// WithGCNII adds the routes of the per-user models (GCNII*) to Register (POST and GET /v1/gb/model/train, POST /v1/gb/model/infer and
+// /v1/gb/model/embed, see package api/model, under the same WithAuth as the other routes of users): s is sargo, which trains and runs the model of
+// each user. Without it (or with nil) there are none.
+func WithGCNII(s model.Service) Option { return func(o *options) { o.gcnii = s } }
 
 // WithOntologyDirs sets the directories ontology documents can be loaded from by file name (POST and PUT /v1/gb/ontologies with
 // "file"), searched in order. Without them only the "content" form works.

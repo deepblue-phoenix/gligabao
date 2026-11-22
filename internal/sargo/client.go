@@ -58,7 +58,7 @@ func New(baseURL string,
 
 // APIError is an error reply from the sargo server (ErrorResponse in the schema).
 type APIError struct {
-	// Status is the HTTP status: 400 bad request (do not retry as is), 404 unknown path, 500 internal error, 502 the model
+	// Status is the HTTP status: 400 bad request (do not retry as is), 404 unknown path (or a user with no GCNII* model), 409 the user is already training, 500 internal error, 502 the model
 	// provider failed (may be retried), 503 the provider is not configured in sargo.
 	Status  int
 	Message string
@@ -119,7 +119,7 @@ func (c *Client) Health(ctx context.Context) error {
 	return nil
 }
 
-// do sends the request and returns the body of a 200 reply. The body is sent with a Content-Length (sargo does not accept chunked).
+// do sends the request and returns the body of a 2xx reply (200, or 202 for a started GCNII* training). The body is sent with a Content-Length (sargo does not accept chunked).
 func (c *Client) do(ctx context.Context,
 	method,
 	path string,
@@ -151,7 +151,7 @@ func (c *Client) do(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("sargo: read reply: %w", err)
 	}
-	if httpResp.StatusCode != http.StatusOK {
+	if httpResp.StatusCode < 200 || httpResp.StatusCode > 299 {
 		return nil, newAPIError(httpResp.StatusCode, data)
 	}
 	return data, nil

@@ -1,0 +1,267 @@
+package sargo
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// GCNIINode is one node of a GCNII* graph document; both fields are optional (the type is what the model sees, the name is only a label).
+type GCNIINode struct {
+	Name string `json:"name,omitempty"`
+	Type string `json:"type,omitempty"`
+}
+
+// GCNIIGraph is the graph document of the GCNII* endpoints: N nodes numbered 0..N-1, undirected Edges between them, and optional Nodes
+// (one per node). Class is the label of a graph in a training request (required there, ignored by inference).
+type GCNIIGraph struct {
+	N     int         `json:"n"`
+	Edges [][2]int    `json:"edges"`
+	Nodes []GCNIINode `json:"nodes,omitempty"`
+	Class string      `json:"class,omitempty"`
+}
+
+// GCNIITrainRequest starts the training of the GCNII* model of one user (POST /v1/gcnii/train). The model is the user's: every other
+// user keeps their own. Zero numbers take sargo's defaults (30 epochs, lr 0.01, batch 4, hidden 16, depth 16, random seed).
+type GCNIITrainRequest struct {
+	UserID string       `json:"user_id"`
+	Graphs []GCNIIGraph `json:"graphs"`
+	Epochs int          `json:"epochs,omitempty"`
+	LR     float64      `json:"lr,omitempty"`
+	Batch  int          `json:"batch,omitempty"`
+	Hidden int          `json:"hidden,omitempty"`
+	Depth  int          `json:"depth,omitempty"`
+	Seed   *uint64      `json:"seed,omitempty"`
+}
+
+// GCNII job states (GCNIIJob.Status).
+const (
+	GCNIIJobRunning = "running"
+	GCNIIJobDone    = "done"
+	GCNIIJobFailed  = "failed"
+)
+
+// GCNIIJob is a training of one user, as sargo reports it.
+type GCNIIJob struct {
+	Status       string   `json:"status"`
+	Graphs       int      `json:"graphs"`
+	Classes      []string `json:"classes"`
+	Epochs       int      `json:"epochs"`
+	StartedUnix  int64    `json:"started_unix"`
+	FinishedUnix int64    `json:"finished_unix,omitempty"`
+	// Accuracy and Loss are measured on the training graphs, once the job is done.
+	Accuracy *float64 `json:"accuracy,omitempty"`
+	Loss     *float64 `json:"loss,omitempty"`
+	// Error is why a failed job failed.
+	Error string `json:"error,omitempty"`
+}
+
+// GCNIITrainResponse is the answer to a started training (the job is running).
+type GCNIITrainResponse struct {
+	UserID string   `json:"user_id"`
+	Job    GCNIIJob `json:"job"`
+}
+
+// GCNIIStatus is the training state of one user: whether they have a trained model, and their last job (nil if sargo started none since
+// it was started).
+type GCNIIStatus struct {
+	UserID  string    `json:"user_id"`
+	Trained bool      `json:"trained"`
+	Job     *GCNIIJob `json:"job"`
+}
+
+// GCNIIInferRequest classifies one graph with the model of UserID. Classes, if given, names the outputs instead of the names of the
+// training.
+type GCNIIInferRequest struct {
+	UserID  string     `json:"user_id"`
+	Graph   GCNIIGraph `json:"graph"`
+	Classes []string   `json:"classes,omitempty"`
+}
+
+// GCNIIInferResponse is the class of a graph.
+type GCNIIInferResponse struct {
+	Class         string             `json:"class"`
+	Index         int                `json:"index"`
+	Logits        []float64          `json:"logits"`
+	Probabilities map[string]float64 `json:"probabilities"`
+	Nodes         int                `json:"nodes"`
+	Edges         int                `json:"edges"`
+}
+
+// GCNIIEmbedRequest embeds one graph with the model of UserID.
+type GCNIIEmbedRequest struct {
+	UserID    string     `json:"user_id"`
+	Graph     GCNIIGraph `json:"graph"`
+	Normalize bool       `json:"normalize,omitempty"`
+}
+
+// GCNIIEmbedResponse is the embedding of a graph: Dim floats.
+type GCNIIEmbedResponse struct {
+	Embedding []float64 `json:"embedding"`
+	Dim       int       `json:"dim"`
+}
+
+//---------------------------------------------------------------------------------------------
+
+// ErrInvalidGCNII wraps every error of the checks the client makes before sending a GCNII* request (nothing was sent).
+var ErrInvalidGCNII = errors.New("sargo: invalid gcnii request")
+
+func invalidGCNII(format string,
+	args ...any) error {
+	return fmt.Errorf("%w: "+format,
+		append([]any{ErrInvalidGCNII}, args...)...)
+}
+
+// Validate checks the graph: node count and edge endpoints (sargo checks again, this saves the round trip).
+func (g GCNIIGraph) Validate() error {
+	if g.N < 1 {
+		return invalidGCNII("graph: n must be >= 1")
+	}
+	if len(g.Nodes) != 0 && len(g.Nodes) != g.N {
+		return invalidGCNII("graph: %d nodes entries for n = %d",
+			len(g.Nodes),
+			g.N)
+	}
+	for i, e := range g.Edges {
+		if e[0] < 0 || e[1] < 0 || e[0] >= g.N || e[1] >= g.N {
+			return invalidGCNII("graph: edge %d (%d, %d) is outside 0..%d",
+				i,
+				e[0],
+				e[1],
+				g.N-1)
+		}
+	}
+	return nil
+}
+
+// Validate checks the request: a user, at least one graph, each valid and with a class, and non-negative options.
+func (r *GCNIITrainRequest) Validate() error {
+	if err := validateGCNIIUser(r.UserID); err != nil {
+		return err
+	}
+	if len(r.Graphs) == 0 {
+		return invalidGCNII("train: no graphs")
+	}
+	if r.Epochs < 0 || r.LR < 0 || r.Batch < 0 || r.Hidden < 0 || r.Depth < 0 {
+		return invalidGCNII("train: epochs, lr, batch, hidden and depth must not be negative")
+	}
+	for i, g := range r.Graphs {
+		if err := g.Validate(); err != nil {
+			return fmt.Errorf("graphs[%d]: %w",
+				i,
+				err)
+		}
+		if strings.TrimSpace(g.Class) == "" {
+			return invalidGCNII("train: graphs[%d] has no class",
+				i)
+		}
+	}
+	return nil
+}
+
+func validateGCNIIUser(userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return invalidGCNII("user_id is required")
+	}
+	return nil
+}
+
+//---------------------------------------------------------------------------------------------
+
+// GCNIITrain starts the training of the model of req.UserID (POST /v1/gcnii/train). It returns as soon as sargo has accepted the job;
+// follow it with GCNIITrainStatus. A user that is already training gets an *APIError with status 409; sargo without per-user models
+// ([gcnii] models_dir) 503.
+func (c *Client) GCNIITrain(ctx context.Context,
+	req *GCNIITrainRequest) (*GCNIITrainResponse, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	var resp GCNIITrainResponse
+	if err := c.postJSON(ctx,
+		"/v1/gcnii/train",
+		req,
+		&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GCNIITrainStatus reports the training of one user (POST /v1/gcnii/train/status).
+func (c *Client) GCNIITrainStatus(ctx context.Context,
+	userID string) (*GCNIIStatus, error) {
+	if err := validateGCNIIUser(userID); err != nil {
+		return nil, err
+	}
+	var resp GCNIIStatus
+	if err := c.postJSON(ctx,
+		"/v1/gcnii/train/status",
+		map[string]string{"user_id": userID},
+		&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GCNIIInfer classifies a graph with the model of req.UserID (POST /v1/gcnii/infer). A user without a trained model gets an *APIError
+// with status 404.
+func (c *Client) GCNIIInfer(ctx context.Context,
+	req *GCNIIInferRequest) (*GCNIIInferResponse, error) {
+	if err := validateGCNIIUser(req.UserID); err != nil {
+		return nil, err
+	}
+	if err := req.Graph.Validate(); err != nil {
+		return nil, err
+	}
+	var resp GCNIIInferResponse
+	if err := c.postJSON(ctx,
+		"/v1/gcnii/infer",
+		req,
+		&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GCNIIEmbed embeds a graph with the model of req.UserID (POST /v1/gcnii/embed). A user without a trained model gets an *APIError with
+// status 404.
+func (c *Client) GCNIIEmbed(ctx context.Context,
+	req *GCNIIEmbedRequest) (*GCNIIEmbedResponse, error) {
+	if err := validateGCNIIUser(req.UserID); err != nil {
+		return nil, err
+	}
+	if err := req.Graph.Validate(); err != nil {
+		return nil, err
+	}
+	var resp GCNIIEmbedResponse
+	if err := c.postJSON(ctx,
+		"/v1/gcnii/embed",
+		req,
+		&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// postJSON POSTs in as JSON to path and decodes the reply into out.
+func (c *Client) postJSON(ctx context.Context,
+	path string,
+	in any,
+	out any) error {
+	body, err := json.Marshal(in)
+	if err != nil {
+		return fmt.Errorf("sargo: marshal request: %w", err)
+	}
+	data, err := c.do(ctx,
+		"POST",
+		path,
+		body)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("sargo: decode reply: %w", err)
+	}
+	return nil
+}

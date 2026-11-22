@@ -213,6 +213,10 @@ type Config struct {
 	// SargoConfig is a sargo config file used instead of the default one embedded in the binary (only with sargo = true). A relative path is
 	// relative to the config file. The server address sargo listens on is the one in that file.
 	SargoConfig string `toml:"sargo_config"`
+	// SargoGCNIIDir is the directory sargo saves the GCNII* models of the users in, one subdirectory per user (only with sargo = true; the
+	// models are trained and used through POST /v1/gb/model/train and /infer). A relative path is relative to the config file. Default:
+	// a "gcnii_models" directory in the working directory.
+	SargoGCNIIDir string `toml:"sargo_gcnii_dir"`
 	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
 	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
 	SidecarURL string `toml:"sidecar_url"`
@@ -632,6 +636,9 @@ func (c *Config) resolveDirs(base string) {
 	}
 	if c.SargoConfig != "" && !filepath.IsAbs(c.SargoConfig) {
 		c.SargoConfig = filepath.Join(base, c.SargoConfig)
+	}
+	if c.SargoGCNIIDir != "" && !filepath.IsAbs(c.SargoGCNIIDir) {
+		c.SargoGCNIIDir = filepath.Join(base, c.SargoGCNIIDir)
 	}
 	if c.EvalsLocalDir != "" && !filepath.IsAbs(c.EvalsLocalDir) {
 		c.EvalsLocalDir = filepath.Join(base, c.EvalsLocalDir)

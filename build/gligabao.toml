@@ -95,6 +95,9 @@ sargo = false
 # A sargo config file to use instead of the default one embedded in the binary (relative to this file). Its [server] address is where
 # sargo listens (default 127.0.0.1:8431). `gligabao sargo config` prints the default.
 # sargo_config = "sargo.toml"
+# Directory sargo saves the per-user GCNII* models in (one subdirectory per user; trained with POST /v1/gb/model/train, used by
+# /v1/gb/model/infer and /embed). Relative to this file. Default: a gcnii_models directory in the working directory.
+# sargo_gcnii_dir = "gcnii_models"
 
 # Directory the files of trained models are fetched to for a deployment, one subdirectory per training job (gligabao
 # never deletes them). Default: a trained_models directory next to the database file (build/trained_models).

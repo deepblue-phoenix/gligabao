@@ -26,6 +26,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	evalsroutes "github.com/deepblue-phoenix/gligabao/internal/api/evals"
+	modelapi "github.com/deepblue-phoenix/gligabao/internal/api/model"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
@@ -173,6 +174,9 @@ type Options struct {
 	// ClassifyingTrainingHook is the classifying training hook (see memory_core.ClassifyingTrainingHook), served as
 	// POST /v1/gb/datasets/{name}/training. Nil: the route is not mounted.
 	ClassifyingTrainingHook memory_core.ClassifyingTrainingHook
+	// GCNII serves the per-user model routes (POST and GET /v1/gb/model/train, POST /v1/gb/model/infer and /embed): it is sargo, the Rust
+	// server gligabao started, which trains and runs the models over HTTP (a *sargo.Client). Nil: the routes are not mounted.
+	GCNII modelapi.Service
 	// Geo turns the geo stage of remember on (with GeoResolver, or Nominatim if there is none); a GeoResolver turns it on by itself.
 	Geo bool
 	// GeoRadiusKm is the default radius, in kilometers, within which query looks for the geo entities near the places of a question
@@ -358,6 +362,7 @@ func NewHandler(ctx context.Context,
 		adminExts,
 		nil,
 		nil,
+		nil,
 		extraAdminDBs...)
 }
 
@@ -418,6 +423,7 @@ func newMux(ctx context.Context,
 	adminExts []admin.Extension,
 	prices *llm.PriceTable,
 	evalSvc *evalsroutes.Service,
+	gcniiSvc modelapi.Service,
 	extraAdminDBs ...admin.Named) http.Handler {
 	geoResolver = startGeoManager(ctx,
 		geoResolver,
@@ -465,7 +471,8 @@ func newMux(ctx context.Context,
 		api.WithGraphEmbedder(graphEmbedder),
 		api.WithClassifyingTrainingHook(trainingHook),
 		api.WithResearch(research),
-		api.WithEvals(evalSvc))
+		api.WithEvals(evalSvc),
+		api.WithGCNII(gcniiSvc))
 	if mcpEnable {
 		api.RegisterMCP(mux,
 			mgr,
@@ -1259,6 +1266,7 @@ func prepare(ctx context.Context,
 		adminExts,
 		llm.NewPriceTable(opts.Prices),
 		evalSvc,
+		opts.GCNII,
 		extra...)
 	// The agents that have a schedule start running by it now that their knowledge base is set up (by newMux). They stop with mgrCtx.
 	if n := research.RunSchedules(); n > 0 {

@@ -91,6 +91,25 @@ pub fn load_dataset(path: &Path) -> Result<(Vec<Sample>, Vec<String>), String> {
     if examples.is_empty() {
         return Err(format!("no graphs found in {}", path.display()));
     }
+    build_samples(examples)
+}
+
+/// The samples and classes of graph documents already in memory (a training request), each carrying its `"class"`.
+/// Same result as `load_dataset`; the graphs are named `graphs[i]` in messages.
+pub fn samples_from_values(docs: &[serde_json::Value]) -> Result<(Vec<Sample>, Vec<String>), String> {
+    if docs.is_empty() {
+        return Err("no graphs to train on".to_string());
+    }
+    docs.iter()
+        .enumerate()
+        .map(|(i, doc)| parse_example(format!("graphs[{i}]"), &doc.to_string(), None))
+        .collect::<Result<Vec<_>, String>>()
+        .and_then(build_samples)
+}
+
+fn build_samples(
+    examples: Vec<(String, String, serde_json::Value)>,
+) -> Result<(Vec<Sample>, Vec<String>), String> {
     let classes: Vec<String> = examples
         .iter()
         .map(|e| e.1.clone())
@@ -133,6 +152,19 @@ mod tests {
         assert_eq!(samples.iter().map(|s| s.label).collect::<Vec<_>>(), vec![0, 1, 1]);
         assert_eq!(count_classes(&dir), 2);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn samples_from_documents() {
+        let docs: Vec<serde_json::Value> = vec![
+            serde_json::json!({"n":2,"edges":[[0,1]],"class":"b"}),
+            serde_json::json!({"n":2,"edges":[],"class":"a"}),
+        ];
+        let (samples, classes) = samples_from_values(&docs).unwrap();
+        assert_eq!(classes, vec!["a", "b"]);
+        assert_eq!(samples.len(), 2);
+        assert!(samples_from_values(&[serde_json::json!({"n":1,"edges":[]})]).is_err());
+        assert!(samples_from_values(&[]).is_err());
     }
 
     #[test]

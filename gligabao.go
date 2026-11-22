@@ -11,14 +11,17 @@ package gligabao
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	modelapi "github.com/deepblue-phoenix/gligabao/internal/api/model"
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
@@ -300,36 +303,67 @@ func Serve(ctx context.Context,
 	opts ServeOptions) error {
 	serverOpts, restore := serverOptions(cfg, opts)
 	defer restore()
-	stopSargo, err := startSargo(ctx, cfg)
+	sargoClient, stopSargo, err := startSargo(ctx, cfg)
 	if err != nil {
 		return err
 	}
 	defer stopSargo()
+	serverOpts.GCNII = gcniiService(sargoClient)
 	return server.Run(ctx, serverOpts)
 }
 
-// startSargo starts the embedded sargo server if the config asks for it (sargo = true) and returns the function that stops it; with sargo
-// off it does nothing. The sargo child gets the API keys of the config (they may come from a secret store and not the environment). The
+// startSargo starts the embedded sargo server if the config asks for it (sargo = true) and returns the client that talks to it and the
+// function that stops it; with sargo off it does nothing (a nil client). This is the only place sargo is started, once, at startup: from
+// then on gligabao only talks to it over HTTP (the GCNII* training and inference routes use the client). The sargo child gets the API
+// keys of the config (they may come from a secret store and not the environment) and the directory of the models of the users. The
 // stop function is safe to call more than once.
 func startSargo(ctx context.Context,
-	cfg *Config) (stop func(), err error) {
+	cfg *Config) (client *sargo.Client, stop func(), err error) {
 	if cfg == nil || !cfg.Sargo {
-		return func() {}, nil
+		return nil, func() {}, nil
+	}
+	modelsDir, err := sargoGCNIIDir(cfg)
+	if err != nil {
+		return nil, nil, err
 	}
 	server, err := sargo.StartServer(ctx,
 		sargo.ServerOptions{
 			ConfigPath: cfg.SargoConfig,
-			Env:        sargoEnv(cfg),
+			Env:        append(sargoEnv(cfg), "SARGO_GCNII_MODELS_DIR="+modelsDir),
 			Stderr:     os.Stderr,
 		})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	log.WithFields(log.Fields{
-		"addr":   server.Addr,
-		"config": server.ConfigPath,
+		"addr":        server.Addr,
+		"config":      server.ConfigPath,
+		"gcnii_users": modelsDir,
 	}).Info("sargo started")
-	return func() { _ = server.Stop() }, nil
+	return server.Client, func() { _ = server.Stop() }, nil
+}
+
+// sargoGCNIIDir is the absolute directory sargo keeps the GCNII* models of the users in: sargo_gcnii_dir, else "gcnii_models" in the working
+// directory (absolute, because sargo runs from its own temporary directory).
+func sargoGCNIIDir(cfg *Config) (string, error) {
+	dir := cfg.SargoGCNIIDir
+	if dir == "" {
+		dir = "gcnii_models"
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("sargo gcnii models directory: %w", err)
+	}
+	return abs, nil
+}
+
+// gcniiService is the GCNII* service of the server: the sargo client, or nil (which leaves the routes unmounted) when sargo is off. A nil
+// *sargo.Client must not become a non-nil interface, hence the check.
+func gcniiService(client *sargo.Client) modelapi.Service {
+	if client == nil {
+		return nil
+	}
+	return client
 }
 
 // sargoEnv is the provider keys of the config as the environment variables sargo's default config names; unset keys are left out, so the
@@ -376,11 +410,12 @@ func Mount(ctx context.Context,
 	mount MountOptions) (release func(), err error) {
 	serverOpts, restore := serverOptions(cfg, opts)
 	serverOpts.Addr = ""
-	stopSargo, err := startSargo(ctx, cfg)
+	sargoClient, stopSargo, err := startSargo(ctx, cfg)
 	if err != nil {
 		restore()
 		return nil, err
 	}
+	serverOpts.GCNII = gcniiService(sargoClient)
 	rel, err := server.Mount(ctx,
 		serverOpts,
 		mount.Mux,
