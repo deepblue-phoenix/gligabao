@@ -16,11 +16,23 @@ cargo run -- path/to/config.toml                        # or SARGO_CONFIG=path/t
 cargo test
 ```
 
+## GCNII* graph classifier
+
+sargo also holds GCNII* (the untied GCNII variant), ported from the deepblue engine of baby_thinker (`src/gcnii/`), with training and inference on the CPU.
+
+```sh
+sargo gcnii train DIR --save w.bin [--epochs 30] [--lr 0.01] [--batch 4] [--hidden 16] [--depth 16] [--seed N]
+sargo gcnii eval DIR --load w.bin
+sargo gcnii infer graph.json --load w.bin [--classes a,b]
+```
+
+DIR holds graph documents `{"n": N, "edges": [[a,b],...], "nodes": [{"name", "type"}, ...], "class": "..."}` as `.json` files or `.jsonl` lines (a `.json` without `class` takes its parent dir name). The weights file stores the size and node types and is compatible with the `gcnii_star` files of deepblue. To serve it, set `[gcnii] weights = "w.bin"` (and optionally `classes`) in `config.toml`, then `POST /v1/gcnii/infer` with `{"graph": {"n": 4, "edges": [[0,1],[1,2]]}}` answers `{"class", "index", "logits", "probabilities", "nodes", "edges"}`.
+
 ## Config
 
 `config.toml` (all keys optional, the shipped file lists the defaults): `[server]` address, read timeout and
 max body size; `[http_client]` provider timeout; `[providers.anthropic]` / `[providers.openai]` base URL and the
-name of the env var holding the API key (keys are never in the file). Unknown keys are rejected.
+name of the env var holding the API key (keys are never in the file); `[gcnii]` the weights file and class names. Unknown keys are rejected.
 It is loaded once in `src/main.rs` into the `Config` struct (`src/config.rs`) and passed by reference to the
 server and the providers. If no config path is given and `./config.toml` does not exist, defaults are used.
 

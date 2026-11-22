@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.228.0] - 2026-11-22
+
+The sargo Rust binary has the GCNII* graph classifier, ported from the deepblue engine of baby_thinker, for both inference and training.
+
+### Added
+- `sargo gcnii train DIR --save FILE` trains a GCNII* model (CPU, mini-batch SGD) on a dataset of graph documents (`.json` / `.jsonl`, each with a `class`), `sargo gcnii eval DIR --load FILE` reports accuracy and loss, and `sargo gcnii infer GRAPH.json --load FILE` prints the class and probabilities as JSON. Flags: `--epochs`, `--lr`, `--batch`, `--seed`, `--hidden`, `--depth`, `--num-classes`, `--classes`.
+- `POST /v1/gcnii/infer` in the sargo server (body `{"graph": {...}, "classes": [...]}`), enabled by the new `[gcnii]` config section (`weights` file, optional `classes` names). sargo can now start with only the GCNII* model and no model provider key.
+- The weights file is the same format as the `gcnii_star` files of deepblue, so weights trained there load here and the other way round.
+
 ## [0.227.0] - 2026-11-22
 
 Eval results can be bookmarked, at any level of the evals data model, to review them later.

@@ -11,11 +11,13 @@
 //!   providers/      the providers
 //!     mod.rs          the `Provider` trait
 //!     anthropic.rs, openai.rs   one provider each (format translation, tool calling)
+//!   gcnii/          the GCNII* graph classifier: inference and training (`sargo gcnii ...`, `POST /v1/gcnii/infer`)
 //!   types.rs        the neutral request/response structs
 //!   json_util.rs, error.rs     small helpers
 
 pub mod config;
 pub mod error;
+pub mod gcnii;
 pub mod http_client;
 pub mod http_server;
 pub mod json_util;

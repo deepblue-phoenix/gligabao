@@ -22,6 +22,16 @@ pub struct Config {
     pub server: ServerConfig,
     pub http_client: HttpClientConfig,
     pub providers: ProvidersConfig,
+    pub gcnii: GcniiConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct GcniiConfig {
+    /// Weights file of a trained GCNII* model (`sargo gcnii train`). Empty = the endpoint is disabled.
+    pub weights: String,
+    /// Class names of the outputs, in order (the sorted class names of the training data). Optional.
+    pub classes: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,6 +138,7 @@ mod tests {
         assert_eq!(config.server.address, "127.0.0.1:8431");
         assert_eq!(config.http_client.timeout_secs, 300);
         assert_eq!(config.providers.openai.api_key_env, "OPENAI_API_KEY");
+        assert_eq!(config.gcnii.weights, "");
     }
 
     #[test]

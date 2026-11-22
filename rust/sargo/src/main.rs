@@ -6,6 +6,12 @@ use sargo::providers::{AnthropicProvider, OpenAiProvider};
 use sargo::router::Router;
 
 fn main() {
+    // `sargo gcnii train|eval|infer ...`: the GCNII* command line, no server
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("gcnii") {
+        std::process::exit(sargo::gcnii::cli::run(&args[1..]));
+    }
+
     // The config is loaded once and then only borrowed (`&config`, `&config.server`, ...).
     let config = match Config::load() {
         Ok(config) => config,
@@ -24,9 +30,21 @@ fn main() {
         OpenAiProvider::new(&key, &config.providers.openai, &config.http_client)
     });
 
-    if anthropic.is_none() && openai.is_none() {
+    // the optional GCNII* model of `[gcnii] weights`
+    let gcnii = match config.gcnii.weights.as_str() {
+        "" => None,
+        path => match sargo::gcnii::weights::load(std::path::Path::new(path)) {
+            Ok(model) => Some(model),
+            Err(message) => {
+                eprintln!("{}", message);
+                std::process::exit(1);
+            }
+        },
+    };
+
+    if anthropic.is_none() && openai.is_none() && gcnii.is_none() {
         eprintln!(
-            "no provider enabled: set {} and/or {}",
+            "no provider enabled: set {} and/or {} (or [gcnii] weights)",
             config.providers.anthropic.api_key_env, config.providers.openai.api_key_env
         );
         std::process::exit(1);
@@ -35,6 +53,10 @@ fn main() {
     // `router` owns the providers. The server only borrows it (`&router`) and runs until killed;
     // `router` lives until the end of `main`, so the borrow is always valid.
     let router = Router::new(anthropic, openai);
+    let router = match gcnii {
+        Some(model) => router.with_gcnii(model, config.gcnii.classes.clone()),
+        None => router,
+    };
     let server = StdHttpServer::new(&config.server);
     if let Err(message) = server.serve(&router) {
         eprintln!("{}", message);

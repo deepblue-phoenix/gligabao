@@ -4,6 +4,7 @@
 //!
 //! Endpoints:
 //!   POST /v1/infer   body: InferenceRequest JSON  ->  InferenceResponse JSON
+//!   POST /v1/gcnii/infer   body: {"graph": {...}} -> GCNII* class + probabilities (needs `[gcnii] weights`)
 //!   GET  /health     ->  {"status":"ok"}
 //! Errors are `{"error": "..."}` with status 400 (bad request), 502 (provider failed),
 //! 503 (provider not configured).
@@ -14,6 +15,9 @@
 //! (`&`) to the provider. Nothing is cloned on the way.
 
 use crate::error::RouterError;
+use crate::gcnii::graph::Graph;
+use crate::gcnii::model::GcniiStar;
+use crate::gcnii::train::infer as gcnii_infer;
 use crate::http_server::{HttpRequest, HttpResponse, RequestHandler};
 use crate::providers::{AnthropicProvider, OpenAiProvider, Provider};
 use crate::types::{InferenceRequest, InferenceResponse};
@@ -23,12 +27,47 @@ pub struct Router {
     /// `None` = no API key was configured for that provider.
     anthropic: Option<AnthropicProvider>,
     openai: Option<OpenAiProvider>,
+    /// A loaded GCNII* model and its class names; `None` = `POST /v1/gcnii/infer` is disabled.
+    gcnii: Option<(GcniiStar, Vec<String>)>,
 }
 
 impl Router {
     /// Takes ownership of the providers (moved in).
     pub fn new(anthropic: Option<AnthropicProvider>, openai: Option<OpenAiProvider>) -> Router {
-        Router { anthropic, openai }
+        Router {
+            anthropic,
+            openai,
+            gcnii: None,
+        }
+    }
+
+    /// The same router with a GCNII* model served at `POST /v1/gcnii/infer`.
+    pub fn with_gcnii(self, model: GcniiStar, classes: Vec<String>) -> Router {
+        Router {
+            gcnii: Some((model, classes)),
+            ..self
+        }
+    }
+
+    /// `POST /v1/gcnii/infer`: body `{"graph": {n, edges, nodes?}, "classes": [..]?}` (a bare graph document
+    /// is accepted too); `classes` overrides the configured class names.
+    fn gcnii_infer(&self, body: &[u8]) -> Result<serde_json::Value, RouterError> {
+        let (model, configured) = self
+            .gcnii
+            .as_ref()
+            .ok_or_else(|| RouterError::new(503, "gcnii is not configured (set [gcnii] weights)"))?;
+        let doc: serde_json::Value = serde_json::from_slice(body)
+            .map_err(|err| RouterError::new(400, &format!("invalid request JSON: {}", err)))?;
+        let graph = Graph::from_value(doc.get("graph").unwrap_or(&doc))
+            .map_err(|err| RouterError::new(400, &format!("invalid graph: {}", err)))?;
+        let classes: Vec<String> = match doc.get("classes").and_then(|c| c.as_array()) {
+            Some(names) => names
+                .iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect(),
+            None => configured.clone(),
+        };
+        Ok(gcnii_infer(model, &graph, &classes))
     }
 
     /// Finds the provider called `name`. The result BORROWS from `self`: it is a reference to a
@@ -72,6 +111,10 @@ impl RequestHandler for Router {
                         &format!("cannot encode reply: {}", err),
                     )),
                 },
+                Err(err) => error_response(&err),
+            },
+            ("POST", "/v1/gcnii/infer") => match self.gcnii_infer(&request.body) {
+                Ok(answer) => HttpResponse::json(200, answer.to_string()),
                 Err(err) => error_response(&err),
             },
             _ => error_response(&RouterError::new(404, "not found")),

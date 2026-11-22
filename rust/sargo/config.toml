@@ -18,6 +18,13 @@ timeout_secs = 300
 
 # A provider is enabled when the environment variable named in `api_key_env` is set and not empty.
 # API keys are never stored in this file. At least one provider must be enabled.
+# GCNII* graph classifier (POST /v1/gcnii/infer). Train weights with `sargo gcnii train`.
+[gcnii]
+# Weights file; empty = endpoint disabled.
+weights = ""
+# Class names of the outputs, in order (optional).
+classes = []
+
 [providers.anthropic]
 base_url = "https://api.anthropic.com"
 api_key_env = "ANTHROPIC_API_KEY"
