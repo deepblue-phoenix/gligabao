@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build tool of gligabao: every build sequence and build tool invocation (npm, cargo, go) lives here.
 
-The shell scripts of the repo root (run_build.sh, run_build_rust.sh, run_pypi.sh) are thin wrappers around this file.
+The shell scripts of the repo root (run_build.sh, run_build_rust.sh) are thin wrappers around this file (run_pypi.sh wraps ops/pypi.py, which uses it).
 Only the Python standard library is used (Python 3.9+), so it runs the same on Linux, macOS and Windows.
 
 REQUIREMENT: this program must run on every platform where building is done. A user on Windows runs it on Windows and gets the full
@@ -25,7 +25,7 @@ Usage (run `python3 ops/build.py --help`, or `<command> --help`):
   python3 ops/build.py admin-ui [--no-admin-ui]
   python3 ops/build.py sargo   [--os ..] [--arch ..] [--static] [--embed]
   python3 ops/build.py go      [--os ..] [--arch ..]
-  python3 ops/build.py server  --out FILE [--os ..] [--arch ..]       (release server binary, used by run_pypi.sh)
+  python3 ops/build.py server  --out FILE [--os ..] [--arch ..]       (release server binary, used by ops/pypi.py)
 
 --os and --arch default to the environment variables GOOS and GOARCH, then to the host.
 """
@@ -349,12 +349,21 @@ def build_sargo(target: Target,
 # Pipelines, one per platform
 
 
-def check_sargo_host(target: Target) -> None:
+def sargo_unsupported_reason(target: Target) -> str | None:
+    """Why sargo cannot be built for target on this machine, or None when it can (Rust does not cross-compile like Go)."""
     if target.os != host_os():
-        raise BuildError(
-            f"sargo for {target.os} cannot be built on a {host_os()} host: run this build on {target.os} "
-            "(the Go binaries cross-compile, Rust does not)"
-        )
+        return (f"sargo for {target.os} cannot be built on a {host_os()} host: run this build on {target.os} "
+                "(the Go binaries cross-compile, Rust does not)")
+    if target.os == "linux" and target.arch != host_arch():
+        return (f"sargo for linux/{target.arch} cannot be built on a {host_arch()} host (it needs a musl cross compiler); "
+                "build it on a machine of that architecture")
+    return None
+
+
+def check_sargo_host(target: Target) -> None:
+    reason = sargo_unsupported_reason(target)
+    if reason is not None:
+        raise BuildError(reason)
 
 
 def pipeline(opts: Options) -> None:

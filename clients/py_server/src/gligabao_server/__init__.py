@@ -25,7 +25,7 @@ _BIN_DIR = Path(__file__).resolve().parent / "_bin"
 
 def binary_path() -> str:
     """Path of the bundled gligabao binary. Raises FileNotFoundError if this install has none (for example a
-    source checkout that was not built with run_pypi.sh)."""
+    source checkout that was not built with ops/pypi.py)."""
     name = "gligabao.exe" if sys.platform == "win32" else "gligabao"
     path = _BIN_DIR / name
     if not path.is_file():

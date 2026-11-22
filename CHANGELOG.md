@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.231.2] - 2026-11-22
+
+The PyPI packaging moved into `ops/pypi.py`, and the Linux server wheels now include sargo.
+
+### Added
+- `ops/pypi.py`: the whole pipeline of `run_pypi.sh` (tests, staging, wheels, `twine check`, upload) as portable Python that runs on Linux, macOS and Windows, with one function per platform for the server wheels (`build_server_linux`, `build_server_macos`, `build_server_windows`). New flags: `--build_server_host` (the wheels of the platform it runs on), `--sargo` and `--no-sargo`.
+- The Linux server wheels embed sargo (a static musl build, for the architecture of the build machine); the macOS and Windows wheels hold only the Go server unless `--sargo` is given on that OS. A request this machine cannot build (e.g. sargo for linux/arm64 on amd64) fails before anything is built.
+
+### Changed
+- `run_pypi.sh` is a wrapper that calls `ops/pypi.py` with the same flags.
+- `clients/py_server/hatch_build.py` is now `ops/wheel_platform_tag_hook.py` (copied into each staging directory).
+
 ## [0.231.1] - 2026-11-22
 
 The build logic moved into one Python program, `ops/build.py`, with a pipeline for each of Linux, macOS and Windows.

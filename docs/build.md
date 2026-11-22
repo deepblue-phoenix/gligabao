@@ -17,7 +17,7 @@ python3 ops/build.py all --os linux --arch arm64 --no-admin-ui   # Go cross-comp
 python3 ops/build.py admin-ui                # only admin_ui/dist
 python3 ops/build.py sargo [--static] [--embed]   # only sargo
 python3 ops/build.py go --os windows         # only the Go binaries
-python3 ops/build.py server --out FILE       # one stripped release server binary (used by run_pypi.sh)
+python3 ops/build.py server --out FILE       # one stripped release server binary (used by `ops/pypi.py`)
 ```
 
 | Option | Meaning |
@@ -62,5 +62,5 @@ Shell wrappers: `./run_build.sh [--no-admin-ui] [--sargo]` is `ops/build.py all`
 ## Not done by this program
 
 - The container images (`Dockerfile`, `Dockerfile.sidecar`, `run_build_container.sh`, `run_build_sidecar.sh`) build in their own Docker stages. The `Dockerfile` does not yet include sargo (see `leftover_tasks/`).
-- `run_pypi.sh` keeps the packaging (wheels, twine); only its admin UI and server binary steps call `ops/build.py`. See [pypi.md](pypi.md).
+- The PyPI packaging (staging, wheels, twine, upload) is `ops/pypi.py`, which uses `ops/build.py` for the admin UI, sargo and the server binary. See [pypi.md](pypi.md).
 - Running one OS's pipeline for another OS's sargo (e.g. in CI, use one runner per OS and run `all --sargo` on each).
