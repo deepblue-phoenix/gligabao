@@ -5,6 +5,7 @@
 //! Endpoints:
 //!   POST /v1/infer   body: InferenceRequest JSON  ->  InferenceResponse JSON
 //!   POST /v1/gcnii/infer   body: {"graph": {...}} -> GCNII* class + probabilities (needs `[gcnii] weights`)
+//!   POST /v1/gcnii/embed   body: {"graph": {...}, "normalize": bool?} -> the graph embedding (needs `[gcnii] weights`)
 //!   GET  /health     ->  {"status":"ok"}
 //! Errors are `{"error": "..."}` with status 400 (bad request), 502 (provider failed),
 //! 503 (provider not configured).
@@ -15,6 +16,7 @@
 //! (`&`) to the provider. Nothing is cloned on the way.
 
 use crate::error::RouterError;
+use crate::gcnii::embed::embed as gcnii_embed;
 use crate::gcnii::graph::Graph;
 use crate::gcnii::model::GcniiStar;
 use crate::gcnii::train::infer as gcnii_infer;
@@ -47,6 +49,21 @@ impl Router {
             gcnii: Some((model, classes)),
             ..self
         }
+    }
+
+    /// `POST /v1/gcnii/embed`: body `{"graph": {...}, "normalize": bool?}` -> `{"embedding": [..], "dim": N}`.
+    fn gcnii_embed(&self, body: &[u8]) -> Result<serde_json::Value, RouterError> {
+        let (model, _) = self
+            .gcnii
+            .as_ref()
+            .ok_or_else(|| RouterError::new(503, "gcnii is not configured (set [gcnii] weights)"))?;
+        let doc: serde_json::Value = serde_json::from_slice(body)
+            .map_err(|err| RouterError::new(400, &format!("invalid request JSON: {}", err)))?;
+        let graph = Graph::from_value(doc.get("graph").unwrap_or(&doc))
+            .map_err(|err| RouterError::new(400, &format!("invalid graph: {}", err)))?;
+        let normalize = doc.get("normalize").and_then(|v| v.as_bool()).unwrap_or(false);
+        let embedding = gcnii_embed(model, &graph, normalize);
+        Ok(json!({"embedding": embedding, "dim": embedding.len()}))
     }
 
     /// `POST /v1/gcnii/infer`: body `{"graph": {n, edges, nodes?}, "classes": [..]?}` (a bare graph document
@@ -114,6 +131,10 @@ impl RequestHandler for Router {
                 Err(err) => error_response(&err),
             },
             ("POST", "/v1/gcnii/infer") => match self.gcnii_infer(&request.body) {
+                Ok(answer) => HttpResponse::json(200, answer.to_string()),
+                Err(err) => error_response(&err),
+            },
+            ("POST", "/v1/gcnii/embed") => match self.gcnii_embed(&request.body) {
                 Ok(answer) => HttpResponse::json(200, answer.to_string()),
                 Err(err) => error_response(&err),
             },

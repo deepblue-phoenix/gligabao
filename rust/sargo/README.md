@@ -24,9 +24,13 @@ sargo also holds GCNII* (the untied GCNII variant), ported from the deepblue eng
 sargo gcnii train DIR --save w.bin [--epochs 30] [--lr 0.01] [--batch 4] [--hidden 16] [--depth 16] [--seed N]
 sargo gcnii eval DIR --load w.bin
 sargo gcnii infer graph.json --load w.bin [--classes a,b]
+sargo gcnii embed DIR|graph.json --load w.bin --out e.jsonl [--normalize]
+# train also: [--grad-stats K] [--grad-map K] [--export-embeddings FILE] [--normalize]
 ```
 
-DIR holds graph documents `{"n": N, "edges": [[a,b],...], "nodes": [{"name", "type"}, ...], "class": "..."}` as `.json` files or `.jsonl` lines (a `.json` without `class` takes its parent dir name). The weights file stores the size and node types and is compatible with the `gcnii_star` files of deepblue. To serve it, set `[gcnii] weights = "w.bin"` (and optionally `classes`) in `config.toml`, then `POST /v1/gcnii/infer` with `{"graph": {"n": 4, "edges": [[0,1],[1,2]]}}` answers `{"class", "index", "logits", "probabilities", "nodes", "edges"}`.
+`--grad-stats` / `--grad-map` print the gradient histograms and the per-element gradient map as `@grad` / `@gradmap` lines (format at the top of `src/gcnii/metrics.rs`). `embed` writes JSON lines `{"path", "class"?, "names"?, "embedding"}`.
+
+DIR holds graph documents `{"n": N, "edges": [[a,b],...], "nodes": [{"name", "type"}, ...], "class": "..."}` as `.json` files or `.jsonl` lines (a `.json` without `class` takes its parent dir name). The weights file stores the size and node types and is compatible with the `gcnii_star` files of deepblue. To serve it, set `[gcnii] weights = "w.bin"` (and optionally `classes`) in `config.toml`, then `POST /v1/gcnii/infer` with `{"graph": {"n": 4, "edges": [[0,1],[1,2]]}}` answers `{"class", "index", "logits", "probabilities", "nodes", "edges"}`; `POST /v1/gcnii/embed` with `{"graph": {...}, "normalize": true}` answers `{"embedding", "dim"}`.
 
 ## Config
 

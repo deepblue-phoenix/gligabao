@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.229.0] - 2026-11-22
+
+GCNII* in sargo gets the gradient probes, the gradient statistics and the graph embeddings of the deepblue engine.
+
+### Added
+- `sargo gcnii train --grad-stats K` prints `@gradnames` and one `@grad` line per K steps (gradient histogram and mean norm of every parameter tensor and of the probes `in.dH0` / `Lxx.dH0`), and `--grad-map K` prints `@gradmapshapes` and `@gradmap` lines (mean |gradient| of every element, plus the `dH0.map`). Same line formats as deepblue. Off by default; then nothing extra is computed.
+- `sargo gcnii embed DIR|GRAPH.json --load W --out FILE [--normalize]` writes the graph embeddings (the pooled vector before the head, `hidden` floats) as JSON lines, and `sargo gcnii train --export-embeddings FILE [--normalize]` exports those of the training data after saving the weights.
+- `POST /v1/gcnii/embed` (`{"graph": {...}, "normalize": bool?}` -> `{"embedding", "dim"}`), served with the same `[gcnii] weights` model as `/v1/gcnii/infer`.
+
 ## [0.228.0] - 2026-11-22
 
 The sargo Rust binary has the GCNII* graph classifier, ported from the deepblue engine of baby_thinker, for both inference and training.

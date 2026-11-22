@@ -6,17 +6,21 @@
 //!   features.rs  graph -> initial matrix X, node type vocabulary
 //!   dataset.rs   loading a training / eval dataset
 //!   train.rs     `train`, `evaluate`, `infer`
+//!   metrics.rs   gradient probes, `--grad-stats`, `--grad-map`
+//!   embed.rs     graph embeddings
 //!   weights.rs   the weights file
 //!   math.rs      RNG, matrix products, softmax
 //!   cli.rs       `sargo gcnii train|eval|infer`
 //!
-//! Inference is also served over HTTP, `POST /v1/gcnii/infer` (see `router.rs`), when `[gcnii] weights` is set.
+//! Inference is also served over HTTP, `POST /v1/gcnii/infer` and `POST /v1/gcnii/embed` (see `router.rs`), when `[gcnii] weights` is set.
 
 pub mod cli;
 pub mod dataset;
+pub mod embed;
 pub mod features;
 pub mod graph;
 pub mod math;
+pub mod metrics;
 pub mod model;
 pub mod train;
 pub mod weights;

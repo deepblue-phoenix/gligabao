@@ -8,6 +8,7 @@
 use super::dataset::Sample;
 use super::features::{TypeVocab, MAX_TYPES};
 use super::graph::Graph;
+use super::metrics::{GradMap, GradStats, ProbeStats};
 use super::math::{argmax, softmax, softmax_ce, Rng};
 use super::model::{add_grads, GcniiStar, ModelConfig};
 use serde_json::json;
@@ -20,6 +21,91 @@ pub struct TrainOptions {
     pub hidden: usize,
     pub depth: usize,
     pub seed: u64,
+    /// `--grad-stats K`: one `@grad` line per K steps (None = off, nothing is computed).
+    pub grad_stats: Option<usize>,
+    /// `--grad-map K`: one `@gradmap` line per K steps (None = off).
+    pub grad_map: Option<usize>,
+}
+
+/// The opt-in gradient metrics of a run (see `metrics.rs`); each update returns the next value and prints the
+/// finished records.
+struct Monitor {
+    stats: Option<GradStats>,
+    map: Option<GradMap>,
+}
+
+fn print_line(line: Option<String>) {
+    if let Some(l) = line {
+        println!("{l}");
+    }
+}
+
+impl Monitor {
+    /// Prints the header lines (`@gradnames`, `@gradmapshapes`).
+    fn new(model: &GcniiStar, opts: &TrainOptions) -> Monitor {
+        let probe_names = model.probe_names();
+        let stats = opts.grad_stats.map(|k| {
+            let names: Vec<String> = model.param_names().into_iter().chain(probe_names.clone()).collect();
+            let (gs, header) = GradStats::new(&names, k);
+            println!("{header}");
+            gs
+        });
+        let map = opts.grad_map.map(|k| {
+            let names: Vec<String> = model
+                .param_names()
+                .into_iter()
+                .chain(std::iter::once("dH0.map".to_string()))
+                .collect();
+            let shapes: Vec<(usize, usize)> = model
+                .param_shapes()
+                .into_iter()
+                .chain(std::iter::once((model.cfg.hidden, probe_names.len())))
+                .collect();
+            let (gm, header) = GradMap::new(&names, &shapes, k);
+            println!("{header}");
+            gm
+        });
+        Monitor { stats, map }
+    }
+
+    fn enabled(&self) -> bool {
+        self.stats.is_some() || self.map.is_some()
+    }
+
+    /// One optimizer step: the summed gradients of the batch and the merged probes of its examples.
+    fn on_step(self, grads: &[Vec<f32>], probes: &ProbeStats) -> Monitor {
+        Monitor {
+            stats: self.stats.map(|gs| {
+                let (next, line) = gs.add(grads, probes);
+                print_line(line);
+                next
+            }),
+            map: self.map.map(|gm| {
+                let (next, line) = gm.add(grads, &probes.unit);
+                print_line(line);
+                next
+            }),
+        }
+    }
+
+    /// A @grad record never spans two epochs.
+    fn end_epoch(self) -> Monitor {
+        Monitor {
+            stats: self.stats.map(|gs| {
+                let (next, line) = gs.flush();
+                print_line(line);
+                next
+            }),
+            ..self
+        }
+    }
+
+    fn finish(self) {
+        let flushed = self.end_epoch();
+        if let Some(gm) = flushed.map {
+            print_line(gm.flush().1);
+        }
+    }
 }
 
 /// A sample with its initial matrix X.
@@ -38,12 +124,18 @@ fn featured<'a>(samples: &'a [Sample], vocab: &TypeVocab) -> Vec<Featured<'a>> {
         .collect()
 }
 
-/// (summed loss, number correct) over one batch, after applying one SGD step: returns the next model too.
-fn train_batch(model: GcniiStar, batch: &[&Featured], lr: f32) -> (GcniiStar, f32, usize) {
+/// One optimizer step over a batch: returns the next model, the summed loss, the number correct and the monitor.
+fn train_batch(model: GcniiStar, batch: &[&Featured], lr: f32, monitor: Monitor) -> (GcniiStar, f32, usize, Monitor) {
+    let with_probes = monitor.enabled();
     let results: Vec<_> = batch
         .iter()
-        .map(|f| model.example_grads(&f.sample.graph, &f.x, f.sample.label, batch.len()))
+        .map(|f| model.example_grads(&f.sample.graph, &f.x, f.sample.label, batch.len(), with_probes))
         .collect();
+    let hidden = model.cfg.hidden;
+    let probes = results
+        .iter()
+        .map(|r| ProbeStats::of(&r.probes, hidden))
+        .fold(ProbeStats::default(), |acc, p| acc.merge(&p));
     let loss: f32 = results.iter().map(|r| r.loss).sum();
     let correct = results.iter().filter(|r| r.correct).count();
     let grads = results
@@ -51,7 +143,8 @@ fn train_batch(model: GcniiStar, batch: &[&Featured], lr: f32) -> (GcniiStar, f3
         .map(|r| r.grads)
         .reduce(|a, b| add_grads(a, &b))
         .expect("a batch has at least one example");
-    (model.sgd_step(&grads, lr), loss, correct)
+    let monitor = monitor.on_step(&grads, &probes);
+    (model.sgd_step(&grads, lr), loss, correct, monitor)
 }
 
 /// Trains a new model on the samples. `classes`: the class names (one output each).
@@ -74,17 +167,19 @@ pub fn train(samples: &[Sample], classes: &[String], opts: &TrainOptions) -> Gcn
     let data = featured(samples, &vocab);
     let batch = opts.batch.max(1);
     let start = Instant::now();
-    (1..=opts.epochs).fold(model, |model, epoch| {
+    let monitor = Monitor::new(&model, opts);
+    let (model, monitor) = (1..=opts.epochs).fold((model, monitor), |(model, monitor), epoch| {
         let epoch_start = Instant::now();
         let order = rng.permutation(data.len());
-        let (model, loss, correct) = order.chunks(batch).fold(
-            (model, 0.0f32, 0usize),
-            |(model, loss, correct), chunk| {
+        let (model, loss, correct, monitor) = order.chunks(batch).fold(
+            (model, 0.0f32, 0usize, monitor),
+            |(model, loss, correct, monitor), chunk| {
                 let items: Vec<&Featured> = chunk.iter().map(|&i| &data[i]).collect();
-                let (next, batch_loss, batch_correct) = train_batch(model, &items, opts.lr);
-                (next, loss + batch_loss, correct + batch_correct)
+                let (next, batch_loss, batch_correct, monitor) = train_batch(model, &items, opts.lr, monitor);
+                (next, loss + batch_loss, correct + batch_correct, monitor)
             },
         );
+        let monitor = monitor.end_epoch();
         let n = data.len() as f32;
         println!(
             "== epoch {epoch}/{}: loss {:.4}, acc {:.1}%, epoch {:.1?}, total {:.1?}",
@@ -94,8 +189,10 @@ pub fn train(samples: &[Sample], classes: &[String], opts: &TrainOptions) -> Gcn
             epoch_start.elapsed(),
             start.elapsed()
         );
-        model
-    })
+        (model, monitor)
+    });
+    monitor.finish();
+    model
 }
 
 /// Accuracy (0..1) and mean loss of the model over the samples.
@@ -172,6 +269,8 @@ mod tests {
             hidden: 8,
             depth: 3,
             seed: 7,
+            grad_stats: Some(2),
+            grad_map: Some(3),
         };
         let model = train(&data, &classes, &opts);
         let (acc, _) = evaluate(&model, &data).unwrap();

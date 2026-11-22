@@ -80,6 +80,9 @@ pub struct ExampleGrads {
     pub loss: f32,
     pub correct: bool,
     pub grads: Grads,
+    /// The gradient probes, `depth + 1` vectors of [hidden][n] (empty unless asked for): probe 0 is the whole
+    /// gradient of H0 (before its ReLU mask), probe l the part layer l adds to it through the initial residual.
+    pub probes: Vec<Vec<f32>>,
 }
 
 /// Element-wise sum of two gradient sets.
@@ -126,6 +129,38 @@ impl GcniiStar {
     /// Number of raw features per node, the rows of X.
     pub fn in_features(&self) -> usize {
         self.vocab.width()
+    }
+
+    /// One name per parameter tensor, same order as `params`: `ROW.COL` (`in.W0`, `L03.W2`, `out.Wo`).
+    pub fn param_names(&self) -> Vec<String> {
+        let depth = self.cfg.depth;
+        let layers = (1..=2).flat_map(|kind| (1..=depth).map(move |l| format!("L{l:02}.W{kind}")));
+        ["in.W0".to_string(), "in.b0".to_string()]
+            .into_iter()
+            .chain(layers)
+            .chain(["out.Wo".to_string(), "out.bo".to_string()])
+            .collect()
+    }
+
+    /// One (rows, cols) per parameter tensor, same order as `params` (a vector is (n, 1)).
+    pub fn param_shapes(&self) -> Vec<(usize, usize)> {
+        let ModelConfig {
+            classes,
+            hidden,
+            depth,
+        } = self.cfg;
+        [(hidden, self.in_features()), (hidden, 1)]
+            .into_iter()
+            .chain((0..2 * depth).map(|_| (hidden, hidden)))
+            .chain([(classes, hidden), (classes, 1)])
+            .collect()
+    }
+
+    /// Names of the probes of `ExampleGrads::probes`: `in.dH0` and `Lxx.dH0`.
+    pub fn probe_names(&self) -> Vec<String> {
+        std::iter::once("in.dH0".to_string())
+            .chain((1..=self.cfg.depth).map(|l| format!("L{l:02}.dH0")))
+            .collect()
     }
 
     /// One line for the training log.
@@ -216,19 +251,36 @@ impl GcniiStar {
     // BACKWARD
     /// One training example: forward, softmax cross-entropy, backward. The returned gradient is divided by
     /// `batch_len`, so the gradients of the examples of a batch add up to the gradient of the mean batch loss.
-    pub fn example_grads(&self, g: &Graph, x: &[f32], label: usize, batch_len: usize) -> ExampleGrads {
+    /// With `with_probes` the gradient probes are returned too (otherwise nothing extra is computed).
+    pub fn example_grads(
+        &self,
+        g: &Graph,
+        x: &[f32],
+        label: usize,
+        batch_len: usize,
+        with_probes: bool,
+    ) -> ExampleGrads {
         let cache = self.forward(g, x);
         let (loss, dlogits) = softmax_ce(&cache.logits, label);
         let dlogits: Vec<f32> = dlogits.iter().map(|v| v / batch_len as f32).collect();
+        let (grads, probes) = self.backward(g, x, &cache, &dlogits, with_probes);
         ExampleGrads {
             loss,
             correct: argmax(&cache.logits) == label,
-            grads: self.backward(g, x, &cache, &dlogits),
+            grads,
+            probes,
         }
     }
 
     /// The parameter gradients of one example. dlogits: dLoss/dLogits.
-    fn backward(&self, g: &Graph, x: &[f32], c: &Cache, dlogits: &[f32]) -> Grads {
+    fn backward(
+        &self,
+        g: &Graph,
+        x: &[f32],
+        c: &Cache,
+        dlogits: &[f32],
+        with_probes: bool,
+    ) -> (Grads, Vec<Vec<f32>>) {
         let ModelConfig {
             classes,
             hidden,
@@ -237,6 +289,7 @@ impl GcniiStar {
         let n = g.n;
         let (wo, bo) = (self.wo(), self.bo());
         let mut grads: Grads = self.params.iter().map(|p| vec![0.0; p.len()]).collect();
+        let mut probes: Vec<Vec<f32>> = vec![Vec::new(); if with_probes { depth + 1 } else { 0 }];
 
         // HEAD: dbo = dlogits, dWo = dlogits ⊗ pooled, dpooled = Woᵀ dlogits
         grads[bo] = dlogits.to_vec();
@@ -278,6 +331,9 @@ impl GcniiStar {
                     .map(|v| b * v)
                     .collect();
                 // RESIDUAL PATH: dH0 += α dB
+                if with_probes {
+                    probes[l] = db.iter().map(|d| ALPHA * d).collect(); // PROBE: what layer l adds to dH0
+                }
                 let dh0 = dh0.iter().zip(&db).map(|(s, d)| s + ALPHA * d).collect();
                 // CHAIN PATH: dH^(l-1) = (1-α) P̃ dA
                 let next = g.spmm(&da, hidden).iter().map(|v| v * (1.0 - ALPHA)).collect();
@@ -285,18 +341,21 @@ impl GcniiStar {
             });
 
         // H0 MERGE: chain gradient + residual gradients, then the ReLU mask of H0
-        let dz0: Vec<f32> = dh
+        let merged: Vec<f32> = dh.iter().zip(&dh0).map(|(a, b)| a + b).collect();
+        if with_probes {
+            probes[0] = merged.clone(); // PROBE: the whole gradient of H0
+        }
+        let dz0: Vec<f32> = merged
             .iter()
-            .zip(&dh0)
             .zip(&c.h[0])
-            .map(|((a, b), h)| if *h <= 0.0 { 0.0 } else { a + b })
+            .map(|(v, h)| if *h <= 0.0 { 0.0 } else { *v })
             .collect();
         // INPUT PROJECTION: db0 = Σ_nodes dZ0, dW0 = dZ0 Xᵀ
         grads[B0] = (0..hidden)
             .map(|f| dz0[f * n..(f + 1) * n].iter().sum())
             .collect();
         grads[W0] = matmul_nt(&dz0, x, hidden, n, self.in_features());
-        grads
+        (grads, probes)
     }
 
     /// Plain SGD: returns the model with `params - lr * grads`.
@@ -337,7 +396,7 @@ pub mod tests {
     fn gradients_match_finite_differences() {
         let (m, g, x) = setup();
         assert_eq!(m.params.len(), 2 + 2 * m.cfg.depth + 2);
-        let grads = m.example_grads(&g, &x, 1, 1).grads;
+        let grads = m.example_grads(&g, &x, 1, 1, false).grads;
         let eps = 1e-3;
         for t in 0..m.params.len() {
             for i in (0..m.params[t].len()).step_by(3) {
@@ -357,10 +416,33 @@ pub mod tests {
     }
 
     #[test]
+    fn names_and_shapes_match_the_params() {
+        let (m, _, _) = setup();
+        assert_eq!(m.param_names().len(), m.params.len());
+        assert!(m
+            .param_shapes()
+            .iter()
+            .zip(&m.params)
+            .all(|(&(r, c), p)| r * c == p.len()));
+        assert_eq!(m.param_names()[2], "L01.W1");
+        assert_eq!(m.param_names()[2 + m.cfg.depth], "L01.W2");
+    }
+
+    #[test]
+    fn probes_see_every_element() {
+        let (m, g, x) = setup();
+        assert!(m.example_grads(&g, &x, 1, 1, false).probes.is_empty());
+        let probes = m.example_grads(&g, &x, 1, 1, true).probes;
+        assert_eq!(probes.len(), m.cfg.depth + 1);
+        assert_eq!(m.probe_names().len(), probes.len());
+        assert!(probes.iter().all(|p| p.len() == m.cfg.hidden * g.n));
+    }
+
+    #[test]
     fn sgd_step_lowers_the_loss() {
         let (m, g, x) = setup();
         let before = loss(&m, &g, &x);
-        let grads = m.example_grads(&g, &x, 1, 1).grads;
+        let grads = m.example_grads(&g, &x, 1, 1, false).grads;
         let after = loss(&m.sgd_step(&grads, 0.05), &g, &x);
         assert!(after < before);
     }
