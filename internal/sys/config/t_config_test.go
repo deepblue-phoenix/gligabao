@@ -417,6 +417,24 @@ func TestMCP(t *testing.T) {
 	}
 }
 
+func TestSargo(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sargo || cfg.SargoConfig != "" {
+		t.Fatal("sargo must be off by default")
+	}
+	path := write(t, "sargo = true\nsargo_config = \"s.toml\"\n")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Sargo || cfg.SargoConfig != filepath.Join(filepath.Dir(path), "s.toml") {
+		t.Fatalf("got sargo=%v sargo_config=%q", cfg.Sargo, cfg.SargoConfig)
+	}
+}
+
 func TestResearchWebProviders(t *testing.T) {
 	cfg, err := Load(write(t, "research_search_provider = \"anthropic\"\nresearch_fetch_provider = \"local\"\n"))
 	if err != nil || cfg.ResearchSearchProvider != "anthropic" || cfg.ResearchFetchProvider != "local" {

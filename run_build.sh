@@ -5,6 +5,9 @@
 # Disable that with --no-admin-ui or BUILD_ADMIN_UI=false (then admin_ui = true in the config only logs a warning).
 # Building the UI needs node + npm.
 #
+# With --sargo (or BUILD_SARGO=true) the sargo model router (rust/sargo) is built as a static binary and embedded into ./build/gligabao, which then
+# runs it with `gligabao sargo serve`. Needs cargo and musl-tools; the embedded binary is for the architecture of this machine.
+#
 # gligabao_agent is the deep-research agent with its sub-agents and the knowledge base in process (no server, API, training or evals), a small static binary
 # for Lambdas and the like (docs/deep-research-agent.md). It does not embed the admin UI. Cross-compile it as any Go program, e.g.
 # GOOS=linux GOARCH=arm64 ./run_build.sh --no-admin-ui (CGO is off, so it needs no C toolchain).
@@ -16,11 +19,13 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 BUILD_ADMIN_UI="${BUILD_ADMIN_UI:-true}"
+BUILD_SARGO="${BUILD_SARGO:-false}"
 for arg in "$@"; do
   case "$arg" in
     --admin-ui) BUILD_ADMIN_UI=true ;;
     --no-admin-ui) BUILD_ADMIN_UI=false ;;
-    *) echo "usage: $0 [--admin-ui|--no-admin-ui]" >&2; exit 2 ;;
+    --sargo) BUILD_SARGO=true ;;
+    *) echo "usage: $0 [--admin-ui|--no-admin-ui] [--sargo]" >&2; exit 2 ;;
   esac
 done
 
@@ -35,9 +40,16 @@ else
   find admin_ui/dist -mindepth 1 -not -name .gitkeep -delete 2>/dev/null || true
 fi
 
+if [ "$BUILD_SARGO" = true ]; then
+  ./run_build_rust.sh --embed
+else
+  # Drop a stale binary so it is not embedded; keep the .gitkeep placeholder.
+  find rust/sargo/bin -mindepth 1 -not -name .gitkeep -delete 2>/dev/null || true
+fi
+
 mkdir -p build
 go build -o build/gligabao ./cmd/gligabao
-echo "Built ./build/gligabao (admin UI embedded: $BUILD_ADMIN_UI)"
+echo "Built ./build/gligabao (admin UI embedded: $BUILD_ADMIN_UI, sargo embedded: $BUILD_SARGO)"
 
 # The agent binary: pure Go, stripped, with the version from VERSION (it cannot embed it, VERSION is outside its package).
 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" -o build/gligabao_agent ./cmd/gligabao_agent

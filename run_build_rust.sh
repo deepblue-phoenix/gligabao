@@ -5,7 +5,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./run_build_rust.sh [--static] [-h|--help]
+Usage: ./run_build_rust.sh [--static] [--embed] [-h|--help]
 
 Builds rust/sargo in release mode.
 
@@ -16,15 +16,19 @@ Builds rust/sargo in release mode.
                Output: rust/sargo/target/<arch>-unknown-linux-musl/release/sargo
                Needs the musl target (added with rustup if available) and, on Ubuntu,
                the musl C compiler: sudo apt install -y musl-tools
+  --embed      implies --static, then copies the static binary to rust/sargo/bin/sargo, where rust/sargo/embed.go embeds it
+               into the gligabao binary the next time that is built (run_build.sh --sargo does both steps).
   -h, --help   show this help and exit
 USAGE
 }
 
 STATIC=0
+EMBED=0
 for arg in "$@"; do
   case "$arg" in
     -h|--help) usage; exit 0 ;;
     --static) STATIC=1 ;;
+    --embed) STATIC=1; EMBED=1 ;;
     *) echo "unknown option: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
@@ -70,6 +74,11 @@ if [ "$STATIC" = 1 ]; then
   fi
   cargo build --release --target "$TARGET"
   echo "static binary: rust/sargo/target/$TARGET/release/sargo"
+  if [ "$EMBED" = 1 ]; then
+    mkdir -p bin
+    cp "target/$TARGET/release/sargo" bin/sargo
+    echo "copied to rust/sargo/bin/sargo (embedded by the next go build)"
+  fi
 else
   cargo build --release
 fi

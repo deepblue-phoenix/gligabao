@@ -88,6 +88,14 @@ geo_radius_km = 50
 # enable it only on a trusted network. Default false; `serve --mcp` turns it on.
 mcp = false
 
+# Start the sargo model router that is embedded in the binary (built with ./run_build.sh --sargo) as a child process of `serve`, stopped with
+# it; sargo gets the Anthropic and OpenAI keys of this config. The server does not start if the binary has no sargo. Default false;
+# `serve --sargo` turns it on.
+sargo = false
+# A sargo config file to use instead of the default one embedded in the binary (relative to this file). Its [server] address is where
+# sargo listens (default 127.0.0.1:8431). `gligabao sargo config` prints the default.
+# sargo_config = "sargo.toml"
+
 # Directory the files of trained models are fetched to for a deployment, one subdirectory per training job (gligabao
 # never deletes them). Default: a trained_models directory next to the database file (build/trained_models).
 # `serve --trained-model-deploy-dir` overrides it.

@@ -35,6 +35,8 @@ gligabao research agents
 gligabao api METHOD PATH [JSON | @file | -]      # any other endpoint (timeseries, ontologies, ...)
 gligabao status                                  # the target, and whether it runs
 gligabao stop                                    # stop the local daemon
+gligabao sargo serve [--sargo-config FILE]       # run the sargo model router embedded in this binary
+gligabao sargo config                            # print the default sargo config embedded in this binary
 ```
 
 Global flags: `--user` (env `GLIGABAO_USER`, default `local_user`: sent as the `gb-user-id` header of every request), `--server`, `--config`.
@@ -43,6 +45,7 @@ Global flags: `--user` (env `GLIGABAO_USER`, default `local_user`: sent as the `
 - `--json` (on `remember` and `query`) is the whole request body as JSON text, `@file` or `-` (stdin), so the exact REST body can be passed and a new request field never needs a new flag. The flags that are given override its fields. The user is `--user`, sent in the header: a `user_id` in the body is ignored by the server.
 - `query --evidence-only` is a retrieval-only call, see [query/query.md](query/query.md#retrieval-only-evidence_only). `query --raw` prints just the answer, as text.
 - `research` starts and follows [research agents](agents/research.md): `start` prints the run right away (`--agent` picks the [agent definition](agents/agent-defs.md) (default `default`), `--agent-version` a constraint on its version, `--max-cost` a cap in USD on the whole research; `-d` picks the dataset of your knowledge base the agent queries and remembers into, `main` by default; `--no-remember` turns off the final remember of the report that investigative agents make; `--runner modal` runs the agent in Modal through the sidecar instead of in the server, see [research.md](agents/research.md#where-the-agent-runs-the-runner)) (the agent goes on in the background, it costs money), `--wait` waits for it to end and prints the finished run (exit code 1 if it failed; `--raw` prints only the report), `ls --active` lists the agents that are working, `agents` lists the agent definitions the server loaded (`GET /v1/gb/research/agents`), and `get ID` shows a run with every state it went through (`--raw`: only the report).
+- `sargo serve` runs the [sargo](../rust/sargo/README.md) server that is embedded in the binary (only if it was built with `./run_build.sh --sargo`; otherwise it says so): it extracts the embedded sargo and its default config to a temporary directory, runs it in the foreground and removes the files when interrupted. `--sargo-config FILE` (env `SARGO_CONFIG`) makes it use that config instead of the embedded one; `sargo config` prints the embedded default, a starting point for such a file. The API keys are read from the environment. These commands do not use `gligabao.toml`. To run sargo together with the server instead, use `sargo = true` in the config or `gligabao serve --sargo` (`sargo_config` names the config file to use).
 - `api` sends the request as it is (it adds no body or query fields, only the `gb-user-id` header of `--user`; a `user_id` in the JSON or in the path is ignored by the server), for what has no command.
 
 ## Output and exit codes

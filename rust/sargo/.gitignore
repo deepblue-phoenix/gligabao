@@ -1,1 +1,4 @@
 /target
+# the static binary run_build_rust.sh --embed copies here, for embed.go to embed into the gligabao binary
+/bin/*
+!/bin/.gitkeep

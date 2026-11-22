@@ -132,6 +132,7 @@ func New(o Options) *CLI {
 	c.Root = root
 	c.Serve = newServe(c, o)
 	root.AddCommand(c.Serve)
+	root.AddCommand(sargoCmd())
 	c.addClientCommands(o)
 	return c
 }

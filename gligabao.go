@@ -13,6 +13,7 @@ import (
 	_ "embed"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
+	"github.com/deepblue-phoenix/gligabao/internal/sargo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
@@ -33,6 +35,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
+	log "github.com/sirupsen/logrus"
 )
 
 // VERSION is embedded at build time. It is edited with every change together with CHANGELOG.md, see AGENTS.md.
@@ -297,7 +300,49 @@ func Serve(ctx context.Context,
 	opts ServeOptions) error {
 	serverOpts, restore := serverOptions(cfg, opts)
 	defer restore()
+	stopSargo, err := startSargo(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer stopSargo()
 	return server.Run(ctx, serverOpts)
+}
+
+// startSargo starts the embedded sargo server if the config asks for it (sargo = true) and returns the function that stops it; with sargo
+// off it does nothing. The sargo child gets the API keys of the config (they may come from a secret store and not the environment). The
+// stop function is safe to call more than once.
+func startSargo(ctx context.Context,
+	cfg *Config) (stop func(), err error) {
+	if cfg == nil || !cfg.Sargo {
+		return func() {}, nil
+	}
+	server, err := sargo.StartServer(ctx,
+		sargo.ServerOptions{
+			ConfigPath: cfg.SargoConfig,
+			Env:        sargoEnv(cfg),
+			Stderr:     os.Stderr,
+		})
+	if err != nil {
+		return nil, err
+	}
+	log.WithFields(log.Fields{
+		"addr":   server.Addr,
+		"config": server.ConfigPath,
+	}).Info("sargo started")
+	return func() { _ = server.Stop() }, nil
+}
+
+// sargoEnv is the provider keys of the config as the environment variables sargo's default config names; unset keys are left out, so the
+// inherited environment still applies.
+func sargoEnv(cfg *Config) []string {
+	env := []string{}
+	if cfg.AnthropicKey != "" {
+		env = append(env, "ANTHROPIC_API_KEY="+cfg.AnthropicKey)
+	}
+	if cfg.OpenAIKey != "" {
+		env = append(env, "OPENAI_API_KEY="+cfg.OpenAIKey)
+	}
+	return env
 }
 
 // MountOptions says where Mount registers gligabao's handlers.
@@ -331,11 +376,17 @@ func Mount(ctx context.Context,
 	mount MountOptions) (release func(), err error) {
 	serverOpts, restore := serverOptions(cfg, opts)
 	serverOpts.Addr = ""
+	stopSargo, err := startSargo(ctx, cfg)
+	if err != nil {
+		restore()
+		return nil, err
+	}
 	rel, err := server.Mount(ctx,
 		serverOpts,
 		mount.Mux,
 		mount.Wrap)
 	if err != nil {
+		stopSargo()
 		restore()
 		return nil, err
 	}
@@ -343,6 +394,7 @@ func Mount(ctx context.Context,
 	release = func() {
 		once.Do(func() {
 			rel()
+			stopSargo()
 			restore()
 		})
 	}

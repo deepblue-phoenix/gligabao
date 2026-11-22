@@ -206,6 +206,13 @@ type Config struct {
 	// MCP registers the MCP (Model Context Protocol) endpoint, POST /v1/gb/mcp (streamable HTTP), which exposes remember and query as
 	// MCP tools. It has no authentication yet. Default false; `serve --mcp` turns it on.
 	MCP bool `toml:"mcp"`
+	// Sargo makes `serve` start the sargo model router that is embedded in the binary (a child process, stopped when the server stops; see
+	// rust/sargo/README.md). The binary must have been built with ./run_build.sh --sargo, else the server does not start. sargo gets the
+	// Anthropic and OpenAI keys of this config. Default false; `serve --sargo` turns it on.
+	Sargo bool `toml:"sargo"`
+	// SargoConfig is a sargo config file used instead of the default one embedded in the binary (only with sargo = true). A relative path is
+	// relative to the config file. The server address sargo listens on is the one in that file.
+	SargoConfig string `toml:"sargo_config"`
 	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
 	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
 	SidecarURL string `toml:"sidecar_url"`
@@ -622,6 +629,9 @@ func (c *Config) resolveDirs(base string) {
 	}
 	if c.ResearchNotesDir != "" && !filepath.IsAbs(c.ResearchNotesDir) {
 		c.ResearchNotesDir = filepath.Join(base, c.ResearchNotesDir)
+	}
+	if c.SargoConfig != "" && !filepath.IsAbs(c.SargoConfig) {
+		c.SargoConfig = filepath.Join(base, c.SargoConfig)
 	}
 	if c.EvalsLocalDir != "" && !filepath.IsAbs(c.EvalsLocalDir) {
 		c.EvalsLocalDir = filepath.Join(base, c.EvalsLocalDir)

@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.231.0] - 2026-11-22
+
+`gligabao serve` can start the embedded sargo server.
+
+### Added
+- Config keys `sargo` (default `false`) and `sargo_config` (a sargo config file used instead of the embedded default; relative to the config file), and the flag `serve --sargo`. With it on, `serve` (and `gligabao.Mount`) starts the sargo that is embedded in the binary as a child process, gives it the Anthropic and OpenAI keys of the config, and stops it when the server stops. The server does not start if the binary was built without sargo (`./run_build.sh --sargo`) or sargo fails to start.
+
+## [0.230.0] - 2026-11-22
+
+The sargo binary can be packaged into the gligabao binary and run from it as a server, with its default config embedded too.
+
+### Added
+- `./run_build.sh --sargo` (or `BUILD_SARGO=true`) builds sargo as a static binary and embeds it, and the default `rust/sargo/config.toml`, into `build/gligabao`. `./run_build_rust.sh --embed` is the step that builds it and copies it to `rust/sargo/bin/sargo`. Without the flag nothing changes: the binary has no sargo (the default config is always embedded).
+- `gligabao sargo serve` runs the embedded sargo server in the foreground; `--sargo-config FILE` (env `SARGO_CONFIG`) uses a config file of the user instead of the embedded default. `gligabao sargo config` prints the embedded default config.
+- Go: `sargo.StartServer` (`internal/sargo/server.go`) extracts the embedded binary and config to a temporary directory, runs sargo as a child process, waits until `/health` answers and returns a `Server` with a ready `Client`; `Stop` (or the end of the context) kills it and removes the files.
+
 ## [0.229.0] - 2026-11-22
 
 GCNII* in sargo gets the gradient probes, the gradient statistics and the graph embeddings of the deepblue engine.

@@ -32,6 +32,25 @@ sargo gcnii embed DIR|graph.json --load w.bin --out e.jsonl [--normalize]
 
 DIR holds graph documents `{"n": N, "edges": [[a,b],...], "nodes": [{"name", "type"}, ...], "class": "..."}` as `.json` files or `.jsonl` lines (a `.json` without `class` takes its parent dir name). The weights file stores the size and node types and is compatible with the `gcnii_star` files of deepblue. To serve it, set `[gcnii] weights = "w.bin"` (and optionally `classes`) in `config.toml`, then `POST /v1/gcnii/infer` with `{"graph": {"n": 4, "edges": [[0,1],[1,2]]}}` answers `{"class", "index", "logits", "probabilities", "nodes", "edges"}`; `POST /v1/gcnii/embed` with `{"graph": {...}, "normalize": true}` answers `{"embedding", "dim"}`.
 
+## Embedded in the gligabao binary
+
+`./run_build.sh --sargo` (in the repo root) builds sargo as a static musl binary (`./run_build_rust.sh --embed`: needs cargo and
+`musl-tools`), copies it to `bin/sargo` and builds gligabao, which embeds it with `embed.go` (package `sargoembed`) together with
+this directory's `config.toml`, the default config (`gligabao sargo config` prints it). The binary is for the architecture of the
+build machine; without `--sargo`, `bin/` only holds `.gitkeep` and the gligabao binary has no sargo.
+
+- `gligabao sargo serve [--sargo-config FILE]` extracts both to a temporary directory and runs the server in the foreground until
+  interrupted. With `--sargo-config FILE` (or `$SARGO_CONFIG`) that file is used instead of the embedded default config. The API
+  keys come from the environment.
+- `gligabao serve` starts it too, as a child process stopped with the server, when `sargo = true` in `gligabao.toml` (or `serve --sargo`);
+  `sargo_config = "file.toml"` uses a config of yours instead of the embedded default (relative to `gligabao.toml`). The server does not
+  start if the binary has no sargo or sargo fails to start. sargo gets the `anthropic_api_key` / `openai_api_key` of the config as
+  `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` (so keys from a secret store work); it listens on `server.address` of its config
+  (default `127.0.0.1:8431`). The same for `gligabao.Mount`.
+- In Go, `sargo.StartServer(ctx, sargo.ServerOptions{ConfigPath: ...})` (`internal/sargo/server.go`) does the same in the
+  background: it waits for `GET /health` and returns a `*Server` with a ready `Client`; `Stop` kills the child and removes the files.
+  The address of the client is `server.address` of the config in use.
+
 ## Config
 
 `config.toml` (all keys optional, the shipped file lists the defaults): `[server]` address, read timeout and

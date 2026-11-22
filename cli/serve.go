@@ -17,7 +17,7 @@ func newServe(c *CLI,
 		datasetDirs, evalDirs       []string
 		ontologyDirs                []string
 		training, adminUI           bool
-		geoOn, mcpOn                bool
+		geoOn, mcpOn, sargoOn       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -41,6 +41,9 @@ func newServe(c *CLI,
 			}
 			if cmd.Flags().Changed("mcp") {
 				cfg.MCP = mcpOn
+			}
+			if cmd.Flags().Changed("sargo") {
+				cfg.Sargo = sargoOn
 			}
 			opts := gligabao.ServeOptions{
 				DBPath:                dbPath,
@@ -117,6 +120,10 @@ func newServe(c *CLI,
 		"mcp",
 		false,
 		"serve remember and query as MCP tools at /v1/gb/mcp (streamable HTTP, no authentication) (config: mcp)")
+	f.BoolVar(&sargoOn,
+		"sargo",
+		false,
+		"start the sargo model router embedded in this binary, as a child process (needs a binary built with ./run_build.sh --sargo) (config: sargo, sargo_config)")
 	f.BoolVar(&adminUI,
 		"admin-ui",
 		false,
