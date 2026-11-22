@@ -5,19 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api"
+	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 )
 
@@ -54,7 +55,7 @@ type outcome struct {
 	// ArtifactIDs[i] are the IDs, in DatasetID, of the artifacts of Trajectories[i]: the artifact a remember call stored, the
 	// artifacts a query's evidence was sourced from.
 	ArtifactIDs [][]int64
-	// Trajectories are the ATIF trajectories returned by the eval endpoints: one per remember, then the query's.
+	// Trajectories are the ATIF trajectories returned by the calls: one per remember, then the query's.
 	Trajectories []*atif.Trajectory
 	// Chunks is the total number of chunks the remember calls reported (0 if no text was chunked).
 	Chunks int
@@ -71,7 +72,7 @@ func (o *outcome) cost() (usd float64, steps int) {
 	return usd, steps
 }
 
-// runCase executes one case as the owner through the eval endpoints, in an eval dataset of its own (see DatasetName): remember
+// runCase executes one case as the owner through remember.Remember and query.Run, in an eval dataset of its own (see DatasetName): remember
 // (once per text, in order), the checks of what was stored, then query. input has the texts read in. The outcome is returned even
 // when err is set, holding whatever was collected before the failure.
 func (x *Executor) runCase(ctx context.Context,
@@ -112,22 +113,25 @@ func (x *Executor) runCase(ctx context.Context,
 	defer stopMgr() // stops what the case started: its remember manager (if it has its own) and its geo manager
 	locs := newLocStore(x.trajectoryStore())
 	defer func() { out.Locations = locs.snapshot() }()
-	mux := http.NewServeMux() // private: not mounted anywhere, so the eval routes are not reachable from outside
-	api.RegisterEval(mux,
-		x.rememberManager(mgrCtx,
-			database,
-			llm),
+	mgr := x.rememberManager(mgrCtx,
 		database,
-		llm,
+		llm)
+	geo := api.WithGeoResolver(server.StartGeoManager(mgrCtx,
+		x.Geo,
+		database))
+	// The options of the calls are those of the API, plus the ATIF trajectory of each call (and where it went).
+	evalOpts := []memory_core.Option{memory_core.WithEval(), memory_core.WithTrajectoryStore(locs)}
+	rememberOpts := slices.Concat(api.RememberOptions(database,
 		x.Embedder,
 		nil,
 		x.WebSearch,
 		nil,
-		api.WithGeoResolver(server.StartGeoManager(mgrCtx,
-			x.Geo,
-			database)),
-		api.WithTrajectoryStore(locs))
-	caller := x.caller(mux)
+		geo),
+		evalOpts)
+	queryOpts := slices.Concat(api.QueryOptions(database,
+		x.Embedder,
+		geo),
+		evalOpts)
 
 	dataset := DatasetName(name, evalRunID)
 	defer func() {
@@ -150,49 +154,33 @@ func (x *Executor) runCase(ctx context.Context,
 			out.Problems = append(out.Problems, fail)
 		}
 	}
-	var parents []int64            // artifact IDs of the remembered texts that were chunked
-	var reported []rememberedChunk // the chunks the remember calls reported
+	var parents []int64                        // artifact IDs of the remembered texts that were chunked
+	var reported []memory_remember.ChunkResult // the chunks the remember calls reported
 
 	for i, m := range input.Remember {
-		body := map[string]any{"text": m.Text, "dataset": dataset}
-		if m.Kind != "" {
-			body["kind"] = m.Kind
+		req, err := rememberRequest(m,
+			dataset,
+			models,
+			rememberReasoning,
+			x.Geo != nil)
+		if err != nil {
+			return out, fmt.Errorf("remember #%d: %w",
+				i+1,
+				err)
 		}
-		if m.ReferenceTime != "" {
-			body["reference_time"] = m.ReferenceTime
-		}
-		if len(models) > 0 {
-			body["models"] = models
-		}
-		if len(rememberReasoning) > 0 {
-			body["reasoning"] = rememberReasoning
-		}
-		if m.WebSearch {
-			body["web_search"] = true
-		}
-		if x.Geo != nil {
-			body["geo_sync"] = true // the checks read the coordinates right after: wait for the geo manager
-		}
-		if len(m.Timeseries) > 0 {
-			body["timeseries"] = m.Timeseries
-		}
-		var rem struct {
-			ArtifactID int64             `json:"artifact_id"`
-			Chunks     []rememberedChunk `json:"chunks"`
-			Trajectory *atif.Trajectory  `json:"trajectory"`
-		}
-		if err := post(ctx,
-			caller,
+		rem, err := callRemember(ctx,
+			mgr,
+			database,
 			owner,
-			"/v1/gb/eval/remember",
-			body,
-			&rem); err != nil {
+			req,
+			rememberOpts)
+		if err != nil {
 			return out, fmt.Errorf("remember #%d: %w",
 				i+1,
 				err)
 		}
 		if rem.Trajectory == nil {
-			return out, fmt.Errorf("remember #%d: response has no trajectory (is the server in eval mode?)", i+1)
+			return out, fmt.Errorf("remember #%d: the result has no trajectory", i+1)
 		}
 		out.Trajectories = append(out.Trajectories, rem.Trajectory)
 		out.ArtifactIDs = append(out.ArtifactIDs, []int64{rem.ArtifactID})
@@ -352,33 +340,22 @@ func (x *Executor) runCase(ctx context.Context,
 		return out, nil // ingestion only
 	}
 
-	var rec struct {
-		Answer   string `json:"answer"`
-		Evidence struct {
-			Edges []struct {
-				ID         int64  `json:"id"`
-				ArtifactID *int64 `json:"artifact_id"`
-			} `json:"edges"`
-		} `json:"evidence"`
-		Trajectory *atif.Trajectory `json:"trajectory"`
-	}
-	queryBody := map[string]any{"query": input.Query, "dataset": dataset}
-	if len(queryModels) > 0 {
-		queryBody["models"] = queryModels
-	}
-	if len(queryReasoning) > 0 {
-		queryBody["reasoning"] = queryReasoning
-	}
-	if err := post(ctx,
-		caller,
+	rec, err := callQuery(ctx,
+		database,
+		llm,
 		owner,
-		"/v1/gb/eval/query",
-		queryBody,
-		&rec); err != nil {
+		query.Request{
+			Dataset:   dataset,
+			Query:     input.Query,
+			Models:    queryModels,
+			Reasoning: query.Reasoning(queryReasoning),
+		},
+		queryOpts)
+	if err != nil {
 		return out, fmt.Errorf("query: %w", err)
 	}
 	if rec.Trajectory == nil {
-		return out, errors.New("query: response has no trajectory (is the server in eval mode?)")
+		return out, errors.New("query: the result has no trajectory")
 	}
 	out.Answer = rec.Answer
 	out.Trajectories = append(out.Trajectories, rec.Trajectory)

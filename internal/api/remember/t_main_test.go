@@ -66,15 +66,16 @@ func testRawHandler(t testing.TB,
 		mo...)
 }
 
-// testEvalHandler is EvalHandler with a remember manager of its own, which stops with the test.
+// testEvalHandler is Handler of a call made with memory_core.WithEval (the response has the ATIF trajectory), with a remember manager
+// of its own, which stops with the test.
 func testEvalHandler(t testing.TB,
 	d *sql.DB,
 	llm memory_core.LLM,
 	mo ...memory_core.Option) http.HandlerFunc {
-	return EvalHandler(memory_remember.NewManager(t.Context(),
+	return Handler(memory_remember.NewManager(t.Context(),
 		d,
 		llm),
 		d,
 		llm,
-		mo...)
+		append(mo[:len(mo):len(mo)], memory_core.WithEval())...)
 }

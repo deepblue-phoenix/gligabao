@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
@@ -111,9 +110,6 @@ func (x *Executor) rememberManager(ctx context.Context,
 		llm,
 		memory_remember.WithErrSink(errSink))
 }
-
-// caller makes the Caller of a case over its private mux.
-func (x *Executor) caller(mux *http.ServeMux) Caller { return MuxCaller{Mux: mux} }
 
 // readTexts reads the texts of the text files of in, as the Executor is set up to.
 func (x *Executor) readTexts(ctx context.Context,

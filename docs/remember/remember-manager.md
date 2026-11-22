@@ -2,7 +2,7 @@
 
 `internal/memory/memory_remember/manager.go`
 
-Every run of the [remember](remember.md) text pipeline is executed by **one goroutine, the remember manager**. The HTTP handlers (`POST /v1/gb/remember`, and the eval runs' `remember` calls), and anything else that wants text remembered, do not call `memory_remember.Remember`: they send the manager a request. For now the manager **serializes** the runs: it takes the next request only when the previous run is over, so two runs never write at the same time.
+Every run of the [remember](remember.md) text pipeline is executed by **one goroutine, the remember manager**. The HTTP handlers (`POST /v1/gb/remember`, and the `remember` calls of the eval runs (through `remember.Remember`, the function the handler calls)), and anything else that wants text remembered, do not call `memory_remember.Remember`: they send the manager a request. For now the manager **serializes** the runs: it takes the next request only when the previous run is over, so two runs never write at the same time.
 
 The eval runs do not use this manager: they have **their own instance** (made by the eval run manager), so a user's eval never delays the `remember` calls of the other routes. It serializes the evals of all users.
 

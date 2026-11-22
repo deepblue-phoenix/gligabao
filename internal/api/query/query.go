@@ -7,19 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
-	"github.com/deepblue-phoenix/gligabao/monitoring"
-	log "github.com/sirupsen/logrus"
 )
 
 const maxQueryBytes = 64 << 10 // 64 KiB
 
-type queryRequest struct {
+// Request is a query request: the body of POST /v1/gb/query, and what Run takes from the callers that are not HTTP (the evals).
+type Request struct {
 	// Dataset is the dataset to search. Defaults to "main".
 	Dataset string `json:"dataset"`
 	Query   string `json:"query"`
@@ -30,7 +26,7 @@ type queryRequest struct {
 	// Reasoning (optional) is the reasoning (thinking) level of the LLM calls: "none", "low", "medium" or "high". Either a
 	// string, the level of the call that answers, or an object with the level of each stage ("query", "detect_geo"). A stage
 	// left out runs with "none" (no thinking). The calls are recorded with it as inferences (gb_inferences).
-	Reasoning json.RawMessage `json:"reasoning"`
+	Reasoning Reasoning `json:"reasoning"`
 	// Models (optional) picks the LLM model of each stage of the query ("query": the one that answers; "detect_geo": the one that
 	// finds the places in the question, only when the server has geo on); a stage left out uses the default model.
 	Models map[string]string `json:"models"`
@@ -51,61 +47,44 @@ type queryRequest struct {
 	EvidenceOnly bool `json:"evidence_only"`
 }
 
-// parseReasoning reads the reasoning field of the request: absent or null (the defaults), a string (the level of the answering
-// call, the form of before the stages) or an object (the level of each stage).
-func parseReasoning(raw json.RawMessage) (memory_core.Reasoning, error) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
-		return nil, nil
+// Reasoning is the reasoning field of a Request: the level of each stage. In JSON it is an object with a level per stage, or a string,
+// the level of the call that answers (the form of before the stages; it reads as {"query": level}); absent or null is none.
+type Reasoning map[string]string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (r *Reasoning) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		*r = nil
+		return nil
 	}
-	if raw[0] == '{' {
+	if data[0] == '{' {
 		var m map[string]string
-		if err := json.Unmarshal(raw, &m); err != nil {
-			return nil, fmt.Errorf("%w: reasoning must map each stage to a level: %v",
+		if err := json.Unmarshal(data, &m); err != nil {
+			return fmt.Errorf("%w: reasoning must map each stage to a level: %v",
 				memory_core.ErrInvalidReasoning,
 				err)
 		}
-		return memory_core.ResolveQueryReasoningStages(m)
+		*r = m
+		return nil
 	}
 	var level string
-	if err := json.Unmarshal(raw, &level); err != nil {
-		return nil, fmt.Errorf("%w: reasoning must be a level or an object with a level per stage", memory_core.ErrInvalidReasoning)
+	if err := json.Unmarshal(data, &level); err != nil {
+		return fmt.Errorf("%w: reasoning must be a level or an object with a level per stage", memory_core.ErrInvalidReasoning)
 	}
-	return memory_core.ResolveQueryReasoning(level)
+	*r = Reasoning{memory_core.StageQuery: level}
+	return nil
 }
 
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/query. opts apply to every call; with memory_core.WithGeoResolver the places the question mentions are
 // found; the geo entities near them are given to the LLM only when the request asks (geo_nearby, geo_radius_km; memory_core.WithGeoRadius sets the default radius).
+// With memory_core.WithEval the response also carries the call's ATIF trajectory, and the 502 says why the call failed.
 func Handler(d *sql.DB,
 	llm memory_core.LLM,
 	opts ...memory_core.Option) http.HandlerFunc {
-	return handler(d,
-		llm,
-		false,
-		opts)
-}
-
-// EvalHandler serves POST /v1/gb/eval/query: like Handler, but the response also carries the call's ATIF
-// trajectory. It is only registered when the server runs in eval mode.
-func EvalHandler(d *sql.DB,
-	llm memory_core.LLM,
-	opts ...memory_core.Option) http.HandlerFunc {
-	return handler(d,
-		llm,
-		true,
-		opts)
-}
-
-func handler(d *sql.DB,
-	llm memory_core.LLM,
-	eval bool,
-	opts []memory_core.Option) http.HandlerFunc {
-	opts = opts[:len(opts):len(opts)]
-	if eval {
-		opts = append(opts, memory_core.WithEval())
-	}
+	eval := memory_core.NewCallOptions(opts).Eval
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		if llm == nil {
@@ -114,7 +93,7 @@ func handler(d *sql.DB,
 				"LLM not configured (set ANTHROPIC_API_KEY)")
 			return
 		}
-		var req queryRequest
+		var req Request
 		if err := json.NewDecoder(http.MaxBytesReader(w,
 			r.Body,
 			maxQueryBytes)).Decode(&req); err != nil {
@@ -123,142 +102,37 @@ func handler(d *sql.DB,
 				"invalid JSON body: "+err.Error())
 			return
 		}
-		req.Query = strings.TrimSpace(req.Query)
-		if req.Query == "" {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				"query is required")
-			return
-		}
-		sessionID, err := memory_core.ResolveSessionID(req.SessionID)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		reasoning, err := parseReasoning(req.Reasoning)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		models, err := memory_core.ResolveQueryModels(req.Models)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		graphIndex, err := memory_core.ResolveGraphIndex(req.GraphIndex)
-		if err == nil && graphIndex != "" && memory_core.NewCallOptions(opts).GraphEmbedder == nil {
-			err = errors.New("graph_index needs the graph embedder hook: it is not set on this server")
-		}
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		callOpts := append(opts[:len(opts):len(opts)],
-			memory_core.WithSessionID(sessionID),
-			memory_core.WithGraphIndex(graphIndex),
-			memory_core.WithModels(models),
-			memory_core.WithReasoning(reasoning))
-		if req.GeoRadiusKm != nil && req.GeoNearby != nil && !*req.GeoNearby {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				"geo_radius_km turns the nearby search on, but geo_nearby is false")
-			return
-		}
-		if nearby := (req.GeoNearby != nil && *req.GeoNearby) || req.GeoRadiusKm != nil; nearby {
-			if memory_core.NewCallOptions(opts).GeoResolver == nil {
-				httputil.Error(w,
-					http.StatusBadRequest,
-					"the nearby search needs geo: it is not enabled on this server (geo = true in the config)")
-				return
-			}
-			callOpts = append(callOpts, memory_core.WithGeoNearby(true))
-		}
-		if req.GeoRadiusKm != nil { // a later option wins over the default radius of the server
-			if err := memory_core.ValidateGeoRadius(*req.GeoRadiusKm); err != nil {
-				httputil.Error(w,
-					http.StatusBadRequest,
-					err.Error())
-				return
-			}
-			callOpts = append(callOpts, memory_core.WithGeoRadius(*req.GeoRadiusKm))
-		}
-		if req.EvidenceOnly {
-			callOpts = append(callOpts, memory_core.WithEvidenceOnly(true))
-		}
-		start := time.Now()
-		res, err := memory_query.Query(r.Context(),
+		res, err := Run(r.Context(),
 			d,
 			llm,
 			httputil.UserID(r),
-			req.Dataset,
-			req.Query,
-			callOpts...)
-		if err != nil {
-			monitoring.EmitSystemEvent(r.Context(),
-				"query.failed",
-				monitoring.Event{
-					"user_id":     httputil.UserID(r),
-					"dataset":     req.Dataset,
-					"session_id":  sessionID,
-					"query_bytes": len(req.Query),
-					"duration_ms": time.Since(start).Milliseconds(),
-					"error":       err.Error(),
-				})
-		}
-		if errors.Is(err, memory_core.ErrInvalidDataset) || errors.Is(err, memory_core.ErrInvalidUser) || errors.Is(err, memory_core.ErrInvalidGeoRadius) {
+			req,
+			opts)
+		var invalid *InvalidError
+		switch {
+		case err == nil:
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				res)
+		case errors.As(err, &invalid),
+			errors.Is(err, memory_core.ErrInvalidDataset),
+			errors.Is(err, memory_core.ErrInvalidUser),
+			errors.Is(err, memory_core.ErrInvalidGeoRadius):
 			httputil.Error(w,
 				http.StatusBadRequest,
 				err.Error())
-			return
-		}
-		if errors.Is(err, memory_core.ErrDatasetNotFound) {
+		case errors.Is(err, memory_core.ErrDatasetNotFound):
 			httputil.Error(w,
 				http.StatusNotFound,
 				"dataset not found")
-			return
-		}
-		if err != nil {
-			log.WithError(err).WithFields(log.Fields{
-				"user_id":    httputil.UserID(r),
-				"dataset":    req.Dataset,
-				"session_id": sessionID,
-			}).Error("query failed")
+		default:
 			msg := "failed to answer query"
-			if eval { // the internal eval endpoint: the runner records the cause as the reason the case errored
+			if eval { // the caller is the eval runner: it records the cause as the reason the case errored
 				msg += ": " + err.Error()
 			}
 			httputil.Error(w,
 				http.StatusBadGateway,
 				msg)
-			return
 		}
-		log.WithFields(log.Fields{
-			"user_id":     httputil.UserID(r),
-			"dataset":     req.Dataset,
-			"session_id":  sessionID,
-			"duration_ms": time.Since(start).Milliseconds(),
-		}).Debug("query completed")
-		monitoring.EmitSystemEvent(r.Context(),
-			"query.completed",
-			monitoring.Event{
-				"user_id":           httputil.UserID(r),
-				"dataset":           req.Dataset,
-				"session_id":        sessionID,
-				"query_bytes":       len(req.Query),
-				"evidence_entities": len(res.Evidence.Entities),
-				"evidence_edges":    len(res.Evidence.Edges),
-				"duration_ms":       time.Since(start).Milliseconds(),
-			})
-		httputil.WriteJSON(w,
-			http.StatusOK,
-			res)
 	}
 }

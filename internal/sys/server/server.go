@@ -109,7 +109,7 @@ type Options struct {
 	SidecarURL string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]llm.Price
-	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
+	// TrajectoryDir is where the ATIF trajectories of the eval calls are stored as JSON.
 	// Default: an "atif" directory next to the SQLite file (memory_core.TrajectoryDir if there is none).
 	TrajectoryDir string
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...) and starts the training monitor. Off by default.
@@ -145,7 +145,7 @@ type Options struct {
 	// the admin UI) work through it. Nil means the server has no evals: no eval route is registered.
 	//
 	// Why it is injected and not just called: it was added because of an IMPORT CYCLE. Running an eval case is the job of package
-	// internal/evals/knowledge (Executor, Rerunner), which runs every case through the eval routes of package api, and the run manager
+	// internal/evals/knowledge (Executor, Rerunner), which runs every case through the typed layer of package api (remember.Remember, query.Run), and the run manager
 	// that uses it imports it. The server imports api and the admin package, which serve the routes, so the server (or the packages it
 	// imports) cannot import the manager: server -> runmanager -> knowledge -> api would not be a cycle by itself, but runmanager and
 	// knowledge also import this package (for EvalEnv). The way out is to invert the dependency: package api/evals defines what the

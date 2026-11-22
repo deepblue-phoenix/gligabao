@@ -6,7 +6,7 @@ package admin
 //     its sources as text, its parent artifact) with the entities and edges linked to it. That is all there is for the
 //     standard database, and it says nothing about searches that found nothing, the queries the model sent to the search
 //     engine, or how long they took;
-//   - the ATIF TRAJECTORIES the eval endpoints record (eval database only): the "web_search" step of a remember call holds
+//   - the ATIF TRAJECTORIES the eval calls record (eval database only): the "web_search" step of a remember call holds
 //     all that, and the "store_artifact" step after it what the result yielded.
 //
 // Both are turned into the same WebSearch view, so the UI shows them alike; the fields only a trajectory knows are empty

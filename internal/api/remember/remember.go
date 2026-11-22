@@ -30,7 +30,8 @@ const (
 	maxBodyBytes = memory_image.MaxImageBytes/3*4 + 1<<16
 )
 
-type rememberRequest struct {
+// Request is a remember request: the body of POST /v1/gb/remember, and what Remember takes from the callers that are not HTTP (the evals).
+type Request struct {
 	// Dataset is the dataset to store into (created if missing). Defaults to "main".
 	Dataset string `json:"dataset"`
 	// Text is the text to remember. Required unless Image is given.
@@ -91,26 +92,26 @@ type rememberRequest struct {
 	OntologyGroundingMode string `json:"ontology_grounding_mode"`
 	// Timeseries (optional) supplies timeseries to store and anchor to what the text yields (see docs/timeseries.md).
 	// Not for an image (400).
-	Timeseries *timeseriesRequest `json:"timeseries"`
+	Timeseries *TimeseriesRequest `json:"timeseries"`
 }
 
-// timeseriesRequest is the timeseries of a remember request.
-type timeseriesRequest struct {
+// TimeseriesRequest is the timeseries of a remember Request.
+type TimeseriesRequest struct {
 	// Series are the series to store. A series without anchors is anchored to the artifact; its entity and edge
 	// anchors are resolved after the text is extracted and stored.
 	Series []memory_core.SeriesSpec `json:"series"`
 	// Fetch (optional) makes the pipeline fetch series itself from the timeseries providers the server was started with:
 	// an LLM decides, from the providers' descriptions, which one to use for which entity of the text. 503 if the
 	// server has no provider.
-	Fetch *fetchRequest `json:"fetch"`
+	Fetch *FetchRequest `json:"fetch"`
 	// Observations (optional, default false) derives an artifact of kind "series_observation" from each series the call
 	// stores (supplied or fetched), at most 10: a text generated from the series' stats, extracted into the graph like
 	// any text. It costs an extraction call each. Needs series, fetch or both.
 	Observations bool `json:"observations"`
 }
 
-// fetchRequest is timeseries.fetch of a remember request.
-type fetchRequest struct {
+// FetchRequest is timeseries.fetch of a remember Request.
+type FetchRequest struct {
 	// Providers (optional) are the names of the providers that may be used; default: all registered.
 	Providers []string `json:"providers"`
 	// Before and After (optional) are how far before and after the reference time of the text the series reach, e.g.
@@ -123,10 +124,11 @@ type fetchRequest struct {
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/remember.
-// A text is not remembered by the handler: it is sent to the remember manager mgr, which runs the pipeline (one run at a time)
-// and returns the ID of the run at once; the handler then waits for the run to complete. An image is remembered by the handler
+// A text is not remembered by the handler: Remember sends it to the remember manager mgr, which runs the pipeline (one run at a time)
+// and returns the ID of the run at once; Remember then waits for the run to complete. An image is remembered by the handler
 // itself, with d.
-// mo are extra options for every memory_remember.Remember call (e.g. memory.WithVectors).
+// mo are extra options for every memory_remember.Remember call (e.g. memory.WithVectors). With memory_core.WithEval the response
+// also carries the call's ATIF trajectory, and the 502 says why the call failed.
 func Handler(mgr *memory_remember.Manager,
 	d *sql.DB,
 	llm memory_core.LLM,
@@ -134,25 +136,10 @@ func Handler(mgr *memory_remember.Manager,
 	return handler(mgr,
 		d,
 		llm,
-		false,
 		mo)
 }
 
-// EvalHandler serves POST /v1/gb/eval/remember: like Handler, but the response also carries the call's ATIF
-// trajectory. It is only registered when the server runs in eval mode.
-func EvalHandler(mgr *memory_remember.Manager,
-	d *sql.DB,
-	llm memory_core.LLM,
-	mo ...memory_core.Option) http.HandlerFunc {
-	return handler(mgr,
-		d,
-		llm,
-		true,
-		mo)
-}
-
-// failureMessage is what a 502 says: the generic message, or in eval mode (the internal eval endpoints, whose caller is the eval runner)
-// also the cause, which is what the case run then records as the reason it errored (e.g. the provider's refusal of a request).
+// failureMessage is what a 502 says: the generic message, or in eval mode (a call made with memory_core.WithEval) also the cause.
 func failureMessage(generic string,
 	err error,
 	eval bool) string {
@@ -165,12 +152,8 @@ func failureMessage(generic string,
 func handler(mgr *memory_remember.Manager,
 	d *sql.DB,
 	llm memory_core.LLM,
-	eval bool,
-	mo []memory_core.Option) http.HandlerFunc {
-	opts := append([]memory_core.Option(nil), mo...)
-	if eval {
-		opts = append(opts, memory_core.WithEval())
-	}
+	opts []memory_core.Option) http.HandlerFunc {
+	eval := memory_core.NewCallOptions(opts).Eval
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		if llm == nil {
@@ -179,7 +162,7 @@ func handler(mgr *memory_remember.Manager,
 				"LLM not configured (set ANTHROPIC_API_KEY)")
 			return
 		}
-		var req rememberRequest
+		var req Request
 		if err := json.NewDecoder(http.MaxBytesReader(w,
 			r.Body,
 			maxBodyBytes)).Decode(&req); err != nil {
@@ -198,219 +181,50 @@ func handler(mgr *memory_remember.Manager,
 				opts)
 			return
 		}
-		if req.Text == "" {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				"text is required")
-			return
-		}
-		if len(req.Text) > maxRememberBytes {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				"text is larger than 1 MiB")
-			return
-		}
-		var ref time.Time
-		if req.ReferenceTime != "" {
-			var err error
-			if ref, err = relational.ParseTimeStrict(req.ReferenceTime); err != nil {
-				httputil.Error(w,
-					http.StatusBadRequest,
-					"reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
-				return
-			}
-		}
-		if _, err := memory_core.ResolveUserID(httputil.UserID(r)); err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		if _, err := memory_core.ResolveDatasetName(req.Dataset); err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		if _, err := memory_remember.ResolveKind(req.Kind); err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		sessionID, err := memory_core.ResolveSessionID(req.SessionID)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		graphIndex, err := resolveGraphIndex(req.GraphIndex, opts)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		models, err := memory_core.ResolveModels(req.Models)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		reasoning, err := memory_core.ResolveReasoning(req.Reasoning)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		// On by default, except on the eval endpoint, whose trajectories and costs must not change under an eval that did not ask for it.
-		classifyGraph := req.ClassifyGraph != nil && *req.ClassifyGraph || req.ClassifyGraph == nil && !eval
-		graphClasses, err := resolveGraphClasses(classifyGraph, req.GraphClasses)
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		groundOpts, err := resolveGrounding(r.Context(),
+		res, err := Remember(r.Context(),
+			mgr,
 			d,
 			httputil.UserID(r),
-			req)
-		if err != nil {
+			req,
+			opts)
+		var (
+			invalid     *InvalidError
+			unavailable *UnavailableError
+		)
+		switch {
+		case err == nil:
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				res)
+		case errors.As(err, &invalid):
 			httputil.Error(w,
 				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		if req.WebSearch && memory_core.NewCallOptions(opts).WebSearcher == nil {
+				invalid.Error())
+		case errors.As(err, &unavailable):
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
-				memory_core.ErrWebSearchUnavailable.Error())
-			return
-		}
-		series, fetch, observe, err := resolveTimeseries(req.Timeseries, memory_core.NewCallOptions(opts).SeriesProviders)
-		if errors.Is(err, memory_core.ErrSeriesProvidersUnavailable) {
+				unavailable.Error())
+		case errors.Is(err, ErrNotQueued):
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
-				err.Error())
-			return
-		}
-		if err != nil {
-			httputil.Error(w,
-				http.StatusBadRequest,
-				err.Error())
-			return
-		}
-		start := time.Now()
-		// Send the request to the remember manager, which answers at once with the ID of the run; then block on the outcome
-		// channel, which the manager sends the result to when the run is over.
-		outcome := make(chan memory_remember.Outcome, 1)
-		runID, err := mgr.Submit(memory_remember.Request{
-			UserID:  httputil.UserID(r),
-			Dataset: req.Dataset,
-			Kind:    req.Kind,
-			Text:    req.Text,
-			Ref:     ref,
-			Opts: append(append(opts[:len(opts):len(opts)], groundOpts...),
-				memory_core.WithSessionID(sessionID),
-				memory_core.WithGraphIndex(graphIndex),
-				memory_core.WithModels(models),
-				memory_core.WithReasoning(reasoning),
-				memory_core.WithWebSearch(req.WebSearch),
-				memory_core.WithGeoSync(req.GeoSync),
-				memory_core.WithClassifyGraph(classifyGraph, graphClasses),
-				memory_core.WithSeries(series),
-				memory_core.WithSeriesFetch(fetch),
-				memory_core.WithSeriesObservations(observe)),
-			Ctx:     r.Context(),
-			Outcome: outcome,
-		})
-		if err != nil {
-			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": req.Dataset}).Error("remember not queued")
-			httputil.Error(w,
-				http.StatusServiceUnavailable,
-				"remember is not available")
-			return
-		}
-		out := <-outcome
-		res, err := out.Result, out.Err
-		if errors.Is(err, memory_timeseries.ErrAnchor) { // nothing was stored
+				ErrNotQueued.Error())
+		case errors.Is(err, memory_timeseries.ErrAnchor): // nothing was stored
 			httputil.Error(w,
 				http.StatusUnprocessableEntity,
 				err.Error())
-			return
-		}
-		if err != nil {
-			log.WithError(err).WithFields(log.Fields{
-				"user_id":         httputil.UserID(r),
-				"dataset":         req.Dataset,
-				"session_id":      sessionID,
-				"remember_run_id": runID,
-			}).Error("remember failed")
-			monitoring.EmitSystemEvent(r.Context(),
-				"remember.failed",
-				monitoring.Event{
-					"user_id":         httputil.UserID(r),
-					"dataset":         req.Dataset,
-					"session_id":      sessionID,
-					"remember_run_id": runID,
-					"text_bytes":      len(req.Text),
-					"duration_ms":     time.Since(start).Milliseconds(),
-					"error":           err.Error(),
-				})
+		default:
 			httputil.Error(w,
 				http.StatusBadGateway,
 				failureMessage("failed to process text",
 					err,
 					eval))
-			return
 		}
-		log.WithFields(log.Fields{
-			"user_id":             res.UserID,
-			"dataset":             res.Dataset,
-			"artifact_id":         res.ArtifactID,
-			"session_id":          res.SessionID,
-			"kind":                res.Kind,
-			"chunks":              len(res.Chunks),
-			"entities":            len(res.Entities),
-			"edges":               len(res.Edges),
-			"web_searches":        len(res.WebSearches),
-			"series":              len(res.Series),
-			"series_fetches":      len(res.SeriesFetches),
-			"series_observations": len(res.SeriesObservations),
-			"duration_ms":         time.Since(start).Milliseconds(),
-		}).Debug("remember completed")
-		monitoring.EmitSystemEvent(r.Context(),
-			"remember.completed",
-			monitoring.Event{
-				"user_id":             res.UserID,
-				"dataset":             res.Dataset,
-				"artifact_id":         res.ArtifactID,
-				"session_id":          res.SessionID,
-				"kind":                res.Kind,
-				"text_bytes":          len(req.Text),
-				"chunks":              len(res.Chunks),
-				"entities":            len(res.Entities),
-				"edges":               len(res.Edges),
-				"invalidated_edges":   len(res.InvalidatedEdges),
-				"web_searches":        len(res.WebSearches),
-				"series":              len(res.Series),
-				"series_fetches":      len(res.SeriesFetches),
-				"series_observations": len(res.SeriesObservations),
-				"duration_ms":         time.Since(start).Milliseconds(),
-			})
-		httputil.WriteJSON(w,
-			http.StatusOK,
-			res)
 	}
 }
 
 // resolveTimeseries validates the timeseries of a request (nil for none) against the registered providers: the series
 // that were supplied, what to fetch (nil if nothing), and whether to derive an observation artifact from each series.
-func resolveTimeseries(t *timeseriesRequest,
+func resolveTimeseries(t *TimeseriesRequest,
 	providers []memory_core.SeriesProvider) ([]memory_core.SeriesSpec, *memory_core.SeriesFetch, bool, error) {
 	if t == nil {
 		return nil, nil, false, nil
@@ -443,7 +257,7 @@ func resolveTimeseries(t *timeseriesRequest,
 func resolveGrounding(ctx context.Context,
 	d *sql.DB,
 	userID string,
-	req rememberRequest) ([]memory_core.Option, error) {
+	req Request) ([]memory_core.Option, error) {
 	if !req.OntologyGrounding {
 		if len(req.Ontologies) > 0 || strings.TrimSpace(req.OntologyGroundingMode) != "" {
 			return nil, errors.New("ontologies and ontology_grounding_mode need ontology_grounding, which is false")
@@ -492,7 +306,7 @@ func rememberImage(w http.ResponseWriter,
 	r *http.Request,
 	d *sql.DB,
 	llm memory_core.LLM,
-	req rememberRequest,
+	req Request,
 	opts []memory_core.Option) {
 	if req.Text != "" || req.Kind != "" {
 		httputil.Error(w,

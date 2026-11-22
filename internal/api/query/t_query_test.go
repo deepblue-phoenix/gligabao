@@ -182,9 +182,10 @@ func testQuerySession(t *testing.T,
 	mux.HandleFunc("POST /v1/gb/query", Handler(d,
 		llm,
 		withVectors(t)))
-	mux.HandleFunc("POST /v1/gb/eval/query", EvalHandler(d,
+	mux.HandleFunc("POST /v1/gb/eval/query", Handler(d,
 		llm,
-		withVectors(t)))
+		withVectors(t),
+		memory_core.WithEval()))
 	post := func(path,
 		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()

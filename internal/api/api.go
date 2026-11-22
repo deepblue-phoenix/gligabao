@@ -13,7 +13,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
 	"github.com/deepblue-phoenix/gligabao/internal/api/research"
 	"github.com/deepblue-phoenix/gligabao/internal/api/timeseries"
-	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -24,8 +23,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 )
 
-// Register mounts the API routes on mux. mgr is the remember manager, the one goroutine that runs the remember pipeline (shared with
-// RegisterEval, so that all remember runs are serialized together); it must have been made with the same d and llm. llm may be nil, in which case LLM-backed routes return 503.
+// Register mounts the API routes on mux. mgr is the remember manager, the one goroutine that runs the remember pipeline; it must have been made with the same d and llm. llm may be nil, in which case LLM-backed routes return 503.
 // d holds all databases; its vector store has one vector dataset per dataset and index (memory_dataset.VectorDataset). emb is what remember embeds with and what query
 // embeds the question with: it must not be nil (a query with a nil emb panics). jv may be nil (Jev not configured), in which case
 // remember skips the steps that run on Jev. ws may be nil (no Anthropic API key), in which case a remember request that asks for
@@ -253,7 +251,6 @@ type options struct {
 	trainingHook  memory_core.ClassifyingTrainingHook
 	research      *agent_research.Manager
 	evals         *evalsapi.Service
-	trajectories  atifstore.Store
 }
 
 // Option configures Register.
@@ -262,24 +259,20 @@ type Option func(*options)
 // WithAuth makes every route of Register require an API key ("Authorization: Bearer <key>"): auth is called with it and returns
 // the ID of the user it belongs to, who the request then acts as. A request without a key, or whose key auth rejects (any error),
 // gets 401. Without it, routes act as the user of the "gb-user-id" header (400 without it). The user is never taken from the query
-// string or the body. The eval routes are not covered.
+// string or the body.
 func WithAuth(auth httputil.Authenticator) Option { return func(o *options) { o.auth = auth } }
 
-// WithGeoResolver makes remember (Register and RegisterEval) find the places among the entities it extracts and store their
+// WithGeoResolver makes remember (Register and RememberOptions) find the places among the entities it extracts and store their
 // coordinates (see package memory_geo and memory_remember's resolve_geo stage), and query find the places the question mentions and give the
 // geo entities near them to the LLM that answers. Without it (or with nil) neither looks at places.
 func WithGeoResolver(r memory_geo.Resolver) Option { return func(o *options) { o.geo = r } }
-
-// WithTrajectoryStore makes the eval routes of RegisterEval store their ATIF trajectories in s (the evals use it to learn where a
-// trajectory went, and to keep it in the directory of the user). Without it (or with nil) the process default is used.
-func WithTrajectoryStore(s atifstore.Store) Option { return func(o *options) { o.trajectories = s } }
 
 // WithGeoRadius sets the default radius, in kilometers, of the proximity search of query (a request can override it with
 // geo_radius_km); 0 (the default) means memory_core.DefaultGeoRadiusKm.
 func WithGeoRadius(km float64) Option { return func(o *options) { o.geoRadiusKm = km } }
 
 // WithGraphEmbedder sets the graph embedder hook of remember (called once the graph of a text is fully constructed) and query (called once the
-// graph context of the question is fetched), in Register, RegisterMCP, RegisterEval and QueryHandler. Without it (or with nil) it is off.
+// graph context of the question is fetched), in Register, RegisterMCP, RememberOptions, QueryOptions and QueryHandler. Without it (or with nil) it is off.
 //
 // IMPORTANT: the embeddings the hook returns are NOT stored in the vector store yet; they must be (see memory_core.GraphEmbedder).
 func WithGraphEmbedder(f memory_core.GraphEmbedder) Option {
@@ -306,42 +299,39 @@ func WithEvals(s *evalsapi.Service) Option { return func(o *options) { o.evals =
 // "file"), searched in order. Without them only the "content" form works.
 func WithOntologyDirs(dirs []string) Option { return func(o *options) { o.ontologyDirs = dirs } }
 
-// RegisterEval mounts the eval-only routes: remember and query that also return their ATIF trajectories.
-// They are not part of Register; the server mounts them only in eval mode.
-func RegisterEval(mux *http.ServeMux,
-	mgr *memory_remember.Manager,
-	d *db.DB,
-	llm memory_core.LLM,
+// RememberOptions are the options of every remember call of the API (what Register passes to remember.Handler), for the callers that
+// make the calls themselves with remember.Remember, as the evals do: the options that tell the pipeline where the vectors, the images
+// and the hooks are (WithGeoResolver and WithGraphEmbedder, as for Register). emb is what remember embeds with (nil: the entities and
+// edges are not vector indexed).
+func RememberOptions(d *db.DB,
 	emb memory_core.Embedder,
 	jv memory_core.Classifier,
 	ws memory_core.WebSearcher,
 	providers []memory_core.SeriesProvider,
-	opts ...Option) {
+	opts ...Option) []memory_core.Option {
+	return rememberOptions(d,
+		emb,
+		jv,
+		ws,
+		providers,
+		applied(opts))
+}
+
+// QueryOptions are the options of every query call of the API (what Register passes to query.Handler), for the callers that make the
+// calls themselves with query.Run, as the evals do. opts are WithGeoResolver, WithGeoRadius and WithGraphEmbedder, as for Register.
+func QueryOptions(d *db.DB,
+	emb memory_core.Embedder,
+	opts ...Option) []memory_core.Option {
+	return queryOptions(d,
+		emb,
+		applied(opts))
+}
+
+// applied is the options that opts set.
+func applied(opts []Option) options {
 	var o options
 	for _, opt := range opts {
 		opt(&o)
 	}
-	var store []memory_core.Option
-	if o.trajectories != nil {
-		store = append(store[:len(store):len(store)], memory_core.WithTrajectoryStore(o.trajectories))
-	}
-	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr,
-		d.Relational,
-		llm,
-		append(store[:len(store):len(store)],
-			memory.WithVectors(d.Vector, emb),
-			memory_core.WithChunking(d.Chunking),
-			memory_core.WithJev(jv),
-			memory_core.WithWebSearcher(ws),
-			memory_core.WithSeriesProviders(providers),
-			memory_core.WithGeoResolver(o.geo),
-			memory_core.WithGraphEmbedder(o.graphEmbedder),
-			memory_image.WithImageStore(d.ImageStore))...))
-	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational,
-		llm,
-		append(store[:len(store):len(store)],
-			memory.WithVectors(d.Vector, emb),
-			memory_core.WithGeoResolver(o.geo),
-			memory_core.WithGeoRadius(o.geoRadiusKm),
-			memory_core.WithGraphEmbedder(o.graphEmbedder))...))
+	return o
 }

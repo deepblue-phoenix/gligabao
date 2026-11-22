@@ -6,8 +6,8 @@
 // eval database (-db) as eval defs, with a case def for each case (rewritten if the file changed), and run from there. The database is
 // never reset: every run of a case has a dataset of its own, named after the case and the eval run (see knowledge.DatasetName), so
 // runs do not interfere with each other and the graphs of all runs are kept. The defs, the runs and the datasets belong to the user
-// of -user. The cases are run through the eval routes (/v1/gb/evals, the remember and query handlers) of a private in-process mux, with
-// no listener: remember (once per text, in order), then query. These return the ATIF trajectory of every call along with its result.
+// of -user. The cases are run in process, with the functions the remember and query handlers call (remember.Remember, query.Run), with
+// no HTTP in between: remember (once per text, in order), then query. These return the ATIF trajectory of every call along with its result.
 //
 // Usage: go run ./internal/evals/knowledge/cmd -user name [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -eval, only the cases of that eval run; -list-evals prints the available evals and exits.

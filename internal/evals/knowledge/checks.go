@@ -12,19 +12,11 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 // The checks of a knowledge case against what was stored in its dataset. None of them depends on the LLM except where it is said.
 // Each reports through check: a held check (pass) or a failed one (fail).
-
-// rememberedChunk is a chunk as reported by the remember response.
-type rememberedChunk struct {
-	ArtifactID  int64 `json:"artifact_id"`
-	Index       int   `json:"index"`
-	Tokens      int   `json:"tokens"`
-	StartOffset int   `json:"start_offset"`
-	EndOffset   int   `json:"end_offset"`
-}
 
 // checkChunks verifies the chunking of the case's texts, using the chunks the remember calls reported and what is
 // stored in the dataset. None of it depends on what the LLM extracts, except the spread of the facts over the chunks:
@@ -41,7 +33,7 @@ func checkChunks(ctx context.Context,
 	dataset string,
 	minChunks int,
 	parents []int64,
-	reported []rememberedChunk,
+	reported []memory_remember.ChunkResult,
 	check func(ok bool,
 		pass,
 		fail string)) error {

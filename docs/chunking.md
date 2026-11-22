@@ -96,7 +96,7 @@ For a chunked text the response is that of the document (see [remember/remember.
 - each chunk also has its `summary`: `artifact_id` (the summary artifact), `text`, `model`, `reasoning` and `inference_id`;
 - `embedded_entities`, `embedded_edges`, `embedded_chunks` and `embedded_summaries` are the sums over the chunks.
 
-`chunks` is absent for a text that was not chunked. With the eval endpoints the trajectory has a `chunk_text` step, then an `extract_graph` step and a `summarize_chunk` step (with the summary, its model and reasoning level) per chunk, a `store_parent_artifact` step, and for each chunk its candidate steps, an `embed` and a `store_artifact` step (their messages end with `(chunk i of n)`).
+`chunks` is absent for a text that was not chunked. With an eval call (`memory_core.WithEval`) the trajectory has a `chunk_text` step, then an `extract_graph` step and a `summarize_chunk` step (with the summary, its model and reasoning level) per chunk, a `store_parent_artifact` step, and for each chunk its candidate steps, an `embed` and a `store_artifact` step (their messages end with `(chunk i of n)`).
 
 ## Limitations
 

@@ -8,26 +8,31 @@ The evals of the users, their API and their limits are in [user-evals.md](user-e
 
 ## Eval calls
 
-There is no eval mode and no public eval route any more (the `eval` setting, `serve --eval` and the routes `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/query` were removed): the evals are always on, and they are the user evals of [user-evals.md](user-evals.md) (`/v1/gb/evals`). What stays is the pair of handlers that record a call as a trajectory. They are registered (`api.RegisterEval`) only on a **private** `http.ServeMux` that the knowledge runner calls in process (`knowledge.MuxCaller`, an implementation of `knowledge.Caller`: `Do(ctx, owner, method, path, body)`; it records the request with `httptest.NewRecorder` and sets `gb-user-id` to the owner). The mux is never mounted on the server's public mux and no listener is opened, so the handlers cannot be reached from outside.
+There is no eval mode and no eval route any more (the `eval` setting, `serve --eval` and the routes `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/query` were removed; the private in-process mux that replaced them is gone too): the evals are always on, and they are the user evals of [user-evals.md](user-evals.md) (`/v1/gb/evals`). The knowledge runner calls the pipeline in process, with no HTTP in between, through the **typed layer** that the HTTP handlers use too:
 
-### `remember` (`/v1/gb/eval/remember` on the private mux)
+- `remember.Remember(ctx, mgr, d, owner, req remember.Request, opts)` (`internal/api/remember/text.go`) validates the request (`Request` is the struct the JSON body of [`POST /v1/gb/remember`](../remember/remember.md) decodes into, so a case is checked exactly as an API call is), assembles the options of the call, runs it on the remember manager and records the monitoring events. It returns the `*memory_remember.Result`, with the trajectory.
+- `query.Run(ctx, d, llm, owner, req query.Request, opts)` (`internal/api/query/run.go`) does the same for [`POST /v1/gb/query`](../query/query.md) and returns the `*memory_query.QueryResult`.
 
-Same request body and behavior as [`POST /v1/gb/remember`](../remember/remember.md), including `models` (the LLM model of each stage, see [Models](#models)). The response is the usual remember result plus:
+The HTTP handlers are a decoding of the body, a call of these functions and a mapping of their errors to status codes (`*InvalidError` is a `400`, `*UnavailableError` and `ErrNotQueued` a `503`, ...). The options of the calls are the ones of the API (`api.RememberOptions`, `api.QueryOptions`), plus `memory_core.WithEval()` and the trajectory store of the case, so the evals run what the server runs; the one difference of an eval call is that `classify_graph` defaults to off (its trajectories and costs must not change under an eval that did not ask for it).
 
-- `trajectory_id`: the ID of the trajectory (also the file name, see [Storage](#storage)).
-- `trajectory`: the full ATIF trajectory.
+### `remember`
 
-### `query` (`/v1/gb/eval/query` on the private mux)
+The request is a `remember.Request`, with the same fields and behavior as [`POST /v1/gb/remember`](../remember/remember.md), including `models` (the LLM model of each stage, see [Models](#models)). The result is the usual remember result plus:
 
-Same request body and behavior as [`POST /v1/gb/query`](../query/query.md). The response is the usual query result (`answer`, `evidence`) plus `trajectory_id` and `trajectory`.
+- `TrajectoryID`: the ID of the trajectory (also the file name, see [Storage](#storage)).
+- `Trajectory`: the full ATIF trajectory.
 
-Errors are the same as for the regular endpoints, except that a `502` also puts the cause in its message (`failed to process text: <cause>`, `failed to answer query: <cause>`; the regular endpoints keep the generic message), which the runner records, without the JSON around it, as the reason the case errored (e.g. the provider's own error text). A failed call returns no trajectory (it is still stored, see below).
+### `query`
 
-The case's datasets are **eval datasets** (`gb_datasets.kind = 'eval'`, named `r<eval run id>-<case>`): the handlers reach them through a context value (`memory_dataset.WithEval`) set by the caller, and the regular dataset endpoints never see them (see [user-evals.md](user-evals.md#eval-datasets)).
+The request is a `query.Request`, with the same fields and behavior as [`POST /v1/gb/query`](../query/query.md). The result is the usual query result (`Answer`, `Evidence`) plus `TrajectoryID` and `Trajectory`.
+
+Errors are the ones of the layer: an invalid request is an `*InvalidError`, and a failure of the pipeline is returned as it is (the provider's own error text included), which the runner records as the reason the case errored. A failed call returns no trajectory (it is still stored, see below). With `memory_core.WithEval()` the HTTP handlers also put the cause in a `502` (`failed to process text: <cause>`, `failed to answer query: <cause>`; without it they keep the generic message).
+
+The case's datasets are **eval datasets** (`gb_datasets.kind = 'eval'`, named `r<eval run id>-<case>`): the pipeline reaches them through a context value (`memory_dataset.WithEval`) set by the caller, and the regular dataset endpoints never see them (see [user-evals.md](user-evals.md#eval-datasets)).
 
 ## From Go
 
-`memory_remember.Remember` and `memory_query.Query` take options. `memory.WithEval()` is the only way to generate a trajectory; the eval endpoints are the only callers that pass it.
+`memory_remember.Remember` and `memory_query.Query` take options. `memory.WithEval()` is the only way to generate a trajectory; the eval runner is the only caller that passes it.
 
 ```go
 res, err := memory.Remember(ctx, db, llm, "u1", "main", text, time.Time{}, memory.WithEval())
@@ -152,7 +157,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 The eval caller has geo on: the runner gives it a geo resolver, Nominatim of OpenStreetMap (cached) by default, so `remember` stores the coordinates of the places it finds and `query` finds those of the question (one more LLM call each, and a lookup per place; it needs internet). `-geo=false` turns it off; a program that runs the evals sets `knowledge.Executor.Geo` (nil: off). A failed lookup never fails a case (see [geo.md](../geo.md)).
 
-`internal/evals/knowledge` runs each case through the private eval mux (`knowledge.Caller`, no listener, as the owner of the run), calling `remember` (once per memory, in order) and `query`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the query's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
+`internal/evals/knowledge` runs each case in process, as the owner of the run, calling `remember.Remember` (once per memory, in order) and `query.Run`. It takes the `Trajectory` from every result and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the query's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
 
 ### The `geo` eval and `expect_geo`
 

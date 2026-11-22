@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.226.0] - 2026-11-22
+
+The knowledge evals no longer simulate HTTP: they call the remember and query pipeline through the same typed functions the HTTP handlers use.
+
+### Changed
+- `internal/api/remember` has `Remember(ctx, mgr, d, userID, Request, opts)` and `internal/api/query` has `Run(ctx, d, llm, userID, Request, opts)`: they validate a request (the same `Request` struct the JSON body decodes into), assemble the options of the call, run it and record the monitoring events. `POST /v1/gb/remember` and `POST /v1/gb/query` are now a decoding of the body, a call of these and a mapping of their errors (`*InvalidError` is a 400, `*UnavailableError` and `ErrNotQueued` a 503, ...); their responses are unchanged. The `reasoning` of a query request is a `query.Reasoning`, which reads from JSON as a level or as an object per stage, as before.
+- The knowledge eval executor (CLI, run manager, rerun) calls `remember.Remember` and `query.Run` directly, with the options of the API (`api.RememberOptions`, `api.QueryOptions`) plus `memory_core.WithEval()` and the trajectory store of the case. There is no private mux, no `httptest`, no JSON round trip and no `gb-user-id` header any more. A case's error is now the error of the pipeline (`remember #1: <cause>`), not `status 502: ...`; the query of an eval now also records its tracked errors in `gb_errors`, as the API does.
+- `memory_core.WithEval()` passed to `remember.Handler` or `query.Handler` now has the effects the eval handlers had: the trajectory in the response, `classify_graph` off by default, the cause in a 502.
+- `knowledge/caller.go` is `knowledge/calls.go`; the chunk reported by a remember call is a `memory_remember.ChunkResult`.
+
+### Removed
+- `api.RegisterEval`, `api.WithTrajectoryStore`, `remember.EvalHandler`, `query.EvalHandler`, `knowledge.Caller` and `knowledge.MuxCaller` (the private eval mux and its routes `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/query`, which were never mounted on the server).
+
 ## [0.225.2] - 2026-11-22
 
 ### Changed
