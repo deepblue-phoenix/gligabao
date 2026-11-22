@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.225.2] - 2026-11-22
+
+### Changed
+- Refactor: `runner.Runner.SyncEval` is now `UpsertEvalDef` (it creates the eval def or brings the stored one up to date; it does not reconcile both ways), and `runner/sync.go` is `runner/upsert.go`. Likewise in `usereval`: `Env.Sync` is `Env.Upsert`, `SyncFunc` is `UpsertFunc` and `ErrSync` is `ErrUpsert`. No behaviour change; the errors of `UpsertEvalDef` now start with "upsert eval def".
+
 ## [0.225.1] - 2026-11-22
 
 Step 9 of the per-user evals refactor (`gloflow_emergence/docs/evals/eval-refactor.md`): the docs.

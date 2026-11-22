@@ -222,7 +222,7 @@ func mainErr() error {
 		return err
 	}
 	r := runner.New(database.Relational, store)
-	def, err := r.SyncEval(ctx,
+	def, err := r.UpsertEvalDef(ctx,
 		core.SystemUser,
 		training.Spec(ev))
 	if err != nil {

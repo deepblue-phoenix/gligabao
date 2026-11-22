@@ -21,7 +21,7 @@ type CaseSpec struct {
 	Meta        core.CaseDefMeta
 }
 
-// EvalSpec is an eval as the files have it. SyncEval makes the database's eval def say the same.
+// EvalSpec is an eval as the files have it. UpsertEvalDef makes the database's eval def say the same.
 type EvalSpec struct {
 	Name string
 	Type core.Type
@@ -37,25 +37,25 @@ type EvalSpec struct {
 // eval, so two cases cannot swap at once): above every real one.
 const tempPosition = 1 << 30
 
-// SyncEval makes the eval def that the spec describes exist in the database: it creates it, or brings the stored one up to date,
+// UpsertEvalDef makes the eval def that the spec describes exist in the database: it creates it, or brings the stored one up to date,
 // in one transaction. The files are the source, so a case that exists is rewritten if its metadata differs (the case runs of the
 // past keep what they were given, see core.CaseRun), a case that is new is created, and the order of the cases is the spec's. A
 // case that is in the database but not in the spec is kept (it may have runs), after the others, and is not in the returned def.
 // The returned def has the cases of the spec only, each with its Meta (pointers: see db.Store.GetEvalDefByName).
-func (r *Runner) SyncEval(ctx context.Context,
+func (r *Runner) UpsertEvalDef(ctx context.Context,
 	userID string,
 	spec EvalSpec) (*core.EvalDef, error) {
 	if err := db.CheckOwner(userID); err != nil {
-		return nil, fmt.Errorf("sync eval %q: %w",
+		return nil, fmt.Errorf("upsert eval def %q: %w",
 			spec.Name,
 			err)
 	}
 	if spec.Name == "" || spec.Type == "" {
-		return nil, errors.New("sync eval: the name and type are required")
+		return nil, errors.New("upsert eval def: the name and type are required")
 	}
 	for _, c := range spec.Cases {
 		if c.Name == "" || c.Meta == nil || c.Meta.CaseType() != spec.Type {
-			return nil, fmt.Errorf("sync eval %q: case %q has no metadata of type %q",
+			return nil, fmt.Errorf("upsert eval def %q: case %q has no metadata of type %q",
 				spec.Name,
 				c.Name,
 				spec.Type)
@@ -63,14 +63,14 @@ func (r *Runner) SyncEval(ctx context.Context,
 	}
 	var out *core.EvalDef
 	err := r.tx(ctx, func(q db.Execer) error {
-		def, err := r.syncEvalDef(ctx,
+		def, err := r.upsertEvalDefRow(ctx,
 			q,
 			userID,
 			spec)
 		if err != nil {
 			return err
 		}
-		if out, err = r.syncCases(ctx,
+		if out, err = r.upsertCases(ctx,
 			q,
 			def,
 			spec); err != nil {
@@ -79,15 +79,15 @@ func (r *Runner) SyncEval(ctx context.Context,
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sync eval %q: %w",
+		return nil, fmt.Errorf("upsert eval def %q: %w",
 			spec.Name,
 			err)
 	}
 	return out, nil
 }
 
-// syncEvalDef creates or updates the eval def itself (not its cases).
-func (r *Runner) syncEvalDef(ctx context.Context,
+// upsertEvalDefRow creates or updates the eval def itself (not its cases).
+func (r *Runner) upsertEvalDefRow(ctx context.Context,
 	q db.Execer,
 	userID string,
 	spec EvalSpec) (*core.EvalDef, error) {
@@ -139,9 +139,9 @@ func (r *Runner) syncEvalDef(ctx context.Context,
 	return def, nil
 }
 
-// syncCases creates, updates and orders the case defs of def (which has the cases that are stored) to match spec, and returns
+// upsertCases creates, updates and orders the case defs of def (which has the cases that are stored) to match spec, and returns
 // def with the cases of the spec.
-func (r *Runner) syncCases(ctx context.Context,
+func (r *Runner) upsertCases(ctx context.Context,
 	q db.Execer,
 	def *core.EvalDef,
 	spec EvalSpec) (*core.EvalDef, error) {

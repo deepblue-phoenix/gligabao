@@ -79,11 +79,11 @@ func count(t *testing.T,
 	return n
 }
 
-func TestSyncEval(t *testing.T) {
+func TestUpsertEvalDef(t *testing.T) {
 	ctx := context.Background()
 	r := newRunner(t)
 
-	def, err := r.SyncEval(ctx,
+	def, err := r.UpsertEvalDef(ctx,
 		"u1",
 		trainingSpec("a",
 			"b",
@@ -102,7 +102,7 @@ func TestSyncEval(t *testing.T) {
 	}
 
 	// Syncing the same eval again changes nothing.
-	again, err := r.SyncEval(ctx,
+	again, err := r.UpsertEvalDef(ctx,
 		"u1",
 		trainingSpec("a",
 			"b",
@@ -126,7 +126,7 @@ func TestSyncEval(t *testing.T) {
 		},
 	}
 	spec.Description = "new description"
-	got, err := r.SyncEval(ctx,
+	got, err := r.UpsertEvalDef(ctx,
 		"u1",
 		spec)
 	if err != nil {
@@ -156,7 +156,7 @@ func TestSyncEval(t *testing.T) {
 	}
 
 	// A different type is refused, and so is a case of the wrong type.
-	if _, err := r.SyncEval(ctx,
+	if _, err := r.UpsertEvalDef(ctx,
 		"u1",
 		runner.EvalSpec{
 			Name: "tr",
@@ -172,7 +172,7 @@ func TestSyncEval(t *testing.T) {
 			Meta: &core.TrainingCaseDefMeta{},
 		}},
 	}
-	if _, err := r.SyncEval(ctx,
+	if _, err := r.UpsertEvalDef(ctx,
 		"u1",
 		bad); err == nil {
 		t.Error("accepted a case whose metadata is of another type")
@@ -182,12 +182,12 @@ func TestSyncEval(t *testing.T) {
 func TestEnsureExperiment(t *testing.T) {
 	ctx := context.Background()
 	r := newRunner(t)
-	a, _ := r.SyncEval(ctx,
+	a, _ := r.UpsertEvalDef(ctx,
 		"u1",
 		trainingSpec("a"))
 	spec := trainingSpec("b")
 	spec.Name = "tr2"
-	b, _ := r.SyncEval(ctx,
+	b, _ := r.UpsertEvalDef(ctx,
 		"u1",
 		spec)
 
@@ -281,7 +281,7 @@ func (f fakeExec) Execute(ctx context.Context,
 func TestRunEval(t *testing.T) {
 	ctx := context.Background()
 	r := newRunner(t)
-	def, err := r.SyncEval(ctx,
+	def, err := r.UpsertEvalDef(ctx,
 		"u1",
 		trainingSpec("a",
 			"b",

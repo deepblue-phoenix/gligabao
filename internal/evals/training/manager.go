@@ -240,7 +240,7 @@ func (m *Manager) Start(ctx context.Context,
 	dbCtx := context.WithoutCancel(ctx)
 	r := runner.New(m.DB, m.Store)
 	// The whole eval is put in the database (so that its order stays that of the file); the run asks the chosen cases of it.
-	def, err := r.SyncEval(dbCtx,
+	def, err := r.UpsertEvalDef(dbCtx,
 		core.SystemUser,
 		Spec(selectedFull(evals, name)))
 	if err != nil {

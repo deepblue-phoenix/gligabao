@@ -14,7 +14,7 @@ The knowledge-extraction evals and the [evals of trained models](training.md) sh
 | `EvalDef`: a named collection of cases of one type | `EvalRun`: one execution of an eval def |
 | `CaseDef`: one input and what is expected or checked | `CaseRun`: one execution of a case def |
 
-An *eval case* (a *case*) is one input/output combination, plus metadata, to be evaluated. Cases are grouped into an *eval* (a set of cases). An *experiment* groups evals (an eval can be in many experiments). The definitions are stored in the database when a run starts (`runner.SyncEval` puts the evals of the JSON files in as defs, and rewrites a case def whose file changed); a run has a link to its def, and records the `params` it was invoked with, so it can be understood without looking at the def as it is now.
+An *eval case* (a *case*) is one input/output combination, plus metadata, to be evaluated. Cases are grouped into an *eval* (a set of cases). An *experiment* groups evals (an eval can be in many experiments). The definitions are stored in the database when a run starts (`runner.UpsertEvalDef` puts the evals of the JSON files in as defs, and rewrites a case def whose file changed); a run has a link to its def, and records the `params` it was invoked with, so it can be understood without looking at the def as it is now.
 
 | table | struct (package `core`) | meaning |
 |---|---|---|
@@ -63,7 +63,7 @@ A case that errors does not stop the run: it is an `errored` case run and the ru
 
 ```go
 r := runner.New(d, store)             // d: the eval database's *sql.DB; store: from evals.StoreFor(backend)
-def, err := r.SyncEval(ctx, spec)     // put an eval of the files in the database as defs
+def, err := r.UpsertEvalDef(ctx, spec)     // put an eval of the files in the database as defs
 xd, err := r.EnsureExperiment(ctx, "baseline", "...", []core.EvalDefID{def.ID})   // get-or-create the experiment def
 xr, err := r.StartExperimentRun(ctx, xd, core.Params{"models": models})           // start a run of it
 run, err := r.RunEval(ctx, def, executor, runner.EvalOptions{ /* ExperimentRunID, Params, ... */ })

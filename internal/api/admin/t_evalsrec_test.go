@@ -88,7 +88,7 @@ func recordCaseArtifacts(t *testing.T,
 	t.Helper()
 	ctx := context.Background()
 	r := runner.New(d, storeOf(t, d))
-	def, err := r.SyncEval(ctx,
+	def, err := r.UpsertEvalDef(ctx,
 		user,
 		runner.EvalSpec{
 			Name: eval,

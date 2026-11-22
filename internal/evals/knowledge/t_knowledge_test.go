@@ -160,7 +160,7 @@ func newEnv(t *testing.T,
 func (e *env) run(ev knowledge.Eval) (*core.EvalRun, *core.EvalDef) {
 	e.t.Helper()
 	ctx := context.Background()
-	def, err := e.r.SyncEval(ctx,
+	def, err := e.r.UpsertEvalDef(ctx,
 		"eval",
 		knowledge.Spec(ev))
 	if err != nil {
@@ -691,7 +691,7 @@ func TestCancelled(t *testing.T) {
 			"Who?",
 			"alice")},
 	}
-	def, err := e.r.SyncEval(ctx,
+	def, err := e.r.UpsertEvalDef(ctx,
 		"eval",
 		knowledge.Spec(ev))
 	if err != nil {
@@ -1022,7 +1022,7 @@ func TestRerunner(t *testing.T) {
 			"Who?",
 			"bob")},
 	}
-	def, err := e.r.SyncEval(ctx,
+	def, err := e.r.UpsertEvalDef(ctx,
 		"eval",
 		knowledge.Spec(ev))
 	if err != nil {

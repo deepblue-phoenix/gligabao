@@ -370,7 +370,7 @@ func TestExecutor(t *testing.T) {
 			},
 		})
 	}
-	def, err := r.SyncEval(ctx,
+	def, err := r.UpsertEvalDef(ctx,
 		"u1",
 		training.Spec(ev))
 	if err != nil {

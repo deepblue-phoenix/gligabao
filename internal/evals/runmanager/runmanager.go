@@ -1,4 +1,4 @@
-// Package runmanager runs the user evals inside the server: it starts the eval runs of a user (limits, validation, the sync of the def,
+// Package runmanager runs the user evals inside the server: it starts the eval runs of a user (limits, validation, the upsert of the def,
 // the run recorded as pending), executes them in the background with the knowledge executor (a heartbeat tells the other servers that the
 // run is alive and carries the cancel request), recovers the runs that a crash left behind, deletes the eval datasets that are past
 // their retention, and reruns case runs. Every function acts as an owner, the user id.
@@ -226,7 +226,7 @@ func New(ctx context.Context,
 	m.env = usereval.Env{
 		Store:  cfg.Files,
 		Limits: cfg.FileLimits,
-		Sync:   m.sync,
+		Upsert: m.upsert,
 	}
 	m.rerun = knowledge.NewRerunnerWith(server.EvalEnv{
 		Ctx:       ctx,
@@ -251,7 +251,7 @@ func New(ctx context.Context,
 	return m, nil
 }
 
-// Env is the environment of the functions of package usereval (save, get, list and delete an eval, its files) with the sync of the
+// Env is the environment of the functions of package usereval (save, get, list and delete an eval, its files) with the upsert of the
 // defs into the database: the API calls them through it.
 func (m *Manager) Env() usereval.Env { return m.env }
 
@@ -305,11 +305,11 @@ func (m *Manager) Wait() {
 	}
 }
 
-// sync puts the def of a user eval in the database.
-func (m *Manager) sync(ctx context.Context,
+// upsert puts the def of a user eval in the database.
+func (m *Manager) upsert(ctx context.Context,
 	userID string,
 	ev evalfile.UserEval) error {
-	_, err := m.rn.SyncEval(ctx,
+	_, err := m.rn.UpsertEvalDef(ctx,
 		userID,
 		knowledge.Spec(ev))
 	return err
@@ -412,9 +412,9 @@ func selectCases(def *core.EvalDef,
 }
 
 // Start starts a run of the eval of the owner called evalName and returns its ID while it goes on in the background. The order: check
-// the limits, re-read and validate the eval file and sync the def (usereval.Prepare), record the run as pending, launch it. The errors:
+// the limits, re-read and validate the eval file and upsert the def (usereval.Prepare), record the run as pending, launch it. The errors:
 // usereval.ErrInvalidUser, ErrNoLLM, ErrBadOptions, ErrTooManyRuns, ErrDailyCap, usereval.ErrNotFound (no such eval),
-// *usereval.InvalidError, usereval.ErrStorage, usereval.ErrSync, or a failure of the database.
+// *usereval.InvalidError, usereval.ErrStorage, usereval.ErrUpsert, or a failure of the database.
 func (m *Manager) Start(ctx context.Context,
 	owner,
 	evalName string,

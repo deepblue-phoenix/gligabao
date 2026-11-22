@@ -49,7 +49,7 @@ func newEnv(t *testing.T) (Env, *synced) {
 		Limits: evalfile.DefaultLimits([]string{"gpt-5"},
 			nil,
 			nil),
-		Sync: func(_ context.Context,
+		Upsert: func(_ context.Context,
 			user string,
 			ev evalfile.UserEval) error {
 			s.calls = append(s.calls, user+"/"+ev.Name)
@@ -80,7 +80,7 @@ func isInvalid(err error) *InvalidError {
 
 func TestSaveGetListDelete(t *testing.T) {
 	ctx := context.Background()
-	env, sync := newEnv(t)
+	env, ups := newEnv(t)
 	putCorpus(t, env, "alice")
 
 	created, err := Save(ctx, env, "alice", "e", []byte(evalBody))
@@ -91,8 +91,8 @@ func TestSaveGetListDelete(t *testing.T) {
 	if err != nil || created {
 		t.Fatalf("replace = %v, %v", created, err)
 	}
-	if !slices.Equal(sync.calls, []string{"alice/e", "alice/e"}) {
-		t.Fatalf("sync calls = %v", sync.calls)
+	if !slices.Equal(ups.calls, []string{"alice/e", "alice/e"}) {
+		t.Fatalf("upsert calls = %v", ups.calls)
 	}
 	got, err := Get(ctx, env, "alice", "e")
 	if err != nil || string(got.JSON) != evalBody2 || len(got.Files) != 0 {
@@ -146,7 +146,7 @@ func TestSaveGetListDelete(t *testing.T) {
 
 func TestSaveRefusals(t *testing.T) {
 	ctx := context.Background()
-	env, sync := newEnv(t)
+	env, ups := newEnv(t)
 	for _, u := range []string{"", " ", "system"} {
 		if _, err := Save(ctx, env, u, "e", []byte(evalBody2)); !errors.Is(err, ErrInvalidUser) {
 			t.Errorf("user %q: %v", u, err)
@@ -175,21 +175,21 @@ func TestSaveRefusals(t *testing.T) {
 	if _, err := Save(ctx, small, "a", "e", []byte(evalBody2)); !errors.Is(err, ErrTooLarge) {
 		t.Errorf("too large: %v", err)
 	}
-	if len(sync.calls) != 0 {
-		t.Errorf("synced: %v", sync.calls)
+	if len(ups.calls) != 0 {
+		t.Errorf("upserted: %v", ups.calls)
 	}
 	if names, _ := List(ctx, env, "a"); len(names) != 0 {
 		t.Errorf("something was written: %v", names)
 	}
 }
 
-func TestSaveSyncFailureUndoesTheWrite(t *testing.T) {
+func TestSaveUpsertFailureUndoesTheWrite(t *testing.T) {
 	ctx := context.Background()
-	env, sync := newEnv(t)
-	sync.err = errors.New("db down")
+	env, ups := newEnv(t)
+	ups.err = errors.New("db down")
 
 	// new eval: the JSON is removed again
-	if _, err := Save(ctx, env, "a", "e", []byte(evalBody2)); !errors.Is(err, ErrSync) {
+	if _, err := Save(ctx, env, "a", "e", []byte(evalBody2)); !errors.Is(err, ErrUpsert) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := Get(ctx, env, "a", "e"); !errors.Is(err, ErrNotFound) {
@@ -197,13 +197,13 @@ func TestSaveSyncFailureUndoesTheWrite(t *testing.T) {
 	}
 
 	// replaced eval: the old JSON is back
-	sync.err = nil
+	ups.err = nil
 	if _, err := Save(ctx, env, "a", "e", []byte(evalBody2)); err != nil {
 		t.Fatal(err)
 	}
-	sync.err = errors.New("db down")
+	ups.err = errors.New("db down")
 	next := `{"name":"e","cases":[{"name":"z","query":"changed"}]}`
-	if _, err := Save(ctx, env, "a", "e", []byte(next)); !errors.Is(err, ErrSync) {
+	if _, err := Save(ctx, env, "a", "e", []byte(next)); !errors.Is(err, ErrUpsert) {
 		t.Fatalf("err = %v", err)
 	}
 	if got, _ := Get(ctx, env, "a", "e"); string(got.JSON) != evalBody2 {
@@ -213,7 +213,7 @@ func TestSaveSyncFailureUndoesTheWrite(t *testing.T) {
 
 func TestStorageDown(t *testing.T) {
 	ctx := context.Background()
-	env, sync := newEnv(t)
+	env, ups := newEnv(t)
 	env.Store = failingStore{Store: env.Store, fail: map[string]bool{"put": true}}
 	if _, err := Save(ctx, env, "a", "e", []byte(evalBody2)); !errors.Is(err, ErrStorage) {
 		t.Fatalf("put down: %v", err)
@@ -222,8 +222,8 @@ func TestStorageDown(t *testing.T) {
 	if _, err := Save(ctx, env, "a", "e", []byte(evalBody)); !errors.Is(err, ErrStorage) {
 		t.Fatalf("list down: %v", err)
 	}
-	if len(sync.calls) != 0 {
-		t.Fatalf("synced: %v", sync.calls)
+	if len(ups.calls) != 0 {
+		t.Fatalf("upserted: %v", ups.calls)
 	}
 }
 
@@ -294,17 +294,17 @@ func TestPutAndDeleteFile(t *testing.T) {
 	}
 }
 
-func TestPrepareRechecksAndSyncs(t *testing.T) {
+func TestPrepareRechecksAndUpserts(t *testing.T) {
 	ctx := context.Background()
-	env, sync := newEnv(t)
+	env, ups := newEnv(t)
 	putCorpus(t, env, "a")
 	if _, err := Save(ctx, env, "a", "e", []byte(evalBody)); err != nil {
 		t.Fatal(err)
 	}
-	sync.calls = nil
+	ups.calls = nil
 	ev, err := Prepare(ctx, env, "a", "e")
-	if err != nil || ev.Name != "e" || len(ev.Cases) != 1 || !slices.Equal(sync.calls, []string{"a/e"}) {
-		t.Fatalf("prepare = %+v, %v, %v", ev, err, sync.calls)
+	if err != nil || ev.Name != "e" || len(ev.Cases) != 1 || !slices.Equal(ups.calls, []string{"a/e"}) {
+		t.Fatalf("prepare = %+v, %v, %v", ev, err, ups.calls)
 	}
 	// the corpus file disappears: the run does not start
 	if err := env.Store.Delete(ctx, "a", "corpus/a.txt"); err != nil {
@@ -317,8 +317,8 @@ func TestPrepareRechecksAndSyncs(t *testing.T) {
 		t.Fatalf("other user: %v", err)
 	}
 	putCorpus(t, env, "a")
-	sync.err = errors.New("db down")
-	if _, err := Prepare(ctx, env, "a", "e"); !errors.Is(err, ErrSync) {
-		t.Fatalf("sync failure: %v", err)
+	ups.err = errors.New("db down")
+	if _, err := Prepare(ctx, env, "a", "e"); !errors.Is(err, ErrUpsert) {
+		t.Fatalf("upsert failure: %v", err)
 	}
 }

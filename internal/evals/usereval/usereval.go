@@ -1,6 +1,6 @@
 // Package usereval is the logic of the user evals as library functions (the HTTP routes of step 5 only call them): saving an eval
-// (validate, write the JSON to the user's files, sync the def into the database), reading and deleting it, uploading and deleting
-// its corpus files, and preparing it for a run. The JSON in userfiles is the source of truth; the database copy is made by Env.Sync.
+// (validate, write the JSON to the user's files, upsert the def into the database), reading and deleting it, uploading and deleting
+// its corpus files, and preparing it for a run. The JSON in userfiles is the source of truth; the database copy is made by Env.Upsert.
 //
 // Every function acts as an owner, the user id, which must not be empty or core.SystemUser (reserved for the training evals).
 package usereval
@@ -21,8 +21,8 @@ import (
 // DefaultMaxFiles is the number of corpus files a user may keep.
 const DefaultMaxFiles = 50
 
-// SyncFunc puts the def of the eval in the database for the owner (runner.SyncEval, with the spec of knowledge.Spec).
-type SyncFunc func(ctx context.Context,
+// UpsertFunc puts the def of the eval in the database for the owner (runner.UpsertEvalDef, with the spec of knowledge.Spec).
+type UpsertFunc func(ctx context.Context,
 	userID string,
 	ev evalfile.UserEval) error
 
@@ -34,8 +34,8 @@ type Env struct {
 	MaxFiles int
 	// MaxFileBytes is the size of a corpus file (Limits.MaxTextBytes if 0).
 	MaxFileBytes int
-	// Sync is called once the JSON is stored; nil: no database to sync.
-	Sync SyncFunc
+	// Upsert is called once the JSON is stored; nil: no database to upsert into.
+	Upsert UpsertFunc
 }
 
 // Stored is an eval as it is stored.
@@ -70,8 +70,8 @@ var (
 	ErrTooLarge = errors.New("usereval: too large")
 	// ErrStorage is the error of an unavailable file store (HTTP 503).
 	ErrStorage = errors.New("usereval: eval storage unavailable")
-	// ErrSync is the error of the database sync (HTTP 500).
-	ErrSync = errors.New("usereval: could not save the eval")
+	// ErrUpsert is the error of the database upsert (HTTP 500).
+	ErrUpsert = errors.New("usereval: could not save the eval")
 )
 
 // allowedContentTypes are the media types of a corpus file.
@@ -155,9 +155,9 @@ func validate(ctx context.Context,
 	return ev, nil
 }
 
-// Save stores the eval name of the user: it validates data (ValidateUser, and that its text files exist), writes the JSON, then syncs
-// the def (Env.Sync). If the sync fails the write is undone (the new JSON is deleted, or the old one put back) and ErrSync is returned.
-// created tells a new eval from a replaced one. Errors: ErrInvalidUser, ErrTooLarge, *InvalidError, ErrStorage, ErrSync.
+// Save stores the eval name of the user: it validates data (ValidateUser, and that its text files exist), writes the JSON, then upserts
+// the def (Env.Upsert). If the upsert fails the write is undone (the new JSON is deleted, or the old one put back) and ErrUpsert is returned.
+// created tells a new eval from a replaced one. Errors: ErrInvalidUser, ErrTooLarge, *InvalidError, ErrStorage, ErrUpsert.
 func Save(ctx context.Context,
 	env Env,
 	user,
@@ -185,10 +185,10 @@ func Save(ctx context.Context,
 	if err := env.Store.Put(ctx, user, fileName(name), data); err != nil {
 		return false, storageErr(err)
 	}
-	if env.Sync == nil {
+	if env.Upsert == nil {
 		return created, nil
 	}
-	if syncErr := env.Sync(ctx, user, ev); syncErr != nil {
+	if upsertErr := env.Upsert(ctx, user, ev); upsertErr != nil {
 		// undo with a context that outlives a cancelled request
 		undoCtx := context.WithoutCancel(ctx)
 		if created {
@@ -196,7 +196,7 @@ func Save(ctx context.Context,
 		} else {
 			_ = env.Store.Put(undoCtx, user, fileName(name), old)
 		}
-		return false, fmt.Errorf("%w: %v", ErrSync, syncErr)
+		return false, fmt.Errorf("%w: %v", ErrUpsert, upsertErr)
 	}
 	return created, nil
 }
@@ -346,8 +346,8 @@ func DeleteFile(ctx context.Context,
 }
 
 // Prepare is what a run does at its start: it re-reads the JSON of the eval from the store, validates it again (its text files must
-// still exist) and syncs the def, so the database copy never has to be trusted. It returns the eval as parsed. Errors: ErrNotFound,
-// *InvalidError, ErrStorage, ErrSync.
+// still exist) and upserts the def, so the database copy never has to be trusted. It returns the eval as parsed. Errors: ErrNotFound,
+// *InvalidError, ErrStorage, ErrUpsert.
 func Prepare(ctx context.Context,
 	env Env,
 	user,
@@ -367,9 +367,9 @@ func Prepare(ctx context.Context,
 	if err != nil {
 		return evalfile.UserEval{}, err
 	}
-	if env.Sync != nil {
-		if err := env.Sync(ctx, user, ev); err != nil {
-			return evalfile.UserEval{}, fmt.Errorf("%w: %v", ErrSync, err)
+	if env.Upsert != nil {
+		if err := env.Upsert(ctx, user, ev); err != nil {
+			return evalfile.UserEval{}, fmt.Errorf("%w: %v", ErrUpsert, err)
 		}
 	}
 	return ev, nil

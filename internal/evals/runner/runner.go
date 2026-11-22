@@ -1,5 +1,5 @@
 // Package runner is what every Type of eval shares in running: it puts the evals that come from files into the database as defs
-// (SyncEval, EnsureExperiment) and records the runs (ExperimentRecorder, EvalRecorder) while an executor of the eval's Type does the
+// (UpsertEvalDef, EnsureExperiment) and records the runs (ExperimentRecorder, EvalRecorder) while an executor of the eval's Type does the
 // work of the cases. The executors are in the packages of the Types (internal/evals/knowledge, .../training); they know
 // nothing of the database beyond the recorder they are given.
 //

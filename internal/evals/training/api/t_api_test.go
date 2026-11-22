@@ -643,7 +643,7 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 			Path:          "trained/j1",
 		})
 	store := storeOf(d)
-	def, err := runner.New(d, store).SyncEval(ctx,
+	def, err := runner.New(d, store).UpsertEvalDef(ctx,
 		"u1",
 		training.Spec(training.Eval{
 			Name:  theEval,

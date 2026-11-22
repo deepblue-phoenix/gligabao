@@ -193,7 +193,7 @@ func mainErr() error {
 	var defs []*core.EvalDef
 	var defIDs []core.EvalDefID
 	for _, e := range selected {
-		def, err := r.SyncEval(ctx,
+		def, err := r.UpsertEvalDef(ctx,
 			*user,
 			knowledge.Spec(e))
 		if err != nil {
