@@ -199,3 +199,12 @@ func TestStartServerStopsWithItsContext(t *testing.T) {
 	}
 	_ = s.Stop()
 }
+
+func TestBinaryName(t *testing.T) {
+	if got := binaryName("windows"); got != "sargo.exe" {
+		t.Fatalf("windows: got %q", got)
+	}
+	if got := binaryName("linux"); got != "sargo" {
+		t.Fatalf("linux: got %q", got)
+	}
+}

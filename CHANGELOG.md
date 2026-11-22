@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.231.1] - 2026-11-22
+
+The build logic moved into one Python program, `ops/build.py`, with a pipeline for each of Linux, macOS and Windows.
+
+### Added
+- `ops/build.py` (Python standard library only): the admin UI (npm), sargo (cargo) and the Go binaries (`go build`) are built from there. It has `build_linux`, `build_macos` and `build_windows` pipelines, picked with `--os`/`--arch` (default `GOOS`/`GOARCH`, then this machine). Go binaries cross-compile to any of the 3 OSes (`.exe` on Windows); sargo is built on its own OS (Linux: static musl, macOS: `<arch>-apple-darwin`, Windows: MSVC with a static C runtime) and embedded with `--sargo`. Run `python3 ops/build.py --help`. It is meant to run natively on each platform (a Windows user builds the Windows package with `python ops/build.py all --sargo`, no bash needed); `AGENTS.md` records this as a requirement.
+
+### Changed
+- `run_build.sh`, `run_build_rust.sh` and `run_pypi.sh` (admin UI and server binary steps) are thin wrappers that call `ops/build.py`; their flags and outputs are unchanged.
+- The embedded sargo is extracted as `sargo.exe` on Windows.
+
 ## [0.231.0] - 2026-11-22
 
 `gligabao serve` can start the embedded sargo server.

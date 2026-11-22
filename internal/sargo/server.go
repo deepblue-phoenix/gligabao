@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -100,7 +101,7 @@ func startServer(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("sargo: temporary directory: %w", err)
 	}
-	binPath := filepath.Join(dir, "sargo")
+	binPath := filepath.Join(dir, binaryName(runtime.GOOS))
 	configPath := opts.ConfigPath
 	if configPath == "" {
 		configPath = filepath.Join(dir, "config.toml")
@@ -257,4 +258,12 @@ func writeFiles(binPath string,
 		return fmt.Errorf("sargo: extract the config: %w", err)
 	}
 	return nil
+}
+
+// binaryName is the file name the embedded executable is extracted to: Windows only runs files that end in .exe.
+func binaryName(goos string) string {
+	if goos == "windows" {
+		return "sargo.exe"
+	}
+	return "sargo"
 }

@@ -133,16 +133,12 @@ build_client_pkg() {
 #---------------------------------------------------------------------------------------------
 # Server
 
+# The build steps (npm, go) live in ops/build.py.
 build_admin_ui() {
   if [ "$admin_ui" = true ]; then
-    (
-      cd admin_ui
-      [ -d node_modules ] || npm ci
-      npm run build
-    )
+    python ops/build.py admin-ui --admin-ui
   else
-    # Drop stale artifacts so they are not embedded; keep the .gitkeep placeholder.
-    find admin_ui/dist -mindepth 1 -not -name .gitkeep -delete 2>/dev/null || true
+    python ops/build.py admin-ui --no-admin-ui
   fi
 }
 
@@ -162,8 +158,7 @@ build_server_wheel() {
   printf '__version__ = "%s"\n' "$server_version" > "$stage/src/gligabao_server/_version.py"
 
   # The sidecar (sidecar/) is not part of the package. The config is the default one the binary finds next to itself.
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-    go build -trimpath -ldflags="-s -w" -o "$stage/src/gligabao_server/_bin/$exe" ./cmd/gligabao
+  python ops/build.py server --os "$goos" --arch "$goarch" --out "$stage/src/gligabao_server/_bin/$exe"
   cp build/gligabao.toml "$stage/src/gligabao_server/_bin/gligabao.toml"
 
   mkdir -p "$SERVER_DIR/dist"

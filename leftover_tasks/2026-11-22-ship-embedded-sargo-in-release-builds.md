@@ -20,6 +20,7 @@ sargo, and the LLM call sites still do not use sargo (see the roadmap item about
 ## Progress
 
 - 2026-11-22 (0.231.0): `gligabao serve` starts the embedded sargo (`sargo`, `sargo_config`, `--sargo`).
+- 2026-11-22 (0.231.1): the build logic is in `ops/build.py`; sargo builds natively on Linux, macOS and Windows (target OS = host OS; macOS both archs). Still open: Linux cross-arch (needs a musl cross linker) and cross-OS sargo builds (e.g. in CI, one runner per OS).
 
 ## How to pick it up
 

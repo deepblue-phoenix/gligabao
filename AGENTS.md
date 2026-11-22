@@ -19,6 +19,16 @@ func newRun(ctx context.Context,
 }
 ```
 
+## Build pipeline: must run natively on every platform
+
+**The build pipeline (`ops/build.py`) must run on each platform where the building is done: Linux, macOS and Windows.** A user on Windows must be able to run it on their Windows machine and get the full gligabao package for Windows (`gligabao.exe`, the agent and worker `.exe`, the admin UI, and sargo embedded with `--sargo`); the same holds for macOS and Linux. Rules:
+
+- All build logic (npm, cargo, go, file copies, cleanup) lives in `ops/build.py`, written in portable Python (standard library only, `pathlib`/`shutil`/`subprocess` with argument lists; no `sh`, `find`, `cp`, `rm`, `sed`, no shell syntax, no hard-coded `/` paths or executable names without the `.exe` suffix on Windows).
+- The shell scripts (`run_build.sh`, ...) are only convenience wrappers for Linux/macOS (and Git Bash). Never put build logic in them: a Windows user without bash must be able to do everything with `python ops/build.py ...` (`py ops/build.py ...`).
+- Each platform has its own pipeline function (`build_linux`, `build_macos`, `build_windows`); a change to one must keep the other two working. Anything platform-specific (toolchain, target triple, flags, file suffix) goes in that platform's function or in a pure helper keyed by the target OS.
+- Anything that cannot be cross-built (sargo: Rust needs a native toolchain per OS) must fail early with a clear message that says on which OS to run the build, never produce a wrong binary.
+- When a build change is made, check it still holds for all three platforms (read the code path of each; run the one you have), and keep `ops/build.py --help` and the README build section accurate.
+
 ## Versioning and changelog (required for every change)
 
 This repo is versioned on its own (separately from `../gligabao_int`). The version lives in two files at the repo root
