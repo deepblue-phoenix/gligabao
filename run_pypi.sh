@@ -4,6 +4,9 @@
 #   gligabao         clients/py          the Python client (pure Python, one wheel + sdist)
 #   gligabao-server  clients/py_server   the server: one wheel per platform, each with the Go binary + gligabao.toml
 #
+# With no flags it builds the client and the Linux amd64 server (with sargo) and uploads them (after a confirmation):
+# the same as --build_client --build_server_linux --arch amd64 --upload.
+#
 # All logic lives in ops/pypi.py (it runs on Linux, macOS and Windows: `python ops/pypi.py ...`); this script only calls it,
 # with the same flags. Run `./run_pypi.sh --help` for them. Examples:
 #

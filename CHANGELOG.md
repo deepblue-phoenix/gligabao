@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.231.3] - 2026-11-22
+
+`./run_pypi.sh` has a default release.
+
+### Changed
+- With no build or upload flag, `./run_pypi.sh` (`ops/pypi.py`) builds the client and the Linux amd64 server (with sargo) and uploads them, after the usual confirmation (`--yes` skips it, `--test` uploads to TestPyPI). Any build or upload flag turns the default off.
+
 ## [0.231.2] - 2026-11-22
 
 The PyPI packaging moved into `ops/pypi.py`, and the Linux server wheels now include sargo.

@@ -20,6 +20,9 @@ Linux machine, for its CPU architecture), and for macOS / Windows only with an e
 native toolchain per OS (run the build on that OS). --no-sargo leaves it out everywhere.
 
 Usage: python ops/pypi.py [build flags] [--upload [--test] [--yes]]    (Windows: py ops/pypi.py ...)
+
+With no build or upload flag, it does the usual release: --build_client --build_server_linux --arch amd64 --upload
+(the upload asks for confirmation; --test and --yes still apply).
 """
 
 from __future__ import annotations
@@ -356,9 +359,19 @@ def requested_oses(args: argparse.Namespace) -> list[str]:
     ) if wanted]
 
 
+def apply_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    """With no build or upload flag at all (only modifiers like --test, --yes, --no-admin-ui, --no-sargo, or nothing), do the usual
+    release: build the client and the Linux amd64 server, then upload (the upload still asks for confirmation unless --yes)."""
+    named = (args.build_client, args.build_server, args.build_server_linux, args.build_server_darwin,
+             args.build_server_windows, args.build_server_host, args.upload, args.arch)
+    if any(named):
+        return args
+    return argparse.Namespace(**{**vars(args), "build_client": True, "build_server_linux": True, "arch": "amd64", "upload": True})
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = make_parser()
-    args = parser.parse_args(argv)
+    args = apply_defaults(parser.parse_args(argv))
     os_names = requested_oses(args)
     if not (args.build_client or os_names or args.upload):
         parser.error("nothing to do: give a build flag and/or --upload")

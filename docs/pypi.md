@@ -65,6 +65,8 @@ pip cannot compile Go, so the wheels contain a binary that was cross-compiled be
 
 ## Building
 
+With no build or upload flag, `./run_pypi.sh` does the usual release: `--build_client --build_server_linux --arch amd64 --upload` (the Linux amd64 wheel with sargo, and the client). The upload still asks for confirmation; `./run_pypi.sh --test` does the same to TestPyPI and `--yes` skips the question.
+
 Building and uploading are separate steps: building writes into the `dist/` directory of each package, uploading sends what is in those directories. Giving both in one call does both, building first.
 
 ```sh
