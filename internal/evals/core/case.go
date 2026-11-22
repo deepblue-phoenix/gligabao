@@ -161,6 +161,67 @@ type CaseCommentary struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// BookmarkKind is the level of the eval data model an EvalBookmark points at.
+type BookmarkKind string
+
+// The kinds of bookmark, from the widest to the narrowest object.
+const (
+	BookmarkExperimentRun BookmarkKind = "experiment_run"
+	BookmarkEvalRun       BookmarkKind = "eval_run"
+	BookmarkCaseDef       BookmarkKind = "case_def"
+	BookmarkCaseRun       BookmarkKind = "case_run"
+	// BookmarkFact is one fact (edge) of the graph a case run built, e.g. a triplet that looks wrongly extracted from the text.
+	BookmarkFact BookmarkKind = "fact"
+)
+
+// Valid says whether k is one of the kinds.
+func (k BookmarkKind) Valid() bool {
+	switch k {
+	case BookmarkExperimentRun, BookmarkEvalRun, BookmarkCaseDef, BookmarkCaseRun, BookmarkFact:
+		return true
+	}
+	return false
+}
+
+// EvalBookmark is something in the eval results that a user bookmarked to review and analyze later (table gb_eval_bookmarks): an experiment
+// run, an eval run, a case, a case run, or a fact of a case run (Kind says which). It is general: the same row shape holds every level of the
+// data model. The ids of the levels above the bookmarked object are filled by the server (a fact has its case run, eval run and case; a case
+// run its eval run and case; an eval run its experiment run if it has one), so the bookmark says which run, model, etc. it is about. The ids
+// of the levels that do not apply are 0. Only the fields of the objects (Fact) are a snapshot: the graph of a run can be deleted by the
+// retention. An object is bookmarked once by a user (Key). The Name fields are filled by the list only.
+type EvalBookmark struct {
+	ID   int64        `json:"id"`
+	Kind BookmarkKind `json:"kind"`
+
+	ExperimentRunID ExperimentRunID `json:"experiment_run_id,omitempty"`
+	EvalRunID       EvalRunID       `json:"eval_run_id,omitempty"`
+	CaseDefID       CaseDefID       `json:"case_def_id,omitempty"`
+	CaseRunID       CaseRunID       `json:"case_run_id,omitempty"`
+	// EdgeID is the id of the fact in the graph of the case run (a fact only).
+	EdgeID int64 `json:"edge_id,omitempty"`
+	// Fact is the snapshot of the fact (a fact only).
+	Fact *BookmarkedFact `json:"fact,omitempty"`
+	// Note is the user's own note on why it was bookmarked.
+	Note      string    `json:"note,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Filled by the list: the names of the case and of its eval, the experiment, the verdict of the case run and the params of the eval
+	// run (which has the models used).
+	CaseName       string         `json:"case_name,omitempty"`
+	EvalName       string         `json:"eval_name,omitempty"`
+	ExperimentName string         `json:"experiment_name,omitempty"`
+	Verdict        Verdict        `json:"verdict,omitempty"`
+	Params         map[string]any `json:"params,omitempty"`
+}
+
+// BookmarkedFact is the snapshot of a bookmarked fact.
+type BookmarkedFact struct {
+	Source      string `json:"source"`
+	Relation    string `json:"relation"`
+	Target      string `json:"target"`
+	Description string `json:"description,omitempty"`
+}
+
 // KnowledgeInput is the Input of a knowledge case: what is given to the system under test.
 type KnowledgeInput struct {
 	// Remember are the texts to remember, in order.

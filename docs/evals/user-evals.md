@@ -47,6 +47,9 @@ The routes are under `/v1/gb/evals` and use the same `gb-user-id` rule as the ot
 | `GET /v1/gb/evals/case_runs/{id}/temporal` | | the temporal plot data | `404`, `410` |
 | `GET /v1/gb/evals/case_runs/{id}/debug` | | checks, answer, expectations, settings, traces, commentaries, reruns | `404` |
 | `POST /v1/gb/evals/case_runs/{id}/commentary` | `{"model"?}` | an LLM [commentary](knowledge.md#eval-commentary-debugging-a-failed-case) on a failed case | `400`, `404`, `429`, `502`, `503` |
+| `POST /v1/gb/evals/bookmarks` | `{kind, target_id, edge_id?, fact?, note?}` | bookmarks something of the eval results to review later; `kind` is `experiment_run`, `eval_run`, `case_def`, `case_run` (`target_id` is its id) or `fact` (`target_id` is the case run, with `edge_id` and `fact: {source, relation, target, description?}`). The levels above are filled by the server. Again: updates the note. `201` with the bookmark | `400`, `404` |
+| `GET /v1/gb/evals/bookmarks` | | the user's bookmarked facts, newest first, as `{bookmarks}`; each has `kind`, the ids of its levels, `case_name`, `eval_name`, `experiment_name`, `verdict` and the run `params` (models) | |
+| `DELETE /v1/gb/evals/bookmarks/{id}` | | removes a bookmark (`204`) | `404` |
 | `POST /v1/gb/evals/case_runs/{id}/rerun` | models and thinking levels, as in [Rerunning a case](experiments.md#rerunning-a-case-with-other-models) | `202` | `400`, `404`, `409`, `429`, `503` |
 | `GET /v1/gb/evals/trajectories/{id}` | | the ATIF JSON | `404` |
 | `GET /v1/gb/evals/{name}/history?case=NAME` | | `200 {"eval","name","points":[...]}` over the eval's runs | `404` |

@@ -260,6 +260,19 @@ type Store struct {
 		q Execer,
 		userID string,
 		caseRunID core.CaseRunID) ([]core.CaseCommentary, error)
+
+	// Bookmarks of eval results at any level (see core.EvalBookmark).
+	CreateEvalBookmark func(ctx context.Context,
+		q Execer,
+		userID string,
+		b *core.EvalBookmark) error
+	ListEvalBookmarks func(ctx context.Context,
+		q Execer,
+		userID string) ([]core.EvalBookmark, error)
+	DeleteEvalBookmark func(ctx context.Context,
+		q Execer,
+		userID string,
+		id int64) error
 }
 
 // JSON marshals v as the text of a JSON column. A nil value (nil slice, nil map, nil pointer) is empty, which is the text the

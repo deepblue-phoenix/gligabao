@@ -1203,3 +1203,214 @@ func (r Reads) ListCaseCommentaries(ctx context.Context,
 	}
 	return out, rows.Err()
 }
+
+//---------------------------------------------------------------------------------------------
+// Bookmarks
+
+// bookmarkKey identifies the bookmarked object of b (unique per user).
+func bookmarkKey(b *core.EvalBookmark) string {
+	switch b.Kind {
+	case core.BookmarkExperimentRun:
+		return fmt.Sprintf("experiment_run:%d", b.ExperimentRunID)
+	case core.BookmarkEvalRun:
+		return fmt.Sprintf("eval_run:%d", b.EvalRunID)
+	case core.BookmarkCaseDef:
+		return fmt.Sprintf("case_def:%d", b.CaseDefID)
+	case core.BookmarkCaseRun:
+		return fmt.Sprintf("case_run:%d", b.CaseRunID)
+	}
+	return fmt.Sprintf("fact:%d:%d", b.CaseRunID, b.EdgeID)
+}
+
+func nullID(id int64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
+}
+
+// CreateEvalBookmark stores the bookmark b of the owner. The caller sets Kind and the id of that kind (see core.EvalBookmark), plus the
+// fact for a fact; the levels above are looked up and filled in b (an object that is not the owner's is ErrNotFound). An object is
+// bookmarked once: bookmarking it again keeps the bookmark and updates its note. It sets ID and CreatedAt.
+func (r Reads) CreateEvalBookmark(ctx context.Context,
+	q Execer,
+	userID string,
+	b *core.EvalBookmark) error {
+	if err := CheckOwner(userID); err != nil {
+		return err
+	}
+	if !b.Kind.Valid() {
+		return fmt.Errorf("evals: invalid bookmark kind %q", b.Kind)
+	}
+	// The levels above the object.
+	switch b.Kind {
+	case core.BookmarkExperimentRun:
+		var id int64
+		if err := r.queryRow(ctx,
+			q,
+			`SELECT id FROM gb_experiment_runs WHERE user_id = ? AND id = ?`,
+			userID,
+			int64(b.ExperimentRunID)).Scan(&id); err != nil {
+			return notFound(err, fmt.Sprintf("experiment run %d", b.ExperimentRunID))
+		}
+	case core.BookmarkEvalRun:
+		var exp sql.NullInt64
+		if err := r.queryRow(ctx,
+			q,
+			`SELECT experiment_run_id FROM gb_eval_runs WHERE user_id = ? AND id = ?`,
+			userID,
+			int64(b.EvalRunID)).Scan(&exp); err != nil {
+			return notFound(err, fmt.Sprintf("eval run %d", b.EvalRunID))
+		}
+		b.ExperimentRunID = core.ExperimentRunID(exp.Int64)
+	case core.BookmarkCaseDef:
+		var id int64
+		if err := r.queryRow(ctx,
+			q,
+			`SELECT c.id FROM gb_case_defs c JOIN gb_eval_defs e ON e.id = c.eval_def_id WHERE e.user_id = ? AND c.id = ?`,
+			userID,
+			int64(b.CaseDefID)).Scan(&id); err != nil {
+			return notFound(err, fmt.Sprintf("case %d", b.CaseDefID))
+		}
+	default: // case_run, fact
+		var run, def int64
+		var exp sql.NullInt64
+		if err := r.queryRow(ctx,
+			q,
+			`
+			SELECT cr.eval_run_id, cr.def_id, er.experiment_run_id FROM gb_case_runs cr JOIN gb_eval_runs er ON er.id = cr.eval_run_id
+			WHERE cr.user_id = ? AND cr.id = ?`,
+			userID,
+			int64(b.CaseRunID)).Scan(&run, &def, &exp); err != nil {
+			return notFound(err, fmt.Sprintf("case run %d", b.CaseRunID))
+		}
+		b.EvalRunID, b.CaseDefID, b.ExperimentRunID = core.EvalRunID(run), core.CaseDefID(def), core.ExperimentRunID(exp.Int64)
+	}
+	fact := "{}"
+	if b.Kind == core.BookmarkFact {
+		if b.EdgeID <= 0 || b.Fact == nil {
+			return fmt.Errorf("evals: a fact bookmark needs the edge id and the fact")
+		}
+		j, err := JSON(b.Fact, "{}")
+		if err != nil {
+			return err
+		}
+		fact = j
+	}
+	if b.CreatedAt.IsZero() {
+		b.CreatedAt = time.Now()
+	}
+	b.CreatedAt = b.CreatedAt.UTC().Truncate(time.Second)
+	if err := r.queryRow(ctx,
+		q,
+		`
+		INSERT INTO gb_eval_bookmarks (user_id, kind, bookmark_key, experiment_run_id, eval_run_id, case_def_id, case_run_id, edge_id, fact, note, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (user_id, bookmark_key) DO UPDATE SET note = excluded.note
+		RETURNING id`,
+		userID,
+		string(b.Kind),
+		bookmarkKey(b),
+		nullID(int64(b.ExperimentRunID)),
+		nullID(int64(b.EvalRunID)),
+		nullID(int64(b.CaseDefID)),
+		nullID(int64(b.CaseRunID)),
+		nullID(b.EdgeID),
+		fact,
+		b.Note,
+		r.d.Time(b.CreatedAt)).Scan(&b.ID); err != nil {
+		return fmt.Errorf("create bookmark %s: %w",
+			bookmarkKey(b),
+			err)
+	}
+	return nil
+}
+
+// ListEvalBookmarks returns the bookmarks of the owner, newest first (empty, not nil, if none), with the names of what they are about.
+func (r Reads) ListEvalBookmarks(ctx context.Context,
+	q Execer,
+	userID string) ([]core.EvalBookmark, error) {
+	if err := CheckOwner(userID); err != nil {
+		return nil, err
+	}
+	rows, err := r.query(ctx,
+		q,
+		`
+		SELECT b.id, b.kind, b.experiment_run_id, b.eval_run_id, b.case_def_id, b.case_run_id, b.edge_id, b.fact, b.note, b.created_at,
+			cd.name, ed.name, xd.name, cr.verdict, er.params
+		FROM gb_eval_bookmarks b
+		LEFT JOIN gb_case_defs cd ON cd.id = b.case_def_id
+		LEFT JOIN gb_eval_runs er ON er.id = b.eval_run_id
+		LEFT JOIN gb_eval_defs ed ON ed.id = COALESCE(cd.eval_def_id, er.def_id)
+		LEFT JOIN gb_case_runs cr ON cr.id = b.case_run_id
+		LEFT JOIN gb_experiment_runs xr ON xr.id = b.experiment_run_id
+		LEFT JOIN gb_experiment_defs xd ON xd.id = xr.def_id
+		WHERE b.user_id = ? ORDER BY b.id DESC`,
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("list bookmarks: %w", err)
+	}
+	defer rows.Close()
+	out := []core.EvalBookmark{}
+	for rows.Next() {
+		var b core.EvalBookmark
+		var kind, fact string
+		var exp, run, def, caseRun, edge sql.NullInt64
+		var caseName, evalName, expName, verdict sql.NullString
+		var params []byte
+		if err := rows.Scan(&b.ID,
+			&kind,
+			&exp,
+			&run,
+			&def,
+			&caseRun,
+			&edge,
+			&fact,
+			&b.Note,
+			timeScan{&b.CreatedAt},
+			&caseName,
+			&evalName,
+			&expName,
+			&verdict,
+			&params); err != nil {
+			return nil, fmt.Errorf("list bookmarks: %w", err)
+		}
+		b.Kind = core.BookmarkKind(kind)
+		b.ExperimentRunID, b.EvalRunID = core.ExperimentRunID(exp.Int64), core.EvalRunID(run.Int64)
+		b.CaseDefID, b.CaseRunID, b.EdgeID = core.CaseDefID(def.Int64), core.CaseRunID(caseRun.Int64), edge.Int64
+		b.CaseName, b.EvalName, b.ExperimentName, b.Verdict = caseName.String, evalName.String, expName.String, core.Verdict(verdict.String)
+		if b.Kind == core.BookmarkFact {
+			b.Fact = &core.BookmarkedFact{}
+			if err := Unmarshal([]byte(fact), b.Fact); err != nil {
+				return nil, fmt.Errorf("list bookmarks: fact: %w", err)
+			}
+		}
+		if len(params) > 0 {
+			if err := Unmarshal(params, &b.Params); err != nil {
+				return nil, fmt.Errorf("list bookmarks: params: %w", err)
+			}
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// DeleteEvalBookmark deletes the bookmark of the owner. It returns ErrNotFound if there is none.
+func (r Reads) DeleteEvalBookmark(ctx context.Context,
+	q Execer,
+	userID string,
+	id int64) error {
+	if err := CheckOwner(userID); err != nil {
+		return err
+	}
+	res, err := q.ExecContext(ctx,
+		r.d.Rebind(`DELETE FROM gb_eval_bookmarks WHERE user_id = ? AND id = ?`),
+		userID,
+		id)
+	if err != nil {
+		return fmt.Errorf("delete bookmark %d: %w",
+			id,
+			err)
+	}
+	return Affected(res, fmt.Sprintf("bookmark %d", id))
+}

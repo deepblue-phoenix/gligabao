@@ -312,3 +312,24 @@ CREATE TABLE IF NOT EXISTS gb_case_run_commentaries (
 	created_at    TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gb_case_run_commentaries_case_run ON gb_case_run_commentaries(case_run_id);
+
+-- core.EvalBookmark: what a user bookmarked in the eval results to review later, at any level of the data model: kind is the level
+-- (experiment_run, eval_run, case_def, case_run, fact). The ids are the object and the levels above it (NULL where they do not apply), so
+-- the bookmark knows its run; a fact is an edge of the case run's graph (edge_id, with a JSON snapshot in fact). bookmark_key identifies the
+-- bookmarked object and is unique per user (an object is bookmarked once). Deleting a run or a case deletes its bookmarks.
+CREATE TABLE IF NOT EXISTS gb_eval_bookmarks (
+	id                BIGSERIAL PRIMARY KEY,
+	user_id           TEXT NOT NULL CHECK (user_id <> ''),
+	kind              TEXT NOT NULL CHECK (kind IN ('experiment_run', 'eval_run', 'case_def', 'case_run', 'fact')),
+	bookmark_key      TEXT NOT NULL,
+	experiment_run_id BIGINT REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
+	eval_run_id       BIGINT REFERENCES gb_eval_runs(id) ON DELETE CASCADE,
+	case_def_id       BIGINT REFERENCES gb_case_defs(id) ON DELETE CASCADE,
+	case_run_id       BIGINT REFERENCES gb_case_runs(id) ON DELETE CASCADE,
+	edge_id           BIGINT,
+	fact              TEXT NOT NULL DEFAULT '{}',
+	note              TEXT NOT NULL DEFAULT '',
+	created_at        TIMESTAMPTZ NOT NULL,
+	UNIQUE (user_id, bookmark_key)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_eval_bookmarks_user ON gb_eval_bookmarks(user_id, id);

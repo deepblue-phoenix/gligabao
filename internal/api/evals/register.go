@@ -38,5 +38,8 @@ func Register(mux *http.ServeMux,
 	mux.Handle("GET "+base+"/case_runs/{id}/debug", a(s.Debug(UserOwner)))
 	mux.Handle("POST "+base+"/case_runs/{id}/commentary", a(s.Commentary(UserOwner)))
 	mux.Handle("POST "+base+"/case_runs/{id}/rerun", a(s.Rerun(UserOwner)))
+	mux.Handle("GET "+base+"/bookmarks", a(s.ListBookmarks(UserOwner)))
+	mux.Handle("POST "+base+"/bookmarks", a(s.AddBookmark(UserOwner)))
+	mux.Handle("DELETE "+base+"/bookmarks/{id}", a(s.DeleteBookmark(UserOwner)))
 	mux.Handle("GET "+base+"/trajectories/{id}", a(s.Trajectory(UserOwner)))
 }

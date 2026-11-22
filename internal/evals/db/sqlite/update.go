@@ -66,6 +66,9 @@ var Store = db.Store{
 	AdminOwnerOf:                   reads.AdminOwnerOf,
 	AdminTrajectoryOwner:           reads.AdminTrajectoryOwner,
 	ListCaseCommentaries:           reads.ListCaseCommentaries,
+	CreateEvalBookmark:             reads.CreateEvalBookmark,
+	ListEvalBookmarks:              reads.ListEvalBookmarks,
+	DeleteEvalBookmark:             reads.DeleteEvalBookmark,
 }
 
 // The update functions rewrite one record, found by its ID, with the fields that can change after it is created (what they are

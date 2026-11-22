@@ -465,6 +465,39 @@ func testEvalsAPI(t *testing.T,
 		t.Fatalf("debug of a failure: %+v", dbg)
 	}
 
+	// Bookmarks at any level: added once per object (again updates the note), listed with the names, per user, deleted.
+	var bm, fact core.EvalBookmark
+	factBody := path(`{"kind":"fact","target_id":`, failCase, `,"edge_id":7,"fact":{"source":"Alice","relation":"works_at","target":"Acme"},"note":"wrong"}`)
+	a.expect(http.StatusCreated, "POST", "/bookmarks", "alice", factBody, &fact)
+	if fact.EvalRunID != core.EvalRunID(failRun) || fact.CaseRunID != core.CaseRunID(failCase) || fact.CaseDefID == 0 {
+		t.Errorf("fact levels: %+v", fact)
+	}
+	a.expect(http.StatusBadRequest, "POST", "/bookmarks", "alice", path(`{"kind":"fact","target_id":`, failCase, `}`), nil)
+	a.expect(http.StatusBadRequest, "POST", "/bookmarks", "alice", `{"kind":"nope","target_id":1}`, nil)
+	a.expect(http.StatusNotFound, "POST", "/bookmarks", "bob", factBody, nil)
+	var again core.EvalBookmark
+	a.expect(http.StatusCreated, "POST", "/bookmarks", "alice", strings.Replace(factBody, "wrong", "check", 1), &again)
+	if again.ID != fact.ID {
+		t.Errorf("bookmarked twice: %d %d", fact.ID, again.ID)
+	}
+	a.expect(http.StatusCreated, "POST", "/bookmarks", "alice", path(`{"kind":"case_run","target_id":`, failCase, `}`), &bm)
+	a.expect(http.StatusCreated, "POST", "/bookmarks", "alice", path(`{"kind":"eval_run","target_id":`, failRun, `}`), nil)
+	a.expect(http.StatusCreated, "POST", "/bookmarks", "alice", path(`{"kind":"case_def","target_id":`, int64(fact.CaseDefID), `}`), nil)
+	var bms struct {
+		Bookmarks []core.EvalBookmark `json:"bookmarks"`
+	}
+	a.expect(http.StatusOK, "GET", "/bookmarks", "alice", nil, &bms)
+	if len(bms.Bookmarks) != 4 || bms.Bookmarks[3].Kind != core.BookmarkFact || bms.Bookmarks[3].CaseName == "" || bms.Bookmarks[3].EvalName != "f" || bms.Bookmarks[3].Note != "check" || bms.Bookmarks[3].Fact == nil {
+		t.Fatalf("bookmarks: %+v", bms.Bookmarks)
+	}
+	a.expect(http.StatusOK, "GET", "/bookmarks", "bob", nil, &bms)
+	if len(bms.Bookmarks) != 0 {
+		t.Errorf("bob sees bookmarks: %+v", bms.Bookmarks)
+	}
+	a.expect(http.StatusNotFound, "DELETE", path("/bookmarks/", bm.ID), "bob", nil, nil)
+	a.expect(http.StatusNoContent, "DELETE", path("/bookmarks/", bm.ID), "alice", nil, nil)
+	a.expect(http.StatusNotFound, "DELETE", path("/bookmarks/", bm.ID), "alice", nil, nil)
+
 	// Delete a run: its datasets go too; the run is then 404.
 	live, err := relational.ListEvalDatasets(ctx, d, "alice", runID)
 	if err != nil || len(live) != 2 {

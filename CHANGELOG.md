@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.227.0] - 2026-11-22
+
+Eval results can be bookmarked, at any level of the evals data model, to review them later.
+
+### Added
+- Table `gb_eval_bookmarks` (SQLite and PostgreSQL): a user's bookmark of an experiment run, an eval run, a case, a case run or a fact (an edge of a case run's graph, with a snapshot of its source, relation and target). It has a `kind`, the ids of the object and of the levels above it (so a fact knows its case run, eval run and case), an optional note, and is unique per user and object. Deleting a run or case deletes its bookmarks.
+- `POST /v1/gb/evals/bookmarks` (`{kind, target_id, edge_id?, fact?, note?}`; bookmarking an object again updates its note), `GET /v1/gb/evals/bookmarks` (the user's bookmarks, newest first, with the case, eval and experiment names, verdict and run params) and `DELETE /v1/gb/evals/bookmarks/{id}`.
+
 ## [0.226.0] - 2026-11-22
 
 The knowledge evals no longer simulate HTTP: they call the remember and query pipeline through the same typed functions the HTTP handlers use.
