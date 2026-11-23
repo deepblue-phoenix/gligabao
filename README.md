@@ -148,7 +148,7 @@ The user evals are always on: the server serves `/v1/gb/evals` (an eval is a JSO
 
 ### Training mode
 
-With `serve --training` (or `training = true` in the config; default `false`) the server registers the training endpoints under `/v1/gb/training/` (jobs, models, datasets, evals, audits, the progress feed) and starts the training monitor. They are not registered otherwise, which suits deployments that do not train. `./run_server_local.sh` and the knowledge eval runner turn it on.
+With `serve --training` (or `training = true` in the config; default `false`) the server registers the training endpoints under `/v1/gb/training/` (jobs, models of every type, datasets, evals, audits, the progress feed, and with sargo the GCNII* routes under `/v1/gb/training/gcnii/`) and starts the training monitor. They are not registered otherwise, which suits deployments that do not train. Like the other routes of users they are authenticated: an API key with the `Auth` hook, or the `gb-user-id` header without it (the admin UI sends the fixed user `admin`). `./run_server_local.sh` and the knowledge eval runner turn it on.
 
 ### Admin UI
 

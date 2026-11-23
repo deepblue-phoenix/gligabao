@@ -2,6 +2,7 @@
 // jobs in the database, and for the selected job a feed of its events and a graph of its loss. The events come from the
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
+import { TrainingEventSource, trainingFetch } from "./training_api.js";
 import { alertDialog, confirmDialog } from "./dialogs.js";
 import { auditCase, auditRun, initEvalLive, statusBadge as caseStatusBadge, verdictBadge, watchEval, type TrainedModelCase, type TrainedModelRun } from "./eval_live.js";
 import { renderSlot } from "./extensions.js";
@@ -110,8 +111,8 @@ let inferring = false; // an inference request is in flight
 let selected: number | null = null;
 let points: Point[] = [];
 let lastSeq = -1;
-let perJob: EventSource | undefined; // the selected job's events (history, then live)
-let allJobs: EventSource | undefined; // live events of every job, to keep the list current
+let perJob: TrainingEventSource | undefined; // the selected job's events (history, then live)
+let allJobs: TrainingEventSource | undefined; // live events of every job, to keep the list current
 let drawQueued = false;
 const stopping = new Set<number>(); // runs a stop was requested of, until they end
 let stopError = ""; // why the last stop request failed
@@ -123,7 +124,7 @@ function hookOf(m: TrainedModel): InferenceHook | undefined { return inferenceHo
 
 async function loadInferenceHooks(): Promise<void> {
   try {
-    const res = await fetch("../training/inference-hooks");
+    const res = await trainingFetch("../training/inference-hooks");
     if (!res.ok) throw await failure(res);
     inferenceHooks = ((await res.json()) as { hooks: InferenceHook[] }).hooks ?? [];
   } catch { /* stays as it was: the models then show as running on Modal */ }
@@ -182,7 +183,7 @@ function renderJobs(): void {
 
 async function loadJobs(): Promise<void> {
   try {
-    const res = await fetch("../training/jobs");
+    const res = await trainingFetch("../training/jobs");
     if (!res.ok) throw await failure(res);
     jobs = ((await res.json()) as { jobs: Job[] }).jobs ?? [];
     el("training-jobs-status").className = "muted";
@@ -257,7 +258,7 @@ function renderModels(): void {
 async function loadModels(): Promise<void> {
   const status = el("training-models-status");
   try {
-    const res = await fetch("../training/models");
+    const res = await trainingFetch("../training/models");
     if (!res.ok) throw await failure(res);
     models = ((await res.json()) as { models: TrainedModel[] }).models ?? [];
     status.className = "muted";
@@ -304,7 +305,7 @@ function renderDeployers(): void {
 async function loadDeployers(): Promise<void> {
   const status = el("training-deployers-status");
   try {
-    const res = await fetch("../training/deployers");
+    const res = await trainingFetch("../training/deployers");
     if (!res.ok) throw await failure(res);
     deployers = ((await res.json()) as { deployers: Deployer[] }).deployers ?? [];
     status.className = "muted";
@@ -368,7 +369,7 @@ function showDeployState(result: HTMLElement, cls: string, line: string, updates
 // The newest deploy of the model made with deployer name (the one that was just asked for, or is running), or undefined. The
 // server lists the progress messages of a deployment only while it runs.
 async function latestDeploy(modelID: number, name: string): Promise<ModelDeploy | undefined> {
-  const res = await fetch(`../training/models/${modelID}/deployments?limit=10`);
+  const res = await trainingFetch(`../training/models/${modelID}/deployments?limit=10`);
   if (!res.ok) throw await failure(res);
   return (((await res.json()) as { deployments: ModelDeploy[] }).deployments ?? []).find((x) => x.deployer === name);
 }
@@ -396,7 +397,7 @@ async function deployModel(m: TrainedModel, e: Deployer, result: HTMLElement): P
   };
   void poll();
   try {
-    const res = await fetch(`../training/models/${m.id}/deployments`, {
+    const res = await trainingFetch(`../training/models/${m.id}/deployments`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ deployer: e.name }),
     });
     if (!res.ok) throw await failure(res);
@@ -717,7 +718,7 @@ let inferButton: HTMLButtonElement | undefined;
 async function loadInferences(modelID: number): Promise<void> {
   const status = el("model-inferences-status");
   try {
-    const res = await fetch(`../training/models/${modelID}/inferences`);
+    const res = await trainingFetch(`../training/models/${modelID}/inferences`);
     if (!res.ok) throw await failure(res);
     const list = ((await res.json()) as { inferences: Inference[] }).inferences ?? [];
     if (promptModel !== modelID) return; // another model, or closed, while loading
@@ -794,7 +795,7 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
   const started = Date.now();
   let outcome: { text: string; cls: string };
   try {
-    const res = await fetch(`../training/models/${m.id}/infer`, {
+    const res = await trainingFetch(`../training/models/${m.id}/infer`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, max_tokens: maxTokens, temperature }),
     });
@@ -866,7 +867,7 @@ async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; bat
   };
   say(`Starting an ${k.noun} of model #${m.id}…`, "muted");
   try {
-    const res = await fetch(`../training/models/${m.id}/${k.path}`, {
+    const res = await trainingFetch(`../training/models/${m.id}/${k.path}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opts),
     });
     if (!res.ok) throw await failure(res);
@@ -893,7 +894,7 @@ const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 async function cancelRun(kind: RunKindPath, id: number): Promise<void> {
   const k = KINDS.find((x) => x.path === kind) ?? AUDIT;
   try {
-    const res = await fetch(`../training/${k.path}/${id}/cancel`, { method: "POST" });
+    const res = await trainingFetch(`../training/${k.path}/${id}/cancel`, { method: "POST" });
     if (!res.ok && res.status !== 409) throw await failure(res); // 409: it ended meanwhile
   } catch (err) {
     void alertDialog(`Could not cancel ${k.noun} #${id}: ${errText(err)}`);
@@ -913,7 +914,7 @@ function openRunLive(k: RunKind, e: TrainedModelRun, m?: TrainedModel): void {
 interface EvalDefinition { name: string; cases: { name: string }[] }
 let evalDefinitions: Promise<EvalDefinition[]> | undefined;
 function loadEvalDefinitions(): Promise<EvalDefinition[]> {
-  evalDefinitions ??= fetch("../training/eval-definitions")
+  evalDefinitions ??= trainingFetch("../training/eval-definitions")
     .then(async (res) => { if (!res.ok) throw await failure(res); return ((await res.json()) as { evals: EvalDefinition[] }).evals ?? []; })
     .catch((err) => { evalDefinitions = undefined; throw err; });
   return evalDefinitions;
@@ -977,12 +978,12 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
   clearTimeout(k.timer);
   const status = el(k.statusId);
   try {
-    const res = await fetch(`../training/models/${modelID}/${k.path}`);
+    const res = await trainingFetch(`../training/models/${modelID}/${k.path}`);
     if (!res.ok) throw await failure(res);
     const list = (((await res.json()) as Record<string, unknown[]>)[k.listKey] ?? []).map((r) => readRun(k, r));
     // The answers of the expanded runs: the ones of a running run grow, so they are fetched again each time.
     await Promise.all(list.filter((e) => k.open.has(e.id) && (runRunning(e) || !k.cases.has(e.id))).map(async (e) => {
-      const r = await fetch(`../training/${k.path}/${e.id}`);
+      const r = await trainingFetch(`../training/${k.path}/${e.id}`);
       if (r.ok) k.cases.set(e.id, readCases(k, await r.json()));
     }));
     if (k.model !== modelID) return; // another model, or closed, while loading
@@ -1338,7 +1339,7 @@ async function loadDatasets(): Promise<void> {
   const keep = sel.value;
   const entries = new Map<string, string>(); // dataset name -> label
   try {
-    const res = await fetch("../training/datasets");
+    const res = await trainingFetch("../training/datasets");
     if (!res.ok) throw await failure(res);
     const data = (await res.json()) as { datasets: DatasetRecord[]; problems?: DatasetProblem[] };
     renderDatasetRecords(data.datasets ?? [], entries);
@@ -1431,7 +1432,7 @@ async function showDataset(name: string): Promise<void> {
   content.replaceChildren();
   if (!modal.open) modal.showModal();
   try {
-    const res = await fetch(`../training/datasets/preview?${new URLSearchParams({ name, lines: String(PREVIEW_LINES) })}`);
+    const res = await trainingFetch(`../training/datasets/preview?${new URLSearchParams({ name, lines: String(PREVIEW_LINES) })}`);
     if (!res.ok) throw await failure(res);
     const data = (await res.json()) as { name: string; lines: string[]; num_records: number; truncated: boolean };
     if (!modal.open || el("dataset-title").textContent !== name) return; // closed (or another one opened) while loading
@@ -1468,7 +1469,7 @@ async function uploadDataset(): Promise<void> {
   status.className = "muted";
   status.textContent = `Uploading ${file.name}…`;
   try {
-    const res = await fetch("../training/datasets", { method: "POST", body: form });
+    const res = await trainingFetch("../training/datasets", { method: "POST", body: form });
     if (!res.ok) throw await failure(res);
     const ds = (await res.json()) as DatasetRecord;
     status.textContent = `Saved dataset ${ds.name}: ${ds.num_records} records, ${fmtBytes(ds.size_bytes)}. It is sent to the sidecar when a job starts on it.`;
@@ -1504,7 +1505,7 @@ async function run(): Promise<void> {
   status.className = "muted";
   status.textContent = "Starting…";
   try {
-    const res = await fetch("../training/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await trainingFetch("../training/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!res.ok) throw await failure(res);
     const job = (await res.json()) as Job;
     status.textContent = `Started job #${job.id}.`;
@@ -1549,7 +1550,7 @@ async function stopJob(id: number): Promise<void> {
   stopping.add(id);
   renderDetailHead();
   try {
-    const res = await fetch(`../training/jobs/${id}/stop`, { method: "POST" });
+    const res = await trainingFetch(`../training/jobs/${id}/stop`, { method: "POST" });
     if (!res.ok) throw await failure(res);
   } catch (err) {
     stopping.delete(id);
@@ -1623,7 +1624,7 @@ function openPerJob(): void {
   if (selected === null) return;
   const stream = el("training-stream");
   stream.textContent = "Connecting…";
-  const es = new EventSource(`../training/events?run_id=${selected}`);
+  const es = new TrainingEventSource(`../training/events?run_id=${selected}`);
   perJob = es;
   es.onopen = () => { stream.textContent = "Live."; };
   es.onerror = () => { stream.textContent = "Connection lost, reconnecting…"; }; // EventSource retries by itself (with Last-Event-ID)
@@ -1632,7 +1633,7 @@ function openPerJob(): void {
 
 function openAllJobs(): void {
   allJobs?.close();
-  const es = new EventSource("../training/events");
+  const es = new TrainingEventSource("../training/events");
   allJobs = es;
   es.onopen = () => void loadJobs();
   for (const type of ["status", "progress", "log"]) es.addEventListener(type, (e) => applyToList(JSON.parse((e as MessageEvent<string>).data) as FeedEvent));

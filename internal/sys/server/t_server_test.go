@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"database/sql"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -44,6 +45,17 @@ func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			return rec
+		}
+		// like the other routes of users, the training routes need the user (here the gb-user-id header, there is no auth hook)
+		if rec := do(httptest.NewRequest("GET",
+			"/v1/gb/training/jobs",
+			nil)); rec.Code != http.StatusBadRequest {
+			t.Fatalf("training without a user: %d %s", rec.Code, rec.Body)
+		}
+		inner := do
+		do = func(req *http.Request) *httptest.ResponseRecorder {
+			req.Header.Set(httputil.UserIDHeader, "alice")
+			return inner(req)
 		}
 
 		var b bytes.Buffer

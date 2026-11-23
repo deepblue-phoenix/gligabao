@@ -1,15 +1,19 @@
-// Package model contains the HTTP handlers for training and running per-user models. The model type is an argument of the request
-// ("model_type", for now only "gcnii", the GCNII* graph classifier). The work is done by sargo (rust/sargo), which gligabao starts once
-// and then talks to over HTTP: these handlers take the user of the request (never from the body), check the input and pass it, with the
-// user ID, to sargo. Each user has their own model: training one user does not touch another's.
+// Package model contains the HTTP handlers of the GCNII* graph classifier (the per-user models of sargo), part of the training endpoints
+// (/v1/gb/training/, see Register). The work is done by sargo (rust/sargo), which gligabao starts once and then talks to over HTTP:
+// these handlers take the user of the request (never from the body), check the input and pass it, with the user ID, to sargo. Each user
+// has their own model: training one user does not touch another's. The body's "model_type", if sent, must be "gcnii" (the path already
+// says it).
 //
-//	POST /v1/gb/model/train                  body {"model_type": "gcnii", "graphs": [{n, edges, nodes?, class}, ...], epochs?, lr?, batch?, hidden?, depth?, seed?} -> 202 job
-//	GET  /v1/gb/model/train?model_type=gcnii the state of the training of the user -> {"user_id", "trained", "job"}
-//	POST /v1/gb/model/train/dataset          body {"model_type": "gcnii", "dataset"?, "classes"?, "min_graphs_per_class"?, "validation_fraction"?, "split_seed"?, epochs?, ...} -> 202 job
-//	                                         trains on the graphs of a dataset with the classes an LLM gave them (see TrainDataset)
-//	POST /v1/gb/model/infer                  body {"model_type": "gcnii", "graph": {n, edges, nodes?}, "classes"?} -> the class of the graph
-//	POST /v1/gb/model/embed                  body {"model_type": "gcnii", "graph": {n, edges, nodes?}, "normalize"?} -> the embedding of the graph
-//	GET  /v1/gb/model/models?model_type=gcnii the trained models of the user (their weights are in the store of the weights, see Recorder)
+//	POST /v1/gb/training/gcnii/train                  body {"graphs": [{n, edges, nodes?, class}, ...], epochs?, lr?, batch?, hidden?, depth?, seed?} -> 202 job
+//	GET  /v1/gb/training/gcnii/train                  the state of the training of the user -> {"user_id", "trained", "job"}
+//	POST /v1/gb/training/gcnii/train/dataset          body {"dataset"?, "classes"?, "min_graphs_per_class"?, "validation_fraction"?, "split_seed"?, epochs?, ...} -> 202 job
+//	                                                  trains on the graphs of a dataset with the classes an LLM gave them (see TrainDataset)
+//	GET  /v1/gb/training/gcnii/train/dataset/runs     the history of the trainings on a dataset (?dataset=)
+//	POST /v1/gb/training/gcnii/infer                  body {"graph": {n, edges, nodes?}, "classes"?} -> the class of the graph
+//	POST /v1/gb/training/gcnii/embed                  body {"graph": {n, edges, nodes?}, "normalize"?} -> the embedding of the graph
+//
+// The trained models are listed with the ones of the other types: GET /v1/gb/training/models?model_type=gcnii (their weights are in the
+// store of the weights, see Recorder).
 package model
 
 import (
@@ -44,7 +48,7 @@ type Service interface {
 		req *sargo.GCNIIEmbedRequest) (*sargo.GCNIIEmbedResponse, error)
 }
 
-// Train serves POST /v1/gb/model/train: it starts the training of the model of the model_type of the body, for the user of the request.
+// Train serves POST /v1/gb/training/gcnii/train: it starts the training of the model of the model_type of the body, for the user of the request.
 func Train(svc Service,
 	rec *Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter,
@@ -91,7 +95,7 @@ func Train(svc Service,
 	}
 }
 
-// TrainStatus serves GET /v1/gb/model/train?model_type=...: the state of the training of the user of the request.
+// TrainStatus serves GET /v1/gb/training/gcnii/train: the state of the training of the user of the request.
 func TrainStatus(svc Service,
 	rec *Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter,
@@ -118,7 +122,7 @@ func TrainStatus(svc Service,
 	}
 }
 
-// Infer serves POST /v1/gb/model/infer: it runs the model of the model_type of the body on a graph, for the user of the request (404 if
+// Infer serves POST /v1/gb/training/gcnii/infer: it runs the model of the model_type of the body on a graph, for the user of the request (404 if
 // they have not trained one).
 func Infer(svc Service,
 	rec *Recorder) http.HandlerFunc {
@@ -145,7 +149,7 @@ func Infer(svc Service,
 	}
 }
 
-// Embed serves POST /v1/gb/model/embed: it embeds a graph with the model of the model_type of the body, for the user of the request (404 if
+// Embed serves POST /v1/gb/training/gcnii/embed: it embeds a graph with the model of the model_type of the body, for the user of the request (404 if
 // they have not trained one).
 func Embed(svc Service,
 	rec *Recorder) http.HandlerFunc {
@@ -185,15 +189,15 @@ func user(w http.ResponseWriter,
 	return userID, true
 }
 
-// checkType is true if modelType is a model type that exists; if not, the 400 is already written.
+// checkType is true if modelType is empty (the path says it is GCNII*) or "gcnii"; if not, the 400 is already written.
 func checkType(w http.ResponseWriter,
 	modelType string) bool {
-	if modelType == ModelGCNII {
+	if modelType == "" || modelType == ModelGCNII {
 		return true
 	}
 	httputil.Error(w,
 		http.StatusBadRequest,
-		`model_type is required and must be "`+ModelGCNII+`"`)
+		`model_type must be "`+ModelGCNII+`" (or left out)`)
 	return false
 }
 

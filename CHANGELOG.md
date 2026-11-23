@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.236.0] - 2026-11-23
+
+One set of training and model endpoints: the GCNII* routes are part of `/v1/gb/training/`, and every training route needs a user.
+
+### Changed
+
+- **Breaking: the GCNII\* routes moved from `/v1/gb/model/...` into the training endpoints**, which are on with `training = true` (`serve --training`) and no longer depend on the `training` flag being off. `POST|GET /v1/gb/model/train` is `/v1/gb/training/gcnii/train`, `/model/train/dataset` is `/training/gcnii/train/dataset`, `/model/train/dataset/runs` is `/training/gcnii/train/dataset/runs`, `/model/infer` is `/training/gcnii/infer` and `/model/embed` is `/training/gcnii/embed`. The old `/v1/gb/model/` paths are gone. The `model_type` in a body (and in the query of the status) is optional now (the path says it); if sent it must be `gcnii`.
+- **The trained models of every type are one list:** `GET /v1/gb/training/models` lists LoRA and GCNII\* models, `?model_type=lora|gcnii` narrows it (it replaces `GET /v1/gb/model/models`). Only the GCNII\* models of the user of the request are listed.
+- **Breaking: every `/v1/gb/training/...` route is authenticated like the other routes of users**: an API key (`Authorization: Bearer`) with the `Auth` hook, or the `gb-user-id` header without it (`400` without). Before they had no check of their own. They are registered on their own mux behind `httputil.Authenticate`, so a route added to `registerTraining` is covered automatically.
+- Parts of the training endpoints that need an optional backend are mounted by a function that mounts nothing without it (`model.Register` for sargo): with training mode on and sargo off the rest of the training endpoints are there and the GCNII\* routes are not. The pattern is written down in `registerTraining`.
+- Admin UI: the calls to the training endpoints send the fixed user `admin` (`gb-user-id`), which is enough for gligabao run on a local machine. The live event streams use a fetch based reader (`admin_ui/src/training_api.ts`) because the browser's `EventSource` cannot send a header. The admin UI does not work with an `Auth` hook yet.
+
 ## [0.235.0] - 2026-11-23
 
 The weights of the GCNII* models are kept in S3 and tracked in `gb_trained_models`, the table of the LoRA models.

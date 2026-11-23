@@ -109,16 +109,13 @@ func TestBadRequests(t *testing.T) {
 	if rec := call(Train(svc, nil), "POST", "alice", "{"); rec.Code != http.StatusBadRequest {
 		t.Errorf("bad JSON: %d", rec.Code)
 	}
-	if rec := call(Train(svc, nil), "POST", "alice", `{"graphs":[]}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("no model_type: %d", rec.Code)
-	}
 	if rec := call(Infer(svc, nil), "POST", "alice", `{"model_type":"nope"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown model_type: %d", rec.Code)
 	}
-	statusReq := httptest.NewRequest("GET", "/", nil)
+	statusReq := httptest.NewRequest("GET", "/?model_type=nope", nil)
 	statusReq.Header.Set(httputil.UserIDHeader, "alice")
 	if rec := httptest.NewRecorder(); func() int { TrainStatus(svc, nil)(rec, statusReq); return rec.Code }() != http.StatusBadRequest {
-		t.Errorf("status without model_type")
+		t.Errorf("status with an unknown model_type")
 	}
 	if len(svc.users) != 0 {
 		t.Errorf("sargo was called for a bad request: %v", svc.users)
@@ -156,7 +153,7 @@ func TestTrainDatasetRejectsBadOptions(t *testing.T) {
 	if rec := call(h, http.MethodPost, "alice", `{"model_type":"gcnii","validation_fraction":1.5}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("validation_fraction: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(h, http.MethodPost, "alice", `{"validation_fraction":0.2}`); rec.Code != http.StatusBadRequest {
+	if rec := call(h, http.MethodPost, "alice", `{"model_type":"nope"}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("model_type: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(h, http.MethodPost, "", `{"model_type":"gcnii"}`); rec.Code != http.StatusBadRequest {
@@ -194,5 +191,24 @@ func TestTrainDatasetRunsListsTheHistory(t *testing.T) {
 	}
 	if rec := call(TrainDatasetRuns(&fakeService{}), http.MethodGet, "alice", ""); !strings.Contains(rec.Body.String(), `"runs":[]`) {
 		t.Fatalf("no history dir: %s", rec.Body)
+	}
+}
+
+// Without sargo (a nil service) Register mounts nothing, with it the routes are under /training/gcnii/.
+func TestRegisterNeedsSargo(t *testing.T) {
+	mux := http.NewServeMux()
+	Register(mux, "/v1/gb/training", nil, nil, nil)
+	req := httptest.NewRequest("POST", "/v1/gb/training/gcnii/train", strings.NewReader(trainBody))
+	if _, pattern := mux.Handler(req); pattern != "" {
+		t.Errorf("mounted without sargo: %q", pattern)
+	}
+	mux = http.NewServeMux()
+	Register(mux, "/v1/gb/training", &fakeService{}, nil, nil)
+	for _, route := range []string{"POST /v1/gb/training/gcnii/train", "GET /v1/gb/training/gcnii/train", "POST /v1/gb/training/gcnii/train/dataset",
+		"GET /v1/gb/training/gcnii/train/dataset/runs", "POST /v1/gb/training/gcnii/infer", "POST /v1/gb/training/gcnii/embed"} {
+		method, path, _ := strings.Cut(route, " ")
+		if _, pattern := mux.Handler(httptest.NewRequest(method, path, nil)); pattern != route {
+			t.Errorf("%s: pattern %q", route, pattern)
+		}
 	}
 }

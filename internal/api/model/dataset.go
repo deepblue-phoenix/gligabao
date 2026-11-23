@@ -13,8 +13,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// datasetTrainRequest is the body of POST /v1/gb/model/train/dataset: which dataset (and how to cut it up) plus the training options
-// of POST /v1/gb/model/train.
+// datasetTrainRequest is the body of POST /v1/gb/training/gcnii/train/dataset: which dataset (and how to cut it up) plus the training options
+// of POST /v1/gb/training/gcnii/train.
 type datasetTrainRequest struct {
 	ModelType string `json:"model_type"`
 	// Dataset is the name of a live dataset of the user (empty: the default one).
@@ -62,11 +62,11 @@ func historyDirOf(svc Service) string {
 	return ""
 }
 
-// TrainDataset serves POST /v1/gb/model/train/dataset: it trains the model of the user of the request on the graphs of one of their datasets.
+// TrainDataset serves POST /v1/gb/training/gcnii/train/dataset: it trains the model of the user of the request on the graphs of one of their datasets.
 // The classes of the graphs are the ones an LLM gave them when they were remembered (classify_graph, read from gb_artifact_classes with
 // SQL); hook (may be nil) picks them instead, if the program that embeds gligabao set the classifying training hook. The graphs are
 // partitioned per class into a training and a validation set (validation_fraction, split_seed) and both are sent to sargo, which
-// reports the accuracy on each in the job (GET /v1/gb/model/train). 404 for no such dataset, 422 if no graph has a class.
+// reports the accuracy on each in the job (GET /v1/gb/training/gcnii/train). 404 for no such dataset, 422 if no graph has a class.
 func TrainDataset(svc Service,
 	d *sql.DB,
 	hook memory_core.ClassifyingTrainingHook,
@@ -213,7 +213,7 @@ func saveRun(svc Service,
 	return run.ID
 }
 
-// TrainDatasetRuns serves GET /v1/gb/model/train/dataset/runs?dataset=...: the history of the trainings on the dataset of the user of
+// TrainDatasetRuns serves GET /v1/gb/training/gcnii/train/dataset/runs?dataset=...: the history of the trainings on the dataset of the user of
 // the request, the newest first: {"runs": [...]}. Empty without a history directory.
 func TrainDatasetRuns(svc Service) http.HandlerFunc {
 	return func(w http.ResponseWriter,

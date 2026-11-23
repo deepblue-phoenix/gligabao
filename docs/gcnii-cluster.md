@@ -8,7 +8,7 @@ gligabao starts one **sargo** child process per instance. Sargo trains in memory
 
 | Failure | What would happen |
 | --- | --- |
-| Status from another instance | `GET /v1/gb/model/train` lands on instance B, whose sargo never trained anything: "not trained", no job. |
+| Status from another instance | `GET /v1/gb/training/gcnii/train` lands on instance B, whose sargo never trained anything: "not trained", no job. |
 | Concurrent trainings | Two `POST`s of the same user land on A and B: both train, and the user's model is whichever finishes last. |
 | Lost disk | The Nomad container is replaced: its local directory, and the only copy of every model, are gone. |
 | Stale model | A trains a new model; B keeps serving the old one from its own directory and memory. |
@@ -76,7 +76,7 @@ Sargo caches the loaded model together with the modification time of its weights
 ## The life of a training
 
 ```
-client ─POST /v1/gb/model/train(/dataset)─► instance A
+client ─POST /v1/gb/training/gcnii/train(/dataset)─► instance A
   1. CLAIM    INSERT gb_model_train_jobs (running, instance A)       ── 409 if the user already has a running row anywhere
   2. START    A's sargo: POST /v1/gcnii/train                        ── on refusal the row is ended `failed`, the user may retry
   3. 202      answer to the client; the Recorder's watcher starts on A
@@ -94,7 +94,7 @@ The order in step 5 is deliberate: the job stays `running` until the marker is w
 
 ### Status
 
-`GET /v1/gb/model/train` returns the **newest job of the user as the database has it**, so every instance gives the same answer. Status mapping: `running`, `done`, and `failed` (a `lost` job is `failed`, `error` says the instance stopped). A job that exists only in the local sargo and not in the table (a training from before the table existed, or the feature off) is shown from sargo; if the local one is newer than the row, the local one wins.
+`GET /v1/gb/training/gcnii/train` returns the **newest job of the user as the database has it**, so every instance gives the same answer. Status mapping: `running`, `done`, and `failed` (a `lost` job is `failed`, `error` says the instance stopped). A job that exists only in the local sargo and not in the table (a training from before the table existed, or the feature off) is shown from sargo; if the local one is newer than the row, the local one wins.
 
 ### Inference and embedding: the sync
 
@@ -111,7 +111,7 @@ This one mechanism covers both a **new model from another instance** (the marker
 
 ### Listing
 
-`GET /v1/gb/model/models?model_type=gcnii` lists the user's rows from the database; it never touches a directory.
+`GET /v1/gb/training/models?model_type=gcnii` lists the user's rows from the database; it never touches a directory.
 
 ## Failure handling
 

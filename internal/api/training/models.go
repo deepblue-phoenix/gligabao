@@ -21,8 +21,9 @@ const (
 	maxInferBody              = 1 << 16
 )
 
-// ListModelsOf serves GET /v1/gb/training/models[?limit=<n>]: {"models": [...]}, the trained models,
-// newest first, at most limit (default 100, at most 500).
+// ListModelsOf serves GET /v1/gb/training/models[?model_type=<type>][&limit=<n>]: {"models": [...]}, the trained models of every
+// type ("lora", "gcnii"; model_type narrows it to one), newest first, at most limit (default 100, at most 500). A GCNII* model belongs to
+// one user, so only the ones of the user of the request are listed.
 func ListModelsOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
@@ -33,15 +34,38 @@ func ListModelsOf(db *sql.DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		models, err := trainingdb.ListTrainedModels(r.Context(),
+		modelType := r.URL.Query().Get("model_type")
+		switch modelType {
+		case "", trainingdb.ModelTypeLoRA, trainingdb.ModelTypeGCNII:
+		default:
+			httputil.Error(w,
+				http.StatusBadRequest,
+				`model_type must be "`+trainingdb.ModelTypeLoRA+`" or "`+trainingdb.ModelTypeGCNII+`"`)
+			return
+		}
+		all, err := trainingdb.ListTrainedModels(r.Context(),
 			db,
-			limit)
+			0)
 		if err != nil {
 			log.WithError(err).Error("training: list trained models failed")
 			httputil.Error(w,
 				http.StatusInternalServerError,
 				"failed to list the trained models")
 			return
+		}
+		userID := httputil.UserID(r)
+		models := make([]trainingdb.TrainedModel, 0, len(all))
+		for _, m := range all {
+			if modelType != "" && m.ModelType != modelType {
+				continue
+			}
+			if m.ModelType == trainingdb.ModelTypeGCNII && m.UserID != userID {
+				continue
+			}
+			if len(models) == limit {
+				break
+			}
+			models = append(models, m)
 		}
 		httputil.WriteJSON(w,
 			http.StatusOK,

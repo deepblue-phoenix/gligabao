@@ -174,7 +174,7 @@ type Options struct {
 	// ClassifyingTrainingHook is the classifying training hook (see memory_core.ClassifyingTrainingHook), served as
 	// POST /v1/gb/datasets/{name}/training. Nil: the route is not mounted.
 	ClassifyingTrainingHook memory_core.ClassifyingTrainingHook
-	// GCNII serves the per-user model routes (POST and GET /v1/gb/model/train, POST /v1/gb/model/infer and /embed): it is sargo, the Rust
+	// GCNII serves the per-user model routes (/v1/gb/training/gcnii/: train, train/dataset, infer, embed; part of the training endpoints, so also needs training mode): it is sargo, the Rust
 	// server gligabao started, which trains and runs the models over HTTP (a *sargo.Client). Nil: the routes are not mounted.
 	GCNII modelapi.Service
 	// Geo turns the geo stage of remember on (with GeoResolver, or Nominatim if there is none); a GeoResolver turns it on by itself.
@@ -471,8 +471,7 @@ func newMux(ctx context.Context,
 		api.WithGraphEmbedder(graphEmbedder),
 		api.WithClassifyingTrainingHook(trainingHook),
 		api.WithResearch(research),
-		api.WithEvals(evalSvc),
-		api.WithGCNII(gcniiSvc))
+		api.WithEvals(evalSvc))
 	if mcpEnable {
 		api.RegisterMCP(mux,
 			mgr,
@@ -499,6 +498,9 @@ func newMux(ctx context.Context,
 	if trainingMode {
 		registerTraining(ctx,
 			mux,
+			auth,
+			gcniiSvc,
+			trainingHook,
 			d.Backend,
 			d.Relational,
 			dirs,
@@ -580,17 +582,32 @@ func versionHandler(w http.ResponseWriter,
 }
 
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
-// and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the deployed models). The training monitor follows the progress the sidecar
+// and are served whether or not the admin UI is on, but only in training mode): the jobs, the trained models of every type (LoRA,
+// GCNII*), the datasets, the evals and audits and the feed of the jobs' progress. This is the only set of handlers for training and model
+// work; the old /v1/gb/model/ routes are part of it now (/v1/gb/training/gcnii/).
+//
+// Every route is behind the same authentication as the other routes of users (httputil.Authenticate with auth: an API key, or the
+// gb-user-id header without an auth hook): they are registered on their own mux, which is mounted once, wrapped. A route added here is
+// authenticated without doing anything else.
+//
+// Optional backends: the endpoints are mounted whenever training mode is on, even if a backend they can use is not there. A part that
+// NEEDS an optional backend is mounted by its own function, which mounts nothing if the backend is nil (see model.Register for sargo, the
+// GCNII* routes); do the same for the next one. Parts that merely work better with a backend (the sidecar, the LLM) take it as nil and
+// answer 503 when they need it. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the deployed models). The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. lm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503). Trained models are deployed through hooks.Deployers, after their files are fetched to dirs.ModelDeploy.
 func registerTraining(ctx context.Context,
-	mux *http.ServeMux,
+	hostMux *http.ServeMux,
+	auth httputil.Authenticator,
+	gcniiSvc modelapi.Service,
+	trainingHook memory_core.ClassifyingTrainingHook,
 	backend string,
 	trainingDB *sql.DB,
 	dirs coretraining.Dirs,
 	hooks coretraining.Hooks,
 	sc coretraining.Sidecar,
 	lm memory_core.LLM) {
+	mux := http.NewServeMux() // the training routes, mounted on hostMux at the end, behind the authentication
 	mon := coretraining.NewMonitor(ctx,
 		trainingDB,
 		sc)
@@ -654,6 +671,17 @@ func registerTraining(ctx context.Context,
 	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(trainingDB, dirs.Datasets))
 	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dirs.Datasets))
 	mux.HandleFunc("GET /v1/gb/training/events", training.EventsOf(trainingDB, mon))
+	// Needs sargo: mounted only if it is on (see the comment above).
+	modelapi.Register(mux,
+		"/v1/gb/training",
+		gcniiSvc,
+		trainingDB,
+		trainingHook)
+
+	authenticated := httputil.Authenticate(auth, mux)
+	for _, m := range mountMethods { // one pattern per method, not a method-less one: see mountMethods
+		hostMux.Handle(m+" /v1/gb/training/", authenticated)
+	}
 }
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the

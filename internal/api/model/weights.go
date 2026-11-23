@@ -7,12 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/modeltrain"
 	"github.com/deepblue-phoenix/gligabao/internal/sargo"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
@@ -395,39 +393,4 @@ func mergeJob(row *trainingdb.ModelTrainJob,
 		job.FinishedUnix = row.FinishedAt.Unix()
 	}
 	return &job
-}
-
-// ListModels serves GET /v1/gb/model/models?model_type=gcnii: the trained models of the user of the request (rows of gb_trained_models,
-// the same as the LoRA models have), newest first: {"models": [...]}. It lists what was stored; sargo uses the latest one. Empty without a
-// store of the weights.
-func ListModels(rec *Recorder) http.HandlerFunc {
-	return func(w http.ResponseWriter,
-		r *http.Request) {
-		userID, ok := user(w, r)
-		if !ok {
-			return
-		}
-		if !checkType(w, r.URL.Query().Get("model_type")) {
-			return
-		}
-		models := []trainingdb.TrainedModel{}
-		if rec != nil {
-			var err error
-			models, err = trainingdb.ListUserTrainedModels(r.Context(),
-				rec.db,
-				trainingdb.ModelTypeGCNII,
-				userID,
-				0)
-			if err != nil {
-				log.WithError(err).WithField("user_id", userID).Error("model list failed")
-				httputil.Error(w,
-					http.StatusInternalServerError,
-					"failed to list the models")
-				return
-			}
-		}
-		httputil.WriteJSON(w,
-			http.StatusOK,
-			map[string]any{"models": models})
-	}
 }

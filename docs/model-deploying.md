@@ -149,7 +149,7 @@ The table exists on SQLite and PostgreSQL and is created automatically. A row th
 | `GET /v1/gb/training/models/{id}/deployments[?limit=]` | `{"deployments": [...]}`: the stored deployments of the model, newest first, failed ones too (default 100, at most 500). |
 
 ```
-$ curl -X POST localhost:7878/v1/gb/training/models/3/deployments \
+$ curl -X POST localhost:7878/v1/gb/training/models/3/deployments -H "gb-user-id: u1" \
        -d '{"deployer": "bucket", "options": {"prefix": "release"}}'
 {"id":7,"trained_model_id":3,"deployer":"bucket","options":{"prefix":"release"},"status":"completed",
  "dir":"/srv/gligabao/build/trained_models/fc4a...","ref":"models/fc4a.../deploy-7","details":{"files":3},

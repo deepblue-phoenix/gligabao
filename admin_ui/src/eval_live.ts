@@ -3,6 +3,8 @@
 // question as the model answers it (the reference answer next to the model's), then its score and the judge's reason when the batch
 // it is in is judged (the judge grades a batch of questions per call). One sees how the model behaves from the first question on.
 // Closing the dialog leaves the run going.
+import { TrainingEventSource } from "./training_api.js";
+
 
 // The statuses and verdicts of the runs and cases of a trained model are those of the model of internal/evals/core (and of
 // internal/training_audits/core, which has the same statuses), shown as they are: a run or a case is pending, running, completed,
@@ -81,7 +83,7 @@ const lookOf = (i: TrainedModelCase): string =>
     : i.score === 0 && watchingKind === "audits" ? "zero" : "bad";
 
 // What the open dialog follows.
-let stream: EventSource | undefined;
+let stream: TrainingEventSource | undefined;
 let watching = -1;
 let watchingKind: RunKind = "audits";
 let run: TrainedModelRun | undefined;
@@ -261,7 +263,7 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
   el("eval-live-cancel").hidden = true;
   if (!modal.open) modal.showModal();
 
-  const es = new EventSource(`../training/${kind}/${id}/events`);
+  const es = new TrainingEventSource(`../training/${kind}/${id}/events`);
   stream = es;
   const conn = el("eval-live-conn");
   conn.textContent = "Connecting…";

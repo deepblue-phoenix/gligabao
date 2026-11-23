@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	apitraining "github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -224,7 +225,7 @@ func TestTrainingIsClaimedWatchedRecordedAndSeenByTheOtherInstances(t *testing.T
 		req := httptest.NewRequest(http.MethodGet, "/?model_type=gcnii", nil)
 		req.Header.Set(httputil.UserIDHeader, user)
 		out := httptest.NewRecorder()
-		ListModels(recB)(out, req)
+		apitraining.ListModelsOf(d)(out, req)
 		return out.Body.String()
 	}
 	if got := list("alice"); !strings.Contains(got, claim.JobID) || !strings.Contains(got, claim2.JobID) {

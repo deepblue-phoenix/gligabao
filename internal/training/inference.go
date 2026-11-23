@@ -56,7 +56,7 @@ func GetSidecarModel(ctx context.Context,
 	}
 	if !tm.RunsOnSidecar() {
 		return nil, conflictErr("trained model " + strconv.FormatInt(id, 10) + " is a " + tm.ModelType +
-			" model: it does not run on the sidecar (use /v1/gb/model/...)")
+			" model: it does not run on the sidecar (use /v1/gb/training/gcnii/...)")
 	}
 	return tm, nil
 }
