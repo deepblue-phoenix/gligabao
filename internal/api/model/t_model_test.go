@@ -73,7 +73,7 @@ const trainBody = `{"model_type":"gcnii","user_id":"mallory","graphs":[{"n":2,"e
 
 func TestTheUserIsTheOneOfTheRequestNotTheBody(t *testing.T) {
 	svc := &fakeService{}
-	rec := call(Train(svc),
+	rec := call(Train(svc, nil),
 		"POST",
 		"alice",
 		trainBody)
@@ -82,12 +82,12 @@ func TestTheUserIsTheOneOfTheRequestNotTheBody(t *testing.T) {
 	}
 	statusReq := httptest.NewRequest("GET", "/?model_type=gcnii", nil)
 	statusReq.Header.Set(httputil.UserIDHeader, "alice")
-	TrainStatus(svc)(httptest.NewRecorder(), statusReq)
-	call(Infer(svc),
+	TrainStatus(svc, nil)(httptest.NewRecorder(), statusReq)
+	call(Infer(svc, nil),
 		"POST",
 		"alice",
 		`{"model_type":"gcnii","user_id":"mallory","graph":{"n":1,"edges":[]}}`)
-	call(Embed(svc),
+	call(Embed(svc, nil),
 		"POST",
 		"alice",
 		`{"model_type":"gcnii","user_id":"mallory","graph":{"n":1,"edges":[]}}`)
@@ -103,21 +103,21 @@ func TestTheUserIsTheOneOfTheRequestNotTheBody(t *testing.T) {
 
 func TestBadRequests(t *testing.T) {
 	svc := &fakeService{}
-	if rec := call(Train(svc), "POST", "", trainBody); rec.Code != http.StatusBadRequest {
+	if rec := call(Train(svc, nil), "POST", "", trainBody); rec.Code != http.StatusBadRequest {
 		t.Errorf("no user: %d", rec.Code)
 	}
-	if rec := call(Train(svc), "POST", "alice", "{"); rec.Code != http.StatusBadRequest {
+	if rec := call(Train(svc, nil), "POST", "alice", "{"); rec.Code != http.StatusBadRequest {
 		t.Errorf("bad JSON: %d", rec.Code)
 	}
-	if rec := call(Train(svc), "POST", "alice", `{"graphs":[]}`); rec.Code != http.StatusBadRequest {
+	if rec := call(Train(svc, nil), "POST", "alice", `{"graphs":[]}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("no model_type: %d", rec.Code)
 	}
-	if rec := call(Infer(svc), "POST", "alice", `{"model_type":"nope"}`); rec.Code != http.StatusBadRequest {
+	if rec := call(Infer(svc, nil), "POST", "alice", `{"model_type":"nope"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown model_type: %d", rec.Code)
 	}
 	statusReq := httptest.NewRequest("GET", "/", nil)
 	statusReq.Header.Set(httputil.UserIDHeader, "alice")
-	if rec := httptest.NewRecorder(); func() int { TrainStatus(svc)(rec, statusReq); return rec.Code }() != http.StatusBadRequest {
+	if rec := httptest.NewRecorder(); func() int { TrainStatus(svc, nil)(rec, statusReq); return rec.Code }() != http.StatusBadRequest {
 		t.Errorf("status without model_type")
 	}
 	if len(svc.users) != 0 {
@@ -137,7 +137,7 @@ func TestSargoErrorsAreMapped(t *testing.T) {
 		{context.DeadlineExceeded, http.StatusBadGateway},
 		{sargo.ErrInvalidGCNII, http.StatusBadRequest},
 	} {
-		rec := call(Train(&fakeService{err: tc.err}),
+		rec := call(Train(&fakeService{err: tc.err}, nil),
 			"POST",
 			"alice",
 			trainBody)
@@ -150,6 +150,7 @@ func TestSargoErrorsAreMapped(t *testing.T) {
 func TestTrainDatasetRejectsBadOptions(t *testing.T) {
 	svc := &fakeService{}
 	h := TrainDataset(svc,
+		nil,
 		nil,
 		nil)
 	if rec := call(h, http.MethodPost, "alice", `{"model_type":"gcnii","validation_fraction":1.5}`); rec.Code != http.StatusBadRequest {

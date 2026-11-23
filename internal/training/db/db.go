@@ -24,11 +24,32 @@ type (
 	TrainingJobEvent             = model.TrainingJobEvent
 	TrainingDataset              = model.TrainingDataset
 	TrainedModel                 = model.TrainedModel
+	ModelTrainJob                = model.ModelTrainJob
 	TrainedModelFile             = model.TrainedModelFile
 	TrainedModelInference        = model.TrainedModelInference
 	TrainedModelDeployment       = model.TrainedModelDeployment
 	TrainedModelDeploymentUpdate = model.TrainedModelDeploymentUpdate
 )
+
+// Types of a TrainedModel and where its weights are kept.
+const (
+	ModelTypeLoRA      = model.ModelTypeLoRA
+	ModelTypeGCNII     = model.ModelTypeGCNII
+	StorageModalVolume = model.StorageModalVolume
+	StorageS3          = model.StorageS3
+	StorageLocal       = model.StorageLocal
+)
+
+// Statuses of a ModelTrainJob.
+const (
+	ModelTrainJobRunning = model.ModelTrainJobRunning
+	ModelTrainJobDone    = model.ModelTrainJobDone
+	ModelTrainJobFailed  = model.ModelTrainJobFailed
+	ModelTrainJobLost    = model.ModelTrainJobLost
+)
+
+// ErrModelTrainJobRunning is returned by ClaimModelTrainJob when the user already has a running training of that type.
+var ErrModelTrainJobRunning = model.ErrModelTrainJobRunning
 
 // Statuses of a TrainedModelInference.
 const (

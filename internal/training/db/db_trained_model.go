@@ -18,6 +18,7 @@ import (
 func RecordTrainedModel(ctx context.Context,
 	d *sql.DB,
 	m TrainedModel) (int64, bool, error) {
+	m = m.WithDefaults()
 	if m.Name == "" {
 		m.Name = DefaultTrainedModelName(m)
 	}
@@ -63,6 +64,30 @@ func ListTrainedModels(ctx context.Context,
 	case config.DBBackendPostgres:
 		return postgres.ListTrainedModels(ctx,
 			d,
+			limit)
+	}
+	return nil, unsupported()
+}
+
+// ListUserTrainedModels returns the trained models of one type (ModelTypeGCNII, ...) that belong to the user, newest first, at
+// most limit of them (all for limit <= 0).
+func ListUserTrainedModels(ctx context.Context,
+	d *sql.DB,
+	modelType,
+	userID string,
+	limit int) ([]TrainedModel, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListUserTrainedModels(ctx,
+			d,
+			modelType,
+			userID,
+			limit)
+	case config.DBBackendPostgres:
+		return postgres.ListUserTrainedModels(ctx,
+			d,
+			modelType,
+			userID,
 			limit)
 	}
 	return nil, unsupported()

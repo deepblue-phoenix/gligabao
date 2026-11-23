@@ -184,7 +184,7 @@ func (m *Manager) Start(ctx context.Context,
 // getModel reads trained model id, as an *Error.
 func (m *Manager) getModel(ctx context.Context,
 	id int64) (*trainingdb.TrainedModel, error) {
-	tm, err := training.GetModel(ctx,
+	tm, err := training.GetSidecarModel(ctx,
 		m.DB,
 		id)
 	var te *training.Error
@@ -193,6 +193,8 @@ func (m *Manager) getModel(ctx context.Context,
 		return tm, nil
 	case errors.As(err, &te) && te.Kind == training.KindNotFound:
 		return nil, notFoundErr(te.Msg)
+	case errors.As(err, &te) && te.Kind == training.KindConflict:
+		return nil, conflictErr(te.Msg)
 	case errors.As(err, &te):
 		return nil, internalErr(te.Msg, te.Err)
 	}

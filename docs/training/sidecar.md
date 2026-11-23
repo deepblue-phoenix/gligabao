@@ -142,6 +142,8 @@ modal serve app.py                                 # web API in dev mode (`modal
 
 A trained model is a set of weights: for the LoRA fine-tuning the sidecar does, the few files of an adapter (`adapter_config.json`, `adapter_model.safetensors`, the tokenizer files). Each job that **completes** makes a **new** trained model, one row of the `gb_trained_models` table, so a user can train many models of the same type with other data, steps or size, and every one stays available to run inference on. A cancelled or failed job saves nothing.
 
+The table also holds the GCNII* models of sargo (`model_type = "gcnii"`, a `user_id`, `storage = "s3"`), whose weights are in the weights bucket and not on the sidecar's volume; see [../gcnii.md](../gcnii.md#weights-and-the-trained-models-table). Everything below is about the LoRA models (`model_type = "lora"`, `storage = "modal_volume"`); the sidecar-only operations (inference, evals, audits, deployment) answer `409` for the others.
+
 #### Where the weights are saved
 
 The weights live on the provider's **models volume** (Modal: `SIDECAR_VOL_MODELS`, default `gligabao-train-models`, mounted at `/models` in the containers). Each job gets a directory of its own, named after the job's ID, and nothing ever writes into another job's directory:

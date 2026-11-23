@@ -38,7 +38,9 @@ pub type UserError = (u16, String);
 
 pub struct UserModels {
     dir: PathBuf,
-    models: Mutex<HashMap<String, Arc<UserModel>>>,
+    /// The loaded models with the modification time of the weights file they were loaded from: another process (or another instance of a
+    /// cluster, through a restore) may replace the file, and `get` then loads it again.
+    models: Mutex<HashMap<String, (Option<SystemTime>, Arc<UserModel>)>>,
     jobs: Mutex<HashMap<String, Value>>,
 }
 
@@ -117,6 +119,11 @@ fn run_training(
     Ok((UserModel { model, classes }, scores, val_scores))
 }
 
+/// When the weights file of `dir` was last written (`None` if it has none).
+fn weights_mtime(dir: &Path) -> Option<SystemTime> {
+    fs::metadata(dir.join(WEIGHTS_FILE)).and_then(|m| m.modified()).ok()
+}
+
 /// Reads a saved user model from `dir`; `Ok(None)` if the user has none.
 fn load_from(dir: &Path) -> Result<Option<UserModel>, String> {
     let weights_path = dir.join(WEIGHTS_FILE);
@@ -149,13 +156,18 @@ impl UserModels {
     /// The model of a user (from the cache, else from disk), `None` if never trained.
     pub fn get(&self, user_id: &str) -> Result<Option<Arc<UserModel>>, UserError> {
         check_user_id(user_id)?;
-        if let Some(found) = locked(&self.models).get(user_id) {
-            return Ok(Some(Arc::clone(found)));
+        let dir = self.user_dir(user_id);
+        let mtime = weights_mtime(&dir);
+        if let Some((loaded_mtime, found)) = locked(&self.models).get(user_id) {
+            if *loaded_mtime == mtime {
+                return Ok(Some(Arc::clone(found)));
+            }
         }
-        let loaded = load_from(&self.user_dir(user_id)).map_err(|err| (500, err))?;
+        // not loaded yet, or the file was replaced since
+        let loaded = load_from(&dir).map_err(|err| (500, err))?;
         Ok(loaded.map(|m| {
             let model = Arc::new(m);
-            locked(&self.models).insert(user_id.to_string(), Arc::clone(&model));
+            locked(&self.models).insert(user_id.to_string(), (mtime, Arc::clone(&model)));
             model
         }))
     }
@@ -213,7 +225,8 @@ impl UserModels {
         let done_at = now_unix();
         let finished = match outcome {
             Ok((model, (accuracy, loss), val_scores)) => {
-                locked(&self.models).insert(user_id.to_string(), Arc::new(model));
+                let mtime = weights_mtime(&self.user_dir(user_id));
+                locked(&self.models).insert(user_id.to_string(), (mtime, Arc::new(model)));
                 let mut done = json!({"status": "done", "accuracy": accuracy, "loss": loss, "finished_unix": done_at});
                 if let Some((val_accuracy, val_loss)) = val_scores {
                     done["val_accuracy"] = json!(val_accuracy);
@@ -279,6 +292,18 @@ mod tests {
         assert_eq!(status["trained"], true);
         assert!(models.get("alice").unwrap().is_some());
         assert!(models.get("bob").unwrap().is_none(), "the model of alice is not bob's");
+        // a file written by someone else (a restore from the other instance of a cluster) replaces the loaded model
+        let before = models.get("alice").unwrap().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        let file = models.user_dir("alice").join(WEIGHTS_FILE);
+        let mut bytes = fs::read(&file).unwrap();
+        let last = bytes.len() - 4;
+        bytes[last..].copy_from_slice(&0.5f32.to_le_bytes());
+        fs::write(&file, &bytes).unwrap();
+        let after = models.get("alice").unwrap().unwrap();
+        assert!(!Arc::ptr_eq(&before, &after), "the replaced file was not reloaded");
+        assert_eq!(*after.model.params.last().unwrap().last().unwrap(), 0.5);
+        assert!(Arc::ptr_eq(&after, &models.get("alice").unwrap().unwrap()), "an unchanged file is loaded again");
         // a fresh process (empty cache) finds the saved model and its classes
         let reloaded = UserModels::new(&dir).unwrap().get("alice").unwrap().unwrap();
         assert_eq!(reloaded.classes, vec!["clique", "path"]);

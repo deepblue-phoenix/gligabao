@@ -108,7 +108,7 @@ func InferOf(db *sql.DB,
 			writeErr(w, err)
 			return
 		}
-		m, err := core.GetModel(r.Context(),
+		m, err := core.GetSidecarModel(r.Context(),
 			db,
 			id)
 		if err != nil {
@@ -208,7 +208,7 @@ func DeployOf(db *sql.DB,
 				"invalid JSON body")
 			return
 		}
-		m, err := core.GetModel(r.Context(),
+		m, err := core.GetSidecarModel(r.Context(),
 			db,
 			id)
 		if err != nil {

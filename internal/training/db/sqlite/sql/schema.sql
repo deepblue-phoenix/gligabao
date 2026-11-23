@@ -40,19 +40,30 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	PRIMARY KEY (run_id, seq)
 );
 
--- Trained models: ONE ROW PER COMPLETED TRAINING JOB, the set of weights the job saved on the sidecar's models volume (a LoRA
--- adapter: a few files). Training again never replaces a model, it makes a new row; any row can be picked to run inference on.
--- The row is made from the job's "completed" event (internal/training/monitor.go).
+-- Trained models: ONE ROW PER COMPLETED TRAINING JOB, the set of weights the job saved: on the sidecar's models volume (a LoRA
+-- adapter: a few files) or, for the GCNII* models of sargo, in S3. Training again never replaces a model, it makes a new row; any row
+-- can be picked to run inference on. A LoRA row is made from the job's "completed" event (internal/training/monitor.go), a GCNII*
+-- row when sargo's training of a user is done (internal/api/model/weights.go).
+--   model_type       'lora' (the sidecar's adapters, also every row made before types existed) or 'gcnii' (a GCNII* graph classifier)
+--   user_id          the user a model belongs to: the user of the request that trained a GCNII* model; '' for LoRA models
+--   storage          where the weights are: 'modal_volume' (sidecar), 's3' (the weights bucket) or 'local' (a directory of the server)
 --   run_id           the job run (gb_training_job_runs) that made it; NULL if that run was deleted. job_id is unique: a job makes one model
 --   name             for lists; made from the settings when the row is made
---   base_model       the model that was fine-tuned (e.g. google/gemma-4-E4B-it); model_size '4b', '12b' or '31b' (inference needs it)
+--   base_model       the model that was fine-tuned (e.g. google/gemma-4-E4B-it); model_size '4b', '12b' or '31b' (inference needs it);
+--                    both '' for a GCNII* model
+--                    (GCNII*: dataset is the dataset of the user it was trained on, num_examples its training graphs, num_train_steps its epochs,
+--                    final_loss the loss on the training graphs, params the other settings and the scores, see internal/api/model/weights.go)
 --   dataset          the dataset file name ('' = the sidecar's default); dataset_sha256 the digest of the file the job read; num_examples its examples
 --   num_train_steps, final_loss  how long the job trained and its mean training loss
 --   params           JSON object: the other training settings (LoRA rank and alpha, learning rate, batch size, ...)
---   path             the directory of the weights on the models volume, relative to it ('trained/<job id>'): inference's model_path
+--   path             the directory of the weights in storage: on the models volume, relative to it ('trained/<job id>'), inference's model_path;
+--                    in S3 the key of the directory ('model_weights/gcnii/<user>/<job id>', see config model_weights_s3_prefix)
 --   files            JSON array of {path, size_bytes, sha256}: the files in that directory; size_bytes their total
 CREATE TABLE IF NOT EXISTS gb_trained_models (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	model_type      TEXT NOT NULL DEFAULT 'lora',
+	user_id         TEXT NOT NULL DEFAULT '',
+	storage         TEXT NOT NULL DEFAULT 'modal_volume',
 	name            TEXT NOT NULL,
 	run_id          INTEGER REFERENCES gb_training_job_runs(id) ON DELETE SET NULL,
 	job_id          TEXT NOT NULL UNIQUE,
@@ -70,6 +81,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_models (
 	created_at      DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_models_user ON gb_trained_models(model_type, user_id, id);
 
 -- Inference requests to trained models: ONE ROW PER REQUEST to run a prompt through a trained model (internal/training/inference.go).
 -- The row is made when the request starts (status 'running') and updated when the sidecar answers or fails, so every request can be
@@ -148,3 +160,34 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	updated_at  DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 	synced_at   DATETIME
 );
+
+-- Trainings of models that run outside the sidecar: ONE ROW PER TRAINING in the local sargo of one gligabao instance (today the GCNII*
+-- models, internal/api/model/weights.go). The instances of a cluster share this database but not sargo, so the row is how every instance
+-- sees a training that another one runs. The instance that runs it follows sargo, beats (heartbeat_at) and, when sargo is done, stores the
+-- weights and records the model (gb_trained_models), then ends the row. A running row without a recent beat is marked 'lost' by whichever
+-- instance looks next (the weights were only on that instance's disk, and sargo trains in memory: a crash loses the job).
+--   job_id       the id of the model it makes (gb_trained_models.job_id), chosen when it starts
+--   model_type, user_id  what is trained and for whom; at most ONE 'running' row per (model_type, user_id) (the unique index below), which is how
+--                a second training of the same user is refused on every instance
+--   instance_id  the gligabao process that runs it
+--   status       'running', 'done', 'failed' or 'lost'; error is the reason of a failure
+--   job          JSON, the last state of the job as sargo reported it; info JSON, what the request knew (dataset, history run, settings)
+--   model_id     the trained model of a done job (NULL otherwise, or if the model row was deleted)
+--   started_at, heartbeat_at, finished_at (NULL while running)
+CREATE TABLE IF NOT EXISTS gb_model_train_jobs (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	job_id       TEXT NOT NULL UNIQUE,
+	model_type   TEXT NOT NULL,
+	user_id      TEXT NOT NULL,
+	instance_id  TEXT NOT NULL,
+	status       TEXT NOT NULL CHECK (status IN ('running', 'done', 'failed', 'lost')),
+	error        TEXT NOT NULL DEFAULT '',
+	job          TEXT NOT NULL DEFAULT '{}',
+	info         TEXT NOT NULL DEFAULT '{}',
+	model_id     INTEGER REFERENCES gb_trained_models(id) ON DELETE SET NULL,
+	started_at   DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+	heartbeat_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+	finished_at  DATETIME
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_model_train_jobs_running ON gb_model_train_jobs(model_type, user_id) WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS idx_gb_model_train_jobs_user ON gb_model_train_jobs(model_type, user_id, id);

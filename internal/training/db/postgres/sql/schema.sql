@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 -- One row per trained model: the weights a completed training job saved (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_trained_models (
 	id              BIGSERIAL PRIMARY KEY,
+	model_type      TEXT NOT NULL DEFAULT 'lora',
+	user_id         TEXT NOT NULL DEFAULT '',
+	storage         TEXT NOT NULL DEFAULT 'modal_volume',
 	name            TEXT NOT NULL,
 	run_id          BIGINT REFERENCES gb_training_job_runs(id) ON DELETE SET NULL,
 	job_id          TEXT NOT NULL UNIQUE,
@@ -47,7 +50,12 @@ CREATE TABLE IF NOT EXISTS gb_trained_models (
 	size_bytes      BIGINT NOT NULL DEFAULT 0,
 	created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- databases that have the table from before the model type, the user and the storage
+ALTER TABLE gb_trained_models ADD COLUMN IF NOT EXISTS model_type TEXT NOT NULL DEFAULT 'lora';
+ALTER TABLE gb_trained_models ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_trained_models ADD COLUMN IF NOT EXISTS storage TEXT NOT NULL DEFAULT 'modal_volume';
 CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_models_user ON gb_trained_models(model_type, user_id, id);
 
 -- One row per inference request to a trained model (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
@@ -100,3 +108,22 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 	synced_at   TIMESTAMPTZ
 );
+
+-- One row per training of a model that runs in the local sargo of one gligabao instance (see sqlite/sql/schema.sql).
+CREATE TABLE IF NOT EXISTS gb_model_train_jobs (
+	id           BIGSERIAL PRIMARY KEY,
+	job_id       TEXT NOT NULL UNIQUE,
+	model_type   TEXT NOT NULL,
+	user_id      TEXT NOT NULL,
+	instance_id  TEXT NOT NULL,
+	status       TEXT NOT NULL CHECK (status IN ('running', 'done', 'failed', 'lost')),
+	error        TEXT NOT NULL DEFAULT '',
+	job          TEXT NOT NULL DEFAULT '{}',
+	info         TEXT NOT NULL DEFAULT '{}',
+	model_id     BIGINT REFERENCES gb_trained_models(id) ON DELETE SET NULL,
+	started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+	heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+	finished_at  TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_model_train_jobs_running ON gb_model_train_jobs(model_type, user_id) WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS idx_gb_model_train_jobs_user ON gb_model_train_jobs(model_type, user_id, id);

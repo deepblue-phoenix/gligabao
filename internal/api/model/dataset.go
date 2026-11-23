@@ -69,7 +69,8 @@ func historyDirOf(svc Service) string {
 // reports the accuracy on each in the job (GET /v1/gb/model/train). 404 for no such dataset, 422 if no graph has a class.
 func TrainDataset(svc Service,
 	d *sql.DB,
-	hook memory_core.ClassifyingTrainingHook) http.HandlerFunc {
+	hook memory_core.ClassifyingTrainingHook,
+	rec *Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := user(w, r)
@@ -113,6 +114,25 @@ func TrainDataset(svc Service,
 			Depth:  req.Depth,
 			Seed:   req.Seed,
 		}
+		run := modeltrain.NewRun(userID,
+			dataset,
+			time.Now(),
+			opts,
+			params,
+			sets)
+		claim, err := rec.Claim(r.Context(),
+			userID,
+			trainInfo{
+				Dataset:          dataset,
+				Run:              run.ID,
+				Params:           params,
+				Graphs:           len(sets.Train),
+				ValidationGraphs: len(sets.Validation),
+			})
+		if err != nil {
+			failClaim(w, r, err)
+			return
+		}
 		resp, err := svc.GCNIITrain(r.Context(),
 			&sargo.GCNIITrainRequest{
 				UserID:     userID,
@@ -126,16 +146,15 @@ func TrainDataset(svc Service,
 				Seed:       params.Seed,
 			})
 		if err != nil {
+			rec.Abort(claim, err)
 			fail(w, r, "model train dataset", err)
 			return
 		}
 		runID := saveRun(svc,
-			modeltrain.NewRun(userID,
-				dataset,
-				time.Now(),
-				opts,
-				params,
-				sets))
+			run)
+		rec.Watch(claim,
+			userID,
+			resp.Job)
 		httputil.WriteJSON(w,
 			http.StatusAccepted,
 			datasetTrainResponse{

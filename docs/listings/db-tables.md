@@ -38,6 +38,7 @@
 - `gb_trained_models`
 - `gb_trained_model_inferences`
 - `gb_trained_model_deployments`
+- `gb_model_train_jobs`
 - `gb_training_datasets`
 
 ## What each table is about
@@ -75,9 +76,10 @@
 | `gb_ontology_events`          | what grounding made of each node and edge of a remember call (outcome, reason, detail); see docs/ontologies/ontologies.md.                      |
 | `gb_training_job_runs`        | training jobs started on the sidecar, with status, settings, loss and timings.                                                                  |
 | `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
-| `gb_trained_models`           | one row per completed training job, the saved weights (LoRA adapter) that inference, evals and audits run on.                                   |
+| `gb_trained_models`           | one row per completed training job, the saved weights: a LoRA adapter on the sidecar (`model_type` `lora`, what inference, evals and audits run on) or a GCNII* model of a user in S3 (`model_type` `gcnii`). |
 | `gb_trained_model_inferences` | one row per prompt run through a trained model, with response, status, tokens and cold-start timing.                                            |
 | `gb_trained_model_deployments` | one row per deployment of a trained model through a deployer hook, with status, local directory, the deployer's ref and error.                     |
+| `gb_model_train_jobs`         | one row per training that runs in the local sargo of one gligabao instance (GCNII*): owner instance, status, heartbeat, and the model it made; at most one running per user. |
 | `gb_training_datasets`        | one row per JSONL training dataset the server has seen (file name, size, record count, digest, sync status with the sidecar).                   |
 
 ## Where each table is defined
@@ -118,6 +120,7 @@
 | `gb_trained_models`           | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
 | `gb_trained_model_inferences` | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
 | `gb_trained_model_deployments` | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
+| `gb_model_train_jobs`         | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
 | `gb_training_datasets`        | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
 
 ## TRAINING_AUDIT

@@ -9,6 +9,7 @@
 //	                                         trains on the graphs of a dataset with the classes an LLM gave them (see TrainDataset)
 //	POST /v1/gb/model/infer                  body {"model_type": "gcnii", "graph": {n, edges, nodes?}, "classes"?} -> the class of the graph
 //	POST /v1/gb/model/embed                  body {"model_type": "gcnii", "graph": {n, edges, nodes?}, "normalize"?} -> the embedding of the graph
+//	GET  /v1/gb/model/models?model_type=gcnii the trained models of the user (their weights are in the store of the weights, see Recorder)
 package model
 
 import (
@@ -19,6 +20,7 @@ import (
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/modeltrain"
 	"github.com/deepblue-phoenix/gligabao/internal/sargo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
@@ -43,7 +45,8 @@ type Service interface {
 }
 
 // Train serves POST /v1/gb/model/train: it starts the training of the model of the model_type of the body, for the user of the request.
-func Train(svc Service) http.HandlerFunc {
+func Train(svc Service,
+	rec *Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := user(w, r)
@@ -55,11 +58,33 @@ func Train(svc Service) http.HandlerFunc {
 			return
 		}
 		req.UserID = userID
+		claim, err := rec.Claim(r.Context(),
+			userID,
+			trainInfo{
+				Params: modeltrain.TrainParams{
+					Epochs: req.Epochs,
+					LR:     req.LR,
+					Batch:  req.Batch,
+					Hidden: req.Hidden,
+					Depth:  req.Depth,
+					Seed:   req.Seed,
+				},
+				Graphs:           len(req.Graphs),
+				ValidationGraphs: len(req.Validation),
+			})
+		if err != nil {
+			failClaim(w, r, err)
+			return
+		}
 		resp, err := svc.GCNIITrain(r.Context(), &req)
 		if err != nil {
+			rec.Abort(claim, err)
 			fail(w, r, "model train", err)
 			return
 		}
+		rec.Watch(claim,
+			userID,
+			resp.Job)
 		httputil.WriteJSON(w,
 			http.StatusAccepted,
 			resp)
@@ -67,7 +92,8 @@ func Train(svc Service) http.HandlerFunc {
 }
 
 // TrainStatus serves GET /v1/gb/model/train?model_type=...: the state of the training of the user of the request.
-func TrainStatus(svc Service) http.HandlerFunc {
+func TrainStatus(svc Service,
+	rec *Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := user(w, r)
@@ -77,11 +103,15 @@ func TrainStatus(svc Service) http.HandlerFunc {
 		if !checkType(w, r.URL.Query().Get("model_type")) {
 			return
 		}
+		syncModel(r.Context(), rec, userID)
 		resp, err := svc.GCNIITrainStatus(r.Context(), userID)
 		if err != nil {
 			fail(w, r, "model train status", err)
 			return
 		}
+		resp.Job = rec.JobOf(r.Context(),
+			userID,
+			resp.Job)
 		httputil.WriteJSON(w,
 			http.StatusOK,
 			resp)
@@ -90,7 +120,8 @@ func TrainStatus(svc Service) http.HandlerFunc {
 
 // Infer serves POST /v1/gb/model/infer: it runs the model of the model_type of the body on a graph, for the user of the request (404 if
 // they have not trained one).
-func Infer(svc Service) http.HandlerFunc {
+func Infer(svc Service,
+	rec *Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := user(w, r)
@@ -102,6 +133,7 @@ func Infer(svc Service) http.HandlerFunc {
 			return
 		}
 		req.UserID = userID
+		syncModel(r.Context(), rec, userID)
 		resp, err := svc.GCNIIInfer(r.Context(), &req)
 		if err != nil {
 			fail(w, r, "model infer", err)
@@ -115,7 +147,8 @@ func Infer(svc Service) http.HandlerFunc {
 
 // Embed serves POST /v1/gb/model/embed: it embeds a graph with the model of the model_type of the body, for the user of the request (404 if
 // they have not trained one).
-func Embed(svc Service) http.HandlerFunc {
+func Embed(svc Service,
+	rec *Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := user(w, r)
@@ -127,6 +160,7 @@ func Embed(svc Service) http.HandlerFunc {
 			return
 		}
 		req.UserID = userID
+		syncModel(r.Context(), rec, userID)
 		resp, err := svc.GCNIIEmbed(r.Context(), &req)
 		if err != nil {
 			fail(w, r, "model embed", err)
@@ -224,4 +258,30 @@ func fail(w http.ResponseWriter,
 	httputil.Error(w,
 		http.StatusBadGateway,
 		what+" failed")
+}
+
+// syncModel makes the model in the directory of sargo the latest recorded one of the user (see Recorder.Sync); a failure is logged and the
+// request goes on with the model sargo has.
+func syncModel(ctx context.Context,
+	rec *Recorder,
+	userID string) {
+	if _, err := rec.Sync(ctx, userID); err != nil {
+		log.WithError(err).WithField("user_id", userID).Error("model: syncing the latest recorded model failed")
+	}
+}
+
+// failClaim answers the error of Recorder.Claim: 409 if the user is already training.
+func failClaim(w http.ResponseWriter,
+	r *http.Request,
+	err error) {
+	if errors.Is(err, ErrBusy) {
+		httputil.Error(w,
+			http.StatusConflict,
+			"a training for this user is already running")
+		return
+	}
+	log.WithError(err).WithField("user_id", httputil.UserID(r)).Error("model train: claiming the training failed")
+	httputil.Error(w,
+		http.StatusInternalServerError,
+		"failed to start the training")
 }

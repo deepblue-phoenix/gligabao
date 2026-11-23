@@ -30,6 +30,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
+	"github.com/deepblue-phoenix/gligabao/internal/modeltrain"
 	"github.com/deepblue-phoenix/gligabao/internal/sargo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -368,9 +369,27 @@ func gcniiService(client *sargo.Client,
 	if err != nil {
 		return client
 	}
+	weights, err := modeltrain.NewWeights(context.Background(),
+		modeltrain.WeightsConfig{
+			S3: userfiles.S3Config{
+				Bucket:   cfg.ModelWeightsS3Bucket,
+				Region:   cfg.ModelWeightsS3Region,
+				Prefix:   cfg.ModelWeightsS3Prefix,
+				Endpoint: cfg.ModelWeightsS3Endpoint,
+			},
+			LocalDir: cfg.ModelWeightsLocalDir,
+		},
+		dir)
+	if err != nil {
+		log.WithError(err).Error("the store of the GCNII* weights is not usable: the trained models are not stored or recorded")
+		weights = nil
+	} else {
+		log.WithFields(log.Fields{"model_weights": weights.Location, "storage": weights.Storage}).Info("the GCNII* weights are stored here and recorded in gb_trained_models")
+	}
 	return gcniiHistory{
-		Client: client,
-		dir:    filepath.Join(dir, historyDirName),
+		Client:  client,
+		dir:     filepath.Join(dir, historyDirName),
+		weights: weights,
 	}
 }
 
@@ -381,8 +400,12 @@ const historyDirName = "_history"
 // gcniiHistory is the sargo client that also tells the model routes where to keep the history of the trainings on datasets.
 type gcniiHistory struct {
 	*sargo.Client
-	dir string
+	dir     string
+	weights *modeltrain.Weights
 }
+
+// Weights is where the trained models are stored (nil: nowhere, they are only in the directory of sargo).
+func (h gcniiHistory) Weights() *modeltrain.Weights { return h.weights }
 
 // HistoryDir is the directory of the history.
 func (h gcniiHistory) HistoryDir() string { return h.dir }

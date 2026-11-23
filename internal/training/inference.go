@@ -43,6 +43,24 @@ func GetModel(ctx context.Context,
 	return tm, nil
 }
 
+// GetSidecarModel is GetModel for the callers that run the model on the sidecar (inference, evals, audits, deployment): a model of
+// another type (a GCNII* model of sargo) is a KindConflict Error, its weights are not on the sidecar.
+func GetSidecarModel(ctx context.Context,
+	db *sql.DB,
+	id int64) (*trainingdb.TrainedModel, error) {
+	tm, err := GetModel(ctx,
+		db,
+		id)
+	if err != nil {
+		return nil, err
+	}
+	if !tm.RunsOnSidecar() {
+		return nil, conflictErr("trained model " + strconv.FormatInt(id, 10) + " is a " + tm.ModelType +
+			" model: it does not run on the sidecar (use /v1/gb/model/...)")
+	}
+	return tm, nil
+}
+
 // ValidateGeneration checks the settings of an answer (max tokens, temperature), as a KindInvalid Error.
 func ValidateGeneration(maxTokens int,
 	temperature *float64) error {

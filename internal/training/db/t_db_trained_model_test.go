@@ -414,3 +414,70 @@ func trainedModelDeploymentsScenario(t *testing.T,
 		t.Fatalf("get unknown: %v", err)
 	}
 }
+
+func TestTrainedModelTypesAndUsers(t *testing.T) { dbtest.Run(t, trainedModelTypesScenario) }
+
+func trainedModelTypesScenario(t *testing.T,
+	d *sql.DB) {
+	ctx := context.Background()
+	lora := trainingdb.TrainedModel{
+		JobID:         "lora1",
+		ModelSize:     "4b",
+		NumTrainSteps: 5,
+		Path:          "trained/lora1",
+	}
+	loraID, _, err := trainingdb.RecordTrainedModel(ctx,
+		d,
+		lora)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := trainingdb.GetTrainedModel(ctx,
+		d,
+		loraID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ModelType != trainingdb.ModelTypeLoRA || got.Storage != trainingdb.StorageModalVolume || got.UserID != "" || !got.RunsOnSidecar() {
+		t.Fatalf("defaults: %+v", got)
+	}
+	record := func(user,
+		job string) int64 {
+		id, _, err := trainingdb.RecordTrainedModel(ctx,
+			d,
+			trainingdb.TrainedModel{
+				ModelType:     trainingdb.ModelTypeGCNII,
+				UserID:        user,
+				Storage:       trainingdb.StorageS3,
+				Name:          "gcnii-" + job,
+				JobID:         job,
+				NumTrainSteps: 30,
+				Path:          "model_weights/gcnii/" + user + "/" + job,
+				Files:         []trainingdb.TrainedModelFile{{Path: "model.weights", SizeBytes: 3, SHA256: "h"}},
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	a1 := record("alice", "g1")
+	a2 := record("alice", "g2")
+	record("bob", "g3")
+	list, err := trainingdb.ListUserTrainedModels(ctx,
+		d,
+		trainingdb.ModelTypeGCNII,
+		"alice",
+		0)
+	if err != nil || len(list) != 2 || list[0].ID != a2 || list[1].ID != a1 {
+		t.Fatalf("alice's models, newest first: %+v %v", list, err)
+	}
+	if list[0].RunsOnSidecar() || list[0].Storage != trainingdb.StorageS3 || len(list[0].Files) != 1 {
+		t.Fatalf("a gcnii row: %+v", list[0])
+	}
+	if one, _ := trainingdb.ListUserTrainedModels(ctx, d, trainingdb.ModelTypeGCNII, "alice", 1); len(one) != 1 || one[0].ID != a2 {
+		t.Fatalf("limit: %+v", one)
+	}
+	if none, err := trainingdb.ListUserTrainedModels(ctx, d, trainingdb.ModelTypeLoRA, "alice", 0); err != nil || len(none) != 0 {
+		t.Fatalf("other type: %+v %v", none, err)
+	}
+}

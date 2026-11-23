@@ -24,10 +24,13 @@ func InsertTrainedModel(ctx context.Context,
 	}
 	res, err := d.ExecContext(ctx,
 		`
-		INSERT INTO gb_trained_models (name, run_id, job_id, base_model, model_size, dataset, dataset_sha256, num_examples,
+		INSERT INTO gb_trained_models (model_type, user_id, storage, name, run_id, job_id, base_model, model_size, dataset, dataset_sha256, num_examples,
 			num_train_steps, final_loss, params, path, files, size_bytes, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (job_id) DO NOTHING`,
+		m.ModelType,
+		m.UserID,
+		m.Storage,
 		m.Name,
 		runID,
 		m.JobID,
@@ -57,7 +60,7 @@ func InsertTrainedModel(ctx context.Context,
 	return id, false, err
 }
 
-const trainedModelColumns = `id, name, run_id, job_id, base_model, model_size, dataset, dataset_sha256, num_examples,
+const trainedModelColumns = `id, model_type, user_id, storage, name, run_id, job_id, base_model, model_size, dataset, dataset_sha256, num_examples,
 	num_train_steps, final_loss, params, path, files, size_bytes, created_at`
 
 func scanTrainedModel(s rowScanner) (*model.TrainedModel, error) {
@@ -66,6 +69,9 @@ func scanTrainedModel(s rowScanner) (*model.TrainedModel, error) {
 	var finalLoss sql.NullFloat64
 	var params, files, created string
 	if err := s.Scan(&m.ID,
+		&m.ModelType,
+		&m.UserID,
+		&m.Storage,
 		&m.Name,
 		&runID,
 		&m.JobID,
@@ -122,6 +128,37 @@ func ListTrainedModels(ctx context.Context,
 		args...)
 	if err != nil {
 		return nil, fmt.Errorf("list trained models: %w", err)
+	}
+	defer rows.Close()
+	out := []model.TrainedModel{}
+	for rows.Next() {
+		m, err := scanTrainedModel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *m)
+	}
+	return out, rows.Err()
+}
+
+// ListUserTrainedModels returns the trained models of one type that belong to a user, newest first, at most limit of them (all for
+// limit <= 0).
+func ListUserTrainedModels(ctx context.Context,
+	d *sql.DB,
+	modelType,
+	userID string,
+	limit int) ([]model.TrainedModel, error) {
+	q := `SELECT ` + trainedModelColumns + ` FROM gb_trained_models WHERE model_type = ? AND user_id = ? ORDER BY id DESC`
+	args := []any{modelType, userID}
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := d.QueryContext(ctx,
+		q,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("list trained models of a user: %w", err)
 	}
 	defer rows.Close()
 	out := []model.TrainedModel{}

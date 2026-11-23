@@ -521,3 +521,24 @@ func TestResearchNotesS3(t *testing.T) {
 		t.Errorf("got %+v", cfg)
 	}
 }
+
+func TestLoadModelWeightsSettings(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil || cfg.ModelWeightsS3Bucket != "" || cfg.ModelWeightsS3Prefix != "model_weights" {
+		t.Fatalf("defaults: %v %+v", err, cfg)
+	}
+	cfg, err = Load(write(t, `
+model_weights_s3_bucket = "meta-dev"
+model_weights_s3_region = "us-east-1"
+model_weights_s3_prefix = "mw"
+model_weights_local_dir = "weights_here"
+`))
+	if err != nil || cfg.ModelWeightsS3Bucket != "meta-dev" || cfg.ModelWeightsS3Region != "us-east-1" || cfg.ModelWeightsS3Prefix != "mw" ||
+		!filepath.IsAbs(cfg.ModelWeightsLocalDir) || filepath.Base(cfg.ModelWeightsLocalDir) != "weights_here" {
+		t.Fatalf("settings: %v %+v", err, cfg)
+	}
+	t.Setenv(EnvModelWeightsS3Bucket, "from-env")
+	if cfg, err = Load(write(t, "")); err != nil || cfg.ModelWeightsS3Bucket != "from-env" {
+		t.Fatalf("env: %v %+v", err, cfg)
+	}
+}

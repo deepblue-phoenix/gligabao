@@ -82,12 +82,14 @@ func Register(mux *http.ServeMux,
 		a,
 		o.evals)
 	if o.gcnii != nil {
-		mux.Handle("POST /v1/gb/model/train", a(model.Train(o.gcnii)))
-		mux.Handle("GET /v1/gb/model/train", a(model.TrainStatus(o.gcnii)))
-		mux.Handle("POST /v1/gb/model/train/dataset", a(model.TrainDataset(o.gcnii, d.Relational, o.trainingHook)))
+		rec := model.NewRecorder(o.gcnii, d.Relational)
+		mux.Handle("POST /v1/gb/model/train", a(model.Train(o.gcnii, rec)))
+		mux.Handle("GET /v1/gb/model/train", a(model.TrainStatus(o.gcnii, rec)))
+		mux.Handle("POST /v1/gb/model/train/dataset", a(model.TrainDataset(o.gcnii, d.Relational, o.trainingHook, rec)))
 		mux.Handle("GET /v1/gb/model/train/dataset/runs", a(model.TrainDatasetRuns(o.gcnii)))
-		mux.Handle("POST /v1/gb/model/infer", a(model.Infer(o.gcnii)))
-		mux.Handle("POST /v1/gb/model/embed", a(model.Embed(o.gcnii)))
+		mux.Handle("GET /v1/gb/model/models", a(model.ListModels(rec)))
+		mux.Handle("POST /v1/gb/model/infer", a(model.Infer(o.gcnii, rec)))
+		mux.Handle("POST /v1/gb/model/embed", a(model.Embed(o.gcnii, rec)))
 	}
 	if o.research != nil {
 		o.research.UseMemory(researchMemory(mgr,

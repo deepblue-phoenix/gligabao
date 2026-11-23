@@ -25,37 +25,41 @@ const FileName = "gligabao.toml"
 
 // Environment variables the API keys are loaded from.
 const (
-	EnvAnthropicKey          = "ANTHROPIC_API_KEY"
-	EnvOpenAIKey             = "OPENAI_API_KEY"
-	EnvJevKey                = "JEV_API_KEY"
-	EnvLinkupKey             = "LINKUP_API_KEY"
-	EnvJevBaseURL            = "JEV_BASE_URL"
-	EnvPineconeKey           = "PINECONE_API_KEY"
-	EnvPineconeHost          = "PINECONE_INDEX_HOST"
-	EnvPostgresDSN           = "POSTGRES_DSN"
-	EnvResearchS3Bucket      = "RESEARCH_S3_BUCKET"
-	EnvResearchS3Region      = "RESEARCH_S3_REGION"
-	EnvResearchS3NotesPrefix = "RESEARCH_S3_NOTES_PREFIX"
-	EnvOntologyS3Bucket      = "ONTOLOGY_S3_BUCKET"
-	EnvOntologyS3Region      = "ONTOLOGY_S3_REGION"
-	EnvOntologyS3Prefix      = "ONTOLOGY_S3_PREFIX"
-	EnvS3VectorsBucket       = "S3_VECTORS_BUCKET"
-	EnvS3VectorsRegion       = "S3_VECTORS_REGION"
-	EnvS3VectorsPrefix       = "S3_VECTORS_PREFIX"
-	EnvImageStore            = "IMAGE_STORE"
-	EnvImageS3Bucket         = "IMAGE_S3_BUCKET"
-	EnvImageS3Region         = "IMAGE_S3_REGION"
-	EnvImageS3Prefix         = "IMAGE_S3_PREFIX"
-	EnvImageS3Endpoint       = "IMAGE_S3_ENDPOINT"
-	EnvAtifS3Bucket          = "ATIF_S3_BUCKET"
-	EnvAtifS3Region          = "ATIF_S3_REGION"
-	EnvAtifS3Prefix          = "ATIF_S3_PREFIX"
-	EnvAtifS3Endpoint        = "ATIF_S3_ENDPOINT"
-	EnvEvalsS3Bucket         = "EVALS_S3_BUCKET"
-	EnvEvalsS3Region         = "EVALS_S3_REGION"
-	EnvEvalsS3Prefix         = "EVALS_S3_PREFIX"
-	EnvEvalsS3Endpoint       = "EVALS_S3_ENDPOINT"
-	EnvSidecarURL            = "SIDECAR_URL"
+	EnvAnthropicKey           = "ANTHROPIC_API_KEY"
+	EnvOpenAIKey              = "OPENAI_API_KEY"
+	EnvJevKey                 = "JEV_API_KEY"
+	EnvLinkupKey              = "LINKUP_API_KEY"
+	EnvJevBaseURL             = "JEV_BASE_URL"
+	EnvPineconeKey            = "PINECONE_API_KEY"
+	EnvPineconeHost           = "PINECONE_INDEX_HOST"
+	EnvPostgresDSN            = "POSTGRES_DSN"
+	EnvResearchS3Bucket       = "RESEARCH_S3_BUCKET"
+	EnvResearchS3Region       = "RESEARCH_S3_REGION"
+	EnvResearchS3NotesPrefix  = "RESEARCH_S3_NOTES_PREFIX"
+	EnvOntologyS3Bucket       = "ONTOLOGY_S3_BUCKET"
+	EnvOntologyS3Region       = "ONTOLOGY_S3_REGION"
+	EnvOntologyS3Prefix       = "ONTOLOGY_S3_PREFIX"
+	EnvS3VectorsBucket        = "S3_VECTORS_BUCKET"
+	EnvS3VectorsRegion        = "S3_VECTORS_REGION"
+	EnvS3VectorsPrefix        = "S3_VECTORS_PREFIX"
+	EnvImageStore             = "IMAGE_STORE"
+	EnvImageS3Bucket          = "IMAGE_S3_BUCKET"
+	EnvImageS3Region          = "IMAGE_S3_REGION"
+	EnvImageS3Prefix          = "IMAGE_S3_PREFIX"
+	EnvImageS3Endpoint        = "IMAGE_S3_ENDPOINT"
+	EnvAtifS3Bucket           = "ATIF_S3_BUCKET"
+	EnvAtifS3Region           = "ATIF_S3_REGION"
+	EnvAtifS3Prefix           = "ATIF_S3_PREFIX"
+	EnvAtifS3Endpoint         = "ATIF_S3_ENDPOINT"
+	EnvEvalsS3Bucket          = "EVALS_S3_BUCKET"
+	EnvEvalsS3Region          = "EVALS_S3_REGION"
+	EnvEvalsS3Prefix          = "EVALS_S3_PREFIX"
+	EnvEvalsS3Endpoint        = "EVALS_S3_ENDPOINT"
+	EnvModelWeightsS3Bucket   = "MODEL_WEIGHTS_S3_BUCKET"
+	EnvModelWeightsS3Region   = "MODEL_WEIGHTS_S3_REGION"
+	EnvModelWeightsS3Prefix   = "MODEL_WEIGHTS_S3_PREFIX"
+	EnvModelWeightsS3Endpoint = "MODEL_WEIGHTS_S3_ENDPOINT"
+	EnvSidecarURL             = "SIDECAR_URL"
 )
 
 // Database backends selectable with the db_backend setting.
@@ -89,6 +93,7 @@ const DefaultGeoRadiusKm = 50.0
 // The defaults of the evals_* settings (the per-user evals).
 const (
 	DefaultEvalsS3Prefix             = "evals"
+	DefaultModelWeightsS3Prefix      = "model_weights"
 	DefaultEvalsMaxCases             = 100
 	DefaultEvalsMaxFileBytes         = 1 << 20
 	DefaultEvalsMaxTextBytes         = 256 << 10
@@ -247,6 +252,21 @@ type Config struct {
 	EvalsS3Prefix string `toml:"evals_s3_prefix"`
 	// EvalsS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also EVALS_S3_ENDPOINT). Empty = AWS.
 	EvalsS3Endpoint string `toml:"evals_s3_endpoint"`
+	// ModelWeightsS3Bucket is the (existing) bucket of the weights of the trained models that are not kept on the sidecar (the GCNII*
+	// models of sargo; also MODEL_WEIGHTS_S3_BUCKET). It is normally the meta bucket, the same as EvalsS3Bucket. The weights are the objects
+	// "<prefix>/<model type>/<user>/<job id>/<file>" (for example "model_weights/gcnii/<user>/<job id>/model.weights") and each one has a
+	// row in gb_trained_models. Empty (default): they are kept in the local directory ModelWeightsLocalDir. Credentials come from the
+	// standard AWS chain.
+	ModelWeightsS3Bucket string `toml:"model_weights_s3_bucket"`
+	// ModelWeightsS3Region is its AWS region (also MODEL_WEIGHTS_S3_REGION); empty = the AWS SDK default.
+	ModelWeightsS3Region string `toml:"model_weights_s3_region"`
+	// ModelWeightsS3Prefix is the "subdirectory" of the bucket of the weights (also MODEL_WEIGHTS_S3_PREFIX); default "model_weights".
+	ModelWeightsS3Prefix string `toml:"model_weights_s3_prefix"`
+	// ModelWeightsS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also MODEL_WEIGHTS_S3_ENDPOINT). Empty = AWS.
+	ModelWeightsS3Endpoint string `toml:"model_weights_s3_endpoint"`
+	// ModelWeightsLocalDir is the directory of the weights when there is no bucket: "<dir>/<model type>/<user>/<job id>/<file>". Default: a
+	// model_weights directory in the working directory. A relative path is relative to the config file.
+	ModelWeightsLocalDir string `toml:"model_weights_local_dir"`
 	// EvalsLocalDir is the directory of the eval files when there is no bucket: one subdirectory per user. Default: an evals_user
 	// directory next to the SQLite database file. A relative path is relative to the config file.
 	EvalsLocalDir string `toml:"evals_local_dir"`
@@ -403,6 +423,10 @@ func Default() *Config {
 		EvalsS3Region:             os.Getenv(EnvEvalsS3Region),
 		EvalsS3Prefix:             envOr(EnvEvalsS3Prefix, DefaultEvalsS3Prefix),
 		EvalsS3Endpoint:           os.Getenv(EnvEvalsS3Endpoint),
+		ModelWeightsS3Bucket:      os.Getenv(EnvModelWeightsS3Bucket),
+		ModelWeightsS3Region:      os.Getenv(EnvModelWeightsS3Region),
+		ModelWeightsS3Prefix:      envOr(EnvModelWeightsS3Prefix, DefaultModelWeightsS3Prefix),
+		ModelWeightsS3Endpoint:    os.Getenv(EnvModelWeightsS3Endpoint),
 		EvalsMaxCases:             DefaultEvalsMaxCases,
 		EvalsMaxFileBytes:         DefaultEvalsMaxFileBytes,
 		EvalsMaxTextBytes:         DefaultEvalsMaxTextBytes,
@@ -639,6 +663,9 @@ func (c *Config) resolveDirs(base string) {
 	}
 	if c.SargoGCNIIDir != "" && !filepath.IsAbs(c.SargoGCNIIDir) {
 		c.SargoGCNIIDir = filepath.Join(base, c.SargoGCNIIDir)
+	}
+	if c.ModelWeightsLocalDir != "" && !filepath.IsAbs(c.ModelWeightsLocalDir) {
+		c.ModelWeightsLocalDir = filepath.Join(base, c.ModelWeightsLocalDir)
 	}
 	if c.EvalsLocalDir != "" && !filepath.IsAbs(c.EvalsLocalDir) {
 		c.EvalsLocalDir = filepath.Join(base, c.EvalsLocalDir)

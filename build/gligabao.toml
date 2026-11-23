@@ -129,6 +129,15 @@ evals_knowledge_dirs = ["evals_knowledge"]
 # evals_s3_prefix = "evals"
 # evals_s3_endpoint = ""
 # evals_local_dir = "evals_user"
+# Weights of the trained models that are not kept on the sidecar (the GCNII* models of sargo). Every trained model has a row in
+# gb_trained_models; its weights are the objects "<prefix>/<model type>/<user>/<job id>/<file>" (e.g. model_weights/gcnii/<user>/<job id>/
+# model.weights) of model_weights_s3_bucket (an existing bucket, normally the meta bucket). Without a bucket they are in a local directory,
+# model_weights_local_dir (default: model_weights in the working directory). Also settable with MODEL_WEIGHTS_S3_BUCKET / _REGION / _PREFIX / _ENDPOINT.
+# model_weights_s3_bucket = "my-gligabao-meta"
+# model_weights_s3_region = "us-east-1"
+# model_weights_s3_prefix = "model_weights"
+# model_weights_s3_endpoint = ""
+# model_weights_local_dir = "model_weights"
 # The trajectories of the eval runs are kept here when there is no ATIF bucket (default: an atif directory next to the database).
 # evals_trajectory_dir = "atif"
 

@@ -120,7 +120,7 @@ func (m *Manager) HasEval(name string) bool {
 // getModel reads trained model id, as an *Error.
 func (m *Manager) getModel(ctx context.Context,
 	id int64) (*trainingdb.TrainedModel, error) {
-	tm, err := trainingcore.GetModel(ctx,
+	tm, err := trainingcore.GetSidecarModel(ctx,
 		m.DB,
 		id)
 	var te *trainingcore.Error
@@ -129,6 +129,8 @@ func (m *Manager) getModel(ctx context.Context,
 		return tm, nil
 	case errors.As(err, &te) && te.Kind == trainingcore.KindNotFound:
 		return nil, notFoundErr(te.Msg)
+	case errors.As(err, &te) && te.Kind == trainingcore.KindConflict:
+		return nil, conflictErr(te.Msg)
 	case errors.As(err, &te):
 		return nil, internalErr(te.Msg, te.Err)
 	}

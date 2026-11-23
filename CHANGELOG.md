@@ -5,6 +5,23 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.235.0] - 2026-11-23
+
+The weights of the GCNII* models are kept in S3 and tracked in `gb_trained_models`, the table of the LoRA models.
+
+### Added
+
+- Every finished GCNII* training (`POST /v1/gb/model/train` and `/train/dataset`) now copies its model (`model.weights`, `classes.json`) into a weights store and records it as a row of `gb_trained_models` with `model_type = "gcnii"`, the `user_id`, `storage`, the files with their sha256, the dataset, graphs, epochs, loss and scores. The weights are objects of the meta bucket under their own subdirectory per model type, `model_weights/<model_type>/<user>/<job id>/` (for example `model_weights/gcnii/<user>/<job id>/model.weights`), never overwritten. New settings `model_weights_s3_bucket`, `model_weights_s3_region`, `model_weights_s3_prefix` (default `model_weights`), `model_weights_s3_endpoint` (also `MODEL_WEIGHTS_S3_*`) and `model_weights_local_dir` (without a bucket the same layout is written in a local directory, default `model_weights`).
+- Works with several gligabao instances behind a load balancer: the new table `gb_model_train_jobs` has one row per GCNII* training, claimed before sargo is asked, beaten by the instance that runs it, and ended when its weights are stored and recorded. A unique index allows one running training per user in the whole cluster (a second `POST` is `409` on any instance), `GET /v1/gb/model/train` shows the job from the table so every instance answers the same, and a job whose instance stopped beating for 90 seconds becomes `lost` (shown as `failed`) so the user can train again.
+- Before a status, `/infer` or `/embed`, an instance makes the model in its sargo directory the latest recorded one of the user (a `model_id` marker file says which row it holds): a model that another instance trained, or a directory lost with its machine, is written back from the store (checked against the recorded sha256) instead of answering with an old model or `404`.
+- Sargo reloads a user's weights file when it changes on disk (its modification time is checked on each use), so a model written by the sync above is used at once.
+- `GET /v1/gb/model/models?model_type=gcnii` lists the trained models of the user.
+- `gb_trained_models` has the new columns `model_type` (`lora` or `gcnii`), `user_id` and `storage` (`modal_volume`, `s3` or `local`). An existing database gets them at start; its rows are `lora` / `""` / `modal_volume`.
+
+### Changed
+
+- Inference, evals, audits and deployment of a trained model through the sidecar answer `409` for a model that is not a LoRA model (a `gcnii` row has no weights on the sidecar).
+
 ## [0.234.0] - 2026-11-24
 
 Better training sets for `POST /v1/gb/model/train/dataset` (ideas taken from the `gligabao_int` graph training hook), and a history of the trainings.
