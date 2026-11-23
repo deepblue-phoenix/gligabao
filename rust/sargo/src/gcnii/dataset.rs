@@ -107,6 +107,29 @@ pub fn samples_from_values(docs: &[serde_json::Value]) -> Result<(Vec<Sample>, V
         .and_then(build_samples)
 }
 
+/// Like `samples_from_values`, for a training set plus a validation set (graph documents with a `"class"` each). The classes are
+/// those of both sets together (so an index means the same class in both); the graphs are named `graphs[i]` and
+/// `validation[i]`. Returns (training samples, validation samples, classes). The training set must not be empty.
+pub fn samples_from_split(
+    train: &[serde_json::Value],
+    validation: &[serde_json::Value],
+) -> Result<(Vec<Sample>, Vec<Sample>, Vec<String>), String> {
+    if train.is_empty() {
+        return Err("no graphs to train on".to_string());
+    }
+    let named = |prefix: &'static str, docs: &[serde_json::Value]| {
+        docs.iter()
+            .enumerate()
+            .map(|(i, doc)| parse_example(format!("{prefix}[{i}]"), &doc.to_string(), None))
+            .collect::<Result<Vec<_>, String>>()
+    };
+    let mut examples = named("graphs", train)?;
+    examples.extend(named("validation", validation)?);
+    let (samples, classes) = build_samples(examples)?;
+    let (val, trained): (Vec<Sample>, Vec<Sample>) = samples.into_iter().partition(|s| s.path.starts_with("validation["));
+    Ok((trained, val, classes))
+}
+
 fn build_samples(
     examples: Vec<(String, String, serde_json::Value)>,
 ) -> Result<(Vec<Sample>, Vec<String>), String> {
@@ -135,6 +158,16 @@ fn build_samples(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn splits_training_and_validation_with_shared_classes() {
+        let doc = |class: &str| serde_json::json!({"n": 2, "edges": [[0, 1]], "class": class});
+        let (train, val, classes) = samples_from_split(&[doc("b"), doc("b")], &[doc("a")]).unwrap();
+        assert_eq!(classes, vec!["a", "b"]);
+        assert_eq!((train.len(), val.len()), (2, 1));
+        assert!(train.iter().all(|s| s.label == 1) && val[0].label == 0);
+        assert!(samples_from_split(&[], &[doc("a")]).is_err());
+    }
 
     #[test]
     fn loads_classes_from_documents_and_dirs() {

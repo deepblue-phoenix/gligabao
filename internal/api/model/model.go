@@ -5,6 +5,8 @@
 //
 //	POST /v1/gb/model/train                  body {"model_type": "gcnii", "graphs": [{n, edges, nodes?, class}, ...], epochs?, lr?, batch?, hidden?, depth?, seed?} -> 202 job
 //	GET  /v1/gb/model/train?model_type=gcnii the state of the training of the user -> {"user_id", "trained", "job"}
+//	POST /v1/gb/model/train/dataset          body {"model_type": "gcnii", "dataset"?, "classes"?, "min_graphs_per_class"?, "validation_fraction"?, "split_seed"?, epochs?, ...} -> 202 job
+//	                                         trains on the graphs of a dataset with the classes an LLM gave them (see TrainDataset)
 //	POST /v1/gb/model/infer                  body {"model_type": "gcnii", "graph": {n, edges, nodes?}, "classes"?} -> the class of the graph
 //	POST /v1/gb/model/embed                  body {"model_type": "gcnii", "graph": {n, edges, nodes?}, "normalize"?} -> the embedding of the graph
 package model

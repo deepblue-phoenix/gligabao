@@ -144,3 +144,22 @@ func TestSargoErrorsAreMapped(t *testing.T) {
 		}
 	}
 }
+
+func TestTrainDatasetRejectsBadOptions(t *testing.T) {
+	svc := &fakeService{}
+	h := TrainDataset(svc,
+		nil,
+		nil)
+	if rec := call(h, http.MethodPost, "alice", `{"model_type":"gcnii","validation_fraction":1.5}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("validation_fraction: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(h, http.MethodPost, "alice", `{"validation_fraction":0.2}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("model_type: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(h, http.MethodPost, "", `{"model_type":"gcnii"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("user: %d %s", rec.Code, rec.Body)
+	}
+	if len(svc.users) != 0 {
+		t.Fatal("sargo was called")
+	}
+}

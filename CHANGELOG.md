@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.233.0] - 2026-11-24
+
+Train the GCNII* model of a user on a dataset, from the classes an LLM gave to its graphs.
+
+### Added
+
+- `POST /v1/gb/model/train/dataset` (with `sargo = true`): body `{"model_type": "gcnii", "dataset"?, "classes"?, "min_graphs_per_class"?, "validation_fraction"?, "split_seed"?, "epochs"?, "lr"?, "batch"?, "hidden"?, "depth"?, "seed"?}`. It reads the graphs of the dataset and the classes the `classify_graph` stage gave them (from `gb_artifact_classes`), picks one class per graph (the one given most often; or what the classifying training hook returns, if set), partitions the graphs per class into a training and a validation set (default `validation_fraction` 0, deterministic for `split_seed`) and starts the training in sargo. Answers `202` with the job and the sizes of both sets; `404` no dataset, `422` no classified graph. New package `internal/modeltrain`.
+- sargo: `POST /v1/gcnii/train` takes an optional `validation` list of graphs (each with a `class`) that the model is not trained on; the finished job has `val_accuracy` and `val_loss`, and `validation_graphs` while running. `POST /v1/gb/model/train` accepts `validation` too. The classes are those of both sets together.
+
 ## [0.232.0] - 2026-11-23
 
 Per-user GCNII* training and inference, run by sargo and driven by gligabao over HTTP.

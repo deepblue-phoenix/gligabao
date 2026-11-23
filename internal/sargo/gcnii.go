@@ -28,12 +28,15 @@ type GCNIIGraph struct {
 type GCNIITrainRequest struct {
 	UserID string       `json:"user_id"`
 	Graphs []GCNIIGraph `json:"graphs"`
-	Epochs int          `json:"epochs,omitempty"`
-	LR     float64      `json:"lr,omitempty"`
-	Batch  int          `json:"batch,omitempty"`
-	Hidden int          `json:"hidden,omitempty"`
-	Depth  int          `json:"depth,omitempty"`
-	Seed   *uint64      `json:"seed,omitempty"`
+	// Validation are graphs (each with a class) the model is not trained on; sargo scores the trained model on them (ValAccuracy,
+	// ValLoss of the job). Optional.
+	Validation []GCNIIGraph `json:"validation,omitempty"`
+	Epochs     int          `json:"epochs,omitempty"`
+	LR         float64      `json:"lr,omitempty"`
+	Batch      int          `json:"batch,omitempty"`
+	Hidden     int          `json:"hidden,omitempty"`
+	Depth      int          `json:"depth,omitempty"`
+	Seed       *uint64      `json:"seed,omitempty"`
 }
 
 // GCNII job states (GCNIIJob.Status).
@@ -45,15 +48,20 @@ const (
 
 // GCNIIJob is a training of one user, as sargo reports it.
 type GCNIIJob struct {
-	Status       string   `json:"status"`
-	Graphs       int      `json:"graphs"`
-	Classes      []string `json:"classes"`
-	Epochs       int      `json:"epochs"`
-	StartedUnix  int64    `json:"started_unix"`
-	FinishedUnix int64    `json:"finished_unix,omitempty"`
+	Status string `json:"status"`
+	Graphs int    `json:"graphs"`
+	// ValidationGraphs is how many graphs the job holds out for validation.
+	ValidationGraphs int      `json:"validation_graphs,omitempty"`
+	Classes          []string `json:"classes"`
+	Epochs           int      `json:"epochs"`
+	StartedUnix      int64    `json:"started_unix"`
+	FinishedUnix     int64    `json:"finished_unix,omitempty"`
 	// Accuracy and Loss are measured on the training graphs, once the job is done.
 	Accuracy *float64 `json:"accuracy,omitempty"`
 	Loss     *float64 `json:"loss,omitempty"`
+	// ValAccuracy and ValLoss are measured on the validation graphs (only if the request had some), once the job is done.
+	ValAccuracy *float64 `json:"val_accuracy,omitempty"`
+	ValLoss     *float64 `json:"val_loss,omitempty"`
 	// Error is why a failed job failed.
 	Error string `json:"error,omitempty"`
 }
@@ -147,14 +155,25 @@ func (r *GCNIITrainRequest) Validate() error {
 	if r.Epochs < 0 || r.LR < 0 || r.Batch < 0 || r.Hidden < 0 || r.Depth < 0 {
 		return invalidGCNII("train: epochs, lr, batch, hidden and depth must not be negative")
 	}
-	for i, g := range r.Graphs {
+	if err := validateLabelled("graphs", r.Graphs); err != nil {
+		return err
+	}
+	return validateLabelled("validation", r.Validation)
+}
+
+// validateLabelled checks that every graph of the list is valid and has a class.
+func validateLabelled(field string,
+	graphs []GCNIIGraph) error {
+	for i, g := range graphs {
 		if err := g.Validate(); err != nil {
-			return fmt.Errorf("graphs[%d]: %w",
+			return fmt.Errorf("%s[%d]: %w",
+				field,
 				i,
 				err)
 		}
 		if strings.TrimSpace(g.Class) == "" {
-			return invalidGCNII("train: graphs[%d] has no class",
+			return invalidGCNII("train: %s[%d] has no class",
+				field,
 				i)
 		}
 	}

@@ -147,3 +147,15 @@ func TestGCNIIErrors(t *testing.T) {
 		t.Errorf("an invalid request was sent to %s", path)
 	}
 }
+
+func TestGCNIITrainValidation(t *testing.T) {
+	req := trainRequest()
+	req.Validation = []GCNIIGraph{{N: 2, Edges: [][2]int{{0, 1}}, Class: "a"}}
+	if err := req.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	req.Validation[0].Class = ""
+	if err := req.Validate(); !errors.Is(err, ErrInvalidGCNII) {
+		t.Fatalf("a validation graph without class: %v", err)
+	}
+}

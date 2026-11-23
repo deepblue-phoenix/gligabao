@@ -84,6 +84,7 @@ func Register(mux *http.ServeMux,
 	if o.gcnii != nil {
 		mux.Handle("POST /v1/gb/model/train", a(model.Train(o.gcnii)))
 		mux.Handle("GET /v1/gb/model/train", a(model.TrainStatus(o.gcnii)))
+		mux.Handle("POST /v1/gb/model/train/dataset", a(model.TrainDataset(o.gcnii, d.Relational, o.trainingHook)))
 		mux.Handle("POST /v1/gb/model/infer", a(model.Infer(o.gcnii)))
 		mux.Handle("POST /v1/gb/model/embed", a(model.Embed(o.gcnii)))
 	}

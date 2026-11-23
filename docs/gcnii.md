@@ -15,11 +15,28 @@ All of them act as the user of the request.
 | `POST /v1/gb/model/infer` | `{"model_type": "gcnii", "graph": {"n", "edges", "nodes"?}, "classes"?}` | `{"class", "index", "logits", "probabilities", "nodes", "edges"}` |
 | `POST /v1/gb/model/embed` | `{"model_type": "gcnii", "graph": {...}, "normalize"?}` | `{"embedding", "dim"}` |
 
+| `POST /v1/gb/model/train/dataset` | `{"model_type": "gcnii", "dataset"?, "classes"?, "min_graphs_per_class"?, "validation_fraction"?, "split_seed"?, "epochs"?, "lr"?, "batch"?, "hidden"?, "depth"?, "seed"?}` | `202 {"user_id", "job", "dataset", "train", "validation", "classes"}` |
+
+`/train` also takes `"validation"`: graphs (each with a `class`) the model is not trained on; when the job is `done` it has `val_accuracy` and `val_loss` on them.
+
 A graph is `n` nodes numbered `0..n-1`, undirected `edges` `[a, b]` and optional `nodes` (`{"name", "type"}` each; the types are what the model sees). Defaults: 30 epochs, `lr` 0.01, `batch` 4, `hidden` 16, `depth` 16, random `seed`.
 
 Errors: `400` bad request (no user, missing or unknown `model_type`, no graphs, a graph without `class`, an edge outside the graph, ...), `404` the user has no trained model (infer, embed), `409` the user is already training, `503` sargo has no per-user models, `502` sargo did not answer. A new training replaces the user's model when it finishes.
 
+## Training on a dataset
+
+`POST /v1/gb/model/train/dataset` trains on the graphs of one of the user's datasets, labelled with the classes an LLM gave them when they were remembered (`classify_graph`, see `remember/remember.md#graph-classes`):
+
+1. **Fetch (SQL):** the artifacts, entities, facts and `gb_artifact_classes` of the dataset are read (`memory.LoadKnowledgeDataset`).
+2. **One class per graph:** the classifying training hook (`docs/hooks.md`) if the program set one, else the default: the class given most often to the graph (earliest on a tie). `classes` restricts the choice to those names; classes with fewer than `min_graphs_per_class` graphs are dropped; graphs without a class are left out.
+3. **Partition:** per class, `validation_fraction` (in `[0, 1)`, default 0 = no validation) of the graphs go to the validation set, in an order fixed by `split_seed`; each class keeps at least one training graph.
+4. **Convert and train:** entities become nodes (`name`, `type`), facts undirected edges (self loops, repeats and facts to entities outside the graph are dropped), the class the label; both sets go to sargo (`/train` with `validation`). Follow the job with `GET /v1/gb/model/train`.
+
+Errors as `/train`, plus `404` no such dataset, `422` no graph left to train on (remember the dataset with `classify_graph` on).
+
 ## Where things are
+
+- `internal/modeltrain`: the dataset-to-sets pipeline above (`Build`, `DefaultHook`, `PickClass`, `Split`, `ToGCNIIGraph`); the handler is `internal/api/model/dataset.go`.
 
 - `rust/sargo/src/gcnii/users.rs`: the models of the users and their background trainings; `router.rs`: the `/v1/gcnii/...` endpoints.
 - `internal/sargo/gcnii.go`: the HTTP client methods (`GCNIITrain`, `GCNIITrainStatus`, `GCNIIInfer`, `GCNIIEmbed`) and types.

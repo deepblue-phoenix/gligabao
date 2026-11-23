@@ -7,7 +7,7 @@
 //!   POST /v1/gcnii/infer   body: {"graph": {...}, "user_id"?, "classes"?} -> GCNII* class + probabilities
 //!   POST /v1/gcnii/embed   body: {"graph": {...}, "user_id"?, "normalize"?} -> the graph embedding
 //!       (both use the model of `user_id` (see below) when it is given, else the global `[gcnii] weights`)
-//!   POST /v1/gcnii/train   body: {"user_id", "graphs": [{n, edges, nodes?, class}, ...], epochs?, lr?, batch?, hidden?, depth?, seed?}
+//!   POST /v1/gcnii/train   body: {"user_id", "graphs": [{n, edges, nodes?, class}, ...], validation?: [same], epochs?, lr?, batch?, hidden?, depth?, seed?}
 //!       -> 202 {"user_id", "job"}: starts training that user's model in the background (needs `[gcnii] models_dir`);
 //!       409 if that user is already training
 //!   POST /v1/gcnii/train/status   body: {"user_id"} -> {"user_id", "trained", "job"} (job: running | done | failed)
@@ -131,8 +131,14 @@ impl Router {
             .get("graphs")
             .and_then(|g| g.as_array())
             .ok_or_else(|| RouterError::new(400, "graphs must be an array of graph documents"))?;
+        let validation = match doc.get("validation").filter(|v| !v.is_null()) {
+            None => &[][..],
+            Some(v) => v
+                .as_array()
+                .ok_or_else(|| RouterError::new(400, "validation must be an array of graph documents"))?,
+        };
         let opts = options_from_value(&doc).map_err(user_error)?;
-        users.start(user_id, graphs, opts).map_err(user_error)
+        users.start(user_id, graphs, validation, opts).map_err(user_error)
     }
 
     /// `POST /v1/gcnii/train/status`: body `{"user_id"}`.

@@ -11,7 +11,7 @@
 //! behind `Mutex`es held only for a lookup or an insert, never while training or reading a file. A loaded model is an
 //! `Arc<UserModel>`, so inference borrows it without copying the weights and a retrain swaps the `Arc`, never mutating it.
 
-use super::dataset::samples_from_values;
+use super::dataset::samples_from_split;
 use super::model::{GcniiStar, DEFAULT_DEPTH, DEFAULT_HIDDEN};
 use super::train::{evaluate, train, TrainOptions};
 use super::weights;
@@ -94,22 +94,27 @@ pub fn options_from_value(doc: &Value) -> Result<TrainOptions, UserError> {
     })
 }
 
-/// Trains, evaluates on the training data and saves the model of one user into `dir`.
+/// The outcome of a training: the model, (accuracy, loss) on the training graphs and, if there were validation graphs, on those.
+type Trained = (UserModel, (f32, f32), Option<(f32, f32)>);
+
+/// Trains, evaluates on the training data (and on the validation data, if any) and saves the model of one user into `dir`.
 fn run_training(
     dir: &Path,
     docs: &[Value],
+    validation: &[Value],
     opts: &TrainOptions,
-) -> Result<(UserModel, f32, f32), String> {
-    let (samples, classes) = samples_from_values(docs)?;
+) -> Result<Trained, String> {
+    let (samples, val_samples, classes) = samples_from_split(docs, validation)?;
     let model = train(&samples, &classes, opts);
-    let (accuracy, loss) = evaluate(&model, &samples)?;
+    let scores = evaluate(&model, &samples)?;
+    let val_scores = if val_samples.is_empty() { None } else { Some(evaluate(&model, &val_samples)?) };
     fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     let tmp = dir.join(format!("{WEIGHTS_FILE}.tmp"));
     weights::save(&model, &tmp)?;
     fs::rename(&tmp, dir.join(WEIGHTS_FILE)).map_err(|err| format!("cannot save the weights: {err}"))?;
     fs::write(dir.join(CLASSES_FILE), json!(classes).to_string())
         .map_err(|err| format!("cannot save the classes: {err}"))?;
-    Ok((UserModel { model, classes }, accuracy, loss))
+    Ok((UserModel { model, classes }, scores, val_scores))
 }
 
 /// Reads a saved user model from `dir`; `Ok(None)` if the user has none.
@@ -165,19 +170,22 @@ impl UserModels {
         })
     }
 
-    /// Starts training the model of `user_id` on the graph documents (each with its `"class"`) in the background.
+    /// Starts training the model of `user_id` on the graph documents (each with its `"class"`) in the background; `validation`
+    /// (may be empty) are graphs the model is not trained on, scored after the training (`val_accuracy`, `val_loss`).
     /// The data is checked first (400 for a bad document); 409 if this user is already training.
     pub fn start(
         self: &Arc<Self>,
         user_id: &str,
         docs: &[Value],
+        validation: &[Value],
         opts: TrainOptions,
     ) -> Result<Value, UserError> {
         check_user_id(user_id)?;
-        let (_, classes) = samples_from_values(docs).map_err(|err| (400, err))?;
+        let (_, _, classes) = samples_from_split(docs, validation).map_err(|err| (400, err))?;
         let job = json!({
             "status": "running",
             "graphs": docs.len(),
+            "validation_graphs": validation.len(),
             "classes": classes,
             "epochs": opts.epochs,
             "started_unix": now_unix(),
@@ -190,9 +198,10 @@ impl UserModels {
             jobs.insert(user_id.to_string(), job.clone());
         }
         let running = job.clone();
-        let (this, user, docs, dir) = (Arc::clone(self), user_id.to_string(), docs.to_vec(), self.user_dir(user_id));
+        let (this, user, docs, validation, dir) =
+            (Arc::clone(self), user_id.to_string(), docs.to_vec(), validation.to_vec(), self.user_dir(user_id));
         std::thread::spawn(move || {
-            let outcome = catch_unwind(AssertUnwindSafe(|| run_training(&dir, &docs, &opts)))
+            let outcome = catch_unwind(AssertUnwindSafe(|| run_training(&dir, &docs, &validation, &opts)))
                 .unwrap_or_else(|_| Err("training panicked".to_string()));
             this.finish(&user, running, outcome);
         });
@@ -200,12 +209,17 @@ impl UserModels {
     }
 
     /// Records the outcome of a training: swaps in the new model and updates the job.
-    fn finish(&self, user_id: &str, job: Value, outcome: Result<(UserModel, f32, f32), String>) {
+    fn finish(&self, user_id: &str, job: Value, outcome: Result<Trained, String>) {
         let done_at = now_unix();
         let finished = match outcome {
-            Ok((model, accuracy, loss)) => {
+            Ok((model, (accuracy, loss), val_scores)) => {
                 locked(&self.models).insert(user_id.to_string(), Arc::new(model));
-                json!({"status": "done", "accuracy": accuracy, "loss": loss, "finished_unix": done_at})
+                let mut done = json!({"status": "done", "accuracy": accuracy, "loss": loss, "finished_unix": done_at});
+                if let Some((val_accuracy, val_loss)) = val_scores {
+                    done["val_accuracy"] = json!(val_accuracy);
+                    done["val_loss"] = json!(val_loss);
+                }
+                done
             }
             Err(err) => {
                 eprintln!("gcnii training of user {user_id} failed: {err}");
@@ -259,7 +273,7 @@ mod tests {
         let models = Arc::new(UserModels::new(&dir).unwrap());
         assert!(models.get("alice").unwrap().is_none());
         let opts = options_from_value(&json!({"epochs": 5, "hidden": 4, "depth": 2, "seed": 1})).unwrap();
-        models.start("alice", &docs(), opts).unwrap();
+        models.start("alice", &docs(), &[], opts).unwrap();
         let status = wait_done(&models, "alice");
         assert_eq!(status["job"]["status"], "done", "{status}");
         assert_eq!(status["trained"], true);
@@ -272,13 +286,29 @@ mod tests {
     }
 
     #[test]
+    fn scores_the_validation_graphs() {
+        let dir = std::env::temp_dir().join(format!("sargo_gcnii_users3_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let models = Arc::new(UserModels::new(&dir).unwrap());
+        let opts = options_from_value(&json!({"epochs": 3, "hidden": 4, "depth": 2, "seed": 1})).unwrap();
+        let all = docs();
+        let (train, val) = all.split_at(8);
+        let job = models.start("carol", train, val, opts).unwrap();
+        assert_eq!(job["job"]["validation_graphs"], 2);
+        let status = wait_done(&models, "carol");
+        assert_eq!(status["job"]["status"], "done", "{status}");
+        assert!(status["job"]["val_accuracy"].is_number() && status["job"]["val_loss"].is_number(), "{status}");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn rejects_bad_input() {
         let dir = std::env::temp_dir().join(format!("sargo_gcnii_users2_{}", std::process::id()));
         let models = Arc::new(UserModels::new(&dir).unwrap());
         let opts = || options_from_value(&json!({})).unwrap();
-        assert_eq!(models.start("", &docs(), opts()).unwrap_err().0, 400);
-        assert_eq!(models.start("u", &[], opts()).unwrap_err().0, 400);
-        assert_eq!(models.start("u", &[json!({"n": 1, "edges": []})], opts()).unwrap_err().0, 400);
+        assert_eq!(models.start("", &docs(), &[], opts()).unwrap_err().0, 400);
+        assert_eq!(models.start("u", &[], &[], opts()).unwrap_err().0, 400);
+        assert_eq!(models.start("u", &[json!({"n": 1, "edges": []})], &[], opts()).unwrap_err().0, 400);
         assert!(options_from_value(&json!({"epochs": 0})).is_err());
         let _ = fs::remove_dir_all(dir);
     }
