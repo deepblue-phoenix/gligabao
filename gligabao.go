@@ -308,7 +308,7 @@ func Serve(ctx context.Context,
 		return err
 	}
 	defer stopSargo()
-	serverOpts.GCNII = gcniiService(sargoClient)
+	serverOpts.GCNII = gcniiService(sargoClient, cfg)
 	return server.Run(ctx, serverOpts)
 }
 
@@ -359,12 +359,33 @@ func sargoGCNIIDir(cfg *Config) (string, error) {
 
 // gcniiService is the GCNII* service of the server: the sargo client, or nil (which leaves the routes unmounted) when sargo is off. A nil
 // *sargo.Client must not become a non-nil interface, hence the check.
-func gcniiService(client *sargo.Client) modelapi.Service {
+func gcniiService(client *sargo.Client,
+	cfg *Config) modelapi.Service {
 	if client == nil {
 		return nil
 	}
-	return client
+	dir, err := sargoGCNIIDir(cfg)
+	if err != nil {
+		return client
+	}
+	return gcniiHistory{
+		Client: client,
+		dir:    filepath.Join(dir, historyDirName),
+	}
 }
+
+// historyDirName is the directory, inside the one of the sargo models, with the history of the trainings on datasets. Sargo names the
+// directories of its models by the hex of the user ID, so this one (it has a non-hex character) can never be one of them.
+const historyDirName = "_history"
+
+// gcniiHistory is the sargo client that also tells the model routes where to keep the history of the trainings on datasets.
+type gcniiHistory struct {
+	*sargo.Client
+	dir string
+}
+
+// HistoryDir is the directory of the history.
+func (h gcniiHistory) HistoryDir() string { return h.dir }
 
 // sargoEnv is the provider keys of the config as the environment variables sargo's default config names; unset keys are left out, so the
 // inherited environment still applies.
@@ -415,7 +436,7 @@ func Mount(ctx context.Context,
 		restore()
 		return nil, err
 	}
-	serverOpts.GCNII = gcniiService(sargoClient)
+	serverOpts.GCNII = gcniiService(sargoClient, cfg)
 	rel, err := server.Mount(ctx,
 		serverOpts,
 		mount.Mux,

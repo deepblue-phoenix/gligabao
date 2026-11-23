@@ -35,7 +35,7 @@ func TestStartSargoOffDoesNothing(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if client != nil || gcniiService(client) != nil {
+		if client != nil || gcniiService(client, nil) != nil {
 			t.Fatal("sargo is off: there must be no client and no gcnii service")
 		}
 		stop()

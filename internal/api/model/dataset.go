@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/modeltrain"
@@ -18,8 +19,13 @@ type datasetTrainRequest struct {
 	ModelType string `json:"model_type"`
 	// Dataset is the name of a live dataset of the user (empty: the default one).
 	Dataset string `json:"dataset"`
-	// Classes, MinGraphsPerClass, ValidationFraction and SplitSeed are the fields of modeltrain.Options.
+	// Classes, ClassPick, TopClasses, OtherClass, MinEdges, MinGraphsPerClass, ValidationFraction and SplitSeed are the fields of
+	// modeltrain.Options.
 	Classes            []string `json:"classes"`
+	ClassPick          string   `json:"class_pick"`
+	TopClasses         int      `json:"top_classes"`
+	OtherClass         bool     `json:"other_class"`
+	MinEdges           int      `json:"min_edges"`
 	MinGraphsPerClass  int      `json:"min_graphs_per_class"`
 	ValidationFraction float64  `json:"validation_fraction"`
 	SplitSeed          uint64   `json:"split_seed"`
@@ -39,6 +45,21 @@ type datasetTrainResponse struct {
 	Train      int      `json:"train"`
 	Validation int      `json:"validation"`
 	Classes    []string `json:"classes"`
+	// Run is the ID of the record of the training in the history (empty if there is no history directory or it could not be written).
+	Run string `json:"run,omitempty"`
+}
+
+// HistoryService is a Service that also says where the history of the trainings on datasets is kept (a directory; "" means none).
+type HistoryService interface {
+	Service
+	HistoryDir() string
+}
+
+func historyDirOf(svc Service) string {
+	if h, ok := svc.(HistoryService); ok {
+		return h.HistoryDir()
+	}
+	return ""
 }
 
 // TrainDataset serves POST /v1/gb/model/train/dataset: it trains the model of the user of the request on the graphs of one of their datasets.
@@ -59,42 +80,68 @@ func TrainDataset(svc Service,
 		if !decode(w, r, &req) {
 			return
 		}
+		opts := modeltrain.Options{
+			Classes:            req.Classes,
+			ClassPick:          req.ClassPick,
+			TopClasses:         req.TopClasses,
+			OtherClass:         req.OtherClass,
+			MinEdges:           req.MinEdges,
+			MinGraphsPerClass:  req.MinGraphsPerClass,
+			ValidationFraction: req.ValidationFraction,
+			Seed:               req.SplitSeed,
+		}
+		dataset, err := memory_core.ResolveDatasetName(req.Dataset)
+		if err != nil {
+			failBuild(w, r, req.Dataset, err)
+			return
+		}
 		sets, err := modeltrain.Build(r.Context(),
 			d,
 			hook,
 			userID,
-			req.Dataset,
-			modeltrain.Options{
-				Classes:            req.Classes,
-				MinGraphsPerClass:  req.MinGraphsPerClass,
-				ValidationFraction: req.ValidationFraction,
-				Seed:               req.SplitSeed,
-			})
+			dataset,
+			opts)
 		if err != nil {
 			failBuild(w, r, req.Dataset, err)
 			return
+		}
+		params := modeltrain.TrainParams{
+			Epochs: req.Epochs,
+			LR:     req.LR,
+			Batch:  req.Batch,
+			Hidden: req.Hidden,
+			Depth:  req.Depth,
+			Seed:   req.Seed,
 		}
 		resp, err := svc.GCNIITrain(r.Context(),
 			&sargo.GCNIITrainRequest{
 				UserID:     userID,
 				Graphs:     sets.Train,
 				Validation: sets.Validation,
-				Epochs:     req.Epochs,
-				LR:         req.LR,
-				Batch:      req.Batch,
-				Hidden:     req.Hidden,
-				Depth:      req.Depth,
-				Seed:       req.Seed,
+				Epochs:     params.Epochs,
+				LR:         params.LR,
+				Batch:      params.Batch,
+				Hidden:     params.Hidden,
+				Depth:      params.Depth,
+				Seed:       params.Seed,
 			})
 		if err != nil {
 			fail(w, r, "model train dataset", err)
 			return
 		}
+		runID := saveRun(svc,
+			modeltrain.NewRun(userID,
+				dataset,
+				time.Now(),
+				opts,
+				params,
+				sets))
 		httputil.WriteJSON(w,
 			http.StatusAccepted,
 			datasetTrainResponse{
 				GCNIITrainResponse: resp,
-				Dataset:            req.Dataset,
+				Dataset:            dataset,
+				Run:                runID,
 				Train:              len(sets.Train),
 				Validation:         len(sets.Validation),
 				Classes:            sets.Classes,
@@ -116,10 +163,10 @@ func failBuild(w http.ResponseWriter,
 		httputil.Error(w,
 			http.StatusNotFound,
 			"dataset not found")
-	case errors.Is(err, modeltrain.ErrNoGraphs):
+	case errors.Is(err, modeltrain.ErrNoGraphs), errors.Is(err, modeltrain.ErrTooFewClasses):
 		httputil.Error(w,
 			http.StatusUnprocessableEntity,
-			err.Error()+": remember the dataset with classify_graph on")
+			err.Error()+" (remember the dataset with classify_graph on)")
 	case errors.Is(err, memory_core.ErrInvalidTrainingDataset):
 		httputil.Error(w,
 			http.StatusBadGateway,
@@ -129,5 +176,55 @@ func failBuild(w http.ResponseWriter,
 		httputil.Error(w,
 			http.StatusInternalServerError,
 			"failed to build the training set")
+	}
+}
+
+// saveRun writes the run to the history of svc and returns its ID; a history that cannot be written is logged, not an error of the
+// request (the training is already running). "" if there is no history.
+func saveRun(svc Service,
+	run modeltrain.Run) string {
+	dir := historyDirOf(svc)
+	if dir == "" {
+		return ""
+	}
+	if err := modeltrain.SaveRun(dir, run); err != nil {
+		log.WithError(err).WithFields(log.Fields{"user_id": run.UserID, "dataset": run.Dataset}).Warn("model train dataset: saving the run history failed")
+		return ""
+	}
+	return run.ID
+}
+
+// TrainDatasetRuns serves GET /v1/gb/model/train/dataset/runs?dataset=...: the history of the trainings on the dataset of the user of
+// the request, the newest first: {"runs": [...]}. Empty without a history directory.
+func TrainDatasetRuns(svc Service) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		userID, ok := user(w, r)
+		if !ok {
+			return
+		}
+		dataset, err := memory_core.ResolveDatasetName(r.URL.Query().Get("dataset"))
+		if err != nil {
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
+			return
+		}
+		runs := []modeltrain.Run{}
+		if dir := historyDirOf(svc); dir != "" {
+			runs, err = modeltrain.ListRuns(dir,
+				userID,
+				dataset)
+			if err != nil {
+				log.WithError(err).WithField("user_id", userID).Error("model train dataset runs failed")
+				httputil.Error(w,
+					http.StatusInternalServerError,
+					"failed to read the history")
+				return
+			}
+		}
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			map[string][]modeltrain.Run{"runs": runs})
 	}
 }

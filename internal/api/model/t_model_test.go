@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/modeltrain"
 	"github.com/deepblue-phoenix/gligabao/internal/sargo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 )
@@ -161,5 +163,35 @@ func TestTrainDatasetRejectsBadOptions(t *testing.T) {
 	}
 	if len(svc.users) != 0 {
 		t.Fatal("sargo was called")
+	}
+}
+
+type historyService struct {
+	fakeService
+	dir string
+}
+
+func (h *historyService) HistoryDir() string { return h.dir }
+
+func TestTrainDatasetRunsListsTheHistory(t *testing.T) {
+	dir := t.TempDir()
+	svc := &historyService{dir: dir}
+	if err := modeltrain.SaveRun(dir,
+		modeltrain.Run{
+			ID:      "20260101T000000.000000000Z",
+			UserID:  "alice",
+			Dataset: memory_core.DefaultDataset,
+		}); err != nil {
+		t.Fatal(err)
+	}
+	rec := call(TrainDatasetRuns(svc), http.MethodGet, "alice", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "20260101T000000.000000000Z") {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if rec := call(TrainDatasetRuns(svc), http.MethodGet, "bob", ""); !strings.Contains(rec.Body.String(), `"runs":[]`) {
+		t.Fatalf("another user has none: %s", rec.Body)
+	}
+	if rec := call(TrainDatasetRuns(&fakeService{}), http.MethodGet, "alice", ""); !strings.Contains(rec.Body.String(), `"runs":[]`) {
+		t.Fatalf("no history dir: %s", rec.Body)
 	}
 }

@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.234.0] - 2026-11-24
+
+Better training sets for `POST /v1/gb/model/train/dataset` (ideas taken from the `gligabao_int` graph training hook), and a history of the trainings.
+
+### Added
+
+- New request fields of `POST /v1/gb/model/train/dataset`: `top_classes` (keep the N most given classes, at most 1000) with `other_class` (train the graphs of the other classes as `other` instead of leaving them out), `min_edges` and `class_pick` (`majority`, the default, or `latest`: the first class of the most recent model run of the graph).
+- History of the trainings on datasets: each one is saved in `<sargo_gcnii_dir>/_history/<user>/<dataset>/<run id>/` (`run.json` with the options, the settings, the classes, the graphs per class of each set and the artifacts of each set; `classes.json`). The answer has the `run` ID, and `GET /v1/gb/model/train/dataset/runs?dataset=` lists the runs of the user, newest first. The weights stay in sargo, one model per user.
+
+### Changed
+
+- The training set now needs graphs of at least 2 classes (`422` otherwise, with the counts found) and, by default, graphs with at least one edge (`min_edges`, default 1; graphs without an edge are left out).
+- A fact whose source or target is not among the entities of the artifact graph now adds that endpoint as a node (named after it) instead of being dropped. Self loops and repeated facts are still dropped.
+
 ## [0.233.0] - 2026-11-24
 
 Train the GCNII* model of a user on a dataset, from the classes an LLM gave to its graphs.
