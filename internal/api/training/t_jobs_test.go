@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -69,7 +70,7 @@ func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 func testStartTrainingJob(t *testing.T,
 	d *sql.DB) {
 	ctx := context.Background()
-	dsDir := []string{t.TempDir()}
+	dsDir := core.DirStore{t.TempDir()}
 	sc := &fakeSidecar{}
 	h := training.StartJobOf(d,
 		dsDir,
@@ -188,7 +189,7 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	training.StartJobOf(d,
-		[]string{dir},
+		core.DirStore{dir},
 		sc,
 		nil)(rec, userReq("POST",
 		"/x",

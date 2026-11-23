@@ -1,11 +1,13 @@
 package training_audits_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/deepblue-phoenix/gligabao/internal/training"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 )
 
@@ -27,7 +29,7 @@ func TestLoadDataset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ds, err := training_audits.LoadDataset([]string{dir}, "mine.jsonl")
+	ds, err := training_audits.LoadDataset(context.Background(), training.DirStore{dir}, "mine.jsonl")
 	if err != nil || ds.Name != "mine" || len(ds.SHA256) != 64 || len(ds.Examples) != 2 {
 		t.Fatalf("%+v %v",
 			ds,
@@ -38,9 +40,9 @@ func TestLoadDataset(t *testing.T) {
 	}
 	for _, tc := range []struct{ dataset, want string }{
 		{"", "default dataset"},
-		{"deleted.jsonl", "not in the training datasets directory"},
+		{"deleted.jsonl", "not in the training datasets"},
 	} {
-		if _, err := training_audits.LoadDataset([]string{dir}, tc.dataset); err == nil || !strings.Contains(err.Error(), tc.want) {
+		if _, err := training_audits.LoadDataset(context.Background(), training.DirStore{dir}, tc.dataset); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("dataset %q: %v, want %q",
 				tc.dataset,
 				err,

@@ -35,8 +35,8 @@ type Manager struct {
 	// Ops is how the audits are stored and read.
 	Ops Ops
 
-	dirs []string // the training datasets directories
-	ctx  context.Context
+	datasets training.DatasetStore // the training datasets
+	ctx      context.Context
 
 	mu      sync.Mutex
 	running map[int64]*runningAudit   // by trained model ID
@@ -50,23 +50,23 @@ type runningAudit struct {
 }
 
 // NewManager makes the manager of the audits of the trained models in d, whose datasets are in the training datasets directories
-// datasetDirs. sc answers the questions and llm judges (the callers check for nil). The audits stop when ctx is done. Audits that
+// datasets. sc answers the questions and llm judges (the callers check for nil). The audits stop when ctx is done. Audits that
 // a restart interrupted (still pending or running in the database) are marked errored.
 func NewManager(ctx context.Context,
 	d *sql.DB,
 	ops Ops,
-	datasetDirs []string,
+	datasets training.DatasetStore,
 	sc Inferer,
 	llm LLM) *Manager {
 	m := &Manager{
-		DB:      d,
-		Sc:      sc,
-		LLM:     llm,
-		Ops:     ops,
-		dirs:    datasetDirs,
-		ctx:     ctx,
-		running: map[int64]*runningAudit{},
-		feeds:   map[core.AuditRunID]*Feed{},
+		DB:       d,
+		Sc:       sc,
+		LLM:      llm,
+		Ops:      ops,
+		datasets: datasets,
+		ctx:      ctx,
+		running:  map[int64]*runningAudit{},
+		feeds:    map[core.AuditRunID]*Feed{},
 	}
 	if k, err := ops.Store.FailRunningAuditRuns(ctx,
 		d,
@@ -107,7 +107,7 @@ func (m *Manager) Start(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	ds, err := LoadDataset(m.dirs, tm.Dataset)
+	ds, err := LoadDataset(ctx, m.datasets, tm.Dataset)
 	if err != nil {
 		return nil, invalidErr(err.Error())
 	}

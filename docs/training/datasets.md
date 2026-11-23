@@ -22,6 +22,21 @@ build/datasets_training/                         a training datasets directory (
 - **The manifest decides where the data is:** gligabao does not look for `*.jsonl` files; it reads the path in the manifest's `file`. Other files in the subdirectory (a second `.jsonl`, a `.json`) are not part of the dataset. For now only the JSONL format is supported.
 - **In the repository:** `build/datasets_training/` is tracked (the rest of `build/` is ignored); the generated data files of a dataset are ignored by a `.gitignore` in its subdirectory (run the generator to create them).
 
+## Where the datasets are: directories or S3
+
+There are two places for the datasets of the LLM/LoRA fine-tuning, and exactly one is used (no mix, no fallback):
+
+| | directories (default) | S3 |
+|---|---|---|
+| selected by | `datasets_training_dirs` / `serve --training-dataset-dir` | `training_datasets_s3_bucket` (or `TRAINING_DATASETS_S3_BUCKET`) |
+| layout | `<dir>/<name>/dataset.toml` and the data file | `<prefix>/<name>/dataset.toml` and `<prefix>/<name>/<file>` in the bucket |
+| uploads | the first directory | the bucket |
+| other settings | | `training_datasets_s3_region`, `training_datasets_s3_prefix` (default `training_datasets`), `training_datasets_s3_endpoint` (MinIO, LocalStack); env `TRAINING_DATASETS_S3_REGION` / `_PREFIX` / `_ENDPOINT` |
+
+The bucket is normally the meta bucket (the one of the evals and the model weights); credentials come from the standard AWS chain, and the role needs `s3:GetObject`, `s3:PutObject` on `<prefix>/*` and `s3:ListBucket` on the bucket (nothing is ever deleted). The bucket must exist; a bad bucket configuration stops the server at start. The manifest, the discovery rules (a manifest per dataset, the data file must exist, a name is taken once), the limits, the preview, the upload (`409` on a clash) and the job start (the file is read from S3 and sent to the sidecar) are the same as with the directories. Put a dataset there by uploading it (`POST /v1/gb/training/datasets`, the admin UI) or by copying its manifest and data file under `<prefix>/<name>/`. The data files of the S3 store are read on every listing only to the size and modification time (the digest is cached while they stay the same), so a listing is a few requests per dataset. The generator scripts stay with the dataset's source, not in the bucket.
+
+This is only about the LLM/LoRA datasets. The GCNII\* models keep their way: their datasets and classes come from the graph database, not from these files, and their weights go to the model weights bucket ([gcnii.md](../gcnii.md)). The Modal CLI (`sidecar/ai_train/training_data.py`) always reads the local directory.
+
 ## The manifest (`dataset.toml`)
 
 ```toml

@@ -24,15 +24,9 @@ import (
 // or a dataset of that name in another directory, is not replaced: 409. The sidecar is not involved. It answers 201
 // with the dataset (core.DatasetInfo). A bad file answers 400, a file over MaxDatasetBytes 413.
 func UploadDatasetOf(db *sql.DB,
-	datasetDirs []string) http.HandlerFunc {
+	datasets core.DatasetStore) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
-		if len(datasetDirs) == 0 || datasetDirs[0] == "" {
-			httputil.Error(w,
-				http.StatusInternalServerError,
-				"no training dataset directory is configured")
-			return
-		}
 		r.Body = http.MaxBytesReader(w,
 			r.Body,
 			core.MaxDatasetBytes+1<<20)
@@ -77,7 +71,7 @@ func UploadDatasetOf(db *sql.DB,
 		}
 		info, err := core.SaveDataset(r.Context(),
 			db,
-			datasetDirs,
+			datasets,
 			filename,
 			buf.Bytes())
 		if err != nil {
@@ -94,12 +88,12 @@ func UploadDatasetOf(db *sql.DB,
 // datasets (core.DatasetInfo) found in the training datasets directory by their manifests, by name, and the subdirectories with a
 // manifest that are not usable (core.DatasetProblem). It never asks the sidecar.
 func ListDatasetsOf(db *sql.DB,
-	datasetDirs []string) http.HandlerFunc {
+	datasets core.DatasetStore) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		ds, problems, err := core.ListDatasets(r.Context(),
 			db,
-			datasetDirs)
+			datasets)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -114,7 +108,7 @@ func ListDatasetsOf(db *sql.DB,
 // (default 100, at most 1000) of a dataset's data file, so it can be inspected: {"name", "lines": [...], "num_records",
 // "truncated"}. truncated is true if the file has more lines than returned. Only the beginning of the file is read. An
 // unknown dataset answers 404.
-func PreviewDatasetOf(datasetDirs []string) http.HandlerFunc {
+func PreviewDatasetOf(datasets core.DatasetStore) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		q := r.URL.Query()
@@ -136,7 +130,8 @@ func PreviewDatasetOf(datasetDirs []string) http.HandlerFunc {
 			}
 			limit = l
 		}
-		p, err := core.PreviewDataset(datasetDirs,
+		p, err := core.PreviewDataset(r.Context(),
+			datasets,
 			name,
 			limit)
 		if err != nil {

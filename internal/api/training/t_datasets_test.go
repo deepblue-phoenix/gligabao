@@ -84,7 +84,7 @@ func testUploadTrainingDataset(t *testing.T,
 	d *sql.DB) {
 	ctx := t.Context()
 	dir := filepath.Join(t.TempDir(), "datasets_training") // created by the first upload
-	dsDir := []string{dir}
+	dsDir := core.DirStore{dir}
 	h := training.UploadDatasetOf(d, dsDir)
 
 	rec := upload(h,
@@ -268,7 +268,7 @@ func testUploadTrainingDataset(t *testing.T,
 	}
 
 	// No directory configured: refused.
-	if rec := upload(training.UploadDatasetOf(d, nil),
+	if rec := upload(training.UploadDatasetOf(d, core.DirStore(nil)),
 		"/x",
 		"file",
 		"n.jsonl",
@@ -307,7 +307,7 @@ func testStartJobSendsDataset(t *testing.T,
 	d *sql.DB) {
 	ctx := t.Context()
 	dir := t.TempDir()
-	dsDir := []string{dir}
+	dsDir := core.DirStore{dir}
 	sc := &fakeSidecar{}
 	up := training.UploadDatasetOf(d, dsDir)
 	start := func(body string) *httptest.ResponseRecorder {
@@ -443,7 +443,7 @@ func testStartJobSendsDataset(t *testing.T,
 func TestUploadTrainingDatasetTooLarge(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T,
 		d *sql.DB) {
-		h := training.UploadDatasetOf(d, []string{t.TempDir()})
+		h := training.UploadDatasetOf(d, core.DirStore{t.TempDir()})
 		big := strings.Repeat("x", core.MaxDatasetBytes+1)
 		if rec := upload(h,
 			"/x",

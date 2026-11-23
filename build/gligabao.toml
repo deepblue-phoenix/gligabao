@@ -113,6 +113,16 @@ sargo = false
 # Default if unset: a datasets_training directory next to the database file.
 datasets_training_dirs = ["datasets_training"]
 
+# Training datasets in S3 (the second choice, instead of the directories above): with training_datasets_s3_bucket set (an existing bucket,
+# normally the meta bucket), the datasets of the LLM/LoRA fine-tuning are the objects "<prefix>/<name>/dataset.toml" (the manifest) and
+# "<prefix>/<name>/<file>" (the data), uploads are written there, and datasets_training_dirs / --training-dataset-dir are not used.
+# No mix and no fallback between the two. The GCNII* models are not affected (their datasets and classes come from the graph database).
+# Also settable with TRAINING_DATASETS_S3_BUCKET / _REGION / _PREFIX / _ENDPOINT.
+# training_datasets_s3_bucket = "my-gligabao-meta"
+# training_datasets_s3_region = "us-east-1"
+# training_datasets_s3_prefix = "training_datasets"
+# training_datasets_s3_endpoint = ""
+
 # Evals of trained models (training evals): one JSON file per eval. Default if unset: an evals_training directory next to the database file.
 evals_training_dirs = ["evals_training"]
 

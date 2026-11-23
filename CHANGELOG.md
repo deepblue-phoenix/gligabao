@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.238.0] - 2026-11-24
+
+The training datasets of the LLM/LoRA fine-tuning can be kept in S3, a second choice next to the directories.
+
+### Added
+
+- **Training datasets in S3.** New settings `training_datasets_s3_bucket`, `training_datasets_s3_region`, `training_datasets_s3_prefix` (default `training_datasets`) and `training_datasets_s3_endpoint` (env `TRAINING_DATASETS_S3_BUCKET`, `_REGION`, `_PREFIX`, `_ENDPOINT`). With a bucket (normally the meta bucket) the datasets are the objects `<prefix>/<name>/dataset.toml` and `<prefix>/<name>/<file>`; listing, preview, upload (`POST /v1/gb/training/datasets`), starting a job and the training audits work the same as with the directories. Without a bucket nothing changes (the directories `datasets_training_dirs`, default). It is one or the other, with no mix and no fallback; a bucket the server cannot open stops it at start. The GCNII\* models are not affected.
+- `userfiles.NewS3Client` and `userfiles.IsS3Missing` (the S3 client and the "no such key" check, shared with the new store).
+
+### Changed
+
+- Inside: the datasets go through a `training.DatasetStore` (`DirStore` for the directories, `S3Store` for S3) instead of a list of directories: `ListDatasets`, `FindDataset`, `LoadTrainingDataset`, `SaveDataset`, `PreviewDataset`, `StartJob`, `training_audits.NewManager` and `LoadDataset`, and the handlers `StartJobOf`, `ListDatasetsOf`, `UploadDatasetOf`, `PreviewDatasetOf` take one (`DirStore{dirs...}` is the old behaviour). `training.Dirs` has `DatasetsS3` and `DatasetStore`.
+- The audit error for a missing dataset says "not in the training datasets" (it said "... directory").
+
 ## [0.237.0] - 2026-11-23
 
 Training is per user: jobs, models, evals, audits and the progress feed belong to the user of the request.

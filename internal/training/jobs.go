@@ -46,7 +46,7 @@ type StartJobRequest struct {
 // for a sidecar error, KindInternal.
 func StartJob(ctx context.Context,
 	db *sql.DB,
-	dirs []string,
+	datasets DatasetStore,
 	sc JobStarter,
 	mon *Monitor,
 	in StartJobRequest) (*trainingdb.TrainingJobRun, error) {
@@ -72,10 +72,10 @@ func StartJob(ctx context.Context,
 
 	dataset, content, err := LoadTrainingDataset(ctx,
 		db,
-		dirs,
+		datasets,
 		name)
 	if errors.Is(err, ErrUnknownDataset) {
-		return nil, invalidErr("unknown dataset " + name + ": there is no dataset of that name in the training datasets directory")
+		return nil, invalidErr("unknown dataset " + name + ": there is no dataset of that name in the training datasets")
 	} else if err != nil {
 		return nil, internalErr(err.Error(), err)
 	}

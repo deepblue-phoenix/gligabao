@@ -2,17 +2,16 @@ package training_audits
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/deepblue-phoenix/gligabao/internal/training"
-	log "github.com/sirupsen/logrus"
 )
 
 // Example is one record of a training dataset (docs/training/training_data_format.md): the question (Instruction, plus Input as
@@ -71,28 +70,27 @@ type Dataset struct {
 	Examples []Example
 }
 
-// LoadDataset reads the training dataset of a trained model from the training datasets directory dir. trainedDataset is the
+// LoadDataset reads the training dataset of a trained model from the training datasets store. trainedDataset is the
 // model's dataset as the model records it (its file name, "" if it was trained on the sidecar's default dataset). The errors are
 // safe to show to the user.
-func LoadDataset(dirs []string,
+func LoadDataset(ctx context.Context,
+	store training.DatasetStore,
 	trainedDataset string) (*Dataset, error) {
 	name := strings.TrimSuffix(trainedDataset, ".jsonl")
 	if name == "" {
 		return nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")
 	}
-	ds, err := training.FindDataset(dirs, name)
+	ds, err := training.FindDataset(ctx,
+		store,
+		name)
 	if err != nil {
-		return nil, fmt.Errorf("the training dataset %s of this model is not in the training datasets directory", name)
+		return nil, fmt.Errorf("the training dataset %s of this model is not in the training datasets", name)
 	}
-	content, err := os.ReadFile(ds.Path)
+	content, err := training.ReadDataset(ctx,
+		store,
+		ds)
 	if err != nil {
-		log.WithError(err).WithField("dataset", name).Error("training audits: read training dataset file failed")
-		return nil, fmt.Errorf("the data file of dataset %s cannot be read", name)
-	}
-	if len(content) > training.MaxDatasetBytes {
-		return nil, fmt.Errorf("the data file of dataset %s is over %d MB",
-			name,
-			training.MaxDatasetBytes>>20)
+		return nil, err
 	}
 	examples, err := ParseExamples(content)
 	if err != nil {

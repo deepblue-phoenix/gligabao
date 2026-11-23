@@ -80,31 +80,52 @@ func ParseManifest(path string) (*LocalDataset, error) {
 	if _, err := toml.DecodeFile(path, &m); err != nil {
 		return nil, fmt.Errorf("invalid manifest: %w", err)
 	}
-	if m.Name == "" {
-		m.Name = filepath.Base(dir)
-	}
-	if !ValidDatasetName(m.Name) {
-		return nil, fmt.Errorf("invalid dataset name %q: letters, digits, . _ - (starting with a letter or digit), at most 122 characters; set `name` in the manifest", m.Name)
-	}
-	if m.Format == "" {
-		m.Format = FormatJSONL
-	}
-	if m.Format != FormatJSONL {
-		return nil, fmt.Errorf("unsupported format %q (only %q)",
-			m.Format,
-			FormatJSONL)
-	}
-	if m.File == "" {
-		return nil, errors.New("the manifest has no `file` (the data file, relative to the manifest)")
-	}
-	if !filepath.IsLocal(m.File) || !strings.HasSuffix(m.File, ".jsonl") {
-		return nil, fmt.Errorf("`file` %q must be a relative path inside the dataset's directory, ending in .jsonl", m.File)
+	m, err := checkManifest(m, filepath.Base(dir))
+	if err != nil {
+		return nil, err
 	}
 	return &LocalDataset{
 		Manifest: m,
 		Dir:      dir,
 		Path:     filepath.Join(dir, filepath.FromSlash(m.File)),
 	}, nil
+}
+
+// parseManifestBytes is ParseManifest for a manifest that is not a file (the S3 store): content is the manifest, dirName the name of
+// the dataset's directory (the name of the dataset if the manifest has none).
+func parseManifestBytes(content []byte,
+	dirName string) (Manifest, error) {
+	var m Manifest
+	if err := toml.Unmarshal(content, &m); err != nil {
+		return Manifest{}, fmt.Errorf("invalid manifest: %w", err)
+	}
+	return checkManifest(m, dirName)
+}
+
+// checkManifest fills in the defaults of m (the dataset's directory name dirName is its name if it has none) and checks its keys.
+func checkManifest(m Manifest,
+	dirName string) (Manifest, error) {
+	if m.Name == "" {
+		m.Name = dirName
+	}
+	if !ValidDatasetName(m.Name) {
+		return Manifest{}, fmt.Errorf("invalid dataset name %q: letters, digits, . _ - (starting with a letter or digit), at most 122 characters; set `name` in the manifest", m.Name)
+	}
+	if m.Format == "" {
+		m.Format = FormatJSONL
+	}
+	if m.Format != FormatJSONL {
+		return Manifest{}, fmt.Errorf("unsupported format %q (only %q)",
+			m.Format,
+			FormatJSONL)
+	}
+	if m.File == "" {
+		return Manifest{}, errors.New("the manifest has no `file` (the data file, relative to the manifest)")
+	}
+	if !filepath.IsLocal(m.File) || !strings.HasSuffix(m.File, ".jsonl") {
+		return Manifest{}, fmt.Errorf("`file` %q must be a relative path inside the dataset's directory, ending in .jsonl", m.File)
+	}
+	return m, nil
 }
 
 // DiscoverDatasets scans the directories dirs, in order, for the datasets: each direct subdirectory that has a dataset.toml is

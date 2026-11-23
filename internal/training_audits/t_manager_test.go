@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/training"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/audittest"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/core"
@@ -30,7 +31,7 @@ func testAuditATrainedModel(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{audittest.DatasetDir(t, 5)},
+		training.DirStore{audittest.DatasetDir(t, 5)},
 		sc,
 		judge)
 
@@ -169,7 +170,7 @@ func testAuditRefusals(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{dir},
+		training.DirStore{dir},
 		&audittest.Sidecar{},
 		&audittest.Judge{})
 
@@ -182,7 +183,7 @@ func testAuditRefusals(t *testing.T,
 	}{
 		{"unknown model", 999, training_audits.Options{}, training_audits.KindNotFound, "unknown trained model"},
 		{"default dataset", noDataset, training_audits.Options{}, training_audits.KindInvalid, "default dataset"},
-		{"dataset gone", gone, training_audits.Options{}, training_audits.KindInvalid, "not in the training datasets directory"},
+		{"dataset gone", gone, training_audits.Options{}, training_audits.KindInvalid, "not in the training datasets"},
 		{"bad batch size", ok, training_audits.Options{
 			BatchSize: 99,
 		}, training_audits.KindInvalid, "batch size"},
@@ -230,7 +231,7 @@ func testAuditRefusals(t *testing.T,
 	if _, err := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{dir},
+		training.DirStore{dir},
 		nil,
 		&audittest.Judge{}).Start(ctx,
 		audittest.User,
@@ -241,7 +242,7 @@ func testAuditRefusals(t *testing.T,
 	if _, err := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{dir},
+		training.DirStore{dir},
 		&audittest.Sidecar{},
 		nil).Start(ctx,
 		audittest.User,
@@ -274,7 +275,7 @@ func testAuditOneAtATimeAndCancel(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{audittest.DatasetDir(t, 6)},
+		training.DirStore{audittest.DatasetDir(t, 6)},
 		sc,
 		&audittest.Judge{})
 
@@ -348,7 +349,7 @@ func testAuditFailsWhenTheModelDoes(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{audittest.DatasetDir(t, 8)},
+		training.DirStore{audittest.DatasetDir(t, 8)},
 		sc,
 		&audittest.Judge{})
 	run, err := m.Start(ctx,
@@ -401,7 +402,7 @@ func testAuditsInterruptedByARestart(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{audittest.DatasetDir(t, 1)},
+		training.DirStore{audittest.DatasetDir(t, 1)},
 		&audittest.Sidecar{},
 		&audittest.Judge{})
 	got, err := m.GetRun(ctx, audittest.User, r.ID)
@@ -447,7 +448,7 @@ func testWatchAnAudit(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{audittest.DatasetDir(t, 4)},
+		training.DirStore{audittest.DatasetDir(t, 4)},
 		sc,
 		&audittest.Judge{})
 	run, err := m.Start(ctx,
@@ -535,7 +536,7 @@ func testAuditsBelongToTheirUser(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{audittest.DatasetDir(t, 2)},
+		training.DirStore{audittest.DatasetDir(t, 2)},
 		&audittest.Sidecar{},
 		&audittest.Judge{})
 	run, err := m.Start(ctx,

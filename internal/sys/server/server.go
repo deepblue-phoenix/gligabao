@@ -637,11 +637,11 @@ func registerTraining(ctx context.Context,
 	audits := training_audits.NewManager(ctx,
 		trainingDB,
 		auditOps,
-		dirs.Datasets,
+		dirs.Store(),
 		auditInf,
 		lm)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB,
-		dirs.Datasets,
+		dirs.Store(),
 		sc,
 		mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc))
@@ -667,9 +667,9 @@ func registerTraining(ctx context.Context,
 	mux.HandleFunc("GET /v1/gb/training/deployers", training.ListDeployersOf(hooks.Deployers))
 	evalsapi.New(evals).Register(mux, "/v1/gb/training") // the evals, their definitions and the training experiments
 	auditsapi.New(audits).Register(mux, "/v1/gb/training")
-	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, dirs.Datasets))
-	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(trainingDB, dirs.Datasets))
-	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dirs.Datasets))
+	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, dirs.Store()))
+	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(trainingDB, dirs.Store()))
+	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dirs.Store()))
 	mux.HandleFunc("GET /v1/gb/training/events", training.EventsOf(trainingDB, mon))
 	// Needs sargo: mounted only if it is on (see the comment above).
 	modelapi.Register(mux,
@@ -1062,9 +1062,12 @@ func prepare(ctx context.Context,
 	if dbPath == "" {
 		dbPath = db.DefaultSQLitePath
 	}
-	dirs := opts.TrainingDirs.WithDefaults(dbPath)
+	dirs, datasetsErr := opts.TrainingDirs.WithDefaults(dbPath).OpenDatasets(ctx)
+	if datasetsErr != nil {
+		return nil, nil, fmt.Errorf("training datasets store: %w", datasetsErr)
+	}
 	if opts.TrainingModeEnable {
-		log.WithFields(log.Fields{"datasets_dirs": dirs.Datasets, "evals_dirs": dirs.Evals, "model_deploy_dir": dirs.ModelDeploy}).Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
+		log.WithFields(log.Fields{"datasets": dirs.Store().Location(), "evals_dirs": dirs.Evals, "model_deploy_dir": dirs.ModelDeploy}).Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
 	} else {
 		log.Info("training mode is off: the training endpoints are not registered (enable with training = true or --training)")
 	}

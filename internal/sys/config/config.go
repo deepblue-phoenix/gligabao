@@ -25,41 +25,45 @@ const FileName = "gligabao.toml"
 
 // Environment variables the API keys are loaded from.
 const (
-	EnvAnthropicKey           = "ANTHROPIC_API_KEY"
-	EnvOpenAIKey              = "OPENAI_API_KEY"
-	EnvJevKey                 = "JEV_API_KEY"
-	EnvLinkupKey              = "LINKUP_API_KEY"
-	EnvJevBaseURL             = "JEV_BASE_URL"
-	EnvPineconeKey            = "PINECONE_API_KEY"
-	EnvPineconeHost           = "PINECONE_INDEX_HOST"
-	EnvPostgresDSN            = "POSTGRES_DSN"
-	EnvResearchS3Bucket       = "RESEARCH_S3_BUCKET"
-	EnvResearchS3Region       = "RESEARCH_S3_REGION"
-	EnvResearchS3NotesPrefix  = "RESEARCH_S3_NOTES_PREFIX"
-	EnvOntologyS3Bucket       = "ONTOLOGY_S3_BUCKET"
-	EnvOntologyS3Region       = "ONTOLOGY_S3_REGION"
-	EnvOntologyS3Prefix       = "ONTOLOGY_S3_PREFIX"
-	EnvS3VectorsBucket        = "S3_VECTORS_BUCKET"
-	EnvS3VectorsRegion        = "S3_VECTORS_REGION"
-	EnvS3VectorsPrefix        = "S3_VECTORS_PREFIX"
-	EnvImageStore             = "IMAGE_STORE"
-	EnvImageS3Bucket          = "IMAGE_S3_BUCKET"
-	EnvImageS3Region          = "IMAGE_S3_REGION"
-	EnvImageS3Prefix          = "IMAGE_S3_PREFIX"
-	EnvImageS3Endpoint        = "IMAGE_S3_ENDPOINT"
-	EnvAtifS3Bucket           = "ATIF_S3_BUCKET"
-	EnvAtifS3Region           = "ATIF_S3_REGION"
-	EnvAtifS3Prefix           = "ATIF_S3_PREFIX"
-	EnvAtifS3Endpoint         = "ATIF_S3_ENDPOINT"
-	EnvEvalsS3Bucket          = "EVALS_S3_BUCKET"
-	EnvEvalsS3Region          = "EVALS_S3_REGION"
-	EnvEvalsS3Prefix          = "EVALS_S3_PREFIX"
-	EnvEvalsS3Endpoint        = "EVALS_S3_ENDPOINT"
-	EnvModelWeightsS3Bucket   = "MODEL_WEIGHTS_S3_BUCKET"
-	EnvModelWeightsS3Region   = "MODEL_WEIGHTS_S3_REGION"
-	EnvModelWeightsS3Prefix   = "MODEL_WEIGHTS_S3_PREFIX"
-	EnvModelWeightsS3Endpoint = "MODEL_WEIGHTS_S3_ENDPOINT"
-	EnvSidecarURL             = "SIDECAR_URL"
+	EnvAnthropicKey               = "ANTHROPIC_API_KEY"
+	EnvOpenAIKey                  = "OPENAI_API_KEY"
+	EnvJevKey                     = "JEV_API_KEY"
+	EnvLinkupKey                  = "LINKUP_API_KEY"
+	EnvJevBaseURL                 = "JEV_BASE_URL"
+	EnvPineconeKey                = "PINECONE_API_KEY"
+	EnvPineconeHost               = "PINECONE_INDEX_HOST"
+	EnvPostgresDSN                = "POSTGRES_DSN"
+	EnvResearchS3Bucket           = "RESEARCH_S3_BUCKET"
+	EnvResearchS3Region           = "RESEARCH_S3_REGION"
+	EnvResearchS3NotesPrefix      = "RESEARCH_S3_NOTES_PREFIX"
+	EnvOntologyS3Bucket           = "ONTOLOGY_S3_BUCKET"
+	EnvOntologyS3Region           = "ONTOLOGY_S3_REGION"
+	EnvOntologyS3Prefix           = "ONTOLOGY_S3_PREFIX"
+	EnvS3VectorsBucket            = "S3_VECTORS_BUCKET"
+	EnvS3VectorsRegion            = "S3_VECTORS_REGION"
+	EnvS3VectorsPrefix            = "S3_VECTORS_PREFIX"
+	EnvImageStore                 = "IMAGE_STORE"
+	EnvImageS3Bucket              = "IMAGE_S3_BUCKET"
+	EnvImageS3Region              = "IMAGE_S3_REGION"
+	EnvImageS3Prefix              = "IMAGE_S3_PREFIX"
+	EnvImageS3Endpoint            = "IMAGE_S3_ENDPOINT"
+	EnvAtifS3Bucket               = "ATIF_S3_BUCKET"
+	EnvAtifS3Region               = "ATIF_S3_REGION"
+	EnvAtifS3Prefix               = "ATIF_S3_PREFIX"
+	EnvAtifS3Endpoint             = "ATIF_S3_ENDPOINT"
+	EnvTrainingDatasetsS3Bucket   = "TRAINING_DATASETS_S3_BUCKET"
+	EnvTrainingDatasetsS3Region   = "TRAINING_DATASETS_S3_REGION"
+	EnvTrainingDatasetsS3Prefix   = "TRAINING_DATASETS_S3_PREFIX"
+	EnvTrainingDatasetsS3Endpoint = "TRAINING_DATASETS_S3_ENDPOINT"
+	EnvEvalsS3Bucket              = "EVALS_S3_BUCKET"
+	EnvEvalsS3Region              = "EVALS_S3_REGION"
+	EnvEvalsS3Prefix              = "EVALS_S3_PREFIX"
+	EnvEvalsS3Endpoint            = "EVALS_S3_ENDPOINT"
+	EnvModelWeightsS3Bucket       = "MODEL_WEIGHTS_S3_BUCKET"
+	EnvModelWeightsS3Region       = "MODEL_WEIGHTS_S3_REGION"
+	EnvModelWeightsS3Prefix       = "MODEL_WEIGHTS_S3_PREFIX"
+	EnvModelWeightsS3Endpoint     = "MODEL_WEIGHTS_S3_ENDPOINT"
+	EnvSidecarURL                 = "SIDECAR_URL"
 )
 
 // Database backends selectable with the db_backend setting.
@@ -93,6 +97,7 @@ const DefaultGeoRadiusKm = 50.0
 // The defaults of the evals_* settings (the per-user evals).
 const (
 	DefaultEvalsS3Prefix             = "evals"
+	DefaultTrainingDatasetsS3Prefix  = "training_datasets"
 	DefaultModelWeightsS3Prefix      = "model_weights"
 	DefaultEvalsMaxCases             = 100
 	DefaultEvalsMaxFileBytes         = 1 << 20
@@ -242,6 +247,19 @@ type Config struct {
 	// to with text_file), searched in order like EvalsTrainingDirs. Read by the knowledge eval runner, not by the server. Default
 	// (runner): build/evals_knowledge. The runner's -evals (repeatable) overrides it.
 	EvalsKnowledgeDirs []string `toml:"evals_knowledge_dirs"`
+	// TrainingDatasetsS3Bucket is the (existing) bucket of the training datasets of the LLM/LoRA fine-tuning (also
+	// TRAINING_DATASETS_S3_BUCKET), normally the meta bucket. It is the second choice of where the datasets are: with a bucket, they are the
+	// objects "<prefix>/<name>/dataset.toml" (the manifest) and "<prefix>/<name>/<file>" (the data), uploads are written there, and
+	// datasets_training_dirs is not used. Empty (default): the datasets are in the directories datasets_training_dirs. There is no
+	// mix and no fallback to the directories. It does not affect the GCNII* models (their datasets and classes come from the graph
+	// database). Credentials come from the standard AWS chain.
+	TrainingDatasetsS3Bucket string `toml:"training_datasets_s3_bucket"`
+	// TrainingDatasetsS3Region is its AWS region (also TRAINING_DATASETS_S3_REGION); empty = the AWS SDK default.
+	TrainingDatasetsS3Region string `toml:"training_datasets_s3_region"`
+	// TrainingDatasetsS3Prefix is the "subdirectory" of the bucket of the datasets (also TRAINING_DATASETS_S3_PREFIX); default "training_datasets".
+	TrainingDatasetsS3Prefix string `toml:"training_datasets_s3_prefix"`
+	// TrainingDatasetsS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also TRAINING_DATASETS_S3_ENDPOINT). Empty = AWS.
+	TrainingDatasetsS3Endpoint string `toml:"training_datasets_s3_endpoint"`
 	// EvalsS3Bucket is the (existing) meta bucket of the user evals (also EVALS_S3_BUCKET): each user's eval files are the objects
 	// "<prefix>/<user>/<name>.json" and the corpus files they name, under the same user directory. Empty (default): the files are in
 	// the local directory EvalsLocalDir. There is no fallback to another bucket. Credentials come from the standard AWS chain.
@@ -419,24 +437,28 @@ func Default() *Config {
 		S3VectorsRegion:   os.Getenv(EnvS3VectorsRegion),
 		S3VectorsPrefix:   os.Getenv(EnvS3VectorsPrefix),
 
-		EvalsS3Bucket:             os.Getenv(EnvEvalsS3Bucket),
-		EvalsS3Region:             os.Getenv(EnvEvalsS3Region),
-		EvalsS3Prefix:             envOr(EnvEvalsS3Prefix, DefaultEvalsS3Prefix),
-		EvalsS3Endpoint:           os.Getenv(EnvEvalsS3Endpoint),
-		ModelWeightsS3Bucket:      os.Getenv(EnvModelWeightsS3Bucket),
-		ModelWeightsS3Region:      os.Getenv(EnvModelWeightsS3Region),
-		ModelWeightsS3Prefix:      envOr(EnvModelWeightsS3Prefix, DefaultModelWeightsS3Prefix),
-		ModelWeightsS3Endpoint:    os.Getenv(EnvModelWeightsS3Endpoint),
-		EvalsMaxCases:             DefaultEvalsMaxCases,
-		EvalsMaxFileBytes:         DefaultEvalsMaxFileBytes,
-		EvalsMaxTextBytes:         DefaultEvalsMaxTextBytes,
-		EvalsMaxRunsPerUser:       DefaultEvalsMaxRunsPerUser,
-		EvalsMaxRuns:              DefaultEvalsMaxRuns,
-		EvalsMaxRunCostUSD:        DefaultEvalsMaxRunCostUSD,
-		EvalsMaxUserCostUSDPerDay: DefaultEvalsMaxUserCostUSDPerDay,
-		EvalsDatasetRetentionDays: DefaultEvalsDatasetRetentionDays,
-		EvalsHeartbeatInterval:    Duration(DefaultEvalsHeartbeatInterval),
-		EvalsHeartbeatStale:       Duration(DefaultEvalsHeartbeatStale),
+		TrainingDatasetsS3Bucket:   os.Getenv(EnvTrainingDatasetsS3Bucket),
+		TrainingDatasetsS3Region:   os.Getenv(EnvTrainingDatasetsS3Region),
+		TrainingDatasetsS3Prefix:   envOr(EnvTrainingDatasetsS3Prefix, DefaultTrainingDatasetsS3Prefix),
+		TrainingDatasetsS3Endpoint: os.Getenv(EnvTrainingDatasetsS3Endpoint),
+		EvalsS3Bucket:              os.Getenv(EnvEvalsS3Bucket),
+		EvalsS3Region:              os.Getenv(EnvEvalsS3Region),
+		EvalsS3Prefix:              envOr(EnvEvalsS3Prefix, DefaultEvalsS3Prefix),
+		EvalsS3Endpoint:            os.Getenv(EnvEvalsS3Endpoint),
+		ModelWeightsS3Bucket:       os.Getenv(EnvModelWeightsS3Bucket),
+		ModelWeightsS3Region:       os.Getenv(EnvModelWeightsS3Region),
+		ModelWeightsS3Prefix:       envOr(EnvModelWeightsS3Prefix, DefaultModelWeightsS3Prefix),
+		ModelWeightsS3Endpoint:     os.Getenv(EnvModelWeightsS3Endpoint),
+		EvalsMaxCases:              DefaultEvalsMaxCases,
+		EvalsMaxFileBytes:          DefaultEvalsMaxFileBytes,
+		EvalsMaxTextBytes:          DefaultEvalsMaxTextBytes,
+		EvalsMaxRunsPerUser:        DefaultEvalsMaxRunsPerUser,
+		EvalsMaxRuns:               DefaultEvalsMaxRuns,
+		EvalsMaxRunCostUSD:         DefaultEvalsMaxRunCostUSD,
+		EvalsMaxUserCostUSDPerDay:  DefaultEvalsMaxUserCostUSDPerDay,
+		EvalsDatasetRetentionDays:  DefaultEvalsDatasetRetentionDays,
+		EvalsHeartbeatInterval:     Duration(DefaultEvalsHeartbeatInterval),
+		EvalsHeartbeatStale:        Duration(DefaultEvalsHeartbeatStale),
 
 		ImageStore:      envOr(EnvImageStore, ImageStoreFS),
 		ImageS3Bucket:   os.Getenv(EnvImageS3Bucket),

@@ -216,7 +216,8 @@ type ServeOptions struct {
 	ImageDir string
 	// TrainingDatasetDirs are the training datasets directories, searched in order: one subdirectory with a dataset.toml manifest
 	// per dataset (the datasets uploaded in the admin UI are saved in the first). If empty, Config.DatasetsTrainingDirs; if that
-	// is empty too, a "datasets_training" directory next to DBPath.
+	// is empty too, a "datasets_training" directory next to DBPath. Not used when the config has training_datasets_s3_bucket: the
+	// datasets are then in that bucket.
 	TrainingDatasetDirs []string
 	// TrainingEvalDirs are the directories of the evals of trained models, searched in order: one JSON file per eval, a map
 	// {"name", "cases"} (the training evals the admin UI and the API run). If empty, Config.EvalsTrainingDirs; if that is empty
@@ -520,6 +521,12 @@ func serverOptions(cfg *Config,
 	}
 	if len(trainingDirs.Datasets) == 0 {
 		trainingDirs.Datasets = cfg.DatasetsTrainingDirs
+	}
+	trainingDirs.DatasetsS3 = userfiles.S3Config{
+		Bucket:   cfg.TrainingDatasetsS3Bucket,
+		Region:   cfg.TrainingDatasetsS3Region,
+		Prefix:   cfg.TrainingDatasetsS3Prefix,
+		Endpoint: cfg.TrainingDatasetsS3Endpoint,
 	}
 	if len(trainingDirs.Evals) == 0 {
 		trainingDirs.Evals = cfg.EvalsTrainingDirs

@@ -62,12 +62,9 @@ type S3 struct {
 
 var _ Store = (*S3)(nil)
 
-// NewS3 creates the store of the bucket of cfg, with an AWS client built from the default credential chain.
-func NewS3(ctx context.Context,
-	cfg S3Config) (*S3, error) {
-	if strings.TrimSpace(cfg.Bucket) == "" {
-		return nil, errors.New("userfiles: missing S3 bucket (set evals_s3_bucket)")
-	}
+// NewS3Client builds the AWS S3 client of cfg (region and custom endpoint) from the default credential chain.
+func NewS3Client(ctx context.Context,
+	cfg S3Config) (*s3.Client, error) {
 	opts := []func(*awsconfig.LoadOptions) error{}
 	if cfg.Region != "" {
 		opts = append(opts, awsconfig.WithRegion(cfg.Region))
@@ -76,12 +73,24 @@ func NewS3(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("userfiles: load AWS config: %w", err)
 	}
-	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+	return s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		if cfg.Endpoint != "" {
 			o.BaseEndpoint = aws.String(cfg.Endpoint)
 			o.UsePathStyle = true
 		}
-	})
+	}), nil
+}
+
+// NewS3 creates the store of the bucket of cfg, with an AWS client built from the default credential chain.
+func NewS3(ctx context.Context,
+	cfg S3Config) (*S3, error) {
+	if strings.TrimSpace(cfg.Bucket) == "" {
+		return nil, errors.New("userfiles: missing S3 bucket (set evals_s3_bucket)")
+	}
+	client, err := NewS3Client(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
 	return NewS3WithClient(client, cfg)
 }
 
@@ -162,7 +171,7 @@ func (s *S3) Get(ctx context.Context,
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		if isS3Missing(err) {
+		if IsS3Missing(err) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("userfiles: get %s: %w", key, err)
@@ -183,7 +192,7 @@ func (s *S3) Delete(ctx context.Context,
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	}); err != nil {
-		if isS3Missing(err) {
+		if IsS3Missing(err) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("userfiles: head %s: %w", key, err)
@@ -233,8 +242,8 @@ func (s *S3) List(ctx context.Context,
 	return out, nil
 }
 
-// isS3Missing says whether err is S3's "no such object".
-func isS3Missing(err error) bool {
+// IsS3Missing says whether err is S3's "no such object".
+func IsS3Missing(err error) bool {
 	var noKey *s3types.NoSuchKey
 	var notFound *s3types.NotFound
 	var apiErr smithy.APIError

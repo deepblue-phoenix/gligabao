@@ -542,3 +542,24 @@ model_weights_local_dir = "weights_here"
 		t.Fatalf("env: %v %+v", err, cfg)
 	}
 }
+
+func TestLoadTrainingDatasetsS3Settings(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil || cfg.TrainingDatasetsS3Bucket != "" || cfg.TrainingDatasetsS3Prefix != "training_datasets" {
+		t.Fatalf("defaults: %v %+v", err, cfg)
+	}
+	cfg, err = Load(write(t, `
+training_datasets_s3_bucket = "meta-dev"
+training_datasets_s3_region = "us-east-1"
+training_datasets_s3_prefix = "tds"
+training_datasets_s3_endpoint = "http://localhost:9000"
+`))
+	if err != nil || cfg.TrainingDatasetsS3Bucket != "meta-dev" || cfg.TrainingDatasetsS3Region != "us-east-1" ||
+		cfg.TrainingDatasetsS3Prefix != "tds" || cfg.TrainingDatasetsS3Endpoint != "http://localhost:9000" {
+		t.Fatalf("settings: %v %+v", err, cfg)
+	}
+	t.Setenv(EnvTrainingDatasetsS3Bucket, "from-env")
+	if cfg, err = Load(write(t, "")); err != nil || cfg.TrainingDatasetsS3Bucket != "from-env" {
+		t.Fatalf("env: %v %+v", err, cfg)
+	}
+}

@@ -91,7 +91,7 @@ func newServe(c *CLI,
 	f.StringArrayVar(&datasetDirs,
 		"training-dataset-dir",
 		nil,
-		"training datasets directory: one subdirectory with a dataset.toml manifest per dataset; repeatable, searched in order, uploads go to the first (default: config datasets_training_dirs, else a datasets_training directory next to --db)")
+		"training datasets directory: one subdirectory with a dataset.toml manifest per dataset; repeatable, searched in order, uploads go to the first (default: config datasets_training_dirs, else a datasets_training directory next to --db; not used when the config sets training_datasets_s3_bucket)")
 	f.StringArrayVar(&evalDirs,
 		"training-eval-dir",
 		nil,

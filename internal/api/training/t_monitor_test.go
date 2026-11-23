@@ -179,7 +179,7 @@ func testTrainingMonitor(t *testing.T,
 	addDataset(t,
 		dir,
 		"mine")
-	dsDir := []string{dir}
+	dsDir := core.DirStore{dir}
 	sc := newStreamSidecar()
 	mon := core.NewMonitor(ctx,
 		d,

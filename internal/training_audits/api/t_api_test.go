@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/training"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/api"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/audittest"
@@ -78,7 +79,7 @@ func testAuditEndpoints(t *testing.T,
 	m := training_audits.NewManager(ctx,
 		d,
 		ops,
-		[]string{audittest.DatasetDir(t, 5)},
+		training.DirStore{audittest.DatasetDir(t, 5)},
 		&audittest.Sidecar{
 			Wrong: map[string]bool{"q3": true},
 		},
@@ -200,7 +201,7 @@ func TestAuditEndpointsRefuseWithoutSidecar(t *testing.T) {
 	m := training_audits.NewManager(context.Background(),
 		d,
 		training_audits.SQLiteOps,
-		[]string{audittest.DatasetDir(t, 1)},
+		training.DirStore{audittest.DatasetDir(t, 1)},
 		nil,
 		nil)
 	code, body := call(t,
@@ -229,7 +230,7 @@ func TestAuditLiveFeedAndCancel(t *testing.T) {
 	m := training_audits.NewManager(context.Background(),
 		d,
 		training_audits.SQLiteOps,
-		[]string{audittest.DatasetDir(t, 4)},
+		training.DirStore{audittest.DatasetDir(t, 4)},
 		sc,
 		&audittest.Judge{})
 	base := server(t, m).URL + "/v1/gb/training"

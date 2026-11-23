@@ -29,7 +29,7 @@ const maxTrainingJobBody = 1 << 16
 // (trainingdb.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
 // rejects as invalid answers 400 with its message.
 func StartJobOf(db *sql.DB,
-	datasetDirs []string,
+	datasets core.DatasetStore,
 	sc core.JobStarter,
 	mon *core.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter,
@@ -61,7 +61,7 @@ func StartJobOf(db *sql.DB,
 		}
 		run, err := core.StartJob(r.Context(),
 			db,
-			datasetDirs,
+			datasets,
 			sc,
 			mon,
 			core.StartJobRequest{
