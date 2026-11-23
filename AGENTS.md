@@ -2,6 +2,8 @@
 
 **All new code must be written in the functional-programming style.** Use pure functions, immutable data, and explicit data transformations; avoid mutable shared state, hidden side effects, and imperative loops where a functional form fits. This is mandatory, not a preference.
 
+**Structure code as a little bit of an Erlang programmer too.** Think in small, isolated units that own their state and communicate only through explicit messages (plain data), never by reaching into each other's memory. Dispatch on tagged values with pattern matching on function heads (e.g. `{ok, Value}` / `{error, Reason}`, or the language's closest equivalent), keep each function's clauses total and explicit about the cases it handles. Let failures be visible: prefer to fail fast with a clear reason and recover at a supervising boundary, over defensive code that hides errors or silently continues with bad state. Keep processes/services small and restartable, with state passed in and returned rather than mutated in place.
+
 **Go structs are declared at the top of the file.** In every Go file, put the `type` declarations of structs before the functions, methods and other declarations, so a reader sees the data shapes first.
 
 **Struct literals are pretty printed.** When constructing a struct, write every key/value on its own line, never the whole struct on one line. One-line struct construction is hard to read.
