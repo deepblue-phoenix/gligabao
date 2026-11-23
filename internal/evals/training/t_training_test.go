@@ -206,11 +206,11 @@ func TestRunGivesUp(t *testing.T) {
 		questions(10),
 		func(context.Context,
 			string) (training.Generation, error) {
-			return training.Generation{}, errors.New("sidecar down")
+			return training.Generation{}, errors.New("ml_sidecar down")
 		},
 		&fakeJudge{},
 		c.sink)
-	if err == nil || !strings.Contains(err.Error(), "sidecar down") || c.calls != 2 {
+	if err == nil || !strings.Contains(err.Error(), "ml_sidecar down") || c.calls != 2 {
 		t.Errorf("model down: err=%v, batches %d",
 			err,
 			c.calls)
@@ -474,7 +474,7 @@ func TestExecutor(t *testing.T) {
 		Judge: &fakeJudge{},
 		Generate: func(context.Context,
 			string) (training.Generation, error) {
-			return training.Generation{}, errors.New("sidecar down")
+			return training.Generation{}, errors.New("ml_sidecar down")
 		},
 	}
 	run, err = r.RunEval(ctx,
@@ -485,7 +485,7 @@ func TestExecutor(t *testing.T) {
 				TrainedModelID: 4,
 			},
 		})
-	if err == nil || run.Status != core.StatusErrored || !strings.Contains(run.Error, "sidecar down") || run.Counts.Errored != 4 || run.Counts.Pending != 3 {
+	if err == nil || run.Status != core.StatusErrored || !strings.Contains(run.Error, "ml_sidecar down") || run.Counts.Errored != 4 || run.Counts.Pending != 3 {
 		t.Errorf("errored run: %+v %v",
 			run,
 			err)

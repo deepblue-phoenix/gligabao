@@ -13,47 +13,47 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
-type fakeSidecar struct {
-	reqs      []sidecar.StartTrainingJobRequest
+type fakeMLSidecar struct {
+	reqs      []ml_sidecar.StartTrainingJobRequest
 	err       error
 	cancelled []string
 	cancelErr error
-	infers    []sidecar.InferRequest
-	inferResp sidecar.InferResponse
+	infers    []ml_sidecar.InferRequest
+	inferResp ml_sidecar.InferResponse
 	inferErr  error
 }
 
-func (f *fakeSidecar) Infer(_ context.Context,
-	req sidecar.InferRequest) (sidecar.InferResponse, error) {
+func (f *fakeMLSidecar) Infer(_ context.Context,
+	req ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error) {
 	f.infers = append(f.infers, req)
 	return f.inferResp, f.inferErr
 }
 
-func (f *fakeSidecar) CancelTrainingJob(_ context.Context,
+func (f *fakeMLSidecar) CancelTrainingJob(_ context.Context,
 	jobID string) error {
 	f.cancelled = append(f.cancelled, jobID)
 	return f.cancelErr
 }
 
-func (f *fakeSidecar) StartTrainingJob(_ context.Context,
-	req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error) {
+func (f *fakeMLSidecar) StartTrainingJob(_ context.Context,
+	req ml_sidecar.StartTrainingJobRequest) (ml_sidecar.TrainingJob, error) {
 	f.reqs = append(f.reqs, req)
 	if f.err != nil {
-		return sidecar.TrainingJob{}, f.err
+		return ml_sidecar.TrainingJob{}, f.err
 	}
 	size, steps := req.ModelSize, req.NumTrainSteps
 	if size == "" {
-		size = sidecar.DefaultModelSize
+		size = ml_sidecar.DefaultModelSize
 	}
 	if steps == 0 {
-		steps = sidecar.DefaultNumTrainSteps
+		steps = ml_sidecar.DefaultNumTrainSteps
 	}
-	return sidecar.TrainingJob{
+	return ml_sidecar.TrainingJob{
 		JobID:         "fc-" + size,
 		ProviderJobID: "prov-" + size,
 		Status:        "started",
@@ -64,14 +64,14 @@ func (f *fakeSidecar) StartTrainingJob(_ context.Context,
 	}, nil
 }
 
-// TestStartTrainingJob checks the endpoint that starts a training job on the sidecar and records it.
+// TestStartTrainingJob checks the endpoint that starts a training job on the ML sidecar and records it.
 func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 
 func testStartTrainingJob(t *testing.T,
 	d *sql.DB) {
 	ctx := context.Background()
 	dsDir := core.DirStore{t.TempDir()}
-	sc := &fakeSidecar{}
+	sc := &fakeMLSidecar{}
 	h := training.StartJobOf(d,
 		dsDir,
 		sc,
@@ -105,7 +105,7 @@ func testStartTrainingJob(t *testing.T,
 			rec.Body)
 	}
 	if len(sc.reqs) != 1 || sc.reqs[0].NumTrainSteps != 7 || sc.reqs[0].ModelSize != "12b" || sc.reqs[0].Dataset != "mine.jsonl" {
-		t.Fatalf("sidecar request: %+v", sc.reqs)
+		t.Fatalf("ml_sidecar request: %+v", sc.reqs)
 	}
 	run, err := trainingdb.GetTrainingJobRun(ctx,
 		d,
@@ -124,7 +124,7 @@ func testStartTrainingJob(t *testing.T,
 		}
 	}
 
-	// Only the dataset is required; the rest takes the sidecar's defaults. Every started job is a new record.
+	// Only the dataset is required; the rest takes the ML sidecar's defaults. Every started job is a new record.
 	if rec := post(h,
 		"/x",
 		`{"dataset":"mine"}`); rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"id":2`) ||
@@ -134,7 +134,7 @@ func testStartTrainingJob(t *testing.T,
 			rec.Body)
 	}
 
-	// Bad input never reaches the sidecar.
+	// Bad input never reaches the ML sidecar.
 	n := len(sc.reqs)
 	for _, body := range []string{`{`, ``, `{}`, `{"model_size":"99b","dataset":"mine"}`, `{"num_train_steps":-1,"dataset":"mine"}`,
 		`{"dataset":"../x"}`, `{"dataset":"a/b"}`, `{"dataset":"mine.jsonl"}`, `{"dataset":"unknown"}`} {
@@ -147,15 +147,15 @@ func testStartTrainingJob(t *testing.T,
 		}
 	}
 	if len(sc.reqs) != n {
-		t.Fatalf("sidecar called for bad input: %+v", sc.reqs[n:])
+		t.Fatalf("ml_sidecar called for bad input: %+v", sc.reqs[n:])
 	}
 
-	// A sidecar failure records nothing; without a sidecar the endpoint is unavailable.
+	// An ML sidecar failure records nothing; without an ML sidecar the endpoint is unavailable.
 	sc.err = errors.New("boom")
 	if rec := post(h,
 		"/x",
 		`{"dataset":"mine"}`); rec.Code != http.StatusBadGateway {
-		t.Fatalf("sidecar error: %d", rec.Code)
+		t.Fatalf("ml_sidecar error: %d", rec.Code)
 	}
 	if _, err := trainingdb.GetTrainingJobRun(ctx,
 		d,
@@ -168,19 +168,19 @@ func testStartTrainingJob(t *testing.T,
 		nil),
 		"/x",
 		""); rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("no sidecar: %d", rec.Code)
+		t.Fatalf("no ML sidecar: %d", rec.Code)
 	}
 }
 
-// A request the sidecar rejects as invalid is the caller's error (400, with the sidecar's message), not a bad gateway.
-func TestStartTrainingJobSidecarRejects(t *testing.T) {
+// A request the ML sidecar rejects as invalid is the caller's error (400, with the ML sidecar's message), not a bad gateway.
+func TestStartTrainingJobMLSidecarRejects(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	dir := t.TempDir()
 	addDataset(t,
 		dir,
 		"mine")
-	sc := &fakeSidecar{
-		err: &sidecar.StatusError{
+	sc := &fakeMLSidecar{
+		err: &ml_sidecar.StatusError{
 			Method: "POST",
 			Path:   "/training/job_start",
 			Code:   400,
@@ -201,13 +201,13 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	}
 }
 
-// TestStopTrainingJob checks the endpoint that asks the sidecar to stop a job.
+// TestStopTrainingJob checks the endpoint that asks the ML sidecar to stop a job.
 func TestStopTrainingJob(t *testing.T) { dbtest.Run(t, testStopTrainingJob) }
 
 func testStopTrainingJob(t *testing.T,
 	d *sql.DB) {
 	ctx := context.Background()
-	sc := &fakeSidecar{}
+	sc := &fakeMLSidecar{}
 	for _, jobID := range []string{"j1", "j2"} {
 		if _, err := trainingdb.RecordTrainingJobRun(ctx,
 			d,
@@ -250,9 +250,9 @@ func testStopTrainingJob(t *testing.T,
 			rec.Body)
 	}
 	if len(sc.cancelled) != 1 || sc.cancelled[0] != "j1" {
-		t.Fatalf("sidecar asked to stop: %v", sc.cancelled)
+		t.Fatalf("ml_sidecar asked to stop: %v", sc.cancelled)
 	}
-	// A job that is over, an unknown one and a bad id never reach the sidecar.
+	// A job that is over, an unknown one and a bad id never reach the ML sidecar.
 	for id, want := range map[string]int{"2": http.StatusConflict, "99": http.StatusNotFound, "x": http.StatusBadRequest} {
 		if rec := stop(h, id); rec.Code != want {
 			t.Fatalf("id %s: %d, want %d",
@@ -262,23 +262,23 @@ func testStopTrainingJob(t *testing.T,
 		}
 	}
 	if len(sc.cancelled) != 1 {
-		t.Fatalf("sidecar called: %v", sc.cancelled)
+		t.Fatalf("ml_sidecar called: %v", sc.cancelled)
 	}
-	// The sidecar's own answers: over already (409), or a failure (502).
-	sc.cancelErr = &sidecar.StatusError{
+	// The ML sidecar's own answers: over already (409), or a failure (502).
+	sc.cancelErr = &ml_sidecar.StatusError{
 		Method: "POST",
 		Path:   "/training/job_cancel",
 		Code:   409,
 		Body:   `{"error":"already over"}`,
 	}
 	if rec := stop(h, "1"); rec.Code != http.StatusConflict {
-		t.Fatalf("sidecar 409: %d", rec.Code)
+		t.Fatalf("ml_sidecar 409: %d", rec.Code)
 	}
 	sc.cancelErr = errors.New("boom")
 	if rec := stop(h, "1"); rec.Code != http.StatusBadGateway {
-		t.Fatalf("sidecar error: %d", rec.Code)
+		t.Fatalf("ml_sidecar error: %d", rec.Code)
 	}
 	if rec := stop(training.StopJobOf(d, nil), "1"); rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("no sidecar: %d", rec.Code)
+		t.Fatalf("no ML sidecar: %d", rec.Code)
 	}
 }

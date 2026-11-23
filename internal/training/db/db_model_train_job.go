@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Trainings outside the sidecar (the gb_model_train_jobs table, see sqlite/sql/schema.sql)
+// Trainings outside the ML sidecar (the gb_model_train_jobs table, see sqlite/sql/schema.sql)
 
 // ClaimModelTrainJob makes the running row of j, the claim of the user's training: a running job of the user and model type whose
 // last beat is older than staleBefore is marked lost first, and ErrModelTrainJobRunning is returned if one that is alive remains.

@@ -80,7 +80,7 @@ func testAuditEndpoints(t *testing.T,
 		d,
 		ops,
 		training.DirStore{audittest.DatasetDir(t, 5)},
-		&audittest.Sidecar{
+		&audittest.MLSidecar{
 			Wrong: map[string]bool{"q3": true},
 		},
 		&audittest.Judge{})
@@ -192,7 +192,7 @@ func testAuditEndpoints(t *testing.T,
 	}
 }
 
-func TestAuditEndpointsRefuseWithoutSidecar(t *testing.T) {
+func TestAuditEndpointsRefuseWithoutMLSidecar(t *testing.T) {
 	d := audittest.OpenSQLite(t)
 	mid := audittest.RecordModel(t,
 		d,
@@ -210,7 +210,7 @@ func TestAuditEndpointsRefuseWithoutSidecar(t *testing.T) {
 			server(t, m).URL,
 			mid),
 		"")
-	if code != http.StatusServiceUnavailable || !strings.Contains(string(body), "sidecar") {
+	if code != http.StatusServiceUnavailable || !strings.Contains(string(body), "ML sidecar") {
 		t.Errorf("%d %s",
 			code,
 			body)
@@ -223,7 +223,7 @@ func TestAuditLiveFeedAndCancel(t *testing.T) {
 		d,
 		"jobfeed",
 		"mine.jsonl")
-	sc := &audittest.Sidecar{
+	sc := &audittest.MLSidecar{
 		Block:   make(chan struct{}),
 		Started: make(chan struct{}, 1),
 	}

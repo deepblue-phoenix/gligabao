@@ -122,7 +122,7 @@ Cold requests add the container start and the model load on top (see [Cold and w
 
 **What is not measured today:** the answer reports the total duration and the token counts but not the generation time
 alone, so tokens per second has to be computed by hand (duration minus `load_seconds` and overhead, over `output_tokens`).
-Recording the generation time in the sidecar's answer would make it a column.
+Recording the generation time in the ML sidecar's answer would make it a column.
 
 ## 6. Training, briefly
 

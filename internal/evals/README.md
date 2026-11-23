@@ -26,7 +26,7 @@ A case run's `Status` says whether it ran to the end and its `Verdict` (`pass` o
 
 ## Running
 
-`./run_evals.sh` runs either kind (it starts the sidecar for the training one if needed):
+`./run_evals.sh` runs either kind (it starts the ML sidecar for the training one if needed):
 
 ```
 ./run_evals.sh [-e eval] [-v] [case ...]              # knowledge: go run ./internal/evals/knowledge/cmd
@@ -34,7 +34,7 @@ A case run's `Status` says whether it ran to the end and its `Verdict` (`pass` o
 ```
 
 - **knowledge** needs `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (the embeddings: remember indexes what it stores and query searches it; the runner does not start without it). It runs each case in process, through the same `remember.Remember` and `query.Run` the HTTP handlers call (no HTTP in between), as the user of `-user` (required), in the eval database (`-db`, default `build/gligabao-eval.db`, never reset; every run of a case has an eval dataset of its own, `r<eval run id>-<case>`). Flags: `-user`, `-config` (default `build/gligabao.toml`, whose `evals_knowledge_dirs` lists the eval directories), `-evals` (repeatable; overrides the config), `-eval`, `-experiment`, `-experiment-desc`, `-models`, `-reasoning`, `-geo` (default on: the eval server has a geo resolver, Nominatim), `-atif`, `-db`, `-v`, `-list-evals`, and for interactive debugging `-commentary` / `-commentary-model` (when a case fails, offer an LLM diagnosis from the failure and the ATIF trajectories; off by default, needs a terminal; see [docs/evals/knowledge.md](../../docs/evals/knowledge.md#eval-commentary-debugging-a-failed-case)). The exit status is 1 if any case did not pass.
-- **training** asks a trained model (through the sidecar) the questions of an eval and has the LLM judge grade the answers in batches; the run is stored in the database that holds the trained models (`-db`, default `build/gligabao.db`). Flags: `-model`, `-list-models`, `-eval`, `-experiment` (the run is a run of that experiment; default: one named with the start time; `""` for none), `-experiment-desc`, `-config` (its `evals_training_dirs` lists the eval directories), `-evals` (repeatable; overrides the config), `-batch-size`, `-judge-model`, `-max-tokens`, `-temperature`, `-sidecar`, `-db`, `-v`, `-list-evals`. The exit status is 1 if any case is not correct or errored.
+- **training** asks a trained model (through the ML sidecar) the questions of an eval and has the LLM judge grade the answers in batches; the run is stored in the database that holds the trained models (`-db`, default `build/gligabao.db`). Flags: `-model`, `-list-models`, `-eval`, `-experiment` (the run is a run of that experiment; default: one named with the start time; `""` for none), `-experiment-desc`, `-config` (its `evals_training_dirs` lists the eval directories), `-evals` (repeatable; overrides the config), `-batch-size`, `-judge-model`, `-max-tokens`, `-temperature`, `-ml-sidecar`, `-db`, `-v`, `-list-evals`. The exit status is 1 if any case is not correct or errored.
 
 Tests (`go test ./internal/evals/...`) use fake LLMs, models and judges, and a temporary SQLite database; the PostgreSQL tests of `db/postgres` run when `POSTGRES_TEST_DSN` is set.
 

@@ -1,0 +1,169 @@
+"""The ML sidecar's REST API. This table is the contract with the Go server (internal/sys/ml_sidecar/); each route is answered by
+the configured backend (see backends/), so the Go side never learns what runs behind it."""
+import logging
+
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.background import BackgroundTask
+
+from backends import Backend, BackendError
+from backends.base import ModelFileError
+from backends.actions import ActionBusy, ActionNotRunning
+
+log = logging.getLogger("uvicorn.error")
+
+# There are deliberately no dataset routes: training datasets belong to the Go server (database and files), which hands a
+# dataset to the ML sidecar inside POST /training/job_start. The backend stores it internally.
+ROUTES = (
+    
+    #-----------------------
+    # TRAINING
+    ("POST", "/training/job_start"),
+    ("GET", "/training/job_progress"),
+    ("GET", "/training/job_events"),       # SSE
+    ("POST", "/training/job_cancel"),
+
+    #-----------------------
+    # RESEARCH
+
+    ("POST", "/research/job_start"),       # the research agent (the gligabao_agent binary) in Modal
+    ("GET", "/research/job_events"),       # SSE
+    ("POST", "/research/job_cancel"),
+    ("GET", "/research/job_export"),       # what the agent handed back (a ZIP archive)
+    
+    #-----------------------
+    # INFERENCE
+
+    ("POST", "/infer/query"),
+    
+    #-----------------------
+    # EVALS
+    ("POST", "/evals/add_to_dataset"),
+    ("GET", "/evals/get_dataset_count"),
+
+    #-----------------------
+)
+
+
+def add_backend_routes(app: FastAPI, backend: Backend) -> None:
+    def make_handler(method: str, path: str):
+        async def handler(request: Request) -> Response:
+            try:
+                resp = await backend.forward(method, path, request.url.query, await request.body(),
+                                             request.headers.get("content-type"))
+            except BackendError as e:
+                log.error("%s %s: backend error, answering 502: %s", method, path, e)
+                return JSONResponse({"error": str(e)}, status_code=502)
+            return StreamingResponse(resp.body, status_code=resp.status, media_type=resp.content_type,
+                                     background=BackgroundTask(resp.close))
+        return handler
+
+    #-----------------------
+    # ADD_ROUTES
+    for method, path in ROUTES:
+        app.add_api_route(path, make_handler(method, path), methods=[method], include_in_schema=False)
+
+    #-----------------------
+
+def add_action_routes(app: FastAPI, backend: Backend) -> None:
+    """Routes answered by the ML sidecar itself (not forwarded): the backend's long-running actions (backends/actions.py).
+
+    POST /backends/{name}/actions/{action}          start it: 202 + state, 409 if it is running
+    POST /backends/{name}/actions/{action}/cancel   stop a running one (SIGINT, kill after 10 s): 202, 409 if not running
+    GET  /backends/{name}/actions/{action}          state and the kept log (`?from=<i>`: lines from index i)
+    GET  /backends/{name}/actions/{action}/events   SSE: `log` and `state` events, ends when the run is over
+    GET  /backends/{name}/volumes                   the backend's storage volumes: {"volumes": [...]}; 404 if it has none
+    GET  /backends/{name}/apps                      the active apps of this system: {"apps": [...]}; 404 if it has none
+    .../backends/{name}/apps/{app}/actions/...      the same action routes, for one app of the backend (the plain
+                                                    ones above are those of the backend's own, configured app)
+    """
+    def find(request: Request):
+        p = request.path_params
+        if p["name"] != backend.name:
+            return None, JSONResponse({"error": f"no backend {p['name']!r}"}, status_code=404)
+        actions = backend.app_actions(p["app"]) if "app" in p else backend.actions()
+        runner = actions.get(p["action"])
+        if runner is None:
+            where = f"app {p['app']!r} of backend" if "app" in p else "backend"
+            return None, JSONResponse({"error": f"no action {p['action']!r} on {where} {p['name']!r}"}, status_code=404)
+        return runner, None
+
+    async def start(request: Request) -> Response:
+        runner, err = find(request)
+        if err:
+            return err
+        try:
+            return JSONResponse(await runner.start(), status_code=202)
+        except ActionBusy as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+
+    async def cancel(request: Request) -> Response:
+        runner, err = find(request)
+        if err:
+            return err
+        try:
+            return JSONResponse(await runner.cancel(), status_code=202)
+        except ActionNotRunning as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+
+    async def get(request: Request, from_: int = Query(0, alias="from", ge=0)) -> Response:
+        runner, err = find(request)
+        return err or JSONResponse(runner.snapshot(from_))
+
+    async def events(request: Request, from_: int = Query(0, alias="from", ge=0)) -> Response:
+        runner, err = find(request)
+        if err:
+            return err
+        return StreamingResponse(runner.follow(from_), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    for base in ("/backends/{name}", "/backends/{name}/apps/{app}"):
+
+        #-----------------------
+        # ADD_ROUTES
+        app.add_api_route(base + "/actions/{action}", start, methods=["POST"], include_in_schema=False)
+        app.add_api_route(base + "/actions/{action}/cancel", cancel, methods=["POST"], include_in_schema=False)
+        app.add_api_route(base + "/actions/{action}", get, methods=["GET"], include_in_schema=False)
+        app.add_api_route(base + "/actions/{action}/events", events, methods=["GET"], include_in_schema=False)
+
+        #-----------------------
+    
+    #-----------------------
+    # LISTENER_ROUTES
+
+    def lister(what: str, call):
+        async def handler(name: str) -> Response:
+            if name != backend.name:
+                return JSONResponse({"error": f"no backend {name!r}"}, status_code=404)
+            try:
+                items = await call()
+            except BackendError as e:
+                return JSONResponse({"error": str(e)}, status_code=502)
+            if items is None:
+                return JSONResponse({"error": f"backend {name!r} has no {what}"}, status_code=404)
+            return JSONResponse({what: items})
+        return handler
+
+    app.add_api_route("/backends/{name}/volumes", lister("volumes", backend.volumes), methods=["GET"], include_in_schema=False)
+    app.add_api_route("/backends/{name}/apps", lister("apps", backend.apps), methods=["GET"], include_in_schema=False)
+
+    #-----------------------
+    
+def add_model_file_route(app: FastAPI, backend: Backend) -> None:
+    """GET /models/file?model_path=trained/<job id>&file=<path in it>: the raw bytes of one file of a trained model, answered
+    by the ML sidecar itself (not forwarded). The Go server fetches a model's weights with it (the model's `files` list says
+    which). 400 for an invalid path, 404 for a file that is not there (or a backend without such storage), 502 if the
+    backend cannot read it."""
+    async def handler(model_path: str = Query(""), file: str = Query("")) -> Response:
+        try:
+            body = await backend.model_file(model_path, file)
+        except ModelFileError as e:
+            return JSONResponse({"error": str(e)}, status_code=e.status)
+        except BackendError as e:
+            log.error("GET /models/file %s %s: backend error, answering 502: %s", model_path, file, e)
+            return JSONResponse({"error": str(e)}, status_code=502)
+        if body is None:
+            return JSONResponse({"error": f"backend {backend.name!r} has no model files"}, status_code=404)
+        return StreamingResponse(body, media_type="application/octet-stream")
+
+    app.add_api_route("/models/file", handler, methods=["GET"], include_in_schema=False)

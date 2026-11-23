@@ -1,5 +1,5 @@
-// Long-running actions of a training backend (e.g. deploying the Modal app) with a live log: the sidecar runs them and
-// streams their output as SSE (api/sidecar/backends/<backend>/actions/<action>/events, passed on by the server). The
+// Long-running actions of a training backend (e.g. deploying the Modal app) with a live log: the ML sidecar runs them and
+// streams their output as SSE (api/ml_sidecar/backends/<backend>/actions/<action>/events, passed on by the server). The
 // dialog #action-modal shows the stages, the state and the log as it grows; closing it leaves the action running.
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
@@ -38,7 +38,7 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
 
 // The route of an action of the backend's own app, or (app given) of one of its apps.
 const actionURL = (backend: string, action: string, app?: string): string =>
-  `api/sidecar/backends/${encodeURIComponent(backend)}${app ? `/apps/${encodeURIComponent(app)}` : ""}/actions/${encodeURIComponent(action)}`;
+  `api/ml_sidecar/backends/${encodeURIComponent(backend)}${app ? `/apps/${encodeURIComponent(app)}` : ""}/actions/${encodeURIComponent(action)}`;
 
 // What the open dialog follows.
 let target: { backend: string; action: string; app?: string } | undefined;
@@ -164,7 +164,7 @@ export function initActionModal(): void {
   const modal = el<HTMLDialogElement>("action-modal");
   modal.addEventListener("close", stop);
   el("action-close").addEventListener("click", () => modal.close());
-  // Cancel stops the command (the sidecar interrupts it, then kills it); the stream then reports the run as cancelled.
+  // Cancel stops the command (the ML sidecar interrupts it, then kills it); the stream then reports the run as cancelled.
   el("action-cancel").addEventListener("click", async () => {
     if (!target || !(await confirmDialog("Cancel the running action? Work already done on Modal is not rolled back.", { title: "Cancel run", okLabel: "Cancel run", danger: true }))) return;
     if (!target) return;

@@ -19,14 +19,14 @@ import (
 const maxTrainingJobBody = 1 << 16
 
 // The dataset a job names is one of the training datasets directory (internal/training/manifest.go; also what UploadDatasetOf adds to it), by its
-// name; its data file is sent to the sidecar in the request that starts the job (the sidecar has no dataset
+// name; its data file is sent to the ML sidecar in the request that starts the job (the ML sidecar has no dataset
 // endpoints). A job needs a dataset: no name, or a name not in the directory, answers 400.
 //
 // StartJobOf serves POST /v1/gb/training/jobs with a JSON body
-// {"dataset": "my-dataset", "num_train_steps": 100, "model_size": "4b"} (only dataset is required): it starts a training job on the sidecar through sc
-// (the sidecar's REST API) and stores the TrainingJob the sidecar reports in the gb_training_job_runs table
+// {"dataset": "my-dataset", "num_train_steps": 100, "model_size": "4b"} (only dataset is required): it starts a training job on the ML sidecar through sc
+// (the ML sidecar's REST API) and stores the TrainingJob the ML sidecar reports in the gb_training_job_runs table
 // (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
-// (trainingdb.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
+// (trainingdb.TrainingJobRun). A nil sc (no ML sidecar) answers 503, an ML sidecar error 502, except that a request the ML sidecar
 // rejects as invalid answers 400 with its message.
 func StartJobOf(db *sql.DB,
 	datasets core.DatasetStore,
@@ -41,7 +41,7 @@ func StartJobOf(db *sql.DB,
 		if sc == nil {
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
-				"sidecar is not active")
+				"ML sidecar is not active")
 			return
 		}
 		// Only these fields come from the client; the dataset's content is added from the dataset's file.
@@ -80,10 +80,10 @@ func StartJobOf(db *sql.DB,
 	}
 }
 
-// StopJobOf serves POST /v1/gb/training/jobs/{id}/stop: it asks the sidecar to stop the job run {id}. The
+// StopJobOf serves POST /v1/gb/training/jobs/{id}/stop: it asks the ML sidecar to stop the job run {id}. The
 // job ends at its next step (or at the next stage of its setup) with a "cancelled" event, which the monitor records like
 // any other: the answer is 202 with {"id": <run>, "status": "stopping"}, and the job's row changes when the event arrives.
-// 404 is for an unknown run, 409 for one that is over already, 503 for a nil sc, 502 for a sidecar error.
+// 404 is for an unknown run, 409 for one that is over already, 503 for a nil sc, 502 for an ML sidecar error.
 func StopJobOf(db *sql.DB,
 	sc core.JobCanceller) http.HandlerFunc {
 	return func(w http.ResponseWriter,
@@ -99,7 +99,7 @@ func StopJobOf(db *sql.DB,
 		if sc == nil {
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
-				"sidecar is not active")
+				"ML sidecar is not active")
 			return
 		}
 		run, err := core.StopJob(r.Context(),
@@ -157,7 +157,7 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 }
 
 // EventsOf serves GET /v1/gb/training/events[?run_id=<id>] as Server-Sent Events, the feed of the
-// events the sidecar reports for training jobs (forwarded by mon): `event: status`, `event: progress` or `event: log` (what
+// events the ML sidecar reports for training jobs (forwarded by mon): `event: status`, `event: progress` or `event: log` (what
 // the job is doing: loading the model, ...), `data:` a FeedEvent as JSON.
 //
 // With run_id the stream is of that run: first the events already stored (from the one after Last-Event-ID, which a

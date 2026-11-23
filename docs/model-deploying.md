@@ -2,9 +2,9 @@
 
 Deploying a trained model means handing its weights to code of yours. gligabao does the part that is the same for everybody, getting the weights from where they were trained onto the local disk and checking them, and calls a **hook** with the result: a *deployer*, a Go callback registered by the program that embeds gligabao. What the deployer does with the files (upload them to a service, copy them to a bucket, convert them to another format, ...) is its own business; gligabao has no built-in destination.
 
-This page describes how deploying works inside and the hook's contract. The hook's entry in the list of all hooks is [hooks.md](hooks.md#trained-model-deployers); the trained models themselves (the `gb_trained_models` table, where the weights live) are in [training/sidecar.md](training/sidecar.md#trained-models).
+This page describes how deploying works inside and the hook's contract. The hook's entry in the list of all hooks is [hooks.md](hooks.md#trained-model-deployers); the trained models themselves (the `gb_trained_models` table, where the weights live) are in [training/ml_sidecar.md](training/ml_sidecar.md#trained-models).
 
-Deploying is part of the training API: it is there only when the server runs in training mode (`--training`) and, to fetch the weights, with an active sidecar.
+Deploying is part of the training API: it is there only when the server runs in training mode (`--training`) and, to fetch the weights, with an active ML sidecar.
 
 ## The flow
 
@@ -13,7 +13,7 @@ POST /v1/gb/training/models/{id}/deployments   {"deployer": "<name>", "options":
   1. look up the trained model {id}                          404 if unknown
   2. find the deployer by name, check the options            400 if none is registered, the name is unknown or the options are bad
   3. record the deployment in gb_trained_model_deployments           status "running"
-  4. fetch the model's files from the sidecar into Dir       each file verified (size, sha256)
+  4. fetch the model's files from the ML sidecar into Dir       each file verified (size, sha256)
   5. call Deploy(ctx, DeployTrainedModelRequest)             your code; the request waits for it; it reports progress with req.Update
   6. update the record                                       status "completed" (ref, details) or "failed" (error)
   7. emit the system event training.model_deploy.completed / .failed
@@ -79,7 +79,7 @@ req.Update("waiting for the import job to finish")
 
 - A message is a short plain-text line (steps, not bytes). Blank messages are ignored, messages longer than **500** characters are cut, and only the newest **200** are kept.
 - Messages are for display and are **not stored**: they are kept in memory while the deployment runs and shown by the admin UI (they are in `updates` of `GET .../deployments` for a running deployment, with their times), and the answer of the `POST` that ran the deployment has them too. Once it is over they are gone (a restart loses them as well). What must survive belongs in the result's `Details`.
-- gligabao adds its own messages around the deployer's: `Fetching the model's N files from the sidecar`, `Files ready, running the <name> deployer` and, at the end, `Completed` or `Failed: <error>`.
+- gligabao adds its own messages around the deployer's: `Fetching the model's N files from the ml_sidecar`, `Files ready, running the <name> deployer` and, at the end, `Completed` or `Failed: <error>`.
 - Safe for concurrent use. Calls after `Deploy` has returned are ignored.
 
 ### What `Deploy` returns
@@ -94,7 +94,7 @@ req.Update("waiting for the import job to finish")
 - **Concurrent.** Deploy requests are handled concurrently, also several for the same model, so `Deploy` must be safe for concurrent use. The files of one model are fetched once even then (see below).
 - **Honour `ctx`.** It is the request's context: it is cancelled if the client goes away. The fetch has its own limit of 30 minutes; `Deploy` has none besides `ctx`.
 - **No retries.** gligabao runs `Deploy` once per request. A failed deployment stays failed; ask for a new one to try again (the files are already on the disk by then).
-- **No sidecar.** The deployer never talks to the sidecar; it finds the weights on the local disk.
+- **No ml_sidecar.** The deployer never talks to the ML sidecar; it finds the weights on the local disk.
 
 ### Validation at startup
 
@@ -109,11 +109,11 @@ Deployers are sorted by name; each one registered is logged at startup. With no 
 
 ## Fetching the weights
 
-The weights of a trained model live on the sidecar's storage (Modal: the models volume), not on the server. Before it calls the deployer, gligabao copies them to the server's disk. This is the part of deploying that is the same for every deployer.
+The weights of a trained model live on the ML sidecar's storage (Modal: the models volume), not on the server. Before it calls the deployer, gligabao copies them to the server's disk. This is the part of deploying that is the same for every deployer.
 
 - **Where.** `<trained model deploy dir>/<job id>`, an absolute path (`Dir`). The deployment directory is `trained_model_deploy_dir` in the config file, overridden by `serve --trained-model-deploy-dir` (or `ServeOptions.TrainedModelDeployDir`); the default is a `trained_models` directory next to the database file (`build/trained_models`). There is one subdirectory per training job, so models never mix. A job ID that is not usable as a directory name is refused (`400`).
 - **What.** Every file in the model's `files` (the list recorded when the job completed), at its recorded relative path; nested paths are allowed. A path that is absolute, contains `..` or uses a backslash is refused.
-- **How.** One `GET /models/file?model_path=trained/<job id>&file=<path>` request per file to the sidecar, which streams the raw bytes out of the volume (see [training/sidecar.md](training/sidecar.md#fetching-the-files-of-a-model)); the file is never held in memory.
+- **How.** One `GET /models/file?model_path=trained/<job id>&file=<path>` request per file to the ML sidecar, which streams the raw bytes out of the volume (see [training/ml_sidecar.md](training/ml_sidecar.md#fetching-the-files-of-a-model)); the file is never held in memory.
 - **Verified.** Each file must have exactly the recorded size and the recorded sha256 (a model with no sha256 recorded for a file is checked by size only). A mismatch fails the deployment; nothing is deployed from unverified bytes.
 - **Atomic.** A file is downloaded under a temporary name (`.fetch-*`, in its own directory) and renamed to its real name only when it is complete and verified, so the real names never hold half a file, even if the server dies halfway.
 - **Reused.** A file that is already in `Dir` with the right size and sha256 is kept and not downloaded again; only missing or damaged files are fetched. Deploying the same model a second time therefore costs only the verification.
@@ -163,7 +163,7 @@ $ curl -X POST localhost:7878/v1/gb/training/models/3/deployments -H "gb-user-id
 | `404` | unknown model |
 | `500` | the deployment could not be recorded or read back |
 | `502` | fetching the files failed, or the deployer returned an error or panicked; the failed deployment is stored (`error`) and has an ID, listed by the `GET` endpoint |
-| `503` | there is no active sidecar |
+| `503` | there is no active ML sidecar |
 
 ## Admin UI
 
@@ -180,10 +180,10 @@ Each deployment that reaches the fetch emits a system event to the [`SystemEvent
 
 ## In the code
 
-`internal/training/deploy.go` (the whole flow), `internal/training/db/` (`RecordTrainedModelDeployment`, `FinishTrainedModelDeployment`, `GetTrainedModelDeployment`, `ListTrainedModelDeployments`; the table for SQLite and PostgreSQL), `internal/api/training/models.go` (`DeployOf`, `ListDeploymentsOf`), `internal/sys/sidecar/` (`Client.DownloadModelFile`), `gligabao.go` (the public types and `ServeOptions`).
+`internal/training/deploy.go` (the whole flow), `internal/training/db/` (`RecordTrainedModelDeployment`, `FinishTrainedModelDeployment`, `GetTrainedModelDeployment`, `ListTrainedModelDeployments`; the table for SQLite and PostgreSQL), `internal/api/training/models.go` (`DeployOf`, `ListDeploymentsOf`), `internal/sys/ml_sidecar/` (`Client.DownloadModelFile`), `gligabao.go` (the public types and `ServeOptions`).
 
 - `training.DeployModel(ctx, db, fetcher, deployers, dir, model, DeployRequest{Deployer, Options})` runs steps 2 to 7 and returns the stored deployment. Its errors are `*training.Error` with a kind that the handler maps to a status (invalid: 400, upstream: 502, internal: 500).
-- `training.FetchModelFiles(ctx, fetcher, model, dir)` is the fetch alone; `fetcher` is a `training.ModelFileFetcher`, one method, `DownloadModelFile(ctx, modelPath, file, w)`, which `*sidecar.Client` implements. `training.ModelDir(root, model)` gives the directory of a model.
+- `training.FetchModelFiles(ctx, fetcher, model, dir)` is the fetch alone; `fetcher` is a `training.ModelFileFetcher`, one method, `DownloadModelFile(ctx, modelPath, file, w)`, which `*ml_sidecar.Client` implements. `training.ModelDir(root, model)` gives the directory of a model.
 - `training.ResolveDeployers(list)` is the startup validation.
 
 ## Limits and not included

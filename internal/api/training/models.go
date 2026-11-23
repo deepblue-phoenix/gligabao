@@ -94,10 +94,10 @@ func GetModelOf(db *sql.DB) http.HandlerFunc {
 // "temperature": 0.7} (only the prompt is required): it runs the prompt through trained model {id} and answers 200 with {"id",
 // "model_id", "response", "status", "duration_ms", "hook"} (id: the stored request, see ListInferencesOf; failed ones are stored
 // too). Where it runs is decided by router: on the inference hook that targets the model's name if there is one (ServeOptions.
-// TrainedModelInferenceHooks; the sidecar is bypassed and "hook" is its name), else on the weights of the model on the sidecar ("hook"
-// is ""). It can take minutes when the sidecar has to load the model. 404 is for an unknown model, 400 for a bad body, 503 when
-// the model has no hook and there is no sidecar, 502 when the hook or the sidecar fails (with its message when the generation
-// itself failed, e.g. the weights are gone from the sidecar's volume).
+// TrainedModelInferenceHooks; the ML sidecar is bypassed and "hook" is its name), else on the weights of the model on the ML sidecar ("hook"
+// is ""). It can take minutes when the ML sidecar has to load the model. 404 is for an unknown model, 400 for a bad body, 503 when
+// the model has no hook and there is no ML sidecar, 502 when the hook or the ML sidecar fails (with its message when the generation
+// itself failed, e.g. the weights are gone from the ML sidecar's volume).
 func InferOf(db *sql.DB,
 	router *core.InferRouter) http.HandlerFunc {
 	return func(w http.ResponseWriter,
@@ -132,7 +132,7 @@ func InferOf(db *sql.DB,
 			writeErr(w, err)
 			return
 		}
-		m, err := core.GetSidecarModel(r.Context(),
+		m, err := core.GetMLSidecarModel(r.Context(),
 			db,
 			userID,
 			id)
@@ -144,7 +144,7 @@ func InferOf(db *sql.DB,
 		if inf == nil {
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
-				"sidecar is not active")
+				"ML sidecar is not active")
 			return
 		}
 		out, err := core.Infer(r.Context(),
@@ -211,11 +211,11 @@ func ListInferencesOf(db *sql.DB) http.HandlerFunc {
 
 // DeployOf serves POST /v1/gb/training/models/{id}/deployments with a JSON body {"deployer": "...", "options": {...}} (only the
 // deployer is required; options is a free-form object that is handed to the deployer). It fetches the weights of trained model {id}
-// from the sidecar into a directory on the server's disk, calls the named deployer (a hook of the embedding program, see
+// from the ML sidecar into a directory on the server's disk, calls the named deployer (a hook of the embedding program, see
 // ServeOptions.TrainedModelDeployers) with it, waits for it and answers 200 with the stored deployment (trainingdb.TrainedModelDeployment:
 // status "completed", ref, details, dir, ...). The request takes as long as fetching and the deployer take, minutes for a large
 // model. 404 is for an unknown model, 400 for a bad body, an unknown deployer or none registered, 503 for a nil fetcher (no
-// sidecar), 502 when fetching the files or the deployer fails (the failed deployment is stored: see ListDeploymentsOf).
+// ml_sidecar), 502 when fetching the files or the deployer fails (the failed deployment is stored: see ListDeploymentsOf).
 func DeployOf(db *sql.DB,
 	f core.ModelFileFetcher,
 	deployers []core.TrainedModelDeployer,
@@ -242,7 +242,7 @@ func DeployOf(db *sql.DB,
 				"invalid JSON body")
 			return
 		}
-		m, err := core.GetSidecarModel(r.Context(),
+		m, err := core.GetMLSidecarModel(r.Context(),
 			db,
 			userID,
 			id)
@@ -253,7 +253,7 @@ func DeployOf(db *sql.DB,
 		if f == nil {
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
-				"sidecar is not active")
+				"ML sidecar is not active")
 			return
 		}
 		out, err := core.DeployModel(r.Context(),

@@ -43,7 +43,7 @@ Retrieval-augmented generation (RAG) with citations, or data-partitioned models 
 
 ## 3. How this applies to gligabao
 
-What the training does today (`sidecar/ai_train/ai_train_core/`):
+What the training does today (`ml_sidecar/ai_train/ai_train_core/`):
 
 - The base model is frozen and in 4 bits; only a **LoRA adapter** (rank 16 on `q_proj`, `k_proj`, `v_proj`, `o_proj`) is trained and saved (`save_adapters`). The adapter is small, which makes per-example gradients affordable: they are taken on the adapter parameters only, not on the whole model.
 - Training runs for `max_steps` steps (`SFTConfig`, seed 42, learning rate 2e-4, `warmup_steps=10`, linear schedule). **Only the final adapter is saved**: `output_dir` is `/tmp/outputs` and no intermediate checkpoint is kept. That matters for TracIn (see 3.2).

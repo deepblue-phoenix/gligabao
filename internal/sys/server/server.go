@@ -48,7 +48,7 @@ import (
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 	coretraining "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
@@ -105,9 +105,13 @@ type Options struct {
 	// JevKey, JevBaseURL and JevModel configure Jev, the system 1 model. Without a key remember skips
 	// every step that needs it.
 	JevKey, JevBaseURL, JevModel string
-	// SidecarURL is the base URL of the Python sidecar's REST API, which the training endpoint that starts jobs
-	// (POST /v1/gb/training/jobs) calls. Default: sidecar.DefaultBaseURL.
-	SidecarURL string
+	// MLSidecarURL is the base URL of the Python ML sidecar's REST API, which the training endpoint that starts jobs
+	// (POST /v1/gb/training/jobs) calls. Default: ml_sidecar.DefaultBaseURL.
+	MLSidecarURL string
+	// MLSidecarAutoStart makes the server start the ML sidecar as a child process in training mode (TrainingModeEnable) when nothing
+	// answers at MLSidecarURL and that URL is local. MLSidecarDir is the ml_sidecar directory (empty: searched, see ml_sidecar.SearchDirs).
+	MLSidecarAutoStart bool
+	MLSidecarDir       string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]llm.Price
 	// TrajectoryDir is where the ATIF trajectories of the eval calls are stored as JSON.
@@ -185,9 +189,9 @@ type Options struct {
 	// TrainedModelDeployers are the hooks that deploy trained models (POST /v1/gb/training/models/{id}/deployments): each is given
 	// the model's files in a local directory and does with them what it wants. Validated at startup.
 	TrainedModelDeployers []coretraining.TrainedModelDeployer
-	// TrainedModelInferenceHooks run the prompts of the trained models they target (by name) instead of the sidecar: a model prompted
-	// in the admin UI or through POST /v1/gb/training/models/{id}/infer that has a hook is run by it, the others on the sidecar. The
-	// training evals and audits always run on the sidecar, hooks or not. Validated at startup.
+	// TrainedModelInferenceHooks run the prompts of the trained models they target (by name) instead of the ML sidecar: a model prompted
+	// in the admin UI or through POST /v1/gb/training/models/{id}/infer that has a hook is run by it, the others on the ML sidecar. The
+	// training evals and audits always run on the ML sidecar, hooks or not. Validated at startup.
 	TrainedModelInferenceHooks []coretraining.TrainedModelInferenceHook
 	// AdminExtensions add views and UI to the admin UI (see docs/admin-extensions.md); only used with AdminUIenable. Validated at startup.
 	AdminExtensions []admin.Extension
@@ -200,43 +204,43 @@ type Options struct {
 
 //---------------------------------------------------------------------------------------------
 
-// SidecarActive is the flag set on startup (see Run): true if the sidecar answered its health check. Code that needs the
-// sidecar and does not get it injected can check it instead of calling the sidecar and handling the error.
-var SidecarActive atomic.Bool
+// MLSidecarActive is the flag set on startup (see Run): true if the ML sidecar answered its health check. Code that needs the
+// ml_sidecar and does not get it injected can check it instead of calling the ML sidecar and handling the error.
+var MLSidecarActive atomic.Bool
 
-// sidecarClient is the client of the configured sidecar, kept even if the startup check failed, so that the admin UI can
-// show live whether the sidecar is up (see sidecarPing).
-var sidecarClient atomic.Pointer[sidecar.Client]
+// mlSidecarClient is the client of the configured ml_sidecar, kept even if the startup check failed, so that the admin UI can
+// show live whether the ML sidecar is up (see mlSidecarPing).
+var mlSidecarClient atomic.Pointer[ml_sidecar.Client]
 
-// sidecarPing is a live health check of the sidecar, for the admin UI's health indicator.
-func sidecarPing(ctx context.Context) error {
-	c := sidecarClient.Load()
+// mlSidecarPing is a live health check of the ML sidecar, for the admin UI's health indicator.
+func mlSidecarPing(ctx context.Context) error {
+	c := mlSidecarClient.Load()
 	if c == nil {
-		return errors.New("sidecar not configured")
+		return errors.New("ML sidecar not configured")
 	}
 	_, err := c.Health(ctx)
 	return err
 }
 
-// sidecarBackends asks the sidecar for its training backends and their status, for the admin UI.
-func sidecarBackends(ctx context.Context) ([]sidecar.BackendStatus, error) {
-	c := sidecarClient.Load()
+// mlSidecarBackends asks the ML sidecar for its training backends and their status, for the admin UI.
+func mlSidecarBackends(ctx context.Context) ([]ml_sidecar.BackendStatus, error) {
+	c := mlSidecarClient.Load()
 	if c == nil {
-		return nil, errors.New("sidecar not configured")
+		return nil, errors.New("ML sidecar not configured")
 	}
 	return c.Backends(ctx)
 }
 
-// sidecarOpen sends a request to the sidecar and returns its raw answer (nil function if there is no client: the proxy
+// mlSidecarOpen sends a request to the ML sidecar and returns its raw answer (nil function if there is no client: the proxy
 // then answers 503), for the backends' actions in the admin UI.
-func sidecarOpen(ctx context.Context,
+func mlSidecarOpen(ctx context.Context,
 	method,
 	path,
 	rawQuery string,
 	body io.Reader) (*http.Response, error) {
-	c := sidecarClient.Load()
+	c := mlSidecarClient.Load()
 	if c == nil {
-		return nil, errors.New("sidecar not configured")
+		return nil, errors.New("ML sidecar not configured")
 	}
 	return c.Open(ctx,
 		method,
@@ -245,22 +249,22 @@ func sidecarOpen(ctx context.Context,
 		body)
 }
 
-// sidecarPingTimeout bounds the sidecar health check on startup.
-const sidecarPingTimeout = 5 * time.Second
+// mlSidecarPingTimeout bounds the ML sidecar health check on startup.
+const mlSidecarPingTimeout = 5 * time.Second
 
-// connectSidecar pings the sidecar at url (default if empty). It returns the client and true if the sidecar is operating
+// connectMLSidecar pings the ML sidecar at url (default if empty). It returns the client and true if the ML sidecar is operating
 // correctly; otherwise it logs a warning and returns a nil client (a true nil interface, so callers can check == nil) and false.
-func connectSidecar(ctx context.Context,
-	url string) (coretraining.Sidecar, bool) {
-	c := sidecar.New(url)
-	sidecarClient.Store(c)
-	pingCtx, cancel := context.WithTimeout(ctx, sidecarPingTimeout)
+func connectMLSidecar(ctx context.Context,
+	url string) (coretraining.MLSidecar, bool) {
+	c := ml_sidecar.New(url)
+	mlSidecarClient.Store(c)
+	pingCtx, cancel := context.WithTimeout(ctx, mlSidecarPingTimeout)
 	defer cancel()
 	if _, err := c.Health(pingCtx); err != nil {
-		log.WithError(err).WithField("url", url).Warn("sidecar is not active; training endpoints will return 503")
+		log.WithError(err).WithField("url", url).Warn("ML sidecar is not active; training endpoints will return 503")
 		return nil, false
 	}
-	log.WithField("url", url).Info("sidecar is active")
+	log.WithField("url", url).Info("ML sidecar is active")
 	return c, true
 }
 
@@ -317,7 +321,7 @@ type EvalEnv struct {
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
 // geoResolver turns geo on (remember and query find the places of a text, see package memory_geo); nil: geo is off.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model deployers (with none a deployment request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The training endpoints (/v1/gb/training/) are registered only if trainingMode is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model deployers (with none a deployment request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the ML sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The training endpoints (/v1/gb/training/) are registered only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context,
@@ -331,7 +335,7 @@ func NewHandler(ctx context.Context,
 	hooks coretraining.Hooks,
 	dirs coretraining.Dirs,
 	ontologyDirs []string,
-	sc coretraining.Sidecar,
+	sc coretraining.MLSidecar,
 	trainingMode,
 	adminUI bool,
 	adminExts []admin.Extension,
@@ -417,7 +421,7 @@ func newMux(ctx context.Context,
 	hooks coretraining.Hooks,
 	dirs coretraining.Dirs,
 	ontologyDirs []string,
-	sc coretraining.Sidecar,
+	sc coretraining.MLSidecar,
 	trainingMode,
 	adminUI bool,
 	adminExts []admin.Extension,
@@ -529,7 +533,7 @@ func newMux(ctx context.Context,
 
 // newResearch makes the manager of the research agents (POST /v1/gb/research), which runs them until ctx is done. They need the Anthropic
 // client: with any other lm (or none) starting a research answers 503 (but for one with the modal runner, which runs with the keys of the
-// Modal app and needs the sidecar).
+// Modal app and needs the ML sidecar).
 func newResearch(ctx context.Context,
 	d *db.DB,
 	lm memory_core.LLM) *agent_research.Manager {
@@ -542,16 +546,16 @@ func newResearch(ctx context.Context,
 		d.Relational,
 		ops,
 		client)
-	m.UseRemote(sidecarRemote{}) // researches started with runner "modal" run in Modal, through the sidecar
-	m.UseImporter(dbImporter{d}) // and what their agents learned there is loaded into the databases of the server when they end
+	m.UseRemote(mlSidecarRemote{}) // researches started with runner "modal" run in Modal, through the ML sidecar
+	m.UseImporter(dbImporter{d})   // and what their agents learned there is loaded into the databases of the server when they end
 	return m
 }
 
-// statusHandler serves GET /v1/gb/status: the version of gligabao, whether the database answers ("db") and the sidecar's
+// statusHandler serves GET /v1/gb/status: the version of gligabao, whether the database answers ("db") and the ML sidecar's
 // state (a live check, like the admin UI's, and whether it was active on startup). It answers 503 when the database does not
-// answer; a sidecar that is down is only reported, it does not change the status.
+// answer; an ML sidecar that is down is only reported, it does not change the status.
 func statusHandler(d *db.DB,
-	sidecarConfigured bool) http.HandlerFunc {
+	mlSidecarConfigured bool) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		out := map[string]any{"gligabao": buildinfo.Library(), "commit": buildinfo.Revision(), "status": "ok", "db": "ok"}
@@ -562,8 +566,8 @@ func statusHandler(d *db.DB,
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
-		out["sidecar_up"] = sidecarPing(ctx) == nil
-		out["sidecar_active"] = sidecarConfigured
+		out["ml_sidecar_up"] = mlSidecarPing(ctx) == nil
+		out["ml_sidecar_active"] = mlSidecarConfigured
 		httputil.WriteJSON(w,
 			code,
 			out)
@@ -592,8 +596,8 @@ func versionHandler(w http.ResponseWriter,
 //
 // Optional backends: the endpoints are mounted whenever training mode is on, even if a backend they can use is not there. A part that
 // NEEDS an optional backend is mounted by its own function, which mounts nothing if the backend is nil (see model.Register for sargo, the
-// GCNII* routes); do the same for the next one. Parts that merely work better with a backend (the sidecar, the LLM) take it as nil and
-// answer 503 when they need it. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the deployed models). The training monitor follows the progress the sidecar
+// GCNII* routes); do the same for the next one. Parts that merely work better with a backend (the ML sidecar, the LLM) take it as nil and
+// answer 503 when they need it. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the deployed models). The training monitor follows the progress the ML sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. lm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503). Trained models are deployed through hooks.Deployers, after their files are fetched to dirs.ModelDeploy.
 func registerTraining(ctx context.Context,
@@ -605,7 +609,7 @@ func registerTraining(ctx context.Context,
 	trainingDB *sql.DB,
 	dirs coretraining.Dirs,
 	hooks coretraining.Hooks,
-	sc coretraining.Sidecar,
+	sc coretraining.MLSidecar,
 	lm memory_core.LLM) {
 	mux := http.NewServeMux() // the training routes, mounted on hostMux at the end, behind the authentication
 	mon := coretraining.NewMonitor(ctx,
@@ -616,7 +620,7 @@ func registerTraining(ctx context.Context,
 	if err != nil {
 		log.WithError(err).Fatal("training evals")
 	}
-	var evalInf evalstraining.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
+	var evalInf evalstraining.Inferer // not sc itself: a nil MLSidecar must become a nil Inferer
 	if sc != nil {
 		evalInf = sc
 	}
@@ -626,7 +630,7 @@ func registerTraining(ctx context.Context,
 		dirs.Evals,
 		evalInf,
 		lm)
-	var auditInf training_audits.Inferer // likewise nil without a sidecar
+	var auditInf training_audits.Inferer // likewise nil without an ML sidecar
 	if sc != nil {
 		auditInf = sc
 	}
@@ -648,14 +652,14 @@ func registerTraining(ctx context.Context,
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))
-	var inferSidecar coretraining.Inferer // likewise nil without a sidecar
+	var inferMLSidecar coretraining.Inferer // likewise nil without an ML sidecar
 	if sc != nil {
-		inferSidecar = sc
+		inferMLSidecar = sc
 	}
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(trainingDB, coretraining.NewInferRouter(inferSidecar, hooks.Inference)))
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(trainingDB, coretraining.NewInferRouter(inferMLSidecar, hooks.Inference)))
 	mux.HandleFunc("GET /v1/gb/training/inference-hooks", training.ListInferenceHooksOf(hooks.Inference))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(trainingDB))
-	var fetcher coretraining.ModelFileFetcher // not sc itself: a nil Sidecar must become a nil fetcher
+	var fetcher coretraining.ModelFileFetcher // not sc itself: a nil MLSidecar must become a nil fetcher
 	if f, ok := sc.(coretraining.ModelFileFetcher); ok {
 		fetcher = f
 	}
@@ -689,7 +693,7 @@ func registerTraining(ctx context.Context,
 func registerAdminUI(mux *http.ServeMux,
 	dbs []admin.Named,
 	geoRadiusKm float64,
-	sc coretraining.Sidecar,
+	sc coretraining.MLSidecar,
 	exts []admin.Extension,
 	lm memory_core.LLM,
 	research *agent_research.Manager,
@@ -736,22 +740,22 @@ func registerAdminUI(mux *http.ServeMux,
 	mux.HandleFunc("GET /v1/gb/admin/api/geo-index", admin.GeoIndexOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo", admin.GeoOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo/nearby", admin.GeoNearbyOf(dbs, geoRadiusKm))
-	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc != nil, sidecarPing))
-	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends", admin.SidecarBackendsOf(sidecarBackends))
+	mux.HandleFunc("GET /v1/gb/admin/api/ml_sidecar/status", admin.MLSidecarStatusOf(sc != nil, mlSidecarPing))
+	mux.HandleFunc("GET /v1/gb/admin/api/ml_sidecar/backends", admin.MLSidecarBackendsOf(mlSidecarBackends))
 	// A backend's long-running actions (e.g. deploy the Modal app): start, cancel, state with log, live log (SSE).
-	const actions = "/v1/gb/admin/api/sidecar/backends/{name}/actions/{action}"
-	mux.HandleFunc("POST "+actions, admin.SidecarBackendProxy(sidecarOpen, ""))
-	mux.HandleFunc("GET "+actions, admin.SidecarBackendProxy(sidecarOpen, ""))
-	mux.HandleFunc("GET "+actions+"/events", admin.SidecarBackendProxy(sidecarOpen, "/events"))
-	mux.HandleFunc("POST "+actions+"/cancel", admin.SidecarBackendProxy(sidecarOpen, "/cancel"))
-	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends/{name}/volumes", admin.SidecarBackendProxy(sidecarOpen, "/volumes"))
+	const actions = "/v1/gb/admin/api/ml_sidecar/backends/{name}/actions/{action}"
+	mux.HandleFunc("POST "+actions, admin.MLSidecarBackendProxy(mlSidecarOpen, ""))
+	mux.HandleFunc("GET "+actions, admin.MLSidecarBackendProxy(mlSidecarOpen, ""))
+	mux.HandleFunc("GET "+actions+"/events", admin.MLSidecarBackendProxy(mlSidecarOpen, "/events"))
+	mux.HandleFunc("POST "+actions+"/cancel", admin.MLSidecarBackendProxy(mlSidecarOpen, "/cancel"))
+	mux.HandleFunc("GET /v1/gb/admin/api/ml_sidecar/backends/{name}/volumes", admin.MLSidecarBackendProxy(mlSidecarOpen, "/volumes"))
 	// The active apps of this system on a backend (Modal: the deployed ones), and the same action routes for each of them.
-	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends/{name}/apps", admin.SidecarBackendProxy(sidecarOpen, "/apps"))
-	const appActions = "/v1/gb/admin/api/sidecar/backends/{name}/apps/{app}/actions/{action}"
-	mux.HandleFunc("POST "+appActions, admin.SidecarBackendProxy(sidecarOpen, ""))
-	mux.HandleFunc("GET "+appActions, admin.SidecarBackendProxy(sidecarOpen, ""))
-	mux.HandleFunc("GET "+appActions+"/events", admin.SidecarBackendProxy(sidecarOpen, "/events"))
-	mux.HandleFunc("POST "+appActions+"/cancel", admin.SidecarBackendProxy(sidecarOpen, "/cancel"))
+	mux.HandleFunc("GET /v1/gb/admin/api/ml_sidecar/backends/{name}/apps", admin.MLSidecarBackendProxy(mlSidecarOpen, "/apps"))
+	const appActions = "/v1/gb/admin/api/ml_sidecar/backends/{name}/apps/{app}/actions/{action}"
+	mux.HandleFunc("POST "+appActions, admin.MLSidecarBackendProxy(mlSidecarOpen, ""))
+	mux.HandleFunc("GET "+appActions, admin.MLSidecarBackendProxy(mlSidecarOpen, ""))
+	mux.HandleFunc("GET "+appActions+"/events", admin.MLSidecarBackendProxy(mlSidecarOpen, "/events"))
+	mux.HandleFunc("POST "+appActions+"/cancel", admin.MLSidecarBackendProxy(mlSidecarOpen, "/cancel"))
 	// The evals of every user live in the main database (the first Named); without them there is nothing to show.
 	if len(dbs) > 0 && dbs[0].Evals != nil {
 		e := dbs[0].Evals
@@ -1127,7 +1131,7 @@ func prepare(ctx context.Context,
 		return nil, nil, err
 	}
 	for _, h := range inferenceHooks {
-		log.WithFields(log.Fields{"hook": h.Name, "model": h.Model}).Info("trained model inference hook registered: prompts of the model bypass the sidecar and run on it")
+		log.WithFields(log.Fields{"hook": h.Name, "model": h.Model}).Info("trained model inference hook registered: prompts of the model bypass the ML sidecar and run on it")
 	}
 	hooks := coretraining.Hooks{
 		Deployers: deployers,
@@ -1178,15 +1182,19 @@ func prepare(ctx context.Context,
 
 	var extra []admin.Named
 
-	// The sidecar is pinged once on startup. If it is not operating correctly, the flag is off and sc stays nil, which
-	// makes everything that needs the sidecar answer 503 (or do nothing) instead of failing.
-	sc, sidecarActive := connectSidecar(ctx, opts.SidecarURL)
-	SidecarActive.Store(sidecarActive)
+	// The ML sidecar is pinged once on startup. If it is not operating correctly, the flag is off and sc stays nil, which
+	// makes everything that needs the ML sidecar answer 503 (or do nothing) instead of failing.
+	if opts.TrainingModeEnable && opts.MLSidecarAutoStart {
+		startMLSidecar(ctx,
+			opts)
+	}
+	sc, mlSidecarActive := connectMLSidecar(ctx, opts.MLSidecarURL)
+	MLSidecarActive.Store(mlSidecarActive)
 	if opts.TrainingModeEnable {
 		// Training is critical: with it on, the credentials and secrets it needs must work, else the server does not start.
 		if err := requireTrainingCredentials(ctx,
 			opts,
-			sidecarActive); err != nil {
+			mlSidecarActive); err != nil {
 			return nil, nil, err
 		}
 	}

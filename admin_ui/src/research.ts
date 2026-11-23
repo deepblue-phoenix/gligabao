@@ -340,7 +340,7 @@ function renderDetail(d: Detail): HTMLElement {
   row("Tokens", `${fmtInt(d.input_tokens)} in / ${fmtInt(d.output_tokens)} out`);
   row("Cost", fmtCost(d.cost_usd));
   row("Model", d.model || "unknown", "The model the agent ran on (runs started before the server recorded it have none)");
-  row("Runs in", d.runner === "modal" ? "Modal (gligabao_agent binary)" : "this server", "Where the agent runs: in the server's process, or in a Modal container started through the sidecar");
+  row("Runs in", d.runner === "modal" ? "Modal (gligabao_agent binary)" : "this server", "Where the agent runs: in the server's process, or in a Modal container started through the ML sidecar");
   row("State", d.state);
   if (d.agent_name) row("Agent definition", d.agent_name);
   if (d.phase) {

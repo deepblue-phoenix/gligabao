@@ -13,7 +13,7 @@ There is one pipeline per platform (build_linux, build_macos, build_windows). Ea
   1. the admin UI (npm, embedded into the server binary),
   2. sargo, the Rust model router (cargo), optionally embedded into the server binary,
   3. the Go binaries: build/gligabao (server), build/gligabao_agent, build/gligabao_worker, and always
-     build/gligabao_agent_linux_amd64 (baked into the Modal app by the sidecar).
+     build/gligabao_agent_linux_amd64 (baked into the Modal app by the ML sidecar).
 
 Go cross-compiles from any host (CGO is off), so the Go binaries can be built for any target OS/arch from any machine.
 Rust cannot do that without a cross linker, so sargo is built only for the host OS (macOS: both CPU architectures;

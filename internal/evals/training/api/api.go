@@ -185,7 +185,7 @@ func (h *Handlers) DefinitionsOf() http.HandlerFunc {
 //     experiment_description and experiment_config (an object) are stored when it is created
 //
 // 404 for an unknown model, 400 for a bad body, an unknown eval or case, or no eval to default to (the model has no dataset, or no
-// eval has its name), 409 when an eval of this model is running already, 503 without a sidecar or an LLM.
+// eval has its name), 409 when an eval of this model is running already, 503 without an ML sidecar or an LLM.
 func (h *Handlers) StartOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {

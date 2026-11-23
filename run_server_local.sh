@@ -7,42 +7,42 @@ set -euo pipefail
 cd "$(dirname "$0")"
 [ -x build/gligabao ] || { echo "build/gligabao not found; run ./run_build.sh first" >&2; exit 1; }
 
-# Start the sidecar (./run_server_sidecar_local.sh) if nothing answers on its health endpoint. The sidecar started here is
+# Start the ML sidecar (./run_server_ml_sidecar_local.sh) if nothing answers on its health endpoint. The ML sidecar started here is
 # stopped when this script exits or is killed (INT/TERM/HUP; SIGKILL cannot be trapped).
-SIDECAR_URL="http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}"
-SIDECAR_PID=""
+ML_SIDECAR_URL="http://${ML_SIDECAR_HOST:-127.0.0.1}:${ML_SIDECAR_PORT:-8787}"
+ML_SIDECAR_PID=""
 SERVER_PID=""
 cleanup() {
   trap - EXIT INT TERM HUP
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
-  if [ -n "$SIDECAR_PID" ]; then
-    echo "stopping local sidecar (pid $SIDECAR_PID)" >&2
-    kill "$SIDECAR_PID" 2>/dev/null || true
-    wait "$SIDECAR_PID" 2>/dev/null || true
+  if [ -n "$ML_SIDECAR_PID" ]; then
+    echo "stopping local ML sidecar (pid $ML_SIDECAR_PID)" >&2
+    kill "$ML_SIDECAR_PID" 2>/dev/null || true
+    wait "$ML_SIDECAR_PID" 2>/dev/null || true
   fi
   [ -n "$SERVER_PID" ] && wait "$SERVER_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 143' INT TERM HUP
 
-if curl -fs -m 2 "$SIDECAR_URL/health" >/dev/null 2>&1; then
-  echo "sidecar already running at $SIDECAR_URL" >&2
+if curl -fs -m 2 "$ML_SIDECAR_URL/health" >/dev/null 2>&1; then
+  echo "ml_sidecar already running at $ML_SIDECAR_URL" >&2
 else
-  echo "sidecar not running at $SIDECAR_URL; starting it" >&2
-  ./run_server_sidecar_local.sh &
-  SIDECAR_PID=$!
+  echo "ml_sidecar not running at $ML_SIDECAR_URL; starting it" >&2
+  ./run_server_ml_sidecar_local.sh &
+  ML_SIDECAR_PID=$!
   for _ in $(seq 1 60); do
-    curl -fs -m 2 "$SIDECAR_URL/health" >/dev/null 2>&1 && break
-    if ! kill -0 "$SIDECAR_PID" 2>/dev/null; then
-      echo "warning: sidecar exited at startup (are MODAL_TOKEN_ID / MODAL_TOKEN_SECRET set?); continuing without it" >&2
-      SIDECAR_PID=""
+    curl -fs -m 2 "$ML_SIDECAR_URL/health" >/dev/null 2>&1 && break
+    if ! kill -0 "$ML_SIDECAR_PID" 2>/dev/null; then
+      echo "warning: ml_sidecar exited at startup (are MODAL_TOKEN_ID / MODAL_TOKEN_SECRET set?); continuing without it" >&2
+      ML_SIDECAR_PID=""
       break
     fi
     sleep 1
   done
 fi
 
-# Not exec'd, so the trap above can stop the sidecar when the server ends or this script is killed.
+# Not exec'd, so the trap above can stop the ML sidecar when the server ends or this script is killed.
 ./build/gligabao serve --training --admin-ui "$@" &
 SERVER_PID=$!
 rc=0

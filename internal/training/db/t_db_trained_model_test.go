@@ -438,7 +438,7 @@ func trainedModelTypesScenario(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ModelType != trainingdb.ModelTypeLoRA || got.Storage != trainingdb.StorageModalVolume || got.UserID != "" || !got.RunsOnSidecar() {
+	if got.ModelType != trainingdb.ModelTypeLoRA || got.Storage != trainingdb.StorageModalVolume || got.UserID != "" || !got.RunsOnMLSidecar() {
 		t.Fatalf("defaults: %+v", got)
 	}
 	record := func(user,
@@ -471,7 +471,7 @@ func trainedModelTypesScenario(t *testing.T,
 	if err != nil || len(list) != 2 || list[0].ID != a2 || list[1].ID != a1 {
 		t.Fatalf("alice's models, newest first: %+v %v", list, err)
 	}
-	if list[0].RunsOnSidecar() || list[0].Storage != trainingdb.StorageS3 || len(list[0].Files) != 1 {
+	if list[0].RunsOnMLSidecar() || list[0].Storage != trainingdb.StorageS3 || len(list[0].Files) != 1 {
 		t.Fatalf("a gcnii row: %+v", list[0])
 	}
 	if one, _ := trainingdb.ListUserTrainedModels(ctx, d, trainingdb.ModelTypeGCNII, "alice", 1); len(one) != 1 || one[0].ID != a2 {

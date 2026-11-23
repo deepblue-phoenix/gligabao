@@ -35,8 +35,8 @@ const ManifestFilename = "dataset.toml"
 // FormatJSONL is the only data format there is for now: {"instruction", "input"?, "output"} objects, one per line.
 const FormatJSONL = "jsonl"
 
-// datasetNameRe is what a dataset's name may be. The name plus ".jsonl" is the file name the dataset has on the sidecar
-// (sidecar/ai_train/ai_train_core/dataset.py), hence the length limit.
+// datasetNameRe is what a dataset's name may be. The name plus ".jsonl" is the file name the dataset has on the ML sidecar
+// (ml_sidecar/ai_train/ai_train_core/dataset.py), hence the length limit.
 var datasetNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,121}$`)
 
 func ValidDatasetName(name string) bool {
@@ -64,7 +64,7 @@ type LocalDataset struct {
 	Path     string // the data file (Dir joined with Manifest.File)
 }
 
-// Filename is the file name the dataset has on the sidecar's data volume, and in its record: the name plus ".jsonl".
+// Filename is the file name the dataset has on the ML sidecar's data volume, and in its record: the name plus ".jsonl".
 func (d LocalDataset) Filename() string { return d.Name + ".jsonl" }
 
 // DatasetProblem is a subdirectory of the training datasets directory that has a manifest but is not usable as a dataset.

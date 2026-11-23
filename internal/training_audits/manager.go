@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	"github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/core"
@@ -18,10 +18,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Inferer runs a prompt through a trained model on the sidecar; *sidecar.Client is one.
+// Inferer runs a prompt through a trained model on the ML sidecar; *ml_sidecar.Client is one.
 type Inferer interface {
 	Infer(ctx context.Context,
-		req sidecar.InferRequest) (sidecar.InferResponse, error)
+		req ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error)
 }
 
 // Manager starts the audits of trained models and runs them in the background, one at a time per trained model. It also lists,
@@ -87,14 +87,14 @@ func (m *Manager) Done() <-chan struct{} { return m.ctx.Done() }
 // Start records an audit of trained model modelID and starts it in the background, returning the recorded run (status running).
 // opts.Limit keeps only the first examples of the model's dataset. Errors are *Error: KindInvalid for bad options or when the
 // model's dataset cannot be read (none recorded, gone from the training datasets directory, invalid), KindNotFound for an
-// unknown model, KindConflict if the model has an audit running already, KindUnavailable without a sidecar or an LLM,
+// unknown model, KindConflict if the model has an audit running already, KindUnavailable without an ML sidecar or an LLM,
 // KindInternal.
 func (m *Manager) Start(ctx context.Context,
 	userID string,
 	modelID int64,
 	opts Options) (*core.AuditRun, error) {
 	if m.Sc == nil {
-		return nil, unavailableErr("sidecar is not active")
+		return nil, unavailableErr("ML sidecar is not active")
 	}
 	if m.LLM == nil {
 		return nil, unavailableErr("no LLM is available to judge the answers (set ANTHROPIC_API_KEY)")
@@ -187,7 +187,7 @@ func (m *Manager) Start(ctx context.Context,
 func (m *Manager) getModel(ctx context.Context,
 	userID string,
 	id int64) (*trainingdb.TrainedModel, error) {
-	tm, err := training.GetSidecarModel(ctx,
+	tm, err := training.GetMLSidecarModel(ctx,
 		m.DB,
 		userID,
 		id)
@@ -205,7 +205,7 @@ func (m *Manager) getModel(ctx context.Context,
 	return nil, internalErr("failed to read the trained model", err)
 }
 
-// Generator makes the engine's GenerateFunc of trained model tm: one sidecar inference per question, with the settings of params.
+// Generator makes the engine's GenerateFunc of trained model tm: one ML sidecar inference per question, with the settings of params.
 func Generator(sc Inferer,
 	tm *trainingdb.TrainedModel,
 	params RunParams) GenerateFunc {
@@ -213,7 +213,7 @@ func Generator(sc Inferer,
 		prompt string) (Generation, error) {
 		ctx, cancel := context.WithTimeout(ctx, training.InferTimeout)
 		defer cancel()
-		out, err := sc.Infer(ctx, sidecar.InferRequest{
+		out, err := sc.Infer(ctx, ml_sidecar.InferRequest{
 			Prompt:      prompt,
 			ModelSize:   tm.ModelSize,
 			ModelPath:   tm.Path,
@@ -221,7 +221,7 @@ func Generator(sc Inferer,
 			Temperature: &params.Temperature,
 		})
 		if err != nil {
-			var ie *sidecar.InferError
+			var ie *ml_sidecar.InferError
 			if errors.As(err, &ie) {
 				return Generation{}, errors.New(ie.Message)
 			}

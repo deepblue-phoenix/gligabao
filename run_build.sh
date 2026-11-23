@@ -16,7 +16,7 @@
 # gligabao_agent is the deep-research agent with its sub-agents and the knowledge base in process (no server, API, training or evals), a small static binary
 # for Lambdas and the like (docs/deep-research-agent.md). It does not embed the admin UI. gligabao_worker runs one remember or query pipeline in process
 # and exits (docs/worker_binary.md): the same kind of small static binary. Both cross-compile (CGO is off, so no C toolchain is needed).
-# gligabao_agent_linux_amd64 is the same agent for Linux on x86-64 whatever the host: it is what the sidecar bakes into the Modal app,
+# gligabao_agent_linux_amd64 is the same agent for Linux on x86-64 whatever the host: it is what the ML sidecar bakes into the Modal app,
 # to run research agents in Modal (runner "modal", docs/agents/research.md); the Modal app's deploy picks it up from build/.
 set -euo pipefail
 cd "$(dirname "$0")"

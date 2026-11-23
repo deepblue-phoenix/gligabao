@@ -18,7 +18,7 @@
       <button type="button" id="query-open" class="query-btn" title="Ask the knowledge base a question"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>query</button>
       <span class="health-badges">
         <span id="health" class="badge badge-unknown">checking…</span>
-        <span id="sidecar-health" class="badge badge-unknown">sidecar: checking…</span>
+        <span id="ml-sidecar-health" class="badge badge-unknown">ml_sidecar: checking…</span>
         <span id="geo-index" class="badge badge-unknown">geo index: checking…</span>
       </span>
     </header>
@@ -195,8 +195,8 @@
               <h2>Training</h2>
               <button type="button" id="training-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
-            <p class="muted">Fine-tune Gemma 4 on the sidecar (LoRA).</p>
-            <p id="training-sidecar-warning" class="error sidecar-warning" role="alert" hidden><strong>Sidecar not active.</strong> It did not pass its health check when the server started, so training jobs cannot be started or listed. Start the sidecar and restart the server.</p>
+            <p class="muted">Fine-tune Gemma 4 on the ML sidecar (LoRA).</p>
+            <p id="training-ml-sidecar-warning" class="error ml-sidecar-warning" role="alert" hidden><strong>MLSidecar not active.</strong> It did not pass its health check when the server started, so training jobs cannot be started or listed. Start the ML sidecar and restart the server.</p>
 
             <div class="tr-section tr-models">
               <h3>Trained models <button type="button" class="help-btn" data-help="models-help-modal" title="Help" aria-label="Help">?</button></h3>
@@ -335,7 +335,7 @@
         <h2>Datasets</h2>
         <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
-      <div class="modal-body"><p class="help-text">The datasets are the subdirectories of the server's training datasets directory that have a <code>dataset.toml</code> manifest; it names the dataset and its JSONL data file. You can also upload a JSONL file (one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>): it becomes a dataset named like the file. A dataset is sent to the sidecar only when a job that uses it starts.</p></div>
+      <div class="modal-body"><p class="help-text">The datasets are the subdirectories of the server's training datasets directory that have a <code>dataset.toml</code> manifest; it names the dataset and its JSONL data file. You can also upload a JSONL file (one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>): it becomes a dataset named like the file. A dataset is sent to the ML sidecar only when a job that uses it starts.</p></div>
     </dialog>
 
     <dialog id="upload-modal" class="modal modal-small">
@@ -621,7 +621,7 @@
         <label for="research-start-runner" class="muted">Where it runs</label>
         <select id="research-start-runner" title="Where the agent runs">
           <option value="local" selected>local: in this server</option>
-          <option value="modal">Modal: the gligabao_agent binary in a Modal container (through the sidecar)</option>
+          <option value="modal">Modal: the gligabao_agent binary in a Modal container (through the ML sidecar)</option>
         </select>
         <p id="research-start-error" class="error" hidden></p>
       </div>

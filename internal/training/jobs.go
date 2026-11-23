@@ -1,6 +1,6 @@
 package training
 
-// Starting and stopping training jobs on the sidecar, and reading the events a job reported (the Monitor stores them).
+// Starting and stopping training jobs on the ML sidecar, and reading the events a job reported (the Monitor stores them).
 
 import (
 	"context"
@@ -12,18 +12,18 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
-// JobStarter starts training jobs on the sidecar; *sidecar.Client is one.
+// JobStarter starts training jobs on the ML sidecar; *ml_sidecar.Client is one.
 type JobStarter interface {
 	StartTrainingJob(ctx context.Context,
-		req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error)
+		req ml_sidecar.StartTrainingJobRequest) (ml_sidecar.TrainingJob, error)
 }
 
-// JobCanceller asks the sidecar to stop training jobs; *sidecar.Client is one.
+// JobCanceller asks the ML sidecar to stop training jobs; *ml_sidecar.Client is one.
 type JobCanceller interface {
 	CancelTrainingJob(ctx context.Context,
 		jobID string) error
@@ -35,22 +35,22 @@ type StartJobRequest struct {
 	UserID        string
 	NumTrainSteps int
 	ModelSize     string
-	// Dataset is the name of a dataset of the training datasets directory (manifest.go); the data file is sent to the sidecar in
-	// the request that starts the job (the sidecar has no dataset endpoints).
+	// Dataset is the name of a dataset of the training datasets directory (manifest.go); the data file is sent to the ML sidecar in
+	// the request that starts the job (the ML sidecar has no dataset endpoints).
 	Dataset string
 }
 
-// StartJob starts a training job on the sidecar through sc (the sidecar's REST API) and stores the TrainingJob the sidecar
+// StartJob starts a training job on the ML sidecar through sc (the ML sidecar's REST API) and stores the TrainingJob the ML sidecar
 // reports in the gb_training_job_runs table of the database, then has mon (may be nil) follow the job's progress. It returns the stored
-// record. Errors are *Error: KindInvalid for a bad request (also one the sidecar rejects as invalid, with its message), KindUpstream
-// for a sidecar error, KindInternal.
+// record. Errors are *Error: KindInvalid for a bad request (also one the ML sidecar rejects as invalid, with its message), KindUpstream
+// for an ML sidecar error, KindInternal.
 func StartJob(ctx context.Context,
 	db *sql.DB,
 	datasets DatasetStore,
 	sc JobStarter,
 	mon *Monitor,
 	in StartJobRequest) (*trainingdb.TrainingJobRun, error) {
-	req := sidecar.StartTrainingJobRequest{
+	req := ml_sidecar.StartTrainingJobRequest{
 		NumTrainSteps: in.NumTrainSteps,
 		ModelSize:     strings.ToLower(strings.TrimSpace(in.ModelSize)),
 	}
@@ -65,7 +65,7 @@ func StartJob(ctx context.Context,
 		return nil, invalidErr("num_train_steps must be positive")
 	}
 	switch req.ModelSize {
-	case "", sidecar.ModelSize4B, sidecar.ModelSize12B, sidecar.ModelSize31B:
+	case "", ml_sidecar.ModelSize4B, ml_sidecar.ModelSize12B, ml_sidecar.ModelSize31B:
 	default:
 		return nil, invalidErr("model_size must be \"4b\", \"12b\" or \"31b\"")
 	}
@@ -82,16 +82,16 @@ func StartJob(ctx context.Context,
 	req.Dataset, req.DatasetContent = dataset.Filename, base64.StdEncoding.EncodeToString(content)
 	job, err := sc.StartTrainingJob(ctx, req)
 	if err != nil {
-		var se *sidecar.StatusError
+		var se *ml_sidecar.StatusError
 		if errors.As(err, &se) && se.Code == http.StatusBadRequest {
 			return nil, &Error{KindInvalid, se.Message(), err}
 		}
 		log.WithError(err).Error("training: start training job failed")
-		return nil, &Error{KindUpstream, "sidecar failed to start the training job", err}
+		return nil, &Error{KindUpstream, "ML sidecar failed to start the training job", err}
 	}
 	// The job is running now: record it even if the caller went away meanwhile.
 	ctx = context.WithoutCancel(ctx)
-	// the sidecar has taken this version of the file
+	// the ML sidecar has taken this version of the file
 	if _, err := trainingdb.MarkTrainingDatasetSynced(ctx,
 		db,
 		dataset.ID,
@@ -143,10 +143,10 @@ func GetJobRun(ctx context.Context,
 	return run, nil
 }
 
-// StopJob asks the sidecar to stop the job run id. The job ends at its next step (or at the next stage of its setup) with a
+// StopJob asks the ML sidecar to stop the job run id. The job ends at its next step (or at the next stage of its setup) with a
 // "cancelled" event, which the monitor records like any other: the job's row changes when the event arrives. It returns the
 // run. Errors are *Error: KindNotFound for an unknown run, KindConflict for one that is over already, KindUpstream for a
-// sidecar error.
+// ml_sidecar error.
 func StopJob(ctx context.Context,
 	db *sql.DB,
 	sc JobCanceller,
@@ -163,12 +163,12 @@ func StopJob(ctx context.Context,
 		return nil, conflictErr("the training job is over already (" + run.Status + ")")
 	}
 	if err := sc.CancelTrainingJob(ctx, run.JobID); err != nil {
-		var se *sidecar.StatusError
+		var se *ml_sidecar.StatusError
 		if errors.As(err, &se) && se.Code == http.StatusConflict {
 			return nil, &Error{KindConflict, se.Message(), err}
 		}
 		log.WithError(err).WithField("job_id", run.JobID).Error("training: stop training job failed")
-		return nil, &Error{KindUpstream, "sidecar failed to stop the training job", err}
+		return nil, &Error{KindUpstream, "ML sidecar failed to stop the training job", err}
 	}
 	log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Info("training: stop requested")
 	return run, nil
@@ -200,7 +200,7 @@ func JobHistory(ctx context.Context,
 		0,
 		len(history))
 	for _, e := range history {
-		var ev sidecar.TrainingEvent
+		var ev ml_sidecar.TrainingEvent
 		if json.Unmarshal([]byte(e.Data), &ev) != nil {
 			continue
 		}

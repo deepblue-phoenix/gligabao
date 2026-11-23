@@ -35,7 +35,7 @@ How the models work (prompt format, when generation stops, where a request's tim
 ### CLI
 
 ```bash
-cd sidecar/ai_train
+cd ml_sidecar/ai_train
 modal run app.py --action train --train-steps 500 --model-size 4b     # A10G
 modal run app.py --action train --train-steps 500 --model-size 12b    # A100
 modal run app.py --action train --train-steps 500 --model-size 31b    # A100 80GB
@@ -82,7 +82,7 @@ curl -X POST $URL/training/job_start -H "Content-Type: application/json" \
 ### GPU Selection Logic
 
 Defaults come from `ai_train_core/gemma4/model_config.py` (`default_gpu`): `4b` -> `a10g`, `12b` -> `a100`, `31b` -> `a100-80gb`.
-`SIDECAR_GPU` overrides both.
+`ML_SIDECAR_GPU` overrides both.
 
 ### Training stack
 
@@ -90,7 +90,7 @@ All sizes train through Unsloth, in one shared image (`requirements_train.txt`: 
 
 All sizes serve through plain `transformers` + `peft` + `bitsandbytes`, in a separate inference-only image (`requirements_infer.txt`: torch, transformers, peft, accelerate, bitsandbytes; no Unsloth, trl, datasets or torchao, and a slim base image without the CUDA toolkit). The base model is loaded 4-bit (nf4) and the trained adapter attached on top. Code: `model_load_infer.py`, `inference.py`. Keep the `torch` and `transformers` ranges of the two requirements files in step.
 
-A job saves only its LoRA adapter, in `/models/trained/<job_id>` of the models volume, as a new trained model (the base model stays in the Hugging Face cache volume and is shared). Inference picks the adapter with `model_path` and needs `model_size` to match the size it was trained for. See [Trained models](sidecar.md#trained-models).
+A job saves only its LoRA adapter, in `/models/trained/<job_id>` of the models volume, as a new trained model (the base model stays in the Hugging Face cache volume and is shared). Inference picks the adapter with `model_path` and needs `model_size` to match the size it was trained for. See [Trained models](ml_sidecar.md#trained-models).
 
 `google/gemma-4-12B-it` ships the newer `gemma4_unified` architecture, which Unsloth supports from 2026.10.x (earlier releases pinned `transformers<=5.5.0` and could not load it). If its output looks broken, see Unsloth issue [#6028](https://github.com/unslothai/unsloth/issues/6028).
 

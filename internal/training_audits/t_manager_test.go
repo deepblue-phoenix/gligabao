@@ -25,7 +25,7 @@ func testAuditATrainedModel(t *testing.T,
 		d,
 		"jobaudit1",
 		"mine.jsonl")
-	sc, judge := &audittest.Sidecar{
+	sc, judge := &audittest.MLSidecar{
 		Wrong: map[string]bool{"q3": true},
 	}, &audittest.Judge{}
 	m := training_audits.NewManager(ctx,
@@ -106,7 +106,7 @@ func testAuditATrainedModel(t *testing.T,
 	reqs := sc.Requests()
 	if len(reqs) != 5 || reqs[0].Prompt != "q0" || reqs[0].ModelPath != "trained/jobaudit1" || reqs[0].ModelSize != "12b" ||
 		reqs[0].MaxTokens != 77 || reqs[0].Temperature == nil || *reqs[0].Temperature != 0.2 {
-		t.Fatalf("sidecar requests: %+v", reqs)
+		t.Fatalf("ml_sidecar requests: %+v", reqs)
 	}
 	// The judge's calls are recorded like the other LLM calls.
 	var n int
@@ -171,7 +171,7 @@ func testAuditRefusals(t *testing.T,
 		d,
 		ops,
 		training.DirStore{dir},
-		&audittest.Sidecar{},
+		&audittest.MLSidecar{},
 		&audittest.Judge{})
 
 	for _, tc := range []struct {
@@ -227,7 +227,7 @@ func testAuditRefusals(t *testing.T,
 		t.Errorf("a refused audit was recorded: %+v", rs)
 	}
 
-	// Without a sidecar or an LLM nothing starts.
+	// Without an ML sidecar or an LLM nothing starts.
 	if _, err := training_audits.NewManager(ctx,
 		d,
 		ops,
@@ -237,13 +237,13 @@ func testAuditRefusals(t *testing.T,
 		audittest.User,
 		ok,
 		training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
-		t.Errorf("no sidecar: %v", err)
+		t.Errorf("no ML sidecar: %v", err)
 	}
 	if _, err := training_audits.NewManager(ctx,
 		d,
 		ops,
 		training.DirStore{dir},
-		&audittest.Sidecar{},
+		&audittest.MLSidecar{},
 		nil).Start(ctx,
 		audittest.User,
 		ok,
@@ -268,7 +268,7 @@ func testAuditOneAtATimeAndCancel(t *testing.T,
 		d,
 		"j-cancel",
 		"mine.jsonl")
-	sc := &audittest.Sidecar{
+	sc := &audittest.MLSidecar{
 		Block:   make(chan struct{}),
 		Started: make(chan struct{}, 1),
 	}
@@ -343,7 +343,7 @@ func testAuditFailsWhenTheModelDoes(t *testing.T,
 		d,
 		"j-fail",
 		"mine.jsonl")
-	sc := &audittest.Sidecar{
+	sc := &audittest.MLSidecar{
 		Fail: map[string]bool{"q0": true, "q1": true, "q2": true, "q3": true, "q4": true, "q5": true},
 	}
 	m := training_audits.NewManager(ctx,
@@ -403,7 +403,7 @@ func testAuditsInterruptedByARestart(t *testing.T,
 		d,
 		ops,
 		training.DirStore{audittest.DatasetDir(t, 1)},
-		&audittest.Sidecar{},
+		&audittest.MLSidecar{},
 		&audittest.Judge{})
 	got, err := m.GetRun(ctx, audittest.User, r.ID)
 	if err != nil || got.Status != core.StatusErrored || !strings.Contains(got.Error, "restarted") || got.FinishedAt == nil {
@@ -441,7 +441,7 @@ func testWatchAnAudit(t *testing.T,
 		d,
 		"j-watch",
 		"mine.jsonl")
-	sc := &audittest.Sidecar{
+	sc := &audittest.MLSidecar{
 		Block:   make(chan struct{}),
 		Started: make(chan struct{}, 1),
 	}
@@ -537,7 +537,7 @@ func testAuditsBelongToTheirUser(t *testing.T,
 		d,
 		ops,
 		training.DirStore{audittest.DatasetDir(t, 2)},
-		&audittest.Sidecar{},
+		&audittest.MLSidecar{},
 		&audittest.Judge{})
 	run, err := m.Start(ctx,
 		audittest.User,

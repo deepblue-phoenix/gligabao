@@ -72,29 +72,29 @@ async function checkHealth(): Promise<void> {
   }
 }
 
-// Health indicator of the sidecar: a live check by the server (api/sidecar/status). "up" but not active means that the
-// sidecar came up after the server started; the server uses it only after a restart.
-async function checkSidecarHealth(): Promise<void> {
-  const badge = $("sidecar-health");
+// Health indicator of the ML sidecar: a live check by the server (api/ml_sidecar/status). "up" but not active means that the
+// ml_sidecar came up after the server started; the server uses it only after a restart.
+async function checkMLSidecarHealth(): Promise<void> {
+  const badge = $("ml-sidecar-health");
   try {
-    const res = await fetch("api/sidecar/status");
+    const res = await fetch("api/ml_sidecar/status");
     if (!res.ok) throw new Error(String(res.status));
-    const s = (await res.json()) as { sidecar_up: boolean; sidecar_active: boolean };
-    if (!s.sidecar_up) {
-      badge.textContent = "sidecar: down";
+    const s = (await res.json()) as { ml_sidecar_up: boolean; ml_sidecar_active: boolean };
+    if (!s.ml_sidecar_up) {
+      badge.textContent = "ml_sidecar: down";
       badge.className = "badge badge-error";
-      badge.title = s.sidecar_active ? "The sidecar does not answer its health check." : "The sidecar is not active: it did not pass its health check on startup, and does not answer now.";
-    } else if (!s.sidecar_active) {
-      badge.textContent = "sidecar: up (restart server)";
+      badge.title = s.ml_sidecar_active ? "The ML sidecar does not answer its health check." : "The ML sidecar is not active: it did not pass its health check on startup, and does not answer now.";
+    } else if (!s.ml_sidecar_active) {
+      badge.textContent = "ml_sidecar: up (restart server)";
       badge.className = "badge badge-active";
-      badge.title = "The sidecar is up now, but it was down when the server started; restart the server to use it.";
+      badge.title = "The ML sidecar is up now, but it was down when the server started; restart the server to use it.";
     } else {
-      badge.textContent = "sidecar: up";
+      badge.textContent = "ml_sidecar: up";
       badge.className = "badge badge-ok";
       badge.title = "";
     }
   } catch {
-    badge.textContent = "sidecar: unknown";
+    badge.textContent = "ml_sidecar: unknown";
     badge.className = "badge badge-unknown";
     badge.title = "Could not ask the server.";
   }
@@ -401,10 +401,10 @@ void (async () => {
   initBookmarks();
   void loadAll(false);
   void checkHealth();
-  void checkSidecarHealth();
+  void checkMLSidecarHealth();
   void checkGeoIndex();
   void showVersion();
   setInterval(() => void checkHealth(), 15000);
-  setInterval(() => void checkSidecarHealth(), 15000);
+  setInterval(() => void checkMLSidecarHealth(), 15000);
   setInterval(() => void checkGeoIndex(), 60000);
 })();

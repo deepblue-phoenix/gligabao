@@ -69,7 +69,7 @@ func ValidateDataset(content []byte) (int, error) {
 }
 
 // DatasetInfo is a dataset as the API shows it: its record (trainingdb.TrainingDataset; Filename is the name it has on
-// the sidecar, "<name>.jsonl") and what its manifest says.
+// the ML sidecar, "<name>.jsonl") and what its manifest says.
 type DatasetInfo struct {
 	trainingdb.TrainingDataset
 	Manifest
@@ -177,7 +177,7 @@ func ReadDataset(ctx context.Context,
 		ds)
 }
 
-// LoadTrainingDataset returns the record and the file of the dataset called name, to be sent to the sidecar with a job.
+// LoadTrainingDataset returns the record and the file of the dataset called name, to be sent to the ML sidecar with a job.
 // The record is brought up to date with the file just read. An unknown name gives ErrUnknownDataset. The other errors
 // are safe to show to the user.
 func LoadTrainingDataset(ctx context.Context,
@@ -217,7 +217,7 @@ func LoadTrainingDataset(ctx context.Context,
 // has one, is dropped) a plain *.jsonl name. It becomes the dataset named like the file without ".jsonl": it is saved in the store
 // (DatasetStore.Stage: in the directories, the subdirectory of that name of the first one; in S3, the "directory" of that name),
 // next to a manifest that is written if there is none, and recorded in gb_training_datasets. Saving a name again replaces the
-// dataset's file. The sidecar is not involved. Errors are *Error: KindInvalid for a bad name or file, KindConflict for a dataset of
+// dataset's file. The ML sidecar is not involved. Errors are *Error: KindInvalid for a bad name or file, KindConflict for a dataset of
 // that name that has a manifest of its own, naming another data file, or that is somewhere else (it is not replaced), KindInternal.
 func SaveDataset(ctx context.Context,
 	db *sql.DB,

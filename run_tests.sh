@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the Go tests, then the Python tests (sidecar and Python client).
+# Runs the Go tests, then the Python tests (ml_sidecar and Python client).
 # Usage: ./run_tests.sh [-g|--go] [-p|--py]
 # No flags: run both. With flags: run only the selected ones.
 set -euo pipefail
@@ -10,7 +10,7 @@ usage() {
 Usage: ./run_tests.sh [options]
 
   -g, --go     run the Go tests
-  -p, --py     run the Python tests (sidecar, clients/py)
+  -p, --py     run the Python tests (ml_sidecar, clients/py)
   -h, --help   show this help
 
 Without options both run (Go first, then Python). With options only the selected ones run.
@@ -48,8 +48,8 @@ if [ "$run_go" = 1 ]; then
 fi
 
 if [ "$run_py" = 1 ]; then
-	echo "==> Python tests: sidecar"
-	(cd sidecar && "$PYTHON" -m pytest -q .)
+	echo "==> Python tests: ml_sidecar"
+	(cd ml_sidecar && "$PYTHON" -m pytest -q .)
 	echo "==> Python tests: clients/py"
 	(cd clients/py && PYTHONPATH=src "$PYTHON" -m pytest -q)
 fi

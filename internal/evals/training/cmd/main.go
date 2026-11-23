@@ -1,9 +1,9 @@
 // Command training runs the training evals (build/evals_training/*.json) against a trained model from the command line: the model is
-// asked each case's question through the sidecar, and the LLM judge (the one used for knowledge ingestion) scores its answer against
+// asked each case's question through the ML sidecar, and the LLM judge (the one used for knowledge ingestion) scores its answer against
 // the case's expected answer. The eval is put in the database as an eval def (its cases as case defs), and the run is stored as an eval
 // run with a case run for each case.
 //
-// Usage: go run ./internal/evals/training/cmd -model ID [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running sidecar)
+// Usage: go run ./internal/evals/training/cmd -model ID [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running ML sidecar)
 // Without -eval the eval is the one named like the model's training dataset.
 // -list-evals prints the available evals and exits; -list-models prints the trained models of the database and exits.
 // Every invocation is a run of an experiment: -experiment names it (created if new; -experiment "" runs the eval on its own), and without
@@ -33,7 +33,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -75,9 +75,9 @@ func mainErr() error {
 	dbPath := flag.String("db",
 		"build/gligabao.db",
 		"SQLite file of the database that holds the trained models (and the evals and their runs)")
-	sidecarURL := flag.String("sidecar",
-		os.Getenv(config.EnvSidecarURL),
-		"URL of the sidecar (default: $SIDECAR_URL, else "+sidecar.DefaultBaseURL+")")
+	mlSidecarURL := flag.String("ml-sidecar",
+		os.Getenv(config.EnvMLSidecarURL),
+		"URL of the ML sidecar (default: $ML_SIDECAR_URL, else "+ml_sidecar.DefaultBaseURL+")")
 	batchSize := flag.Int("batch-size",
 		0,
 		fmt.Sprintf("question/answer pairs per judge call (default %d, at most %d)",
@@ -212,7 +212,7 @@ func mainErr() error {
 	if err != nil {
 		return err
 	}
-	sc := sidecar.New(*sidecarURL)
+	sc := ml_sidecar.New(*mlSidecarURL)
 	if _, err := sc.Health(ctx); err != nil {
 		return err
 	}
@@ -363,8 +363,8 @@ func mainErr() error {
 // inferTimeout bounds one inference call: the model loads on a GPU container first, which takes minutes when cold.
 const inferTimeout = 15 * time.Minute
 
-// generator makes the engine's GenerateFunc of trained model tm: one sidecar inference per question.
-func generator(sc *sidecar.Client,
+// generator makes the engine's GenerateFunc of trained model tm: one ML sidecar inference per question.
+func generator(sc *ml_sidecar.Client,
 	tm *trainingdb.TrainedModel,
 	maxTokens int,
 	temperature float64) training.GenerateFunc {
@@ -372,7 +372,7 @@ func generator(sc *sidecar.Client,
 		prompt string) (training.Generation, error) {
 		ctx, cancel := context.WithTimeout(ctx, inferTimeout)
 		defer cancel()
-		out, err := sc.Infer(ctx, sidecar.InferRequest{
+		out, err := sc.Infer(ctx, ml_sidecar.InferRequest{
 			Prompt:      prompt,
 			ModelSize:   tm.ModelSize,
 			ModelPath:   tm.Path,
@@ -380,7 +380,7 @@ func generator(sc *sidecar.Client,
 			Temperature: &temperature,
 		})
 		if err != nil {
-			var ie *sidecar.InferError
+			var ie *ml_sidecar.InferError
 			if errors.As(err, &ie) {
 				return training.Generation{}, errors.New(ie.Message)
 			}

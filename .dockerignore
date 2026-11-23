@@ -3,6 +3,6 @@ build/*
 !build/gligabao.toml
 admin_ui/node_modules
 admin_ui/dist
-sidecar/__pycache__
-sidecar/**/__pycache__
-sidecar/.venv
+ml_sidecar/__pycache__
+ml_sidecar/**/__pycache__
+ml_sidecar/.venv

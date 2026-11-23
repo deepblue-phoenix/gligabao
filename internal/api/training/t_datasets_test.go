@@ -299,7 +299,7 @@ func testUploadTrainingDataset(t *testing.T,
 	}
 }
 
-// TestStartJobSendsDataset: the upload handler takes no sidecar at all, and the dataset reaches the sidecar only inside the
+// TestStartJobSendsDataset: the upload handler takes no ML sidecar at all, and the dataset reaches the ML sidecar only inside the
 // request that starts a job that uses it. A job names a dataset by its name.
 func TestStartJobSendsDataset(t *testing.T) { dbtest.Run(t, testStartJobSendsDataset) }
 
@@ -308,7 +308,7 @@ func testStartJobSendsDataset(t *testing.T,
 	ctx := t.Context()
 	dir := t.TempDir()
 	dsDir := core.DirStore{dir}
-	sc := &fakeSidecar{}
+	sc := &fakeMLSidecar{}
 	up := training.UploadDatasetOf(d, dsDir)
 	start := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -337,7 +337,7 @@ func testStartJobSendsDataset(t *testing.T,
 			rec.Body)
 	}
 	if len(sc.reqs) != 0 {
-		t.Fatalf("the upload reached the sidecar: %v", sc.reqs)
+		t.Fatalf("the upload reached the ML sidecar: %v", sc.reqs)
 	}
 
 	if rec := startDS("mine"); rec.Code != 201 {
@@ -346,7 +346,7 @@ func testStartJobSendsDataset(t *testing.T,
 			rec.Body)
 	}
 	if len(sc.reqs) != 1 || sc.reqs[0].Dataset != "mine.jsonl" || sent(0) != goodDataset {
-		t.Fatalf("sidecar request: %+v", sc.reqs)
+		t.Fatalf("ml_sidecar request: %+v", sc.reqs)
 	}
 	if ds, _ := trainingdb.GetTrainingDatasetByFilename(ctx,
 		d,
@@ -368,7 +368,7 @@ func testStartJobSendsDataset(t *testing.T,
 	}
 	sc.err = errors.New("down")
 	if rec := startDS("mine"); rec.Code != http.StatusBadGateway {
-		t.Fatalf("sidecar down: %d %s",
+		t.Fatalf("ml_sidecar down: %d %s",
 			rec.Code,
 			rec.Body)
 	}

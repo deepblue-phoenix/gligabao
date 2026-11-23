@@ -4,7 +4,7 @@ All build logic lives in one Python program, `ops/build.py` (standard library on
 
 1. the **admin UI** (`admin_ui/`, npm; embedded into the server binary),
 2. **sargo**, the Rust model router (`rust/sargo/`, cargo), optionally embedded into the server binary,
-3. the **Go binaries** in `build/`: `gligabao` (the server and CLI), `gligabao_agent`, `gligabao_worker`, and always `gligabao_agent_linux_amd64` (baked into the Modal app by the sidecar, see [sidecar.md](training/sidecar.md#the-research-agent-in-modal)).
+3. the **Go binaries** in `build/`: `gligabao` (the server and CLI), `gligabao_agent`, `gligabao_worker`, and always `gligabao_agent_linux_amd64` (baked into the Modal app by the ML sidecar, see [ml_sidecar.md](training/ml_sidecar.md#the-research-agent-in-modal)).
 
 **It must run natively on every platform where building is done.** A Windows user builds the Windows package on Windows, a Mac user the macOS one, and so on, without bash. The shell scripts of the repo root (`run_build.sh`, `run_build_rust.sh`, part of `run_pypi.sh`) are only wrappers for Linux/macOS that call it. See "Build pipeline" in `AGENTS.md`.
 
@@ -61,6 +61,6 @@ Shell wrappers: `./run_build.sh [--no-admin-ui] [--sargo]` is `ops/build.py all`
 
 ## Not done by this program
 
-- The container images (`Dockerfile`, `Dockerfile.sidecar`, `run_build_container.sh`, `run_build_sidecar.sh`) build in their own Docker stages. The `Dockerfile` does not yet include sargo (see `leftover_tasks/`).
+- The container images (`Dockerfile`, `Dockerfile.ml_sidecar`, `run_build_container.sh`, `run_build_ml_sidecar.sh`) build in their own Docker stages. The `Dockerfile` does not yet include sargo (see `leftover_tasks/`).
 - The PyPI packaging (staging, wheels, twine, upload) is `ops/pypi.py`, which uses `ops/build.py` for the admin UI, sargo and the server binary. See [pypi.md](pypi.md).
 - Running one OS's pipeline for another OS's sargo (e.g. in CI, use one runner per OS and run `all --sargo` on each).

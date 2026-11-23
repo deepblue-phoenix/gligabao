@@ -136,7 +136,7 @@ func limitParam(w http.ResponseWriter,
 //   - max_tokens, temperature: of the model's answers (default 1024 and 0.1)
 //
 // 404 for an unknown model, 400 for a bad body or when the model's dataset cannot be read (none recorded, gone from the training
-// datasets directory, invalid), 409 when an audit of this model is running already, 503 without a sidecar or an LLM.
+// datasets directory, invalid), 409 when an audit of this model is running already, 503 without an ML sidecar or an LLM.
 func (h *Handlers) StartOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {

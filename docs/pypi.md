@@ -60,7 +60,7 @@ pip cannot compile Go, so the wheels contain a binary that was cross-compiled be
 - `gligabao_server/_bin/gligabao` (`gligabao.exe` on Windows), executable.
 - `gligabao_server/_bin/gligabao.toml`, the repo's `build/gligabao.toml`. The binary reads its config from next to itself unless `--config` is given, so the packaged file is the default. It lives in site-packages and is replaced when the package is upgraded: keep your own settings in a file elsewhere and run `gligabao-server serve --config <path>`.
 - The commands `gligabao-server` and `gligabao`, which run the binary with the same arguments; `gligabao_server.binary_path()` and `gligabao_server.config_path()` for Python code.
-- Not included: the Python sidecar (`sidecar/`, training). Use the Docker image for it. The directories the config names (`datasets_training`, `evals_*`, `ontology`) are not shipped either; they are resolved like for any other binary, relative to the database or as given by the flags.
+- Not included: the Python ML sidecar (`ml_sidecar/`, training). Use the Docker image for it. The directories the config names (`datasets_training`, `evals_*`, `ontology`) are not shipped either; they are resolved like for any other binary, relative to the database or as given by the flags.
 - The database and its neighbours (`--db`, default `data/gligabao.db`) are created relative to the current directory, not in site-packages.
 
 ## Building

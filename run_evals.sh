@@ -16,7 +16,7 @@ Runs one of the two kinds of evals against the real LLM (needs ANTHROPIC_API_KEY
   knowledge   (default) knowledge extraction: remember, then query
   training    a trained model answers the cases of an eval (questions about knowledge in its training data, phrased
               differently from the training examples), an LLM judges the answers; the run is stored in the database, as the
-              admin UI's Eval button does it. Needs a running sidecar and the id of a trained model:
+              admin UI's Eval button does it. Needs a running ML sidecar and the id of a trained model:
               -model ID (see ./run_evals.sh -t training -list-models); without -e the eval is the one named like its dataset
 
 Options:
@@ -25,7 +25,7 @@ Options:
   -v                 knowledge: show the input and output of every LLM call; training: show every question and answer
   -h, --help         show this help
   (other options are passed to the runner: knowledge: -user (required: the owner of the defs and runs), -experiment, -experiment-desc, -models, -reasoning, -geo, -atif, -db, -commentary (on a failed case: ask whether to have an LLM diagnose it; needs a terminal), -commentary-model (go run ./internal/evals/knowledge/cmd -h);
-   training: -experiment, -experiment-desc, -model, -list-models, -db, -sidecar, -batch-size, -judge-model, -max-tokens, -temperature (go run ./internal/evals/training/cmd -h))
+   training: -experiment, -experiment-desc, -model, -list-models, -db, -ml-sidecar, -batch-size, -judge-model, -max-tokens, -temperature (go run ./internal/evals/training/cmd -h))
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).
 
@@ -74,49 +74,49 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-# Training evals need the sidecar: start it (./run_server_sidecar_local.sh) if nothing answers on its health endpoint, as
-# ./run_server_local.sh does. The sidecar started here is stopped when this script exits or is killed (INT/TERM/HUP).
-# Not needed (and not started) to list the evals or the models. A -sidecar URL or SIDECAR_URL that is not local is never started.
-SIDECAR_PID=""
+# Training evals need the ML sidecar: start it (./run_server_ml_sidecar_local.sh) if nothing answers on its health endpoint, as
+# ./run_server_local.sh does. The ML sidecar started here is stopped when this script exits or is killed (INT/TERM/HUP).
+# Not needed (and not started) to list the evals or the models. A -ml-sidecar URL or ML_SIDECAR_URL that is not local is never started.
+ML_SIDECAR_PID=""
 cleanup() {
 	trap - EXIT INT TERM HUP
-	if [ -n "$SIDECAR_PID" ]; then
-		echo "stopping local sidecar (pid $SIDECAR_PID)" >&2
-		kill "$SIDECAR_PID" 2>/dev/null || true
-		wait "$SIDECAR_PID" 2>/dev/null || true
+	if [ -n "$ML_SIDECAR_PID" ]; then
+		echo "stopping local ML sidecar (pid $ML_SIDECAR_PID)" >&2
+		kill "$ML_SIDECAR_PID" 2>/dev/null || true
+		wait "$ML_SIDECAR_PID" 2>/dev/null || true
 	fi
 }
 
-start_sidecar() {
-	local url="${SIDECAR_URL:-http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}}" prev="" a
+start_ml_sidecar() {
+	local url="${ML_SIDECAR_URL:-http://${ML_SIDECAR_HOST:-127.0.0.1}:${ML_SIDECAR_PORT:-8787}}" prev="" a
 	for a in ${args[@]+"${args[@]}"}; do
-		case "$prev" in -sidecar | --sidecar) url="$a" ;; esac
-		case "$a" in -sidecar=* | --sidecar=*) url="${a#*=}" ;; esac
+		case "$prev" in -ml-sidecar | --ml-sidecar) url="$a" ;; esac
+		case "$a" in -ml-sidecar=* | --ml-sidecar=*) url="${a#*=}" ;; esac
 		case "$a" in -list-evals | -list-models) return 0 ;; esac
 		prev="$a"
 	done
 	if curl -fs -m 2 "$url/health" >/dev/null 2>&1; then
-		echo "sidecar already running at $url" >&2
+		echo "ml_sidecar already running at $url" >&2
 		return 0
 	fi
 	case "$url" in
 	http://127.0.0.1[:/]* | http://127.0.0.1 | http://localhost[:/]* | http://localhost) ;;
 	*)
-		echo "warning: sidecar at $url does not answer and is not local; not starting it" >&2
+		echo "warning: ml_sidecar at $url does not answer and is not local; not starting it" >&2
 		return 0
 		;;
 	esac
-	echo "sidecar not running at $url; starting it" >&2
+	echo "ml_sidecar not running at $url; starting it" >&2
 	trap cleanup EXIT
 	trap 'exit 143' INT TERM HUP
-	SIDECAR_HOST="${SIDECAR_HOST:-127.0.0.1}" ./run_server_sidecar_local.sh &
-	SIDECAR_PID=$!
+	ML_SIDECAR_HOST="${ML_SIDECAR_HOST:-127.0.0.1}" ./run_server_ml_sidecar_local.sh &
+	ML_SIDECAR_PID=$!
 	local _
 	for _ in $(seq 1 60); do
 		curl -fs -m 2 "$url/health" >/dev/null 2>&1 && return 0
-		if ! kill -0 "$SIDECAR_PID" 2>/dev/null; then
-			echo "warning: sidecar exited at startup (are MODAL_TOKEN_ID / MODAL_TOKEN_SECRET set?); continuing without it" >&2
-			SIDECAR_PID=""
+		if ! kill -0 "$ML_SIDECAR_PID" 2>/dev/null; then
+			echo "warning: ml_sidecar exited at startup (are MODAL_TOKEN_ID / MODAL_TOKEN_SECRET set?); continuing without it" >&2
+			ML_SIDECAR_PID=""
 			return 0
 		fi
 		sleep 1
@@ -126,10 +126,10 @@ start_sidecar() {
 case "$kind" in
 knowledge) go run ./internal/evals/knowledge/cmd -config "$CONFIG" ${args[@]+"${args[@]}"} ;;
 training)
-	start_sidecar
-	# Not exec'd, so the trap can stop the sidecar. SIDECAR_URL tells the runner where the sidecar is, unless -sidecar does.
+	start_ml_sidecar
+	# Not exec'd, so the trap can stop the ML sidecar. ML_SIDECAR_URL tells the runner where the ML sidecar is, unless -ml-sidecar does.
 	rc=0
-	SIDECAR_URL="${SIDECAR_URL:-http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}}" \
+	ML_SIDECAR_URL="${ML_SIDECAR_URL:-http://${ML_SIDECAR_HOST:-127.0.0.1}:${ML_SIDECAR_PORT:-8787}}" \
 		go run ./internal/evals/training/cmd -config "$CONFIG" ${args[@]+"${args[@]}"} || rc=$?
 	exit "$rc"
 	;;

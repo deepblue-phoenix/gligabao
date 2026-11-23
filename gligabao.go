@@ -181,9 +181,9 @@ type DeployTrainedModelRequest = training.DeployTrainedModelRequest
 // DeployTrainedModelResult is what a Deploy callback reports: a reference to what it made and optional details.
 type DeployTrainedModelResult = training.DeployTrainedModelResult
 
-// TrainedModelInferenceHook is a named hook that runs the prompts of one trained model somewhere other than the sidecar (Modal): see
+// TrainedModelInferenceHook is a named hook that runs the prompts of one trained model somewhere other than the ML sidecar (Modal): see
 // ServeOptions.TrainedModelInferenceHooks and docs/hooks.md. Model is the name of the trained model it targets; when that model is
-// prompted, gligabao calls Infer instead of the sidecar. Several hooks can be supplied, each for a different model.
+// prompted, gligabao calls Infer instead of the ML sidecar. Several hooks can be supplied, each for a different model.
 type TrainedModelInferenceHook = training.TrainedModelInferenceHook
 
 // InferTrainedModelFunc is the Infer callback of a TrainedModelInferenceHook.
@@ -195,7 +195,7 @@ type InferTrainedModelRequest = training.InferTrainedModelRequest
 // InferTrainedModelResult is what an Infer callback answers: the response and, optionally, the token counts.
 type InferTrainedModelResult = training.InferTrainedModelResult
 
-// TrainedModel is a trained model, the result of a completed training job (a LoRA adapter on the sidecar's models volume).
+// TrainedModel is a trained model, the result of a completed training job (a LoRA adapter on the ML sidecar's models volume).
 type TrainedModel = trainingdb.TrainedModel
 
 // TrainedModelFile is one file of a trained model's weights.
@@ -250,13 +250,13 @@ type ServeOptions struct {
 	// validated at startup: Serve returns the error if one is malformed.
 	TimeseriesProviders []TimeseriesProvider
 	// TrainedModelDeployers are the hooks that deploy trained models (POST /v1/gb/training/models/{id}/deployments names the one to
-	// use): gligabao fetches the model's files from the sidecar to a local directory and calls the deployer with it. Each has a
+	// use): gligabao fetches the model's files from the ML sidecar to a local directory and calls the deployer with it. Each has a
 	// Name and the Deploy callback. They are validated at startup: Serve returns the error if one is malformed.
 	TrainedModelDeployers []TrainedModelDeployer
-	// TrainedModelInferenceHooks run the prompts of trained models without the sidecar: each has a Name, the Model it targets (the
+	// TrainedModelInferenceHooks run the prompts of trained models without the ML sidecar: each has a Name, the Model it targets (the
 	// name of a trained model, as the admin UI lists it) and the Infer callback. A model that has a hook is prompted through it (in the
-	// admin UI's prompt dialog and through POST /v1/gb/training/models/{id}/infer); a model that has none still runs on the sidecar.
-	// The training evals and audits are not affected: they always run on the sidecar (Modal), where the models are trained. Several
+	// admin UI's prompt dialog and through POST /v1/gb/training/models/{id}/infer); a model that has none still runs on the ML sidecar.
+	// The training evals and audits are not affected: they always run on the ML sidecar (Modal), where the models are trained. Several
 	// hooks can be supplied, for different models. They are validated at startup: Serve returns the error if one is malformed.
 	TrainedModelInferenceHooks []TrainedModelInferenceHook
 	// AdminExtensions add views, and buttons and blocks in the existing views, to the admin UI (served only with
@@ -441,7 +441,7 @@ const MountPrefix = server.MountPrefix
 // Config.Port, gligabao registers its handlers (the API, and the admin UI, eval and training endpoints if the config enables
 // them) on the supplied mux, under MountPrefix, and the host serves them on its own port. Serve behaves as before.
 //
-// Mount does the whole setup (opens the databases, checks the sidecar, ...) and returns when the handlers are registered; register
+// Mount does the whole setup (opens the databases, checks the ML sidecar, ...) and returns when the handlers are registered; register
 // them before the host starts serving. The returned release function stops the remember manager and closes the databases; it is
 // safe to call more than once and is also called when ctx is cancelled. Unlike Serve, Mount does not handle SIGINT/SIGTERM: the
 // host owns the process and should call release (or cancel ctx) after its own server has shut down. Config.Port is not used. The
@@ -564,14 +564,16 @@ func serverOptions(cfg *Config,
 			Region: cfg.ResearchS3Region,
 			Prefix: cfg.ResearchS3NotesPrefix,
 		},
-		AnthropicKey: cfg.AnthropicKey,
-		OpenAIKey:    cfg.OpenAIKey,
-		LinkupKey:    cfg.LinkupKey,
-		JevKey:       cfg.JevKey,
-		JevBaseURL:   cfg.JevBaseURL,
-		JevModel:     cfg.JevModel,
-		SidecarURL:   cfg.SidecarURL,
-		Prices:       aiPrices(cfg),
+		AnthropicKey:       cfg.AnthropicKey,
+		OpenAIKey:          cfg.OpenAIKey,
+		LinkupKey:          cfg.LinkupKey,
+		JevKey:             cfg.JevKey,
+		JevBaseURL:         cfg.JevBaseURL,
+		JevModel:           cfg.JevModel,
+		MLSidecarURL:       cfg.MLSidecarURL,
+		MLSidecarAutoStart: cfg.MLSidecarAutoStart,
+		MLSidecarDir:       cfg.MLSidecarDir,
+		Prices:             aiPrices(cfg),
 
 		Auth:                    opts.Auth,
 		GeoResolver:             opts.GeoResolver,

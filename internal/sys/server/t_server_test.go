@@ -74,7 +74,7 @@ func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 		}
 		if rec := do(httptest.NewRequest("GET",
 			"/v1/gb/training/datasets",
-			nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"name":"a"`) { // no sidecar needed
+			nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"name":"a"`) { // no ML sidecar needed
 			t.Fatalf("datasets: %d %s",
 				rec.Code,
 				rec.Body)

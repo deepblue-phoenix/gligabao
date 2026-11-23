@@ -30,5 +30,5 @@
 //
 // The server wires this package (internal/sys/server) and the admin UI shows its audits; the old audits of internal/training/audits
 // and internal/api/training are not used any more. This package shares no tables with them (Open creates its own). It uses internal/training only for what is not part of the audits: the trained models, the training
-// datasets and the sidecar's inference.
+// datasets and the ML sidecar's inference.
 package training_audits

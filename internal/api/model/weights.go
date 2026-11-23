@@ -21,7 +21,7 @@ import (
 //
 //   - gb_model_train_jobs has a row per training. It is made (claimed) before sargo is asked, and the unique index of running rows per
 //     user refuses a second training of the user on any instance. The owner instance follows its sargo and beats the row; when sargo is
-//     done it copies the model into the store, records it in gb_trained_models (the table of the LoRA models of the sidecar, with
+//     done it copies the model into the store, records it in gb_trained_models (the table of the LoRA models of the ML sidecar, with
 //     model_type "gcnii" and the user) and ends the row. A running row without a beat is marked lost by whoever looks next.
 //   - the status of a training is read from that row, so every instance gives the same answer.
 //   - before a model is used (status, infer, embed), the instance compares the model in its sargo directory (a marker file with the row

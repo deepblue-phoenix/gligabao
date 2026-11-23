@@ -155,7 +155,7 @@ func testResearchRoutes(t *testing.T,
 		"POST",
 		"/v1/gb/research",
 		`{"topic":"t","runner":"modal"}`); rec.Code != 503 {
-		t.Fatalf("modal runner without the sidecar: %d %s",
+		t.Fatalf("modal runner without the ML sidecar: %d %s",
 			rec.Code,
 			rec.Body)
 	}

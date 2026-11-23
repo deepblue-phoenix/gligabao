@@ -31,7 +31,7 @@ type Run struct {
 	Model    string `json:"model"`
 	MaxSteps int    `json:"max_steps"`
 	// Runner is where the agent runs: RunnerLocal (in the process of the server, the default) or RunnerModal (the gligabao_agent binary in
-	// a Modal container, through the sidecar).
+	// a Modal container, through the ML sidecar).
 	Runner string `json:"runner"`
 	// AgentName, AgentVersion and AgentHash say which agent definition (package agent_defs) the agent was built from: its name and version,
 	// and the hash of its content (a file can change without a version bump). A run made before definitions existed has none of them.
@@ -119,7 +119,7 @@ const (
 const (
 	// RunnerLocal: in the process of the server (or of the binary that started it), on goroutines. The default.
 	RunnerLocal = "local"
-	// RunnerModal: the gligabao_agent binary runs the agent and its sub-agents in a Modal container, started through the sidecar. The
+	// RunnerModal: the gligabao_agent binary runs the agent and its sub-agents in a Modal container, started through the ML sidecar. The
 	// server records the run and the states the binary reports.
 	RunnerModal = "modal"
 )

@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.241.0] - 2026-11-23
+
+The Python sidecar is now called the **ML sidecar**, and the server starts it in training mode.
+
+### Added
+
+- **The server starts the ML sidecar** when `training = true`, nothing answers at `ml_sidecar_url` and that URL is local: it runs `ml_sidecar/main_ml_sidecar.py` as a child process, waits for its health check and stops it with the server. A URL on another machine is never started. New settings `ml_sidecar_autostart` (default `true`) and `ml_sidecar_dir` / `ML_SIDECAR_DIR` (default: `ml_sidecar` next to the binary, in the working directory, or `../gligabao/ml_sidecar`). The training preflight message now says so.
+
+### Changed
+
+- **Breaking: everything named `sidecar` is now `ml_sidecar`** (the code sandbox's own Monty child process keeps the name sidecar). Directory `sidecar/` -> `ml_sidecar/` (`main_ml_sidecar.py`, `ml_sidecar_config.py`, `requirements_ml_sidecar.txt`); `Dockerfile.sidecar` -> `Dockerfile.ml_sidecar`; `run_build_sidecar.sh` / `run_server_sidecar_local.sh` -> `run_build_ml_sidecar.sh` / `run_server_ml_sidecar_local.sh`; Go package `internal/sys/sidecar` -> `internal/sys/ml_sidecar`; the config key `sidecar_url` -> `ml_sidecar_url`; every environment variable `SIDECAR_*` -> `ML_SIDECAR_*` (`ML_SIDECAR_URL`, `_HOST`, `_PORT`, `_BACKEND`, `_APP_NAME`, `_MODAL_WEB_URL`, `_GPU`, `_AGENT_*`, ...); the admin routes `/v1/gb/admin/api/sidecar/...` -> `/v1/gb/admin/api/ml_sidecar/...` and the status fields `sidecar_up` / `sidecar_active` of `GET /v1/gb/status` and the admin status -> `ml_sidecar_up` / `ml_sidecar_active`; the `-sidecar` flag of the training evals runner -> `-ml-sidecar`; the Docker image `gligabao-sidecar` and the compose service -> `gligabao-ml-sidecar` / `ml-sidecar`; `docs/training/sidecar.md` -> `docs/training/ml_sidecar.md`. The old names are not read any more: rename them in deployments (Nomad packs, compose files, scripts).
+
 ## [0.240.0] - 2026-11-26
 
 Training mode refuses to start without the credentials training needs.

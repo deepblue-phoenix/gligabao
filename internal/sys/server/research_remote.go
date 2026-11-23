@@ -11,31 +11,31 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbimport"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 )
 
-// sidecarRemote is how the research manager runs researches in Modal (agent_research.Remote): through the sidecar, which runs the
-// gligabao_agent binary in a Modal container. The Go server never talks to Modal itself. It uses the client of the configured sidecar
-// (sidecarClient), looked up at each call, so a sidecar that was down at startup is used once it is up.
-type sidecarRemote struct{}
+// mlSidecarRemote is how the research manager runs researches in Modal (agent_research.Remote): through the ML sidecar, which runs the
+// gligabao_agent binary in a Modal container. The Go server never talks to Modal itself. It uses the client of the configured ml_sidecar
+// (mlSidecarClient), looked up at each call, so an ML sidecar that was down at startup is used once it is up.
+type mlSidecarRemote struct{}
 
-var _ agent_research.Remote = sidecarRemote{}
+var _ agent_research.Remote = mlSidecarRemote{}
 
-func (sidecarRemote) client() (*sidecar.Client, error) {
-	c := sidecarClient.Load()
+func (mlSidecarRemote) client() (*ml_sidecar.Client, error) {
+	c := mlSidecarClient.Load()
 	if c == nil {
-		return nil, errors.New("sidecar not configured")
+		return nil, errors.New("ML sidecar not configured")
 	}
 	return c, nil
 }
 
-func (r sidecarRemote) Start(ctx context.Context,
+func (r mlSidecarRemote) Start(ctx context.Context,
 	req agent_research.RemoteRequest) (string, error) {
 	c, err := r.client()
 	if err != nil {
 		return "", err
 	}
-	sreq := sidecar.StartResearchJobRequest{
+	sreq := ml_sidecar.StartResearchJobRequest{
 		Topic:      req.Topic,
 		MaxSteps:   req.MaxSteps,
 		Model:      req.Model,
@@ -49,14 +49,14 @@ func (r sidecarRemote) Start(ctx context.Context,
 		}
 	}
 	job, err := c.StartResearchJob(ctx, sreq)
-	var se *sidecar.StatusError
+	var se *ml_sidecar.StatusError
 	if errors.As(err, &se) {
-		return "", errors.New(se.Message()) // the sidecar's own words (e.g. the agent is not deployed), not the whole request line
+		return "", errors.New(se.Message()) // the ML sidecar's own words (e.g. the agent is not deployed), not the whole request line
 	}
 	return job.JobID, err
 }
 
-func (r sidecarRemote) Follow(ctx context.Context,
+func (r mlSidecarRemote) Follow(ctx context.Context,
 	jobID string,
 	from int,
 	fn func(agent_research.RemoteEvent) error) error {
@@ -67,28 +67,28 @@ func (r sidecarRemote) Follow(ctx context.Context,
 	return c.StreamResearchJobEvents(ctx,
 		jobID,
 		from,
-		func(ev sidecar.ResearchEvent) error {
+		func(ev ml_sidecar.ResearchEvent) error {
 			return fn(remoteEventOf(ev))
 		})
 }
 
-// Cancel asks the sidecar to stop the job. A job that is over already (409) is not an error: its last event is on its way.
-func (r sidecarRemote) Cancel(ctx context.Context,
+// Cancel asks the ML sidecar to stop the job. A job that is over already (409) is not an error: its last event is on its way.
+func (r mlSidecarRemote) Cancel(ctx context.Context,
 	jobID string) error {
 	c, err := r.client()
 	if err != nil {
 		return err
 	}
 	err = c.CancelResearchJob(ctx, jobID)
-	var se *sidecar.StatusError
+	var se *ml_sidecar.StatusError
 	if errors.As(err, &se) && se.Code == http.StatusConflict {
 		return nil
 	}
 	return err
 }
 
-// Export downloads the export file of the job from the sidecar (what the agent in the container wrote with --export).
-func (r sidecarRemote) Export(ctx context.Context,
+// Export downloads the export file of the job from the ML sidecar (what the agent in the container wrote with --export).
+func (r mlSidecarRemote) Export(ctx context.Context,
 	jobID string,
 	w io.Writer) (int64, error) {
 	c, err := r.client()
@@ -98,7 +98,7 @@ func (r sidecarRemote) Export(ctx context.Context,
 	n, err := c.DownloadResearchExport(ctx,
 		jobID,
 		w)
-	var se *sidecar.StatusError
+	var se *ml_sidecar.StatusError
 	if errors.As(err, &se) {
 		return n, errors.New(se.Message())
 	}
@@ -141,7 +141,7 @@ func (i dbImporter) Import(ctx context.Context,
 	return res.Summary(), nil
 }
 
-func remoteEventOf(ev sidecar.ResearchEvent) agent_research.RemoteEvent {
+func remoteEventOf(ev ml_sidecar.ResearchEvent) agent_research.RemoteEvent {
 	out := agent_research.RemoteEvent{
 		Seq:      ev.Seq,
 		Type:     ev.Type,

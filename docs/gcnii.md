@@ -2,7 +2,7 @@
 
 gligabao can train and run a GCNII* graph classifier for each user. The work is done by [sargo](../rust/sargo/README.md), the Rust server embedded in the gligabao binary. gligabao starts it **once at startup** (`sargo = true` or `serve --sargo`, binary built with `./run_build.sh --sargo`) and from then on only talks to it over HTTP. These routes are part of the training endpoints (`/v1/gb/training/`), so they need training mode (`training = true` or `serve --training`) as well as sargo: with training mode on but without sargo the other training endpoints are mounted and the routes below are not (a part that needs an optional backend is mounted only when the backend is there).
 
-The trained models of every type (`lora` from the sidecar, `gcnii`) are listed together by `GET /v1/gb/training/models` (`?model_type=` narrows it); the routes below are the ones of the GCNII* graph classifier. A `model_type` in a body, if sent, must be `"gcnii"`. Every model belongs to one user: the user of a request is the one of the `gb-user-id` header (or of the API key), never a field of the body, and it is passed on to sargo as `user_id`. Training one user never changes another's model.
+The trained models of every type (`lora` from the ML sidecar, `gcnii`) are listed together by `GET /v1/gb/training/models` (`?model_type=` narrows it); the routes below are the ones of the GCNII* graph classifier. A `model_type` in a body, if sent, must be `"gcnii"`. Every model belongs to one user: the user of a request is the one of the `gb-user-id` header (or of the API key), never a field of the body, and it is passed on to sargo as `user_id`. Training one user never changes another's model.
 
 ## Routes
 
@@ -43,7 +43,7 @@ Every training on a dataset is recorded in `<sargo_gcnii_dir>/_history/<user>/<d
 
 ## Weights and the trained models table
 
-Sargo trains and serves the model of a user from a local directory (`sargo_gcnii_dir/<hex of the user id>/model.weights` and `classes.json`): its **working copy**, one model per user, replaced by every training. gligabao keeps every finished model in a durable store and tracks it in the same table as the LoRA models of the sidecar, `gb_trained_models` (see [training/sidecar.md](training/sidecar.md#trained-models)).
+Sargo trains and serves the model of a user from a local directory (`sargo_gcnii_dir/<hex of the user id>/model.weights` and `classes.json`): its **working copy**, one model per user, replaced by every training. gligabao keeps every finished model in a durable store and tracks it in the same table as the LoRA models of the ML sidecar, `gb_trained_models` (see [training/ml_sidecar.md](training/ml_sidecar.md#trained-models)).
 
 **Several instances.** (The full design, its races and failure handling are in [gcnii-cluster.md](gcnii-cluster.md).) In a cluster the gligabao instances take requests behind a load balancer. Each has its own sargo and its own directory; they share only the database and the bucket. So a training runs in the sargo of ONE instance, and the others learn about it from the database, in the table `gb_model_train_jobs` (one row per training: `job_id`, `model_type`, `user_id`, `instance_id`, `status` `running`/`done`/`failed`/`lost`, `error`, `job` (sargo's last report), `info` (dataset, history run, settings), `model_id`, `started_at`, `heartbeat_at`, `finished_at`):
 
@@ -57,7 +57,7 @@ Sargo trains and serves the model of a user from a local directory (`sargo_gcnii
 
 **The model row.** `model_type = "gcnii"`, `user_id` the user, `storage` `s3` (or `local`), `job_id` the id above, `path` the directory in the store (`model_weights/gcnii/<user>/<job id>`), `files` (path, size, sha256 of the two files), `size_bytes`, `dataset` the dataset trained on (`""` for `POST /v1/gb/training/gcnii/train`), `num_examples` the training graphs, `num_train_steps` the epochs, `final_loss` the loss on the training graphs, `params` (JSON: `run` the history run, `train` the settings the request gave, `classes`, `accuracy`, `loss`, `val_accuracy`, `val_loss`), `base_model` and `model_size` empty, `run_id` null. LoRA rows have `model_type = "lora"`, `user_id = ""`, `storage = "modal_volume"` (what every row had before these columns, which an existing database gets at start).
 
-**Not the sidecar.** The training API (`/v1/gb/training/models`) lists the rows of every type and user (it is the admin view). A `gcnii` row cannot be run through the sidecar: inference, evals, audits and deployment answer `409` for it.
+**Not the ml_sidecar.** The training API (`/v1/gb/training/models`) lists the rows of every type and user (it is the admin view). A `gcnii` row cannot be run through the ML sidecar: inference, evals, audits and deployment answer `409` for it.
 
 ## Where things are
 

@@ -224,7 +224,7 @@ One file per name; `version` is metadata, and git keeps the history. Every run r
 
 ## In Modal
 
-The container has no `agent_defs` directory, and baking the files into the image would need a new deployment for every prompt change. So the server sends the definitions with the job: a **bundle** (`agent_defs.Bundle`), JSON with the chosen definition, the prompts and the skills as text, at most 1 MiB. It travels `Remote.Start` → `POST /research/job_start` (`agent`, `agent_bundle`, `max_cost_usd`) → the sidecar writes it to the job's directory → `gligabao_agent --agent NAME --agent-bundle FILE --max-cost-usd N`. The binary checks the hash of every definition against its content, so a bundle that was changed on the way is refused.
+The container has no `agent_defs` directory, and baking the files into the image would need a new deployment for every prompt change. So the server sends the definitions with the job: a **bundle** (`agent_defs.Bundle`), JSON with the chosen definition, the prompts and the skills as text, at most 1 MiB. It travels `Remote.Start` → `POST /research/job_start` (`agent`, `agent_bundle`, `max_cost_usd`) → the ML sidecar writes it to the job's directory → `gligabao_agent --agent NAME --agent-bundle FILE --max-cost-usd N`. The binary checks the hash of every definition against its content, so a bundle that was changed on the way is refused.
 
 ## Checks
 

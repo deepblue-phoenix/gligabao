@@ -1,6 +1,6 @@
-// The "training" view: start a fine-tuning job of Gemma 4 on the sidecar (picking its dataset), the list of the training
+// The "training" view: start a fine-tuning job of Gemma 4 on the ML sidecar (picking its dataset), the list of the training
 // jobs in the database, and for the selected job a feed of its events and a graph of its loss. The events come from the
-// server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
+// server as SSE (../training/events), which forwards what the ML sidecar reports; d3 is loaded as a global by index.html.
 
 import { TrainingEventSource, trainingFetch } from "./training_api.js";
 import { alertDialog, confirmDialog } from "./dialogs.js";
@@ -452,10 +452,10 @@ function openModelMenu(id: number, x: number, y: number): void {
   add(node("button", "small", "Prompt"), "Open the prompt dialog of this model: run a prompt through it and see the past requests", () => openPrompt(id));
   const evalBtn = node("button", "small", EVAL.button);
   evalBtn.disabled = !m.dataset;
-  add(evalBtn, m.dataset ? `Open the eval screen of this model. ${EVAL.tip(m.dataset)}` : "This model was trained on the sidecar's default dataset: there are no questions to ask",
+  add(evalBtn, m.dataset ? `Open the eval screen of this model. ${EVAL.tip(m.dataset)}` : "This model was trained on the ML sidecar's default dataset: there are no questions to ask",
     () => { selectModel(id); el("model-evals-heading").scrollIntoView({ block: "start" }); });
   add(node("button", "small", AUDIT.button),
-    `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask"}`,
+    `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the ML sidecar's default dataset: there are no questions to ask"}`,
     () => openAudit(id));
   const deployBtn = node("button", "small", "Deploy");
   deployBtn.disabled = deployers.length === 0;
@@ -582,7 +582,7 @@ function renderModelDetails(m: TrainedModel): void {
     ["Training", `${m.num_train_steps} steps · final loss ${fmtLoss(m.final_loss)}`],
     ["Settings", Object.entries(m.params ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(", ") || "–"],
     ["Job", m.run_id != null ? `#${m.run_id} (${m.job_id})` : m.job_id],
-    ["Weights", `${m.path} on the sidecar's models volume`],
+    ["Weights", `${m.path} on the ML sidecar's models volume`],
   ];
   const dl = node("dl");
   for (const [k, v] of facts) dl.append(node("dt", "", k), node("dd", "", v));
@@ -656,7 +656,7 @@ function renderPromptForm(m: TrainedModel): void {
 }
 
 // Whether the Modal inference container of the open model is up ("warm": the model is loaded, so a prompt runs right away),
-// polled from the sidecar's app list (the containers record themselves after each request and Modal shuts them down by itself
+// polled from the ML sidecar's app list (the containers record themselves after each request and Modal shuts them down by itself
 // a few minutes after the last one). "other": a container of the size is up but holds another model. "unknown": not known (yet).
 type Warm = "unknown" | "cold" | "other" | "warm";
 let warm: Warm = "unknown";
@@ -675,11 +675,11 @@ function drawWarm(): void {
     : "Inference container status unknown.";
 }
 
-// The state of the Modal inference container of model m, from the sidecar's app list.
+// The state of the Modal inference container of model m, from the ML sidecar's app list.
 async function fetchWarm(m: TrainedModel): Promise<{ state: Warm; info: string }> {
   let state: Warm = "unknown", info = "";
   try {
-    const res = await fetch("api/sidecar/backends/modal/apps");
+    const res = await fetch("api/ml_sidecar/backends/modal/apps");
     if (res.ok) {
       const apps = ((await res.json()) as { apps: AppInfo[] }).apps ?? [];
       const containers = apps.filter((a) => a.configured).flatMap((a) => a.inference ?? []);
@@ -782,7 +782,7 @@ function renderInferences(list: Inference[]): void {
   }
 }
 
-// Runs a prompt through a trained model: on the sidecar, or on the model's inference hook if it has one. The first call after a while is slow: a GPU container starts and loads the model.
+// Runs a prompt through a trained model: on the ML sidecar, or on the model's inference hook if it has one. The first call after a while is slow: a GPU container starts and loads the model.
 // The server stores the request, so the history is reloaded afterwards, showing the response (or the error) at its top.
 async function infer(m: TrainedModel, prompt: string, maxTokens: number, temperature: number): Promise<void> {
   inferring = true;
@@ -956,7 +956,7 @@ function renderRunForm(k: RunKind, m: TrainedModel): void {
     }).catch((err) => { status.className = "error"; status.textContent = `Could not load the evals: ${errText(err)}`; });
   } else {
     run.disabled = !m.dataset;
-    if (!m.dataset) status.textContent = "This model was trained on the sidecar's default dataset: there are no questions to ask.";
+    if (!m.dataset) status.textContent = "This model was trained on the ML sidecar's default dataset: there are no questions to ask.";
   }
   run.addEventListener("click", () => {
     const opts: { limit?: number; batch_size?: number; eval?: string } = {};
@@ -1119,14 +1119,14 @@ function runCasesTable(k: RunKind, cases: TrainedModelCase[] | undefined): HTMLE
 //---------------------------------------------------------------------------------------------
 // Starting a job
 
-// Shows a notice and disables Run if the server's sidecar is not active. Returns whether it is.
-async function checkSidecar(): Promise<boolean> {
+// Shows a notice and disables Run if the server's ml_sidecar is not active. Returns whether it is.
+async function checkMLSidecar(): Promise<boolean> {
   let active = true;
   try {
-    const res = await fetch("api/sidecar/status");
-    if (res.ok) active = ((await res.json()) as { sidecar_active?: boolean }).sidecar_active !== false;
+    const res = await fetch("api/ml_sidecar/status");
+    if (res.ok) active = ((await res.json()) as { ml_sidecar_active?: boolean }).ml_sidecar_active !== false;
   } catch { /* server unreachable: the other requests report it */ }
-  el("training-sidecar-warning").hidden = active;
+  el("training-ml-sidecar-warning").hidden = active;
   el<HTMLButtonElement>("training-run").disabled = !active;
   return active;
 }
@@ -1166,7 +1166,7 @@ function actionButtons(backend: string, actions: Record<string, ActionState>, de
   return out;
 }
 
-// Lists the training backends the sidecar reports (name, healthy or not). For Modal, also whether its app is deployed
+// Lists the training backends the ML sidecar reports (name, healthy or not). For Modal, also whether its app is deployed
 // (found in Modal) or still has to be (`modal deploy app.py`).
 async function loadBackends(): Promise<void> {
   const list = el("training-backends-list");
@@ -1174,7 +1174,7 @@ async function loadBackends(): Promise<void> {
   let running = false; // an action is running: keep the list current (e.g. after a page reload)
   clearTimeout(backendsTimer);
   try {
-    const res = await fetch("api/sidecar/backends");
+    const res = await fetch("api/ml_sidecar/backends");
     if (!res.ok) throw new Error(String(res.status));
     const body = (await res.json()) as { backends?: BackendStatus[]; error?: string };
     for (const b of (body.backends ?? []).filter((x) => x.configured !== false)) {
@@ -1214,7 +1214,7 @@ let lastApps: AppInfo[] | undefined; // the last list, shown while the next one 
 // Fetches the backend's apps and shows them in box. While one of their actions runs the list keeps refreshing.
 async function loadApps(backend: string, box: HTMLElement): Promise<void> {
   try {
-    const res = await fetch(`api/sidecar/backends/${encodeURIComponent(backend)}/apps`);
+    const res = await fetch(`api/ml_sidecar/backends/${encodeURIComponent(backend)}/apps`);
     if (!res.ok) throw await failure(res);
     const apps = ((await res.json()) as { apps: AppInfo[] }).apps;
     lastApps = apps;
@@ -1301,7 +1301,7 @@ async function toggleVolumes(backend: string, app = ""): Promise<void> {
   panel.hidden = false;
   panel.replaceChildren(node("p", "muted", `Loading the ${what} volumes…`));
   try {
-    const res = await fetch(`api/sidecar/backends/${encodeURIComponent(backend)}/volumes`);
+    const res = await fetch(`api/ml_sidecar/backends/${encodeURIComponent(backend)}/volumes`);
     if (!res.ok) throw await failure(res);
     const vols = ((await res.json()) as { volumes: VolumeInfo[] }).volumes;
     if (volumesOpen !== key) return; // closed (or another one opened) while loading
@@ -1330,9 +1330,9 @@ async function toggleVolumes(backend: string, app = ""): Promise<void> {
 }
 
 // Fills the dataset picker with the datasets of the server (the subdirectories of its training datasets directory that have a
-// manifest; a job's dataset travels to the sidecar with the job). It needs no sidecar.
+// manifest; a job's dataset travels to the ML sidecar with the job). It needs no ML sidecar.
 async function loadDatasets(): Promise<void> {
-  await checkSidecar();
+  await checkMLSidecar();
   void loadBackends();
   const sel = el<HTMLSelectElement>("training-dataset");
   const status = el("training-run-status");
@@ -1362,7 +1362,7 @@ function renderDatasetProblems(problems: DatasetProblem[]): void {
 }
 
 //---------------------------------------------------------------------------------------------
-// Uploading datasets (the server validates and keeps them, and sends them to the sidecar)
+// Uploading datasets (the server validates and keeps them, and sends them to the ML sidecar)
 
 // Shows the uploaded datasets in the table; adds them to the picker's entries if given.
 function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, string>): void {
@@ -1378,8 +1378,8 @@ function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, strin
     clipped(tr.insertCell(), d.name);
     clipped(tr.insertCell(), `${d.dir}/${d.file}`);
     const st = tr.insertCell();
-    st.appendChild(node("span", `badge ${d.status === "synced" ? "badge-ok" : "badge-active"}`, d.status === "synced" ? "on sidecar" : "stored"));
-    st.title = d.status === "synced" ? "The sidecar has this version" : "Saved on the server; sent to the sidecar when a job starts on it";
+    st.appendChild(node("span", `badge ${d.status === "synced" ? "badge-ok" : "badge-active"}`, d.status === "synced" ? "on ML sidecar" : "stored"));
+    st.title = d.status === "synced" ? "The ML sidecar has this version" : "Saved on the server; sent to the ML sidecar when a job starts on it";
     const n = tr.insertCell();
     n.className = "num";
     n.textContent = String(d.num_records);
@@ -1472,7 +1472,7 @@ async function uploadDataset(): Promise<void> {
     const res = await trainingFetch("../training/datasets", { method: "POST", body: form });
     if (!res.ok) throw await failure(res);
     const ds = (await res.json()) as DatasetRecord;
-    status.textContent = `Saved dataset ${ds.name}: ${ds.num_records} records, ${fmtBytes(ds.size_bytes)}. It is sent to the sidecar when a job starts on it.`;
+    status.textContent = `Saved dataset ${ds.name}: ${ds.num_records} records, ${fmtBytes(ds.size_bytes)}. It is sent to the ML sidecar when a job starts on it.`;
     input.value = "";
     modal.close();
     await loadDatasets(); // the table and the picker
@@ -1515,7 +1515,7 @@ async function run(): Promise<void> {
     status.className = "error";
     status.textContent = `Failed to start the job: ${errText(err)}`;
   } finally {
-    btn.disabled = !el("training-sidecar-warning").hidden;
+    btn.disabled = !el("training-ml-sidecar-warning").hidden;
   }
 }
 

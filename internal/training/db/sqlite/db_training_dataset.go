@@ -40,7 +40,7 @@ func UpsertTrainingDataset(ctx context.Context,
 	return id, nil
 }
 
-// MarkTrainingDatasetSynced records that the sidecar has the file whose digest is sha256: it only sets the dataset 'synced'
+// MarkTrainingDatasetSynced records that the ML sidecar has the file whose digest is sha256: it only sets the dataset 'synced'
 // if it still has that digest (it may have been uploaded again meanwhile). It reports whether it did; model.ErrNotFound if
 // there is no such dataset.
 func MarkTrainingDatasetSynced(ctx context.Context,

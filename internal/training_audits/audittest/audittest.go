@@ -1,5 +1,5 @@
 // Package audittest has what the tests of the training audits (and of what is built on them) need: a database per backend with the
-// trained model tables and the audit tables, a fake sidecar, a fake judge and a training datasets directory. It is not used by
+// trained model tables and the audit tables, a fake ml_sidecar, a fake judge and a training datasets directory. It is not used by
 // anything else.
 package audittest
 
@@ -20,7 +20,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/db/postgres"
@@ -181,11 +181,11 @@ func DatasetDir(t *testing.T,
 	return dir
 }
 
-// Sidecar is a fake trained model: it answers "a<i>" to "q<i>" (what the dataset of DatasetDir trained it to say), except for the
+// ML sidecar is a fake trained model: it answers "a<i>" to "q<i>" (what the dataset of DatasetDir trained it to say), except for the
 // prompts in Wrong, which it answers "wrong".
-type Sidecar struct {
+type MLSidecar struct {
 	mu      sync.Mutex
-	reqs    []sidecar.InferRequest
+	reqs    []ml_sidecar.InferRequest
 	Wrong   map[string]bool
 	Fail    map[string]bool // prompts that make it fail
 	Block   chan struct{}   // if set, an answer waits for it to be closed (or for ctx)
@@ -193,15 +193,15 @@ type Sidecar struct {
 }
 
 // Requests are the requests it got so far.
-func (s *Sidecar) Requests() []sidecar.InferRequest {
+func (s *MLSidecar) Requests() []ml_sidecar.InferRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]sidecar.InferRequest(nil), s.reqs...)
+	return append([]ml_sidecar.InferRequest(nil), s.reqs...)
 }
 
 // Infer answers a prompt.
-func (s *Sidecar) Infer(ctx context.Context,
-	req sidecar.InferRequest) (sidecar.InferResponse, error) {
+func (s *MLSidecar) Infer(ctx context.Context,
+	req ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error) {
 	s.mu.Lock()
 	s.reqs = append(s.reqs, req)
 	s.mu.Unlock()
@@ -215,22 +215,22 @@ func (s *Sidecar) Infer(ctx context.Context,
 		select {
 		case <-s.Block:
 		case <-ctx.Done():
-			return sidecar.InferResponse{}, ctx.Err()
+			return ml_sidecar.InferResponse{}, ctx.Err()
 		}
 	}
 	switch {
 	case s.Fail[req.Prompt]:
-		return sidecar.InferResponse{}, &sidecar.InferError{
+		return ml_sidecar.InferResponse{}, &ml_sidecar.InferError{
 			Message: "out of memory",
 		}
 	case s.Wrong[req.Prompt]:
-		return sidecar.InferResponse{
+		return ml_sidecar.InferResponse{
 			Response:     "wrong",
 			InputTokens:  4,
 			OutputTokens: 1,
 		}, nil
 	}
-	return sidecar.InferResponse{
+	return ml_sidecar.InferResponse{
 		Response:     "a" + strings.TrimPrefix(req.Prompt, "q"),
 		InputTokens:  4,
 		OutputTokens: 2,

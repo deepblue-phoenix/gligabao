@@ -413,17 +413,17 @@
 | `internal/sys/jev.Response`                               | is the result of a Jev evaluation.                                                                                     |
 | `internal/sys/server.Options`                             | configures the HTTP server.                                                                                            |
 | `internal/sys/server.EvalRerunEnv`                        | is what the server hands the eval rerunner: plain values and its interfaces, so the rerunner's package need not be imported. |
-| `internal/sys/sidecar.Client`                             | calls the training sidecar's HTTP API.                                                                                 |
-| `internal/sys/sidecar.HealthResponse`                     | is the body of the sidecar's health endpoint.                                                                          |
-| `internal/sys/sidecar.InferError`                         | is the error of a generation that failed on the sidecar.                                                               |
-| `internal/sys/sidecar.InferRequest`                       | is the body of the sidecar's infer request.                                                                            |
-| `internal/sys/sidecar.InferResponse`                      | is the sidecar's answer to an infer request.                                                                           |
-| `internal/sys/sidecar.StartTrainingJobRequest`            | is the body of the sidecar's training job start request.                                                               |
-| `internal/sys/sidecar.StatusError`                        | is the error for a sidecar response with a non-200 status.                                                             |
-| `internal/sys/sidecar.TrainedModelFile`                   | is one file of a trained model's weights.                                                                              |
-| `internal/sys/sidecar.TrainedModelInfo`                   | describes the weights a completed training job saved.                                                                  |
-| `internal/sys/sidecar.TrainingEvent`                      | is one status or progress event of a training job.                                                                     |
-| `internal/sys/sidecar.TrainingJob`                        | is a training job started on the sidecar.                                                                              |
+| `internal/sys/ml_sidecar.Client`                             | calls the training ML sidecar's HTTP API.                                                                                 |
+| `internal/sys/ml_sidecar.HealthResponse`                     | is the body of the ML sidecar's health endpoint.                                                                          |
+| `internal/sys/ml_sidecar.InferError`                         | is the error of a generation that failed on the ML sidecar.                                                               |
+| `internal/sys/ml_sidecar.InferRequest`                       | is the body of the ML sidecar's infer request.                                                                            |
+| `internal/sys/ml_sidecar.InferResponse`                      | is the ML sidecar's answer to an infer request.                                                                           |
+| `internal/sys/ml_sidecar.StartTrainingJobRequest`            | is the body of the ML sidecar's training job start request.                                                               |
+| `internal/sys/ml_sidecar.StatusError`                        | is the error for an ML sidecar response with a non-200 status.                                                             |
+| `internal/sys/ml_sidecar.TrainedModelFile`                   | is one file of a trained model's weights.                                                                              |
+| `internal/sys/ml_sidecar.TrainedModelInfo`                   | describes the weights a completed training job saved.                                                                  |
+| `internal/sys/ml_sidecar.TrainingEvent`                      | is one status or progress event of a training job.                                                                     |
+| `internal/sys/ml_sidecar.TrainingJob`                        | is a training job started on the ML sidecar.                                                                              |
 
 >>> TRAINING
 
@@ -437,7 +437,7 @@
 | `internal/training.DeployTrainedModelRequest`             | is what a trained model deployer is asked to deploy: the model, its local directory and the options.                   |
 | `internal/training.DeployTrainedModelResult`              | is what a trained model deployer reports: a reference to what it made and details.                                     |
 | `internal/training.deployUpdates`                         | records the progress messages of one deployment.                                                                           |
-| `internal/training.FeedEvent`                             | is a sidecar event tagged with its run and job as the admin UI receives it.                                            |
+| `internal/training.FeedEvent`                             | is an ML sidecar event tagged with its run and job as the admin UI receives it.                                            |
 | `internal/training.FileStats`                             | describes a data file's size, hash and record count.                                                                   |
 | `internal/training.InferRequest`                          | is a prompt for a trained model.                                                                                       |
 | `internal/training.InferResult`                           | is a trained model's answer and the ID of the stored request.                                                          |
@@ -463,8 +463,8 @@
 | `internal/training/db/model.TrainedModelFile`             | is one file of a trained model's weights.                                                                              |
 | `internal/training/db/model.TrainedModelInference`        | is one stored request to run a prompt through a trained model.                                                         |
 | `internal/training/db/model.TrainingDataset`              | is the record of a training dataset's JSONL file and its manifest.                                                     |
-| `internal/training/db/model.TrainingJobEvent`             | is one event of a training job as reported by the sidecar.                                                             |
-| `internal/training/db/model.TrainingJobRun`               | is one training job started on the sidecar, updated as its progress arrives.                                           |
+| `internal/training/db/model.TrainingJobEvent`             | is one event of a training job as reported by the ML sidecar.                                                             |
+| `internal/training/db/model.TrainingJobRun`               | is one training job started on the ML sidecar, updated as its progress arrives.                                           |
 | `internal/training/db/model.TrainingJobRunUpdate`         | is a partial update of a training job run where only set fields are written.                                           |
 
 >>> TRAINING_AUDIT
@@ -489,7 +489,7 @@
 | `internal/training_audits.verdict`                        | is the judge's score and reason for one case.                                                                          |
 | `internal/training_audits/api.Handlers`                   | are the HTTP endpoints of the training audits.                                                                         |
 | `internal/training_audits/audittest.Judge`                | is a fake judge for the audit tests.                                                                                   |
-| `internal/training_audits/audittest.Sidecar`              | is a fake sidecar for the audit tests.                                                                                 |
+| `internal/training_audits/audittest.MLSidecar`              | is a fake ML sidecar for the audit tests.                                                                                 |
 | `internal/training_audits/core.AuditCaseRun`              | is one dataset example of an audit, asked and judged.                                                                  |
 | `internal/training_audits/core.AuditRun`                  | is one audit of a trained model over one dataset.                                                                      |
 | `internal/training_audits/core.AuditStats`                | holds the statistics of an audit as a whole (judged, correct, tokens).                                                 |

@@ -218,7 +218,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 	f.StringVar(&runner,
 		"runner",
 		"",
-		`where the agent runs: "local" (default: in the server) or "modal" (the gligabao_agent binary in a Modal container, through the sidecar)`)
+		`where the agent runs: "local" (default: in the server) or "modal" (the gligabao_agent binary in a Modal container, through the ML sidecar)`)
 	f.StringVar(&searchProv,
 		"search-provider",
 		"",

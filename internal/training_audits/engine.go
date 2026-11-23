@@ -11,7 +11,7 @@ import (
 )
 
 // The engine: it asks the trained model the examples of its dataset and has the judge grade the answers (Run). It knows nothing of
-// HTTP, the sidecar or the database: the model is a function (GenerateFunc), the judge an LLM and the results go to a Sink. The
+// HTTP, the ML sidecar or the database: the model is a function (GenerateFunc), the judge an LLM and the results go to a Sink. The
 // Manager wires those up and stores what the engine reports. What it reports are the structs of package core: the case runs
 // (without their RunID, which the caller knows) and the Progress, which is what the AuditRun holds of the run so far.
 
@@ -25,7 +25,7 @@ const (
 	// judgeAttempts is how many times a batch (or what is left of it) is sent to the judge.
 	judgeAttempts = 2
 	// A run that only gets failures stops instead of running on: after this many batches in a row where every answer failed, or
-	// where the judge could not grade anything (a dead sidecar, a bad API key).
+	// where the judge could not grade anything (a dead ml_sidecar, a bad API key).
 	maxFailedAnswerBatches = 2
 	maxFailedJudgeBatches  = 3
 )

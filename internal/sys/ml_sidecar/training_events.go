@@ -1,0 +1,187 @@
+package ml_sidecar
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+// Types of a TrainingEvent.
+const (
+	EventStatus   = "status"
+	EventProgress = "progress"
+	EventLog      = "log"
+)
+
+// TrainingEvent is one event of a training job's progress (ml_sidecar/ai_train/ai_train_core/progress_events.py): a status
+// change or a progress report. Fields that an event does not have are nil / empty.
+type TrainingEvent struct {
+	// Seq is the event's index in the job's event log (the SSE id); StreamTrainingJobEvents sets it.
+	Seq  int    `json:"seq"`
+	Type string `json:"type"` // EventStatus, EventProgress or EventLog
+	// Status ("running", "training", "completed", "failed", "cancelled") is set on status events. A completed event has the
+	// FinalLoss, a failed or cancelled one the Error; a "training" one the MaxSteps.
+	Status    string   `json:"status,omitempty"`
+	MaxSteps  *int     `json:"max_steps,omitempty"`
+	FinalLoss *float64 `json:"final_loss,omitempty"`
+	Error     string   `json:"error,omitempty"`
+	// Message is the text of a log event: what the job is doing (loading the model, ...).
+	Message string `json:"message,omitempty"`
+	// Traceback is the Python traceback of a failed job (its last part), for diagnosis.
+	Traceback string `json:"traceback,omitempty"`
+	// Progress events: the Trainer's step, loss (nil when the log has none, or it is not finite), learning rate and epoch,
+	// and the seconds since training began.
+	Step           *int     `json:"step,omitempty"`
+	Loss           *float64 `json:"loss,omitempty"`
+	LearningRate   *float64 `json:"learning_rate,omitempty"`
+	Epoch          *float64 `json:"epoch,omitempty"`
+	ElapsedSeconds *float64 `json:"elapsed_seconds,omitempty"`
+	// Model is on the "completed" event: the weights the job saved (nil from an ML sidecar that does not report them).
+	Model *TrainedModelInfo `json:"model,omitempty"`
+	// Timestamp is when the event was written, in seconds since the Unix epoch.
+	Timestamp float64 `json:"timestamp,omitempty"`
+}
+
+// TrainedModelInfo describes the weights a completed training job saved (ml_sidecar/ai_train/ai_train_core/trained_model.py:
+// describe).
+type TrainedModelInfo struct {
+	BaseModel string `json:"base_model"`
+	ModelSize string `json:"model_size"`
+	// Path is the directory of the weights on the ML sidecar's models volume, relative to it ("trained/<job id>"): the
+	// `model_path` of an inference request.
+	Path      string             `json:"path"`
+	Files     []TrainedModelFile `json:"files"`
+	SizeBytes int64              `json:"size_bytes"`
+	// NumExamples and DatasetSHA256 are of the dataset file the job read; Params are the other training settings.
+	NumExamples   int             `json:"num_examples"`
+	DatasetSHA256 string          `json:"dataset_sha256"`
+	Params        json.RawMessage `json:"params,omitempty"`
+}
+
+// TrainedModelFile is one file of a trained model's weights.
+type TrainedModelFile struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	SHA256    string `json:"sha256,omitempty"`
+}
+
+// Finished reports whether the event ends the job.
+func (e TrainingEvent) Finished() bool {
+	return e.Type == EventStatus && (e.Status == "completed" || e.Status == "failed" || e.Status == "cancelled")
+}
+
+// StreamTrainingJobEvents follows the progress of a training job: it calls GET /training/job_events (Server-Sent Events)
+// and calls fn with each event, from the one with index `from` (0 = the first) on. It returns nil when the ML sidecar ends
+// the stream (after the job's last event, or when it has been open long enough: reconnect with from = last Seq + 1),
+// fn's error if fn fails, ctx's error when ctx is done, and an error for a failed connection or a broken stream.
+func (c *Client) StreamTrainingJobEvents(ctx context.Context,
+	jobID string,
+	from int,
+	fn func(TrainingEvent) error) error {
+	return c.streamEvents(ctx,
+		"/training/job_events",
+		jobID,
+		from,
+		func(seq int,
+			data []byte) error {
+			var ev TrainingEvent
+			if err := json.Unmarshal(data, &ev); err != nil {
+				return fmt.Errorf("ML sidecar GET /training/job_events: decode event: %w", err)
+			}
+			ev.Seq = seq
+			return fn(ev)
+		})
+}
+
+// streamEvents follows the SSE stream of the events of a job at path (GET path?job_id=&from=): it calls fn with the index and the JSON of
+// each event, from the one with index `from` on. The results are those of StreamTrainingJobEvents.
+func (c *Client) streamEvents(ctx context.Context,
+	path,
+	jobID string,
+	from int,
+	fn func(seq int,
+		data []byte) error) error {
+	q := url.Values{"job_id": {jobID}, "from": {strconv.Itoa(max(from, 0))}}
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodGet,
+		c.baseURL+path+"?"+q.Encode(),
+		nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := c.stream.Do(req)
+	if err != nil {
+		return fmt.Errorf("ML sidecar GET %s: %w",
+			path,
+			err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return &StatusError{
+			Method: http.MethodGet,
+			Path:   path,
+			Code:   resp.StatusCode,
+			Body:   strings.TrimSpace(string(body)),
+		}
+	}
+
+	next := from // index of the event when the stream gives no id
+	var id string
+	var data strings.Builder
+	dispatch := func() error {
+		defer func() { id = ""; data.Reset() }()
+		if data.Len() == 0 {
+			return nil
+		}
+		seq := next
+		if n, err := strconv.Atoi(id); err == nil {
+			seq = n
+		}
+		next = seq + 1
+		return fn(seq, []byte(data.String()))
+	}
+
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte,
+		0,
+		64<<10), 4<<20)
+	for sc.Scan() {
+		line := strings.TrimSuffix(sc.Text(), "\r")
+		switch {
+		case line == "":
+			if err := dispatch(); err != nil {
+				return err
+			}
+		case strings.HasPrefix(line, ":"): // comment (keepalive)
+		default:
+			field, value, _ := strings.Cut(line, ":")
+			value = strings.TrimPrefix(value, " ")
+			switch field {
+			case "id":
+				id = value
+			case "data":
+				if data.Len() > 0 {
+					data.WriteByte('\n')
+				}
+				data.WriteString(value)
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("ML sidecar GET %s: %w",
+			path,
+			err)
+	}
+	return ctx.Err()
+}

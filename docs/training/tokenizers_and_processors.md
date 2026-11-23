@@ -575,5 +575,5 @@ print(response)
 **Last Updated**: 2026-07-11  
 **Author**: Gloflow AI Training Team  
 **Related Files**: 
-- `sidecar/ai_train/ai_train_core/gemma4/model_train.py`
-- `sidecar/ai_train/ai_train_core/gemma4/model_load.py`
+- `ml_sidecar/ai_train/ai_train_core/gemma4/model_train.py`
+- `ml_sidecar/ai_train/ai_train_core/gemma4/model_load.py`

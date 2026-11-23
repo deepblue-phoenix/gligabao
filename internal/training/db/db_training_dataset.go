@@ -30,7 +30,7 @@ func SaveTrainingDataset(ctx context.Context,
 	return 0, unsupported()
 }
 
-// MarkTrainingDatasetSynced records that the sidecar has the file of dataset id whose digest is sha256. It does nothing
+// MarkTrainingDatasetSynced records that the ML sidecar has the file of dataset id whose digest is sha256. It does nothing
 // (and reports false) if the dataset has another digest by now, i.e. it was uploaded again. ErrNotFound if there is no
 // such dataset.
 func MarkTrainingDatasetSynced(ctx context.Context,

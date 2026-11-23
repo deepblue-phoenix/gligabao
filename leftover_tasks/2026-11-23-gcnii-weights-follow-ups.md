@@ -14,7 +14,7 @@ and `internal/api/model/weights.go`. Kept out of scope: sargo (Rust) was not cha
 - [ ] A watcher that cannot reach sargo does not beat, so a long sargo outage makes the job `lost` after 90 seconds (`beatStale`); make it configurable if trainings of big datasets need more.
 - [ ] Sargo keeps one model per user: `/infer` and `/embed` always use the latest. Add `model_id` (a row) to them: restore that row's files into a per-model directory of sargo and load it from there (needs a change in `rust/sargo/src/gcnii/users.rs`).
 - [ ] The row has no `hidden`/`depth` actually trained (0 = sargo's default); have sargo report them in the job.
-- [ ] Deployment (`internal/training/deploy.go`) refuses `gcnii` rows (409); a deployer for them would fetch from the weights store instead of the sidecar.
+- [ ] Deployment (`internal/training/deploy.go`) refuses `gcnii` rows (409); a deployer for them would fetch from the weights store instead of the ML sidecar.
 - [ ] Optionally move the LoRA adapters to `model_weights/lora/<job id>/` (the store takes `[]byte`; adapters need a streaming `Put`).
 - [ ] The PostgreSQL code of the new columns/query is untested (set `POSTGRES_TEST_DSN` and run `go test ./internal/training/db/...`).
 

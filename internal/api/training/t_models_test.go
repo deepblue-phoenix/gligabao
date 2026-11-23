@@ -18,7 +18,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
@@ -153,9 +153,9 @@ func testInferWithAnInferenceHook(t *testing.T,
 			}, nil
 		},
 	}}
-	sc := &fakeSidecar{
-		inferResp: sidecar.InferResponse{
-			Response: "from sidecar",
+	sc := &fakeMLSidecar{
+		inferResp: ml_sidecar.InferResponse{
+			Response: "from ML sidecar",
 		},
 	}
 	post := func(sc core.Inferer,
@@ -175,7 +175,7 @@ func testInferWithAnInferenceHook(t *testing.T,
 		InTok    int    `json:"input_tokens"`
 	}
 
-	// the hooked model runs on the hook, without a sidecar too
+	// the hooked model runs on the hook, without an ML sidecar too
 	for _, s := range []core.Inferer{sc, nil} {
 		rec := post(s,
 			"1",
@@ -190,13 +190,13 @@ func testInferWithAnInferenceHook(t *testing.T,
 		t.Fatalf("hook request: %+v", seen)
 	}
 	if len(sc.infers) != 0 {
-		t.Fatalf("the sidecar was called: %+v", sc.infers)
+		t.Fatalf("the ML sidecar was called: %+v", sc.infers)
 	}
-	// a model without a hook still runs on the sidecar
+	// a model without a hook still runs on the ML sidecar
 	rec := post(sc,
 		"2",
 		`{"prompt": "hi"}`)
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 || out.Response != "from sidecar" || out.Hook != "" || len(sc.infers) != 1 {
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 || out.Response != "from ML sidecar" || out.Hook != "" || len(sc.infers) != 1 {
 		t.Fatalf("plain: %d %s",
 			rec.Code,
 			rec.Body)
@@ -204,7 +204,7 @@ func testInferWithAnInferenceHook(t *testing.T,
 	if rec := post(nil,
 		"2",
 		`{"prompt": "hi"}`); rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("plain without sidecar: %d", rec.Code)
+		t.Fatalf("plain without ML sidecar: %d", rec.Code)
 	}
 	// a failing hook answers 502 with its message, and the request is stored as failed
 	if rec := post(sc,
@@ -252,8 +252,8 @@ func testInferWithATrainedModel(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := &fakeSidecar{
-		inferResp: sidecar.InferResponse{
+	sc := &fakeMLSidecar{
+		inferResp: ml_sidecar.InferResponse{
 			Response:     "hello",
 			InputTokens:  7,
 			OutputTokens: 3,
@@ -292,7 +292,7 @@ func testInferWithATrainedModel(t *testing.T,
 	// The weights and size to load come from the model's record, not from the client.
 	if len(sc.infers) != 1 || sc.infers[0].ModelPath != "trained/j2" || sc.infers[0].ModelSize != "12b" || sc.infers[0].Prompt != "hi" ||
 		sc.infers[0].MaxTokens != 50 || sc.infers[0].Temperature == nil || *sc.infers[0].Temperature != 0.2 {
-		t.Fatalf("sidecar request: %+v", sc.infers)
+		t.Fatalf("ml_sidecar request: %+v", sc.infers)
 	}
 
 	for name, c := range map[string]struct {
@@ -318,9 +318,9 @@ func testInferWithATrainedModel(t *testing.T,
 	if rec := post(nil,
 		"1",
 		`{"prompt":"hi"}`); rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("no sidecar: %d", rec.Code)
+		t.Fatalf("no ML sidecar: %d", rec.Code)
 	}
-	sc.inferErr = &sidecar.InferError{
+	sc.inferErr = &ml_sidecar.InferError{
 		Message: "No trained model at 'trained/j2'",
 	}
 	if rec := post(sc,
@@ -334,12 +334,12 @@ func testInferWithATrainedModel(t *testing.T,
 	if rec := post(sc,
 		"1",
 		`{"prompt":"hi"}`); rec.Code != http.StatusBadGateway || strings.Contains(rec.Body.String(), "refused") {
-		t.Fatalf("sidecar down: %d %s",
+		t.Fatalf("ml_sidecar down: %d %s",
 			rec.Code,
 			rec.Body)
 	}
 
-	// Every request that reached the sidecar is stored, with its outcome.
+	// Every request that reached the ML sidecar is stored, with its outcome.
 	list, err := trainingdb.ListTrainedModelInferences(ctx,
 		d,
 		1,
@@ -357,7 +357,7 @@ func testInferWithATrainedModel(t *testing.T,
 		t.Fatalf("failed request: %+v", r)
 	}
 	if r := list[0]; r.Status != trainingdb.TrainedModelInferenceFailed || !strings.Contains(r.Error, "refused") {
-		t.Fatalf("sidecar down request: %+v", r)
+		t.Fatalf("ml_sidecar down request: %+v", r)
 	}
 	rec = httptest.NewRecorder()
 	req := userReq("GET",
@@ -526,7 +526,7 @@ func testDeployATrainedModel(t *testing.T,
 		"no deployer":      {fetcher, "1", `{}`, 400},
 		"unknown deployer": {fetcher, "1", `{"deployer":"nope"}`, 400},
 		"bad json":         {fetcher, "1", `{`, 400},
-		"no sidecar":       {nil, "1", `{"deployer":"copy"}`, 503},
+		"no ML sidecar":    {nil, "1", `{"deployer":"copy"}`, 503},
 	} {
 		if rec := post(c.f,
 			c.id,

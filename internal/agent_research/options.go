@@ -38,7 +38,7 @@ type Options struct {
 	// remembered (sync) into Dataset when the agent has written it. The remember tool of the agent is not affected.
 	NoRemember bool `json:"no_remember,omitempty"`
 	// Runner is where the agent runs: core.RunnerLocal ("local", the default: in this process, like always) or core.RunnerModal ("modal":
-	// the gligabao_agent binary in a Modal container, started through the sidecar, see Manager.UseRemote). With "modal" the agent works
+	// the gligabao_agent binary in a Modal container, started through the ML sidecar, see Manager.UseRemote). With "modal" the agent works
 	// with a knowledge base of its own in the container, not the user's (so Dataset has no effect there).
 	Runner string `json:"runner,omitempty"`
 	// SearchProvider and FetchProvider say which service runs the web_search and the fetch_url tools of the agent and of its sub-agents

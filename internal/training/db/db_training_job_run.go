@@ -12,7 +12,7 @@ import (
 //---------------------------------------------------------------------------------------------
 // Training job runs (the gb_training_job_runs table, see sqlite/sql/schema.sql)
 
-// RecordTrainingJobRun stores a training job the sidecar started (one record per job) and returns its ID. r.ID and
+// RecordTrainingJobRun stores a training job the ML sidecar started (one record per job) and returns its ID. r.ID and
 // r.CreatedAt are ignored, and so are the fields that only events set (last step and loss, final loss, error, finish time).
 func RecordTrainingJobRun(ctx context.Context,
 	d *sql.DB,
@@ -111,7 +111,7 @@ func UpdateTrainingJobRun(ctx context.Context,
 	return unsupported()
 }
 
-// RecordTrainingJobEvent stores the event with index seq (in the sidecar's event log for the job) of a run, as typ
+// RecordTrainingJobEvent stores the event with index seq (in the ML sidecar's event log for the job) of a run, as typ
 // ("status" or "progress") and JSON data. It reports whether the event was new: a seq already stored is left as it is.
 func RecordTrainingJobEvent(ctx context.Context,
 	d *sql.DB,

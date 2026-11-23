@@ -203,7 +203,7 @@ func UpdateTrainingJobRun(ctx context.Context,
 }
 
 // InsertTrainingJobEvent stores the event with index seq of a run. It reports whether it was new: an event with that
-// seq already stored (the sidecar's stream replayed it) is left as it is.
+// seq already stored (the ML sidecar's stream replayed it) is left as it is.
 func InsertTrainingJobEvent(ctx context.Context,
 	d *sql.DB,
 	runID int64,

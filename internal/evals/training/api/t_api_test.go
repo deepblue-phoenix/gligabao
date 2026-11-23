@@ -26,24 +26,24 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
-// evalSidecar is a trained model that answers "a<i>" to "q<i>" (what a dataset says), or the expected answer of the
+// evalMLSidecar is a trained model that answers "a<i>" to "q<i>" (what a dataset says), or the expected answer of the
 // eval case when it is one (answers, see evalAnswers), except "wrong" to the prompts in wrong.
 // With block set, it holds each answer until block is closed or the request is cancelled.
-type evalSidecar struct {
+type evalMLSidecar struct {
 	mu      sync.Mutex
-	reqs    []sidecar.InferRequest
+	reqs    []ml_sidecar.InferRequest
 	answers map[string]string
 	wrong   map[string]bool
 	block   chan struct{}
 	started chan struct{} // gets a value when an answer begins (if not nil)
 }
 
-func (s *evalSidecar) Infer(ctx context.Context,
-	req sidecar.InferRequest) (sidecar.InferResponse, error) {
+func (s *evalMLSidecar) Infer(ctx context.Context,
+	req ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error) {
 	s.mu.Lock()
 	s.reqs = append(s.reqs, req)
 	s.mu.Unlock()
@@ -57,24 +57,24 @@ func (s *evalSidecar) Infer(ctx context.Context,
 		select {
 		case <-s.block:
 		case <-ctx.Done():
-			return sidecar.InferResponse{}, ctx.Err()
+			return ml_sidecar.InferResponse{}, ctx.Err()
 		}
 	}
 	if s.wrong[req.Prompt] {
-		return sidecar.InferResponse{
+		return ml_sidecar.InferResponse{
 			Response:     "wrong",
 			InputTokens:  4,
 			OutputTokens: 1,
 		}, nil
 	}
 	if a, ok := s.answers[req.Prompt]; ok {
-		return sidecar.InferResponse{
+		return ml_sidecar.InferResponse{
 			Response:     a,
 			InputTokens:  4,
 			OutputTokens: 2,
 		}, nil
 	}
-	return sidecar.InferResponse{
+	return ml_sidecar.InferResponse{
 		Response:     "a" + strings.TrimPrefix(req.Prompt, "q"),
 		InputTokens:  4,
 		OutputTokens: 2,
@@ -113,12 +113,12 @@ func evalCases(t *testing.T) []core.TrainingCase {
 	return nil
 }
 
-// evalAnswers makes a sidecar that knows the expected answer of every case of theEval, and answers "wrong" to the cases listed.
+// evalAnswers makes an ML sidecar that knows the expected answer of every case of theEval, and answers "wrong" to the cases listed.
 func evalAnswers(t *testing.T,
-	wrong ...int) *evalSidecar {
+	wrong ...int) *evalMLSidecar {
 	t.Helper()
 	cases := evalCases(t)
-	sc := &evalSidecar{
+	sc := &evalMLSidecar{
 		answers: map[string]string{},
 		wrong:   map[string]bool{},
 	}
@@ -370,7 +370,7 @@ func testEvalATrainedModel(t *testing.T,
 	// The model got the eval's questions on its own weights, with the settings of the eval.
 	if len(sc.reqs) != 5 || sc.reqs[0].Prompt != prompt(cases0[0]) || sc.reqs[0].ModelPath != "trained/jobeval1" || sc.reqs[0].ModelSize != "12b" ||
 		sc.reqs[0].MaxTokens != 77 || sc.reqs[0].Temperature == nil || *sc.reqs[0].Temperature != 0.2 {
-		t.Fatalf("sidecar requests: %+v", sc.reqs)
+		t.Fatalf("ml_sidecar requests: %+v", sc.reqs)
 	}
 	// The judge's calls are recorded like the other LLM calls.
 	var n int
@@ -493,18 +493,18 @@ func TestEvalRefusals(t *testing.T) {
 			c.body)
 	}
 	m.Wait()
-	// Without a sidecar or without an LLM there is nothing to run the eval with.
+	// Without an ML sidecar or without an LLM there is nothing to run the eval with.
 	if c := startEval(newMgr(ctx,
 		d,
 		nil,
 		&evalJudge{}),
 		fmt.Sprint(ok),
 		`{}`); c.code != 503 {
-		t.Errorf("no sidecar: %d", c.code)
+		t.Errorf("no ML sidecar: %d", c.code)
 	}
 	if c := startEval(newMgr(ctx,
 		d,
-		&evalSidecar{},
+		&evalMLSidecar{},
 		nil),
 		fmt.Sprint(ok),
 		`{}`); c.code != 503 {
@@ -629,8 +629,8 @@ func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 type failingInferer struct{}
 
 func (failingInferer) Infer(context.Context,
-	sidecar.InferRequest) (sidecar.InferResponse, error) {
-	return sidecar.InferResponse{}, &sidecar.InferError{
+	ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error) {
+	return ml_sidecar.InferResponse{}, &ml_sidecar.InferError{
 		Message: "weights are gone",
 	}
 }

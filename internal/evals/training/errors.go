@@ -11,7 +11,7 @@ const (
 	KindInvalid                 // the request is not acceptable as it is
 	KindNotFound                // what was asked for does not exist
 	KindConflict                // the request clashes with the current state
-	KindUnavailable             // what the operation needs (the sidecar, the LLM) is not there
+	KindUnavailable             // what the operation needs (the ML sidecar, the LLM) is not there
 )
 
 // Error is a failure of an operation of the Manager.

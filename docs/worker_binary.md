@@ -37,4 +37,4 @@ Every command: `--config FILE`, `--user` (default `worker`), `--dataset` (defaul
 
 ## Small by construction
 
-`TestMinimalDependencies` in `cmd/gligabao_worker` fails if the HTTP API, the server, the sidecar, the research agent, training, evals, `internal/agent_research`, `internal/db/dbfull`, `internal/db/dbimport`, the CLI or the admin UI get linked.
+`TestMinimalDependencies` in `cmd/gligabao_worker` fails if the HTTP API, the server, the ML sidecar, the research agent, training, evals, `internal/agent_research`, `internal/db/dbfull`, `internal/db/dbimport`, the CLI or the admin UI get linked.

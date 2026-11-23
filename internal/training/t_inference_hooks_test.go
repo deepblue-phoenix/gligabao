@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
@@ -27,13 +27,13 @@ func hook(name,
 	}
 }
 
-type countingSidecar struct{ calls int }
+type countingMLSidecar struct{ calls int }
 
-func (c *countingSidecar) Infer(context.Context,
-	sidecar.InferRequest) (sidecar.InferResponse, error) {
+func (c *countingMLSidecar) Infer(context.Context,
+	ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error) {
 	c.calls++
-	return sidecar.InferResponse{
-		Response: "sidecar",
+	return ml_sidecar.InferResponse{
+		Response: "ml_sidecar",
 	}, nil
 }
 
@@ -64,7 +64,7 @@ func TestResolveInferenceHooks(t *testing.T) {
 }
 
 func TestInferRouter(t *testing.T) {
-	sc := &countingSidecar{}
+	sc := &countingMLSidecar{}
 	hooks, _ := core.ResolveInferenceHooks([]core.TrainedModelInferenceHook{hook("h1", "model-1"), hook("h2", "model-2")})
 	r := core.NewInferRouter(sc, hooks)
 	ctx := context.Background()
@@ -79,7 +79,7 @@ func TestInferRouter(t *testing.T) {
 	}
 
 	inf, name := r.For(m1)
-	out, err := inf.Infer(ctx, sidecar.InferRequest{
+	out, err := inf.Infer(ctx, ml_sidecar.InferRequest{
 		Prompt: "p",
 	})
 	if err != nil || name != "h1" || out.Response != "h1:p" || out.InputTokens != 3 || out.OutputTokens != 4 || out.ModelPath != "trained/1" {
@@ -90,13 +90,13 @@ func TestInferRouter(t *testing.T) {
 	}
 	if inf, name = r.For(m2); name != "h2" {
 		t.Fatalf("m2: %q", name)
-	} else if out, _ = inf.Infer(ctx, sidecar.InferRequest{
+	} else if out, _ = inf.Infer(ctx, ml_sidecar.InferRequest{
 		Prompt: "q",
 	}); out.Response != "h2:q" {
 		t.Fatalf("m2: %+v", out)
 	}
 	if sc.calls != 0 {
-		t.Fatalf("the sidecar was called for hooked models")
+		t.Fatalf("the ML sidecar was called for hooked models")
 	}
 	if inf, name = r.For(m3); inf != core.Inferer(sc) || name != "" {
 		t.Fatalf("m3: %v %q",
@@ -104,13 +104,13 @@ func TestInferRouter(t *testing.T) {
 			name)
 	}
 
-	// without a sidecar only hooked models run
+	// without an ML sidecar only hooked models run
 	noSC := core.NewInferRouter(nil, hooks)
 	if inf, _ := noSC.For(m1); inf == nil {
-		t.Error("hooked model without a sidecar: want the hook")
+		t.Error("hooked model without an ML sidecar: want the hook")
 	}
 	if inf, _ := noSC.For(m3); inf != nil {
-		t.Error("model without hook or sidecar: want nil")
+		t.Error("model without hook or ML sidecar: want nil")
 	}
 	if inf, _ := (*core.InferRouter)(nil).For(m3); inf != nil {
 		t.Error("nil router: want nil")
@@ -149,10 +149,10 @@ func TestInferRouterHookFailures(t *testing.T) {
 		inf, _ := r.For(&trainingdb.TrainedModel{
 			Name: model,
 		})
-		_, err := inf.Infer(context.Background(), sidecar.InferRequest{
+		_, err := inf.Infer(context.Background(), ml_sidecar.InferRequest{
 			Prompt: "p",
 		})
-		var ie *sidecar.InferError
+		var ie *ml_sidecar.InferError
 		if !errors.As(err, &ie) || !strings.Contains(ie.Message, want) {
 			t.Errorf("%s: err = %v",
 				model,

@@ -219,7 +219,7 @@ def stage_server_package(wt: WheelTarget,
     (stage / "src" / "gligabao_server" / "_version.py").write_text(f'__version__ = "{version}"\n', encoding="utf-8")
 
     # sargo is embedded into the Go binary by `go build` (rust/sargo/embed.go), so the stale or wanted binary is put in place first.
-    # The sidecar (sidecar/) is not part of the package. The config is the default one the binary finds next to itself.
+    # The ML sidecar (ml_sidecar/) is not part of the package. The config is the default one the binary finds next to itself.
     if with_sargo:
         gb_build.build_sargo(wt.target, static=True, embed=True)
     else:

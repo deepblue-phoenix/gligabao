@@ -24,7 +24,7 @@ const (
 	// judgeAttempts is how many times a batch (or what is left of it) is sent to the judge.
 	judgeAttempts = 2
 	// A run that only gets failures stops instead of running on: after this many batches in a row where every answer failed, or
-	// where the judge could not grade anything (a dead sidecar, a bad API key).
+	// where the judge could not grade anything (a dead ml_sidecar, a bad API key).
 	maxFailedAnswerBatches = 2
 	maxFailedJudgeBatches  = 3
 )
@@ -38,8 +38,8 @@ type Question struct {
 }
 
 // Prompt is what the trained model is asked: the user turn the training text was made from (the same join as format_instruction
-// in sidecar/ai_train/ai_train_core/gemma4/prompt_format.py: the instruction, and the input after a blank line when there is one).
-// The sidecar adds the chat markers.
+// in ml_sidecar/ai_train/ai_train_core/gemma4/prompt_format.py: the instruction, and the input after a blank line when there is one).
+// The ML sidecar adds the chat markers.
 func (q Question) Prompt() string {
 	if q.Input != "" {
 		return q.Instruction + "\n\n" + q.Input

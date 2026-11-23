@@ -4,7 +4,7 @@ package training
 // is an eval run (core.EvalRun of the Type training) of an eval of build/evals_training/*.json against a trained model: the model is
 // asked the cases, which it never saw in training, and the LLM judges the answers, so the score says how well it generalizes. The
 // eval is named after the training dataset its cases ask about, so a model trained on a dataset has the eval of that name unless
-// another is asked for. The work is that of Executor and runner.Runner; this file wires it to the sidecar (the model), the LLM (the
+// another is asked for. The work is that of Executor and runner.Runner; this file wires it to the ML sidecar (the model), the LLM (the
 // judge) and the database, and keeps what the HTTP side needs: the live feed and the views (view.go).
 
 import (
@@ -23,16 +23,16 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingcore "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
-// Inferer runs a prompt through a trained model on the sidecar; *sidecar.Client is one.
+// Inferer runs a prompt through a trained model on the ML sidecar; *ml_sidecar.Client is one.
 type Inferer interface {
 	Infer(ctx context.Context,
-		req sidecar.InferRequest) (sidecar.InferResponse, error)
+		req ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error)
 }
 
 // Manager starts the evals of trained models and runs them in the background, one at a time per trained model. Evals that were still
@@ -121,7 +121,7 @@ func (m *Manager) HasEval(name string) bool {
 func (m *Manager) getModel(ctx context.Context,
 	userID string,
 	id int64) (*trainingdb.TrainedModel, error) {
-	tm, err := trainingcore.GetSidecarModel(ctx,
+	tm, err := trainingcore.GetMLSidecarModel(ctx,
 		m.DB,
 		userID,
 		id)
@@ -139,7 +139,7 @@ func (m *Manager) getModel(ctx context.Context,
 	return nil, internalErr("failed to read the trained model", err)
 }
 
-// Generator makes the engine's GenerateFunc of trained model tm: one sidecar inference per question, with the settings of params.
+// Generator makes the engine's GenerateFunc of trained model tm: one ML sidecar inference per question, with the settings of params.
 func Generator(sc Inferer,
 	tm *trainingdb.TrainedModel,
 	params RunParams) GenerateFunc {
@@ -147,7 +147,7 @@ func Generator(sc Inferer,
 		prompt string) (Generation, error) {
 		ctx, cancel := context.WithTimeout(ctx, trainingcore.InferTimeout)
 		defer cancel()
-		out, err := sc.Infer(ctx, sidecar.InferRequest{
+		out, err := sc.Infer(ctx, ml_sidecar.InferRequest{
 			Prompt:      prompt,
 			ModelSize:   tm.ModelSize,
 			ModelPath:   tm.Path,
@@ -155,7 +155,7 @@ func Generator(sc Inferer,
 			Temperature: &params.Temperature,
 		})
 		if err != nil {
-			var ie *sidecar.InferError
+			var ie *ml_sidecar.InferError
 			if errors.As(err, &ie) {
 				return Generation{}, errors.New(ie.Message)
 			}
@@ -172,13 +172,13 @@ func Generator(sc Inferer,
 // Start records an eval of trained model modelID and starts it in the background, returning the recorded run (status running).
 // Errors are *Error: KindInvalid for bad options, an unknown eval or case, or no eval to default to (the model has no dataset, or
 // no eval has its name), KindNotFound for an unknown model, KindConflict if the model has an eval running already, KindUnavailable
-// without a sidecar or an LLM, KindInternal.
+// without an ML sidecar or an LLM, KindInternal.
 func (m *Manager) Start(ctx context.Context,
 	userID string,
 	modelID int64,
 	opts Options) (*RunView, error) {
 	if m.Sc == nil {
-		return nil, unavailableErr("sidecar is not active")
+		return nil, unavailableErr("ML sidecar is not active")
 	}
 	if m.LLM == nil {
 		return nil, unavailableErr("no LLM is available to judge the answers (set ANTHROPIC_API_KEY)")

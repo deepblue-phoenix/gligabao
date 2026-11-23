@@ -21,7 +21,7 @@ import (
 // in the subdirectory of that name of the first of the training datasets directories,
 // next to a manifest it writes if there is none, and records it in gb_training_datasets of that database. Uploading a
 // name again replaces the dataset's file. A dataset of that name that has a manifest of its own, naming another data file,
-// or a dataset of that name in another directory, is not replaced: 409. The sidecar is not involved. It answers 201
+// or a dataset of that name in another directory, is not replaced: 409. The ML sidecar is not involved. It answers 201
 // with the dataset (core.DatasetInfo). A bad file answers 400, a file over MaxDatasetBytes 413.
 func UploadDatasetOf(db *sql.DB,
 	datasets core.DatasetStore) http.HandlerFunc {
@@ -86,7 +86,7 @@ func UploadDatasetOf(db *sql.DB,
 
 // ListDatasetsOf serves GET /v1/gb/training/datasets: {"datasets": [...], "problems": [...]}, the training
 // datasets (core.DatasetInfo) found in the training datasets directory by their manifests, by name, and the subdirectories with a
-// manifest that are not usable (core.DatasetProblem). It never asks the sidecar.
+// manifest that are not usable (core.DatasetProblem). It never asks the ML sidecar.
 func ListDatasetsOf(db *sql.DB,
 	datasets core.DatasetStore) http.HandlerFunc {
 	return func(w http.ResponseWriter,

@@ -12,7 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 )
 
 // The export of an agent that ran in Modal (its databases opened as gligabao_agent does) is loaded into the databases of the server
@@ -122,11 +122,11 @@ func TestDBImporterLoadsTheExportOfAnAgent(t *testing.T) {
 }
 
 func TestRemoteEventOfCarriesTheExport(t *testing.T) {
-	ev := remoteEventOf(sidecar.ResearchEvent{
+	ev := remoteEventOf(ml_sidecar.ResearchEvent{
 		Seq:    3,
-		Type:   sidecar.ResearchEventStatus,
-		Status: sidecar.ResearchCompleted,
-		Export: &sidecar.ResearchExport{
+		Type:   ml_sidecar.ResearchEventStatus,
+		Status: ml_sidecar.ResearchCompleted,
+		Export: &ml_sidecar.ResearchExport{
 			Bytes:  24,
 			SHA256: "abc",
 		},
@@ -134,8 +134,8 @@ func TestRemoteEventOfCarriesTheExport(t *testing.T) {
 	if ev.Export == nil || ev.Export.Bytes != 24 || ev.Export.SHA256 != "abc" || ev.Seq != 3 {
 		t.Fatalf("%+v", ev)
 	}
-	if ev := remoteEventOf(sidecar.ResearchEvent{
-		Type: sidecar.ResearchEventStatus,
+	if ev := remoteEventOf(ml_sidecar.ResearchEvent{
+		Type: ml_sidecar.ResearchEventStatus,
 	}); ev.Export != nil {
 		t.Fatalf("%+v", ev)
 	}

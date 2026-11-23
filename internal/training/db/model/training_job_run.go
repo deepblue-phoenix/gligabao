@@ -2,21 +2,21 @@ package model
 
 import "time"
 
-// TrainingJobRun is one training job started on the sidecar (gb_training_job_runs): a record is made for each job the
-// sidecar reports as started (see internal/sys/sidecar: TrainingJob), and updated as the job's progress events arrive.
+// TrainingJobRun is one training job started on the ML sidecar (gb_training_job_runs): a record is made for each job the
+// ml_sidecar reports as started (see internal/sys/ml_sidecar: TrainingJob), and updated as the job's progress events arrive.
 type TrainingJobRun struct {
 	ID int64 `json:"id"`
 	// UserID is the user that started the job; a job is visible to its user only.
 	UserID string `json:"user_id"`
-	// JobID is the sidecar's ID of the job (it names the job's event log there); ProviderJobID is the compute
+	// JobID is the ML sidecar's ID of the job (it names the job's event log there); ProviderJobID is the compute
 	// provider's ID of the spawned call.
 	JobID         string `json:"job_id"`
 	ProviderJobID string `json:"provider_job_id,omitempty"`
-	// Status is "started" when the sidecar reports the job started, then follows the job's status events
+	// Status is "started" when the ML sidecar reports the job started, then follows the job's status events
 	// ("running", "training") until it is "completed", "failed" or "cancelled" (see TrainingJobFinished).
 	Status    string `json:"status"`
 	ModelSize string `json:"model_size"` // "4b", "12b" or "31b"
-	// Dataset is the file the job trains on, on the sidecar's data volume ("" only for a job started before a dataset was required).
+	// Dataset is the file the job trains on, on the ML sidecar's data volume ("" only for a job started before a dataset was required).
 	Dataset string `json:"dataset"`
 	// NumTrainSteps is how many steps the job was asked to train.
 	NumTrainSteps int `json:"num_train_steps"`
@@ -26,7 +26,7 @@ type TrainingJobRun struct {
 	// FinalLoss is the mean training loss, reported when the job completes. Error is why it failed (or what it was stopped at).
 	FinalLoss *float64 `json:"final_loss"`
 	Error     string   `json:"error,omitempty"`
-	// StartedAt is when the sidecar says the job started; CreatedAt is when this record was made; FinishedAt is when the
+	// StartedAt is when the ML sidecar says the job started; CreatedAt is when this record was made; FinishedAt is when the
 	// job completed, failed or was cancelled (nil while it runs).
 	StartedAt  time.Time  `json:"started_at"`
 	CreatedAt  time.Time  `json:"created_at"`
@@ -56,8 +56,8 @@ type TrainingJobRunUpdate struct {
 	FinishedAt *time.Time
 }
 
-// TrainingJobEvent is one event of a training job as the sidecar reported it (gb_training_job_events). Seq is its index
-// in the sidecar's event log for the job; Data is the event as JSON (see internal/sys/sidecar: TrainingEvent).
+// TrainingJobEvent is one event of a training job as the ML sidecar reported it (gb_training_job_events). Seq is its index
+// in the ML sidecar's event log for the job; Data is the event as JSON (see internal/sys/ml_sidecar: TrainingEvent).
 type TrainingJobEvent struct {
 	RunID     int64     `json:"run_id"`
 	Seq       int       `json:"seq"`

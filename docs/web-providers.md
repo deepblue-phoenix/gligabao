@@ -48,7 +48,7 @@ Errors: a name that is not a provider, or one that is not available yet, is a `4
 
 Limits of the choice today:
 
-- The `modal` runner supports only `anthropic` and `local` (a `400` otherwise, also when the server's default is something else): the sidecar job does not carry the choice yet.
+- The `modal` runner supports only `anthropic` and `local` (a `400` otherwise, also when the server's default is something else): the ML sidecar job does not carry the choice yet.
 - The choice is not stored with the run (not in `gb_agent_research_runs`, not shown in the admin UI).
 - It is per research, not per [agent definition](agents/agent-defs.md): there is no `provider` key in `[search]` / `[search.fetch]`.
 

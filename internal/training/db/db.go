@@ -1,4 +1,4 @@
-// Package db stores and queries the training data: the training jobs the sidecar runs and their events, the models they
+// Package db stores and queries the training data: the training jobs the ML sidecar runs and their events, the models they
 // trained, the inferences run on those, the deployments of those models, and the training datasets. Every operation goes
 // through the functions here, which route to the backend in use (db/sqlite or db/postgres). The backends keep the training tables in the relational database
 // opened by package relational (the training eval runs of internal/evals refer to the trained models by ID), so Open must be

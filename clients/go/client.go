@@ -1,4 +1,4 @@
-// Package gligabao is a small Go client for the gligabao HTTP API (a gligabao or gligabao_int server, e.g. run as a sidecar).
+// Package gligabao is a small Go client for the gligabao HTTP API (a gligabao or gligabao_int server, e.g. run as an ML sidecar).
 // It only uses the standard library. For now it wraps POST /v1/gb/remember and POST /v1/gb/query.
 package gligabao
 

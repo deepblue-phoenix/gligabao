@@ -19,7 +19,7 @@ import (
 
 // The weights of the trained GCNII* models. Sargo trains and serves the model of each user from a local directory (its working copy,
 // see rust/sargo/src/gcnii/users.rs), which is lost with the machine. Weights keeps every finished model in a durable store, and each
-// one has a row in gb_trained_models (the table of the LoRA models of the sidecar), so the models are tracked the same way:
+// one has a row in gb_trained_models (the table of the LoRA models of the ML sidecar), so the models are tracked the same way:
 //
 //	<prefix>/<model type>/<user segment>/<job id>/model.weights      the weights file of sargo
 //	<prefix>/<model type>/<user segment>/<job id>/classes.json       the names of the outputs

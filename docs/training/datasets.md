@@ -33,9 +33,9 @@ There are two places for the datasets of the LLM/LoRA fine-tuning, and exactly o
 | uploads | the first directory | the bucket |
 | other settings | | `training_datasets_s3_region`, `training_datasets_s3_prefix` (default `training_datasets`), `training_datasets_s3_endpoint` (MinIO, LocalStack); env `TRAINING_DATASETS_S3_REGION` / `_PREFIX` / `_ENDPOINT` |
 
-The bucket is normally the meta bucket (the one of the evals and the model weights); credentials come from the standard AWS chain, and the role needs `s3:GetObject`, `s3:PutObject` on `<prefix>/*` and `s3:ListBucket` on the bucket (nothing is ever deleted). The bucket must exist; a bad bucket configuration stops the server at start. The manifest, the discovery rules (a manifest per dataset, the data file must exist, a name is taken once), the limits, the preview, the upload (`409` on a clash) and the job start (the file is read from S3 and sent to the sidecar) are the same as with the directories. Put a dataset there by uploading it (`POST /v1/gb/training/datasets`, the admin UI) or by copying its manifest and data file under `<prefix>/<name>/`. The data files of the S3 store are read on every listing only to the size and modification time (the digest is cached while they stay the same), so a listing is a few requests per dataset. The generator scripts stay with the dataset's source, not in the bucket.
+The bucket is normally the meta bucket (the one of the evals and the model weights); credentials come from the standard AWS chain, and the role needs `s3:GetObject`, `s3:PutObject` on `<prefix>/*` and `s3:ListBucket` on the bucket (nothing is ever deleted). The bucket must exist; a bad bucket configuration stops the server at start. The manifest, the discovery rules (a manifest per dataset, the data file must exist, a name is taken once), the limits, the preview, the upload (`409` on a clash) and the job start (the file is read from S3 and sent to the ML sidecar) are the same as with the directories. Put a dataset there by uploading it (`POST /v1/gb/training/datasets`, the admin UI) or by copying its manifest and data file under `<prefix>/<name>/`. The data files of the S3 store are read on every listing only to the size and modification time (the digest is cached while they stay the same), so a listing is a few requests per dataset. The generator scripts stay with the dataset's source, not in the bucket.
 
-This is only about the LLM/LoRA datasets. The GCNII\* models keep their way: their datasets and classes come from the graph database, not from these files, and their weights go to the model weights bucket ([gcnii.md](../gcnii.md)). The Modal CLI (`sidecar/ai_train/training_data.py`) always reads the local directory.
+This is only about the LLM/LoRA datasets. The GCNII\* models keep their way: their datasets and classes come from the graph database, not from these files, and their weights go to the model weights bucket ([gcnii.md](../gcnii.md)). The Modal CLI (`ml_sidecar/ai_train/training_data.py`) always reads the local directory.
 
 ## The manifest (`dataset.toml`)
 
@@ -63,13 +63,13 @@ The data file is valid if it is UTF-8 and every non-blank line is a JSON object 
 
 ## Names
 
-A dataset has a **name** (the manifest's `name`) and a **file name on the sidecar**, `<name>.jsonl`: the file the sidecar stores on its data volume, the `filename` of the record, and the `dataset` the sidecar reports for a job. A training job asks for the dataset by its name.
+A dataset has a **name** (the manifest's `name`) and a **file name on the ml_sidecar**, `<name>.jsonl`: the file the ML sidecar stores on its data volume, the `filename` of the record, and the `dataset` the ML sidecar reports for a job. A training job asks for the dataset by its name.
 
 ## The server (Go)
 
 | Endpoint | Behaviour |
 |---|---|
-| `GET /v1/gb/training/datasets` | `{"datasets": [...], "problems": [...]}`. `datasets` are the usable datasets by name: the record (below) plus the manifest's `name`, `description`, `format`, `file`, `version`, `generator`, and `dir`, the subdirectory's name. It never asks the sidecar. |
+| `GET /v1/gb/training/datasets` | `{"datasets": [...], "problems": [...]}`. `datasets` are the usable datasets by name: the record (below) plus the manifest's `name`, `description`, `format`, `file`, `version`, `generator`, and `dir`, the subdirectory's name. It never asks the ML sidecar. |
 | `GET /v1/gb/training/datasets/preview?name=<name>[&lines=]` | The first lines (default 100, at most 1000) of the dataset's data file: `{"name", "lines", "num_records", "truncated"}`. `404` for an unknown dataset. |
 | `POST /v1/gb/training/datasets` | Uploads a JSONL file (multipart form, field `file`, optional `filename`). It must be valid (as above) and have a plain `*.jsonl` name; the server saves it as the dataset named like the file without `.jsonl`: in the subdirectory of that name, as `<name>.jsonl`, next to a manifest it writes if there is none. Uploading the name again replaces the file. `201` with the dataset, `400` invalid file, `409` if a dataset of that name exists with a manifest of its own naming another data file (or the name belongs to a dataset in another subdirectory), `413` over 64 MB. |
 | `POST /v1/gb/training/jobs` | The job's `dataset` is a dataset's name. It is required: a missing or unknown name is a `400`. |
@@ -85,19 +85,19 @@ One row per dataset (Go: `trainingdb.TrainingDataset`). The directory is the sou
 | `id` | The record. |
 | `filename` | `<name>.jsonl`, unique. |
 | `size_bytes`, `num_records`, `sha256` | Size, number of non-blank lines, and hex SHA-256 of the data file. |
-| `status` | `stored` (only on the Go server) or `synced` (a job has taken this version of the file to the sidecar). |
+| `status` | `stored` (only on the Go server) or `synced` (a job has taken this version of the file to the ML sidecar). |
 | `created_at`, `updated_at` | When the row was made; when it last described a new version of the file. |
-| `synced_at` | When the sidecar last took the current file; null while it has not. |
+| `synced_at` | When the ML sidecar last took the current file; null while it has not. |
 
 Rows of datasets that are no longer in the directory stay in the table and are not listed.
 
-## How a dataset reaches the sidecar
+## How a dataset reaches the ML sidecar
 
-Only through a job start. `POST /v1/gb/training/jobs` finds the dataset by name (reading the manifests), reads its data file, validates it, brings the record up to date and sends the file to the sidecar in `POST /training/job_start` as `dataset_content` (base64) next to `dataset` (`<name>.jsonl`). The sidecar stores it on its data volume as `/data/<name>.jsonl` before it spawns the job. When the sidecar has taken the job the record becomes `synced`. The file is sent with every job that uses the dataset. The sidecar has no default dataset and no dataset endpoints.
+Only through a job start. `POST /v1/gb/training/jobs` finds the dataset by name (reading the manifests), reads its data file, validates it, brings the record up to date and sends the file to the ML sidecar in `POST /training/job_start` as `dataset_content` (base64) next to `dataset` (`<name>.jsonl`). The ML sidecar stores it on its data volume as `/data/<name>.jsonl` before it spawns the job. When the ML sidecar has taken the job the record becomes `synced`. The file is sent with every job that uses the dataset. The ML sidecar has no default dataset and no dataset endpoints.
 
 ## The Modal CLI
 
-`modal run app.py` (in `sidecar/ai_train`) reads the same manifests, from `build/datasets_training` (override: `GLIGABAO_DATASETS_TRAINING_DIR`), in `training_data.py` (`tomllib`, Python 3.11+):
+`modal run app.py` (in `ml_sidecar/ai_train`) reads the same manifests, from `build/datasets_training` (override: `GLIGABAO_DATASETS_TRAINING_DIR`), in `training_data.py` (`tomllib`, Python 3.11+):
 
 ```sh
 modal run app.py --action datasets                          # list the local datasets and their problems

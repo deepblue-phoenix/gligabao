@@ -69,7 +69,7 @@ type ResearchStartInput struct {
 	Dataset        string  `json:"dataset,omitempty" jsonschema:"the dataset of the user's knowledge base the agent queries and remembers into (default main)"`
 	SearchProvider string  `json:"search_provider,omitempty" jsonschema:"which service runs the agent's web search: anthropic (default, Anthropic's cloud search; the server's config can change the default)"`
 	FetchProvider  string  `json:"fetch_provider,omitempty" jsonschema:"which service reads the pages the agent fetches: local (default, a plain HTTP GET from the server; the server's config can change the default)"`
-	Runner         string  `json:"runner,omitempty" jsonschema:"where the agent runs: local (default, in the server) or modal (the gligabao_agent binary in a Modal container, through the sidecar; its knowledge base is the container's own, not the user's)"`
+	Runner         string  `json:"runner,omitempty" jsonschema:"where the agent runs: local (default, in the server) or modal (the gligabao_agent binary in a Modal container, through the ML sidecar; its knowledge base is the container's own, not the user's)"`
 }
 
 // ResearchListInput is the input of the research_list tool: the query of GET /v1/gb/research.

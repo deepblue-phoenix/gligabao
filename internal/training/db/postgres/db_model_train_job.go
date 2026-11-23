@@ -13,7 +13,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Trainings outside the sidecar (gb_model_train_jobs, see sqlite/sql/schema.sql)
+// Trainings outside the ML sidecar (gb_model_train_jobs, see sqlite/sql/schema.sql)
 
 // InsertModelTrainJob claims the training of a user: it makes the running row of j (the status and the times are set here) and returns
 // its ID. A running row of the same user and model type whose last beat is older than staleBefore is marked lost first; if one that is

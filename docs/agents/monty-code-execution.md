@@ -78,7 +78,7 @@ Monty has Python and Rust APIs and no Go one. The sidecar is a **child process o
 - **Started lazily**, at the first `run_code` of the process (not at startup), so a server whose agents never use code pays nothing. One sidecar is shared by all the runs and sub-processes of that process, with a bounded worker pool (`monty_workers`).
 - **Supervised**: if the sidecar dies, the next call restarts it (at most a few restarts in a row, then `unavailable` until the process restarts, so a broken install does not spin). In-flight calls of the dead sidecar fail with `crashed`.
 - **Stopped with its owner**: closing its stdin ends it; on `serve` shutdown and when `gligabao_agent` exits the supervisor also terminates and then kills the process group, so no orphan stays.
-- **Not the training sidecar.** The existing [sidecar](../training/sidecar.md) is a separate HTTP service for Modal. This one is a local child process, with no port and no network surface: the pipe is private to the parent.
+- **Not the ML sidecar.** The existing [ML sidecar](../training/ml_sidecar.md) is a separate HTTP service for Modal. This one is a local child process, with no port and no network surface: the pipe is private to the parent.
 
 The sidecar is the thin bridge below, not Monty itself, because the stable public interface of Monty is its Python client (`pydantic_monty`: `Monty` pool, `checkout()` sessions, `feed_start` snapshots for external calls, `ResourceLimits`); the `monty subprocess` wire format (framed protobuf, the `monty-proto` crate) is an internal protocol of a `0.0.x` project. Speaking it directly from Go (one less runtime in the image) is a possible later change that stays behind the same `internal/agent/code_sandbox` interface ([Leftovers](#leftovers)).
 
@@ -222,7 +222,7 @@ ENV GLIGABAO_MONTY_PYTHON=/opt/monty/bin/python MONTY_BIN=/opt/monty/bin/monty
 - The venv is world-readable and the `gligabao` user (10001) only runs it: no write access is needed at run time (`PYTHONDONTWRITEBYTECODE=1` can be set to keep it so).
 - The version is a build `ARG`, so an upgrade is a one-line change; the bridge's `protocol` check and the integration test ([Tests](#tests)) catch an incompatible release.
 - The comment above the `ENV` line in the Dockerfile says what the venv is for, in the style of the other lines. The `docker run` documentation in the docs (the README / deploy notes that mention the image) says that the image includes the code sandbox and that it is only used by agents with `[code] enabled`.
-- `Dockerfile.sidecar` (training/Modal) is unchanged: the code sandbox does not run in Modal, since an investigative agent is local only.
+- `Dockerfile.ml_sidecar` (training/Modal) is unchanged: the code sandbox does not run in Modal, since an investigative agent is local only.
 
 A bare-metal install (`go install`, the release binaries) needs `pip install pydantic-monty` somewhere and `monty_python` / `monty_bin` pointing at it; the docs say so, and `gligabao doctor`-style output (the startup log) prints whether the sandbox is available.
 

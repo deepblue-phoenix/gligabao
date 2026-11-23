@@ -399,7 +399,7 @@ func TestModalRunnerStopWhenTheJobCannotBeReached(t *testing.T) {
 		ops agent_research.Ops) {
 		ctx := context.Background()
 		remote := newFakeRemote()
-		remote.cancelErr = errors.New("sidecar down")
+		remote.cancelErr = errors.New("ml_sidecar down")
 		m := agent_research.NewManager(ctx,
 			d,
 			ops,

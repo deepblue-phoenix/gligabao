@@ -16,34 +16,34 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
-// streamSidecar is a sidecar whose job events the test feeds: StreamTrainingJobEvents replays what was fed so far from
-// `from` on, then delivers what is fed next, until the feed is closed (a stream the sidecar ended).
-type streamSidecar struct {
-	fakeSidecar
+// streamMLSidecar is an ML sidecar whose job events the test feeds: StreamTrainingJobEvents replays what was fed so far from
+// `from` on, then delivers what is fed next, until the feed is closed (a stream the ML sidecar ended).
+type streamMLSidecar struct {
+	fakeMLSidecar
 	mu    sync.Mutex
-	sent  []sidecar.TrainingEvent
-	feed  chan sidecar.TrainingEvent
+	sent  []ml_sidecar.TrainingEvent
+	feed  chan ml_sidecar.TrainingEvent
 	froms []int
 }
 
-func newStreamSidecar() *streamSidecar {
-	return &streamSidecar{
-		feed: make(chan sidecar.TrainingEvent, 16),
+func newStreamMLSidecar() *streamMLSidecar {
+	return &streamMLSidecar{
+		feed: make(chan ml_sidecar.TrainingEvent, 16),
 	}
 }
 
-func (f *streamSidecar) StreamTrainingJobEvents(ctx context.Context,
+func (f *streamMLSidecar) StreamTrainingJobEvents(ctx context.Context,
 	_ string,
 	from int,
-	fn func(sidecar.TrainingEvent) error) error {
+	fn func(ml_sidecar.TrainingEvent) error) error {
 	f.mu.Lock()
 	f.froms = append(f.froms, from)
-	replay := append([]sidecar.TrainingEvent(nil), f.sent[min(from, len(f.sent)):]...)
+	replay := append([]ml_sidecar.TrainingEvent(nil), f.sent[min(from, len(f.sent)):]...)
 	f.mu.Unlock()
 	for _, ev := range replay {
 		if err := fn(ev); err != nil {
@@ -69,17 +69,17 @@ func (f *streamSidecar) StreamTrainingJobEvents(ctx context.Context,
 	}
 }
 
-func status(s string) sidecar.TrainingEvent {
-	return sidecar.TrainingEvent{
-		Type:   sidecar.EventStatus,
+func status(s string) ml_sidecar.TrainingEvent {
+	return ml_sidecar.TrainingEvent{
+		Type:   ml_sidecar.EventStatus,
 		Status: s,
 	}
 }
 
 func progress(step int,
-	loss float64) sidecar.TrainingEvent {
-	return sidecar.TrainingEvent{
-		Type: sidecar.EventProgress,
+	loss float64) ml_sidecar.TrainingEvent {
+	return ml_sidecar.TrainingEvent{
+		Type: ml_sidecar.EventProgress,
 		Step: &step,
 		Loss: &loss,
 	}
@@ -167,7 +167,7 @@ func waitFor(t *testing.T,
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// TestTrainingMonitor: a job started through the endpoint is followed on the sidecar's SSE stream; its events are
+// TestTrainingMonitor: a job started through the endpoint is followed on the ML sidecar's SSE stream; its events are
 // stored, update its row, and are forwarded to the SSE feeds (live, and replayed from the database).
 func TestTrainingMonitor(t *testing.T) { dbtest.Run(t, testTrainingMonitor) }
 
@@ -180,7 +180,7 @@ func testTrainingMonitor(t *testing.T,
 		dir,
 		"mine")
 	dsDir := core.DirStore{dir}
-	sc := newStreamSidecar()
+	sc := newStreamMLSidecar()
 	mon := core.NewMonitor(ctx,
 		d,
 		sc,
@@ -244,12 +244,12 @@ func testTrainingMonitor(t *testing.T,
 	fl := 0.9
 	done := status("completed")
 	done.FinalLoss = &fl
-	done.Model = &sidecar.TrainedModelInfo{
+	done.Model = &ml_sidecar.TrainedModelInfo{
 		BaseModel: "google/gemma-4-E4B-it",
 		ModelSize: "4b",
 		Path:      "trained/fc-4b",
 		SizeBytes: 30,
-		Files: []sidecar.TrainedModelFile{{
+		Files: []ml_sidecar.TrainedModelFile{{
 			Path:      "adapter_config.json",
 			SizeBytes: 10,
 			SHA256:    "h",
@@ -403,8 +403,8 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 			Status: trainingdb.TrainingJobCompleted,
 		})
 
-	sc := newStreamSidecar()
-	sc.sent = []sidecar.TrainingEvent{status("running"), progress(1, 3)}
+	sc := newStreamMLSidecar()
+	sc.sent = []ml_sidecar.TrainingEvent{status("running"), progress(1, 3)}
 	core.NewMonitor(ctx,
 		d,
 		sc,
@@ -433,8 +433,8 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 		t.Fatal(r)
 	}
 
-	// Timeout: the sidecar's stream ends again and again without the job ending.
-	sc2 := newStreamSidecar()
+	// Timeout: the ML sidecar's stream ends again and again without the job ending.
+	sc2 := newStreamMLSidecar()
 	mon := core.NewMonitor(ctx,
 		d,
 		sc2,
@@ -478,27 +478,27 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 }
 
 // Only a completed job that reports its weights leaves a trained model: not a failed or a cancelled one, nor a completed one
-// from a sidecar that does not report them.
+// from an ML sidecar that does not report them.
 func TestTrainingMonitorTrainedModels(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	sc := newStreamSidecar()
+	sc := newStreamMLSidecar()
 	mon := core.NewMonitor(ctx,
 		d,
 		sc,
 		core.WithRetryDelay(time.Millisecond))
-	model := &sidecar.TrainedModelInfo{
+	model := &ml_sidecar.TrainedModelInfo{
 		Path: "trained/x",
-		Files: []sidecar.TrainedModelFile{{
+		Files: []ml_sidecar.TrainedModelFile{{
 			Path:      "a",
 			SizeBytes: 1,
 		}},
 		SizeBytes: 1,
 	}
 
-	for i, last := range []sidecar.TrainingEvent{status("failed"), status("cancelled"), status("completed")} {
-		sc := newStreamSidecar()
+	for i, last := range []ml_sidecar.TrainingEvent{status("failed"), status("cancelled"), status("completed")} {
+		sc := newStreamMLSidecar()
 		mon := core.NewMonitor(ctx,
 			d,
 			sc,
@@ -516,7 +516,7 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 		run, _ := trainingdb.GetTrainingJobRun(ctx,
 			d,
 			id)
-		sc.feed <- last // none of them has a model attached (the completed one is from a sidecar that does not report it)
+		sc.feed <- last // none of them has a model attached (the completed one is from an ML sidecar that does not report it)
 		mon.Watch(*run)
 		waitFor(t,
 			"run finished",
@@ -596,8 +596,8 @@ func TestTrainingMonitorRetriesAFailedRowUpdate(t *testing.T) {
 	if _, err := d.ExecContext(ctx, `CREATE TRIGGER fail_updates BEFORE UPDATE ON gb_training_job_runs BEGIN SELECT RAISE(ABORT, 'database is busy'); END`); err != nil {
 		t.Fatal(err)
 	}
-	sc := newStreamSidecar()
-	sc.sent = []sidecar.TrainingEvent{status("completed")}
+	sc := newStreamMLSidecar()
+	sc.sent = []ml_sidecar.TrainingEvent{status("completed")}
 	core.NewMonitor(ctx,
 		d,
 		sc,

@@ -74,13 +74,13 @@
 | `gb_series_points`            | the timestamped values of a series.                                                                                                             |
 | `gb_series_anchors`           | many-to-many link anchoring a series (optionally a window of it) to an artifact, entity or edge.                                                |
 | `gb_ontology_events`          | what grounding made of each node and edge of a remember call (outcome, reason, detail); see docs/ontologies/ontologies.md.                      |
-| `gb_training_job_runs`        | training jobs started on the sidecar, with status, settings, loss and timings.                                                                  |
-| `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
-| `gb_trained_models`           | one row per completed training job, the saved weights: a LoRA adapter on the sidecar (`model_type` `lora`, what inference, evals and audits run on) or a GCNII* model of a user in S3 (`model_type` `gcnii`). |
+| `gb_training_job_runs`        | training jobs started on the ML sidecar, with status, settings, loss and timings.                                                                  |
+| `gb_training_job_events`      | the status and progress events (with loss) the ML sidecar reported for a training job, in order.                                                   |
+| `gb_trained_models`           | one row per completed training job, the saved weights: a LoRA adapter on the ML sidecar (`model_type` `lora`, what inference, evals and audits run on) or a GCNII* model of a user in S3 (`model_type` `gcnii`). |
 | `gb_trained_model_inferences` | one row per prompt run through a trained model, with response, status, tokens and cold-start timing.                                            |
 | `gb_trained_model_deployments` | one row per deployment of a trained model through a deployer hook, with status, local directory, the deployer's ref and error.                     |
 | `gb_model_train_jobs`         | one row per training that runs in the local sargo of one gligabao instance (GCNII*): owner instance, status, heartbeat, and the model it made; at most one running per user. |
-| `gb_training_datasets`        | one row per JSONL training dataset the server has seen (file name, size, record count, digest, sync status with the sidecar).                   |
+| `gb_training_datasets`        | one row per JSONL training dataset the server has seen (file name, size, record count, digest, sync status with the ML sidecar).                   |
 
 ## Where each table is defined
 

@@ -1,9 +1,9 @@
 package training
 
 // Inference hooks of trained models: code supplied by the program that embeds gligabao (ServeOptions.TrainedModelInferenceHooks)
-// that runs the prompts of a trained model instead of the sidecar (Modal). Each hook names the trained model it targets; when a
-// model is prompted, gligabao looks for the hook that targets it and, if there is one, calls it and does not touch the sidecar.
-// A model no hook targets is run on the sidecar as before.
+// that runs the prompts of a trained model instead of the ML sidecar (Modal). Each hook names the trained model it targets; when a
+// model is prompted, gligabao looks for the hook that targets it and, if there is one, calls it and does not touch the ML sidecar.
+// A model no hook targets is run on the ML sidecar as before.
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -55,7 +55,7 @@ type InferTrainedModelResult struct {
 type InferTrainedModelFunc func(ctx context.Context,
 	req InferTrainedModelRequest) (InferTrainedModelResult, error)
 
-// TrainedModelInferenceHook is a named way of running the prompts of one trained model somewhere other than the sidecar.
+// TrainedModelInferenceHook is a named way of running the prompts of one trained model somewhere other than the ML sidecar.
 type TrainedModelInferenceHook struct {
 	// Name identifies the hook: letters, digits, '_', '-' and '.', starting with a letter or digit, unique. It is logged, and
 	// returned with the answer of the infer endpoint.
@@ -128,19 +128,19 @@ func ResolveInferenceHooks(list []TrainedModelInferenceHook) ([]TrainedModelInfe
 }
 
 // InferRouter decides where the prompts of a trained model run: on the inference hook that targets the model's name, else on the
-// sidecar. The zero value has neither. Build it with NewInferRouter; it is safe for concurrent use.
+// ml_sidecar. The zero value has neither. Build it with NewInferRouter; it is safe for concurrent use.
 type InferRouter struct {
-	sidecar Inferer // nil: no sidecar
-	byModel map[string]TrainedModelInferenceHook
+	ml_sidecar Inferer // nil: no ML sidecar
+	byModel    map[string]TrainedModelInferenceHook
 }
 
-// NewInferRouter makes the router of sc (nil: no sidecar, so only the models that have a hook can run) and hooks (validated with
+// NewInferRouter makes the router of sc (nil: no ML sidecar, so only the models that have a hook can run) and hooks (validated with
 // ResolveInferenceHooks).
 func NewInferRouter(sc Inferer,
 	hooks []TrainedModelInferenceHook) *InferRouter {
 	r := &InferRouter{
-		sidecar: sc,
-		byModel: make(map[string]TrainedModelInferenceHook, len(hooks)),
+		ml_sidecar: sc,
+		byModel:    make(map[string]TrainedModelInferenceHook, len(hooks)),
 	}
 	for _, h := range hooks {
 		r.byModel[strings.TrimSpace(h.Model)] = h
@@ -157,8 +157,8 @@ func (r *InferRouter) HookFor(tm *trainingdb.TrainedModel) (TrainedModelInferenc
 	return h, ok
 }
 
-// For returns what runs the prompts of trained model tm: its hook if one targets it (the sidecar is then bypassed), else the
-// sidecar. It is nil when neither is available (no hook and no sidecar). hook is the name of the hook, "" for the sidecar.
+// For returns what runs the prompts of trained model tm: its hook if one targets it (the ML sidecar is then bypassed), else the
+// ml_sidecar. It is nil when neither is available (no hook and no ML sidecar). hook is the name of the hook, "" for the ML sidecar.
 func (r *InferRouter) For(tm *trainingdb.TrainedModel) (inf Inferer, hook string) {
 	if h, ok := r.HookFor(tm); ok {
 		return hookInferer{
@@ -166,24 +166,24 @@ func (r *InferRouter) For(tm *trainingdb.TrainedModel) (inf Inferer, hook string
 			model: *tm,
 		}, h.Name
 	}
-	if r == nil || r.sidecar == nil {
+	if r == nil || r.ml_sidecar == nil {
 		return nil, ""
 	}
-	return r.sidecar, ""
+	return r.ml_sidecar, ""
 }
 
-// hookInferer adapts the hook of a trained model to the sidecar's interface, so that the infer endpoint treats a hook and the sidecar the same.
+// hookInferer adapts the hook of a trained model to the ML sidecar's interface, so that the infer endpoint treats a hook and the ML sidecar the same.
 type hookInferer struct {
 	hook  TrainedModelInferenceHook
 	model trainingdb.TrainedModel
 }
 
-// Infer calls the hook. A failure is an *sidecar.InferError, whose message is shown to the user as the reason.
+// Infer calls the hook. A failure is an *ml_sidecar.InferError, whose message is shown to the user as the reason.
 func (h hookInferer) Infer(ctx context.Context,
-	req sidecar.InferRequest) (out sidecar.InferResponse, err error) {
+	req ml_sidecar.InferRequest) (out ml_sidecar.InferResponse, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = &sidecar.InferError{
+			err = &ml_sidecar.InferError{
 				Message: fmt.Sprintf("inference hook %q panicked: %v",
 					h.hook.Name,
 					r),
@@ -197,18 +197,18 @@ func (h hookInferer) Infer(ctx context.Context,
 		Temperature: req.Temperature,
 	})
 	if err != nil {
-		return out, &sidecar.InferError{
+		return out, &ml_sidecar.InferError{
 			Message: fmt.Sprintf("inference hook %q failed: %v",
 				h.hook.Name,
 				err),
 		}
 	}
 	if res.InputTokens < 0 || res.OutputTokens < 0 {
-		return out, &sidecar.InferError{
+		return out, &ml_sidecar.InferError{
 			Message: fmt.Sprintf("inference hook %q reported negative token counts", h.hook.Name),
 		}
 	}
-	return sidecar.InferResponse{
+	return ml_sidecar.InferResponse{
 		Response:     res.Response,
 		ModelSize:    h.model.ModelSize,
 		ModelPath:    h.model.Path,
@@ -222,6 +222,6 @@ func (h hookInferer) Infer(ctx context.Context,
 type Hooks struct {
 	// Deployers deploy trained models (POST /v1/gb/training/models/{id}/deployments).
 	Deployers []TrainedModelDeployer
-	// Inference run the prompts of the trained models they target, bypassing the sidecar.
+	// Inference run the prompts of the trained models they target, bypassing the ML sidecar.
 	Inference []TrainedModelInferenceHook
 }

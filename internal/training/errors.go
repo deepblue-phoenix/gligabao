@@ -11,7 +11,7 @@ const (
 	KindInvalid              // the request is not acceptable as it is
 	KindNotFound             // what was asked for does not exist
 	KindConflict             // the request clashes with the current state
-	KindUpstream             // the sidecar failed
+	KindUpstream             // the ML sidecar failed
 )
 
 // Error is a failure of a training operation.

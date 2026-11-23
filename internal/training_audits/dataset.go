@@ -23,8 +23,8 @@ type Example struct {
 }
 
 // Prompt is what the trained model is asked: the user turn the training text was made from (the same join as
-// format_instruction in sidecar/ai_train/ai_train_core/gemma4/prompt_format.py: the instruction, and the input after a
-// blank line when there is one). The sidecar adds the chat markers.
+// format_instruction in ml_sidecar/ai_train/ai_train_core/gemma4/prompt_format.py: the instruction, and the input after a
+// blank line when there is one). The ML sidecar adds the chat markers.
 func (e Example) Prompt() string {
 	if e.Input != "" {
 		return e.Instruction + "\n\n" + e.Input
@@ -71,14 +71,14 @@ type Dataset struct {
 }
 
 // LoadDataset reads the training dataset of a trained model from the training datasets store. trainedDataset is the
-// model's dataset as the model records it (its file name, "" if it was trained on the sidecar's default dataset). The errors are
+// model's dataset as the model records it (its file name, "" if it was trained on the ML sidecar's default dataset). The errors are
 // safe to show to the user.
 func LoadDataset(ctx context.Context,
 	store training.DatasetStore,
 	trainedDataset string) (*Dataset, error) {
 	name := strings.TrimSuffix(trainedDataset, ".jsonl")
 	if name == "" {
-		return nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")
+		return nil, errors.New("this model was trained on the ML sidecar's default dataset, which gligabao does not have: there are no questions to ask")
 	}
 	ds, err := training.FindDataset(ctx,
 		store,

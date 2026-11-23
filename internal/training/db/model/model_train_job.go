@@ -18,7 +18,7 @@ const (
 // ErrModelTrainJobRunning is returned when a user already has a running training of that model type.
 var ErrModelTrainJobRunning = errors.New("a training of this user is already running")
 
-// ModelTrainJob is the training of a model that runs outside the sidecar, in the local sargo of ONE gligabao instance (gb_model_train_jobs;
+// ModelTrainJob is the training of a model that runs outside the ML sidecar, in the local sargo of ONE gligabao instance (gb_model_train_jobs;
 // today the GCNII* models). The instances of a cluster share the database, not sargo, so this row is what the others see: that a
 // training is running and on which instance, how it ended, and the model it made. The instance that runs it beats (HeartbeatAt) while it
 // follows the job; a running job without a recent beat is lost.

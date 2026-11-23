@@ -1,7 +1,7 @@
 package agent_research
 
 // The Modal runner: a research started with Options.Runner = core.RunnerModal does not run its agent in this process. The agent (and
-// its sub-agents) is the gligabao_agent binary, run in a Modal container that the sidecar starts (see Remote). The server records the
+// its sub-agents) is the gligabao_agent binary, run in a Modal container that the ML sidecar starts (see Remote). The server records the
 // run as it does for a local one (gb_agent_research_runs), follows the events the container reports (the states the agents enter, what
 // they have spent, and in the end the report) and writes them to the run and its states, so that the REST API, the CLI, MCP and the
 // admin UI see no difference but the run's Runner.
@@ -13,7 +13,7 @@ package agent_research
 //   - The agents work with the knowledge base of the container (empty, and gone when the container ends), not the user's. What they
 //     learned comes back when they end: the container hands over an export of its databases (gligabao_agent --export), the follower
 //     downloads it and the Importer loads it into the server's own databases (see "importing" below).
-//   - The run is started and stopped through the sidecar: a stop asks the container to end, and the run ends when it has.
+//   - The run is started and stopped through the ML sidecar: a stop asks the container to end, and the run ends when it has.
 
 import (
 	"context"
@@ -129,7 +129,7 @@ type remoteStateKey struct {
 	seq   int
 }
 
-// Remote runs researches somewhere else than in this process: the sidecar that starts the gligabao_agent binary in Modal
+// Remote runs researches somewhere else than in this process: the ML sidecar that starts the gligabao_agent binary in Modal
 // (internal/sys/server has the implementation). Events come in the order they happened and are numbered from 0 (RemoteEvent.Seq), so a
 // follower that was cut off resumes with the number of the first event it missed.
 type Remote interface {
@@ -196,9 +196,9 @@ const (
 
 // Limits of following a job; variables so that tests can shorten them.
 var (
-	// remoteLostAfter is how long the follower puts up with not reaching the sidecar before it gives the run up as failed.
+	// remoteLostAfter is how long the follower puts up with not reaching the ML sidecar before it gives the run up as failed.
 	remoteLostAfter = 5 * time.Minute
-	// remoteWatchLimit is how long a job may take at all (the container's own timeout is shorter: SIDECAR_AGENT_TIMEOUT_S).
+	// remoteWatchLimit is how long a job may take at all (the container's own timeout is shorter: ML_SIDECAR_AGENT_TIMEOUT_S).
 	remoteWatchLimit = 3 * time.Hour
 	// remoteExportTimeout bounds the download and the import of the export of a job; remoteExportAttempts is how many times the download
 	// is tried, remoteExportRetryDelay apart.

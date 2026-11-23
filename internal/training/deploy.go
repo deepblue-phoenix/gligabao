@@ -1,7 +1,7 @@
 package training
 
 // Deploying a trained model: handing its weights to a deployer, a hook supplied by the program that embeds gligabao
-// (ServeOptions.TrainedModelDeployers). gligabao fetches the model's files from the sidecar's storage (the Modal models
+// (ServeOptions.TrainedModelDeployers). gligabao fetches the model's files from the ML sidecar's storage (the Modal models
 // volume) to a directory on the local disk and calls the deployer with it; what the deployer does with the files (upload them
 // to a third party, copy them, convert them, ...) is its own business. Every deployment is recorded (gb_trained_model_deployments).
 
@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
@@ -35,7 +35,7 @@ var ErrInvalidDeployer = errors.New("invalid trained model deployer")
 const (
 	MaxDeployerNameLen = 64
 	MaxDeployers       = 20
-	// FetchModelTimeout bounds fetching all the files of a model from the sidecar.
+	// FetchModelTimeout bounds fetching all the files of a model from the ML sidecar.
 	FetchModelTimeout = 30 * time.Minute
 	// MaxDeployOptionsBytes is the largest JSON a request may give a deployer as its options.
 	MaxDeployOptionsBytes = 1 << 16
@@ -132,7 +132,7 @@ func ResolveDeployers(list []TrainedModelDeployer) ([]TrainedModelDeployer, erro
 	return out, nil
 }
 
-// ModelFileFetcher reads the files of a trained model from where the sidecar keeps them; *sidecar.Client is one.
+// ModelFileFetcher reads the files of a trained model from where the ML sidecar keeps them; *ml_sidecar.Client is one.
 type ModelFileFetcher interface {
 	DownloadModelFile(ctx context.Context,
 		modelPath,
@@ -315,7 +315,7 @@ type DeployRequest struct {
 	Options map[string]any
 }
 
-// DeployModel deploys a trained model tm through the deployer named by in: it fetches the model's files from the sidecar (f) into
+// DeployModel deploys a trained model tm through the deployer named by in: it fetches the model's files from the ML sidecar (f) into
 // its directory under dir (see ModelDir), calls the deployer with it and waits for it, and records the deployment
 // (gb_trained_model_deployments) with its outcome, a failure included. It returns the stored record, whose status is
 // "completed". Errors are *Error: KindInvalid for an unknown deployer or bad options, KindUpstream when fetching the files or
@@ -390,7 +390,7 @@ func DeployModel(ctx context.Context,
 			msg), causeErr}
 	}
 
-	updates.add(fmt.Sprintf("Fetching the model's %d files from the sidecar", len(tm.Files)))
+	updates.add(fmt.Sprintf("Fetching the model's %d files from the ML sidecar", len(tm.Files)))
 	fctx, cancel := context.WithTimeout(ctx, FetchModelTimeout)
 	err = FetchModelFiles(fctx,
 		f,
@@ -517,4 +517,4 @@ func ListDeployments(ctx context.Context,
 	return list, nil
 }
 
-var _ ModelFileFetcher = (*sidecar.Client)(nil)
+var _ ModelFileFetcher = (*ml_sidecar.Client)(nil)

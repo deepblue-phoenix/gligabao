@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/userfiles"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 )
 
 // trainingPreflightTimeout bounds each remote check of requireTrainingCredentials.
@@ -25,21 +25,21 @@ type trainingCheck struct {
 // requireTrainingCredentials makes sure everything training needs is accessible; it is called only in training mode, and its error
 // halts the startup (training is a critical part of the system). It checks:
 //   - the Anthropic API key (the LLM that judges the training evals and audits),
-//   - the sidecar answers, and each of its training backends is configured and healthy (that is where the credentials of the
+//   - the ML sidecar answers, and each of its training backends is configured and healthy (that is where the credentials of the
 //     training provider, e.g. MODAL_TOKEN_ID/MODAL_TOKEN_SECRET, live: the backend is only healthy if the provider accepts them),
 //   - every S3 bucket of the training files (datasets, evals) that is configured can be listed with the AWS credentials.
 //
 // All the problems are collected and reported together.
 func requireTrainingCredentials(ctx context.Context,
 	opts Options,
-	sidecarOK bool) error {
+	mlSidecarOK bool) error {
 	checks := append([]trainingCheck{
 		{
 			name:    "Anthropic API key (judge of the training evals and audits)",
 			problem: missingKeyProblem(opts.AnthropicKey),
 		},
-		sidecarCheck(ctx,
-			sidecarOK),
+		mlSidecarCheck(ctx,
+			mlSidecarOK),
 	},
 		s3Checks(ctx,
 			map[string]userfiles.S3Config{
@@ -57,15 +57,15 @@ func missingKeyProblem(key string) string {
 	return ""
 }
 
-// sidecarCheck checks that the sidecar answered its health check and that all its backends are usable.
-func sidecarCheck(ctx context.Context,
-	sidecarOK bool) trainingCheck {
-	name := "training sidecar and its backend credentials"
-	c := sidecarClient.Load()
-	if !sidecarOK || c == nil {
+// mlSidecarCheck checks that the ML sidecar answered its health check and that all its backends are usable.
+func mlSidecarCheck(ctx context.Context,
+	mlSidecarOK bool) trainingCheck {
+	name := "training ML sidecar and its backend credentials"
+	c := mlSidecarClient.Load()
+	if !mlSidecarOK || c == nil {
 		return trainingCheck{
 			name:    name,
-			problem: "the sidecar is not reachable (check sidecar_url / SIDECAR_URL and that the sidecar runs)",
+			problem: "the ML sidecar is not reachable (check ml_sidecar_url / ML_SIDECAR_URL and that the ML sidecar runs; with ml_sidecar_autostart the server starts a local one itself)",
 		}
 	}
 	callCtx, cancel := context.WithTimeout(ctx, trainingPreflightTimeout)
@@ -74,7 +74,7 @@ func sidecarCheck(ctx context.Context,
 	if err != nil {
 		return trainingCheck{
 			name:    name,
-			problem: "cannot list the sidecar backends: " + err.Error(),
+			problem: "cannot list the ML sidecar backends: " + err.Error(),
 		}
 	}
 	return trainingCheck{
@@ -84,9 +84,9 @@ func sidecarCheck(ctx context.Context,
 }
 
 // backendsProblem describes the backends that are missing, not configured or not healthy ("" if all are usable).
-func backendsProblem(backends []sidecar.BackendStatus) string {
+func backendsProblem(backends []ml_sidecar.BackendStatus) string {
 	if len(backends) == 0 {
-		return "the sidecar has no training backend"
+		return "the ML sidecar has no training backend"
 	}
 	problems := []string{}
 	for _, b := range backends {

@@ -63,7 +63,8 @@ const (
 	EnvModelWeightsS3Region       = "MODEL_WEIGHTS_S3_REGION"
 	EnvModelWeightsS3Prefix       = "MODEL_WEIGHTS_S3_PREFIX"
 	EnvModelWeightsS3Endpoint     = "MODEL_WEIGHTS_S3_ENDPOINT"
-	EnvSidecarURL                 = "SIDECAR_URL"
+	EnvMLSidecarURL               = "ML_SIDECAR_URL"
+	EnvMLSidecarDir               = "ML_SIDECAR_DIR"
 )
 
 // Database backends selectable with the db_backend setting.
@@ -227,9 +228,16 @@ type Config struct {
 	// models are trained and used through POST /v1/gb/training/gcnii/train and /infer). A relative path is relative to the config file. Default:
 	// a "gcnii_models" directory in the working directory.
 	SargoGCNIIDir string `toml:"sargo_gcnii_dir"`
-	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
-	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
-	SidecarURL string `toml:"sidecar_url"`
+	// MLSidecarURL is the base URL of the Python ML sidecar's REST API (ml_sidecar/), which runs the training jobs the admin
+	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: ML_SIDECAR_URL, else http://127.0.0.1:8787.
+	MLSidecarURL string `toml:"ml_sidecar_url"`
+	// MLSidecarAutoStart: in training mode (`training = true`), when nothing answers at ml_sidecar_url and that URL is local, the server
+	// starts the ML sidecar itself as a child process (stopped with the server). Default true; false leaves starting it to you. A URL that
+	// is not on this machine is never started.
+	MLSidecarAutoStart bool `toml:"ml_sidecar_autostart"`
+	// MLSidecarDir is the ml_sidecar directory (the one with main_ml_sidecar.py) the server starts it from. Default: ML_SIDECAR_DIR, else
+	// the first of ml_sidecar next to the binary, ml_sidecar in the working directory, ../gligabao/ml_sidecar.
+	MLSidecarDir string `toml:"ml_sidecar_dir"`
 	// TrainedModelDeployDir is the directory the files of trained models are fetched to for a deployment, one subdirectory per
 	// training job (gligabao never deletes them). Default: a "trained_models" directory next to the SQLite database file.
 	// `serve --trained-model-deploy-dir` overrides it.
@@ -270,7 +278,7 @@ type Config struct {
 	EvalsS3Prefix string `toml:"evals_s3_prefix"`
 	// EvalsS3Endpoint is a custom S3 endpoint URL (MinIO, LocalStack; also EVALS_S3_ENDPOINT). Empty = AWS.
 	EvalsS3Endpoint string `toml:"evals_s3_endpoint"`
-	// ModelWeightsS3Bucket is the (existing) bucket of the weights of the trained models that are not kept on the sidecar (the GCNII*
+	// ModelWeightsS3Bucket is the (existing) bucket of the weights of the trained models that are not kept on the ML sidecar (the GCNII*
 	// models of sargo; also MODEL_WEIGHTS_S3_BUCKET). It is normally the meta bucket, the same as EvalsS3Bucket. The weights are the objects
 	// "<prefix>/<model type>/<user>/<job id>/<file>" (for example "model_weights/gcnii/<user>/<job id>/model.weights") and each one has a
 	// row in gb_trained_models. Empty (default): they are kept in the local directory ModelWeightsLocalDir. Credentials come from the
@@ -429,7 +437,9 @@ func Default() *Config {
 		JevKey:              os.Getenv(EnvJevKey),
 		LinkupKey:           os.Getenv(EnvLinkupKey),
 		JevBaseURL:          os.Getenv(EnvJevBaseURL),
-		SidecarURL:          os.Getenv(EnvSidecarURL),
+		MLSidecarURL:        os.Getenv(EnvMLSidecarURL),
+		MLSidecarAutoStart:  true,
+		MLSidecarDir:        os.Getenv(EnvMLSidecarDir),
 
 		PineconeKey:       os.Getenv(EnvPineconeKey),
 		PineconeIndexHost: os.Getenv(EnvPineconeHost),

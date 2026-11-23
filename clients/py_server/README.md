@@ -14,7 +14,7 @@ binary (with the admin UI embedded) and the default `gligabao.toml`, which the b
 you pass `--config`. That copy is replaced when the package is upgraded, so keep your own settings in a file of yours and
 run `gligabao-server serve --config /path/to/gligabao.toml`.
 
-The Python sidecar (model training) is not part of this package.
+The Python ML sidecar (model training) is not part of this package.
 
 ```python
 import gligabao_server

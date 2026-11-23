@@ -4,22 +4,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 )
 
 func TestBackendsProblem(t *testing.T) {
-	ok := sidecar.BackendStatus{"name": "modal", "configured": true, "healthy": true}
-	bad := sidecar.BackendStatus{"name": "modal", "configured": true, "healthy": false, "error": "bad token"}
-	unconf := sidecar.BackendStatus{"name": "x", "configured": false}
+	ok := ml_sidecar.BackendStatus{"name": "modal", "configured": true, "healthy": true}
+	bad := ml_sidecar.BackendStatus{"name": "modal", "configured": true, "healthy": false, "error": "bad token"}
+	unconf := ml_sidecar.BackendStatus{"name": "x", "configured": false}
 	cases := []struct {
 		name string
-		in   []sidecar.BackendStatus
+		in   []ml_sidecar.BackendStatus
 		want string
 	}{
 		{"none", nil, "no training backend"},
-		{"ok", []sidecar.BackendStatus{ok}, ""},
-		{"unhealthy", []sidecar.BackendStatus{bad}, "bad token"},
-		{"unconfigured", []sidecar.BackendStatus{unconf}, "not configured"},
+		{"ok", []ml_sidecar.BackendStatus{ok}, ""},
+		{"unhealthy", []ml_sidecar.BackendStatus{bad}, "bad token"},
+		{"unconfigured", []ml_sidecar.BackendStatus{unconf}, "not configured"},
 	}
 	for _, c := range cases {
 		got := backendsProblem(c.in)

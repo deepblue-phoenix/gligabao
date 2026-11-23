@@ -1,14 +1,14 @@
-# Runs the gligabao server and its Python sidecar on one private network.
+# Runs the gligabao server and its Python ML sidecar on one private network.
 #
 #   export ANTHROPIC_API_KEY=...     # required for remember/query
 #   export OPENAI_API_KEY=...        # required: embeddings (remember embeds what it stores, query the question)
 #   docker compose up --build
 #
 # Server:  http://127.0.0.1:7878   (GET /health)
-# Sidecar: http://127.0.0.1:8787   (GET /health)
+# ML sidecar: http://127.0.0.1:8787   (GET /health)
 #
-# Inside the network the containers reach each other by service name: the server finds the sidecar at
-# http://sidecar:8787 (not 127.0.0.1, which inside a container is the container itself).
+# Inside the network the containers reach each other by service name: the server finds the ML sidecar at
+# http://ml-sidecar:8787 (not 127.0.0.1, which inside a container is the container itself).
 
 services:
   gligabao:
@@ -25,20 +25,20 @@ services:
       # SQLite db, vector store and images (/data in the image).
       - gligabao-data:/data
     depends_on:
-      sidecar:
+      ml-sidecar:
         condition: service_healthy
     networks:
       - gligabao
     restart: unless-stopped
 
-  sidecar:
+  ml-sidecar:
     build:
       context: .
-      dockerfile: Dockerfile.sidecar
-    image: gligabao-sidecar:latest
-    # The image already sets SIDECAR_HOST=0.0.0.0 and SIDECAR_PORT=8787.
-    # The sidecar has no authentication: it is published on localhost only, and other containers on the
-    # "gligabao" network reach it directly as sidecar:8787 (the published port is only for your own debugging).
+      dockerfile: Dockerfile.ml_sidecar
+    image: gligabao-ml-sidecar:latest
+    # The image already sets ML_SIDECAR_HOST=0.0.0.0 and ML_SIDECAR_PORT=8787.
+    # The ML sidecar has no authentication: it is published on localhost only, and other containers on the
+    # "gligabao" network reach it directly as ml-sidecar:8787 (the published port is only for your own debugging).
     ports:
       - "127.0.0.1:8787:8787"
     healthcheck:

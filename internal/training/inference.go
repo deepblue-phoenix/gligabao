@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
-// Inferer runs a prompt through a trained model on the sidecar; *sidecar.Client is one.
+// Inferer runs a prompt through a trained model on the ML sidecar; *ml_sidecar.Client is one.
 type Inferer interface {
 	Infer(ctx context.Context,
-		req sidecar.InferRequest) (sidecar.InferResponse, error)
+		req ml_sidecar.InferRequest) (ml_sidecar.InferResponse, error)
 }
 
 const (
@@ -45,9 +45,9 @@ func GetModel(ctx context.Context,
 	return tm, nil
 }
 
-// GetSidecarModel is GetModel for the callers that run the model on the sidecar (inference, evals, audits, deployment): a model of
-// another type (a GCNII* model of sargo) is a KindConflict Error, its weights are not on the sidecar.
-func GetSidecarModel(ctx context.Context,
+// GetMLSidecarModel is GetModel for the callers that run the model on the ML sidecar (inference, evals, audits, deployment): a model of
+// another type (a GCNII* model of sargo) is a KindConflict Error, its weights are not on the ML sidecar.
+func GetMLSidecarModel(ctx context.Context,
 	db *sql.DB,
 	userID string,
 	id int64) (*trainingdb.TrainedModel, error) {
@@ -58,9 +58,9 @@ func GetSidecarModel(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	if !tm.RunsOnSidecar() {
+	if !tm.RunsOnMLSidecar() {
 		return nil, conflictErr("trained model " + strconv.FormatInt(id, 10) + " is a " + tm.ModelType +
-			" model: it does not run on the sidecar (use /v1/gb/training/gcnii/...)")
+			" model: it does not run on the ML sidecar (use /v1/gb/training/gcnii/...)")
 	}
 	return tm, nil
 }
@@ -104,9 +104,9 @@ type InferResult struct {
 	LoadSeconds  float64
 }
 
-// Infer runs req through the weights of trained model tm on the sidecar sc. The request is stored before it goes to the
-// sidecar and updated when it ends, so it can be reviewed later whatever happens to it (a failure, the caller giving up, a
-// restart of the server). Errors are *Error: KindInvalid for a bad request, KindUpstream when the sidecar fails, KindInternal.
+// Infer runs req through the weights of trained model tm on the ML sidecar sc. The request is stored before it goes to the
+// ml_sidecar and updated when it ends, so it can be reviewed later whatever happens to it (a failure, the caller giving up, a
+// restart of the server). Errors are *Error: KindInvalid for a bad request, KindUpstream when the ML sidecar fails, KindInternal.
 func Infer(ctx context.Context,
 	db *sql.DB,
 	sc Inferer,
@@ -155,7 +155,7 @@ func Infer(ctx context.Context,
 	started := time.Now()
 	ictx, cancel := context.WithTimeout(ctx, InferTimeout)
 	defer cancel()
-	out, err := sc.Infer(ictx, sidecar.InferRequest{
+	out, err := sc.Infer(ictx, ml_sidecar.InferRequest{
 		Prompt:      req.Prompt,
 		ModelSize:   tm.ModelSize,
 		ModelPath:   tm.Path,
@@ -163,8 +163,8 @@ func Infer(ctx context.Context,
 		Temperature: req.Temperature,
 	})
 	if err != nil {
-		var ie *sidecar.InferError
-		var se *sidecar.StatusError
+		var ie *ml_sidecar.InferError
+		var se *ml_sidecar.StatusError
 		switch {
 		case errors.As(err, &ie):
 			finish(trainingdb.TrainedModelInferenceFailed,
@@ -196,7 +196,7 @@ func Infer(ctx context.Context,
 				nil,
 				0,
 				started)
-			return nil, &Error{KindUpstream, "sidecar failed to run the inference", err}
+			return nil, &Error{KindUpstream, "ML sidecar failed to run the inference", err}
 		}
 	}
 	finish(trainingdb.TrainedModelInferenceCompleted,

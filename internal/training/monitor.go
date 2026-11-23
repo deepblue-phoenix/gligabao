@@ -1,7 +1,7 @@
 package training
 
 // The training monitor: for each training job started through the training API (and each unfinished one found at startup) it
-// follows the sidecar's SSE stream of the job's progress, stores every event (gb_training_job_events), keeps the job's
+// follows the ML sidecar's SSE stream of the job's progress, stores every event (gb_training_job_events), keeps the job's
 // row (gb_training_job_runs) up to date, and forwards the events to the SSE streams (api/training EventsOf).
 
 import (
@@ -12,36 +12,36 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
-// Sidecar is what the training API needs from the sidecar; *sidecar.Client is one.
-type Sidecar interface {
+// MLSidecar is what the training API needs from the ML sidecar; *ml_sidecar.Client is one.
+type MLSidecar interface {
 	JobStarter
 	JobCanceller
 	Inferer
 	StreamTrainingJobEvents(ctx context.Context,
 		jobID string,
 		from int,
-		fn func(sidecar.TrainingEvent) error) error
+		fn func(ml_sidecar.TrainingEvent) error) error
 }
 
-// FeedEvent is an event as the admin UI receives it: the sidecar's event and which job it is of.
+// FeedEvent is an event as the admin UI receives it: the ML sidecar's event and which job it is of.
 type FeedEvent struct {
 	RunID int64  `json:"run_id"`
 	JobID string `json:"job_id"`
 	// UserID is the user of the job: a subscription gets only the events of its user. It is not sent to the client.
 	UserID string `json:"-"`
-	sidecar.TrainingEvent
+	ml_sidecar.TrainingEvent
 }
 
 const (
 	// DefaultWatchTimeout is how long after a job started the monitor waits for it to report that it ended
-	// (the sidecar's train timeout is 2 hours, SIDECAR_TRAIN_TIMEOUT_S); then the job is marked failed.
+	// (the ML sidecar's train timeout is 2 hours, ML_SIDECAR_TRAIN_TIMEOUT_S); then the job is marked failed.
 	DefaultWatchTimeout = 3 * time.Hour
-	// DefaultRetryDelay is how long the monitor waits before it reconnects to a sidecar stream that ended or failed
+	// DefaultRetryDelay is how long the monitor waits before it reconnects to an ML sidecar stream that ended or failed
 	// (doubled while nothing arrives, up to maxRetryDelay).
 	DefaultRetryDelay = time.Second
 	maxRetryDelay     = 30 * time.Second
@@ -54,7 +54,7 @@ const (
 type Monitor struct {
 	ctx      context.Context
 	db       *sql.DB
-	sc       Sidecar // nil: jobs are not followed
+	sc       MLSidecar // nil: jobs are not followed
 	maxWatch time.Duration
 	retry    time.Duration
 
@@ -78,7 +78,7 @@ func WithWatchTimeout(d time.Duration) MonitorOption {
 	return func(m *Monitor) { m.maxWatch = d }
 }
 
-// WithRetryDelay sets the base delay before reconnecting to the sidecar (DefaultRetryDelay).
+// WithRetryDelay sets the base delay before reconnecting to the ML sidecar (DefaultRetryDelay).
 func WithRetryDelay(d time.Duration) MonitorOption {
 	return func(m *Monitor) { m.retry = d }
 }
@@ -87,7 +87,7 @@ func WithRetryDelay(d time.Duration) MonitorOption {
 // the jobs it holds as unfinished. sc may be nil: the monitor then only serves the stored events.
 func NewMonitor(ctx context.Context,
 	db *sql.DB,
-	sc Sidecar,
+	sc MLSidecar,
 	opts ...MonitorOption) *Monitor {
 	m := &Monitor{
 		ctx:      ctx,
@@ -116,7 +116,7 @@ func NewMonitor(ctx context.Context,
 	return m
 }
 
-// Watch starts following the training job run (a no-op if it is already followed, or the monitor has no sidecar).
+// Watch starts following the training job run (a no-op if it is already followed, or the monitor has no ML sidecar).
 func (m *Monitor) Watch(run trainingdb.TrainingJobRun) {
 	if m == nil || m.sc == nil {
 		return
@@ -139,7 +139,7 @@ func (m *Monitor) Watch(run trainingdb.TrainingJobRun) {
 	}()
 }
 
-// follow streams the events of the job from the sidecar until it ends, the deadline passes or the monitor's context is done.
+// follow streams the events of the job from the ML sidecar until it ends, the deadline passes or the monitor's context is done.
 func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
 	l := log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID})
 	deadline := run.StartedAt.Add(m.maxWatch)
@@ -156,7 +156,7 @@ func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
 		err := m.sc.StreamTrainingJobEvents(m.ctx,
 			run.JobID,
 			from,
-			func(ev sidecar.TrainingEvent) error {
+			func(ev ml_sidecar.TrainingEvent) error {
 				progressed = true
 				if err := m.record(run, ev); err != nil {
 					return err
@@ -169,15 +169,15 @@ func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
 			return
 		}
 		if err != nil {
-			l.WithError(err).Warn("training: training job: sidecar event stream ended with an error")
+			l.WithError(err).Warn("training: training job: ml_sidecar event stream ended with an error")
 		}
 		if time.Now().After(deadline) {
 			l.Warn("training: training job: no end reported in time, marking it failed")
-			ev := sidecar.TrainingEvent{
+			ev := ml_sidecar.TrainingEvent{
 				Seq:       from,
-				Type:      sidecar.EventStatus,
+				Type:      ml_sidecar.EventStatus,
 				Status:    trainingdb.TrainingJobFailed,
-				Error:     fmt.Sprintf("the sidecar did not report the job's end within %s", m.maxWatch),
+				Error:     fmt.Sprintf("the ML sidecar did not report the job's end within %s", m.maxWatch),
 				Timestamp: float64(time.Now().Unix()),
 			}
 			if err := m.record(run, ev); err != nil {
@@ -200,13 +200,13 @@ func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
 
 // record updates the job's row from the event, stores the event and forwards it to the subscribers.
 func (m *Monitor) record(run trainingdb.TrainingJobRun,
-	ev sidecar.TrainingEvent) error {
+	ev ml_sidecar.TrainingEvent) error {
 	ctx := context.WithoutCancel(m.ctx) // an event that arrived is stored even while the server shuts down
 	data, err := json.Marshal(ev)
 	if err != nil {
 		return err
 	}
-	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobCompleted {
+	if ev.Type == ml_sidecar.EventStatus && ev.Status == trainingdb.TrainingJobCompleted {
 		// Before the event is stored: a failure here makes the stream retry the event, and the model is recorded once.
 		if err := m.recordModel(ctx,
 			run,
@@ -241,16 +241,16 @@ func (m *Monitor) record(run trainingdb.TrainingJobRun,
 	if !isNew {
 		return nil
 	}
-	if ev.Type == sidecar.EventLog {
+	if ev.Type == ml_sidecar.EventLog {
 		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Infof("training: %s", ev.Message)
 	}
-	if ev.Type == sidecar.EventProgress && ev.Step != nil {
+	if ev.Type == ml_sidecar.EventProgress && ev.Step != nil {
 		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID, "step": *ev.Step, "loss": ev.Loss}).Debug("training: progress")
 	}
-	if ev.Type == sidecar.EventStatus && ev.Status != trainingdb.TrainingJobFailed {
+	if ev.Type == ml_sidecar.EventStatus && ev.Status != trainingdb.TrainingJobFailed {
 		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Infof("training: status %s", ev.Status)
 	}
-	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobFailed {
+	if ev.Type == ml_sidecar.EventStatus && ev.Status == trainingdb.TrainingJobFailed {
 		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
 			Errorf("training: training job failed\n%s", ev.Traceback)
 	}
@@ -264,10 +264,10 @@ func (m *Monitor) record(run trainingdb.TrainingJobRun,
 }
 
 // recordModel stores the weights a completed job reports (the "model" of its completed event) as a trained model. A
-// completed event without them (from a sidecar that does not report them yet) records nothing.
+// completed event without them (from an ML sidecar that does not report them yet) records nothing.
 func (m *Monitor) recordModel(ctx context.Context,
 	run trainingdb.TrainingJobRun,
-	ev sidecar.TrainingEvent) error {
+	ev ml_sidecar.TrainingEvent) error {
 	l := log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID})
 	info := ev.Model
 	if info == nil || info.Path == "" {
@@ -312,9 +312,9 @@ func (m *Monitor) recordModel(ctx context.Context,
 }
 
 // trainingRunUpdate is the change an event makes to its job's row (nil: none).
-func trainingRunUpdate(ev sidecar.TrainingEvent) *trainingdb.TrainingJobRunUpdate {
+func trainingRunUpdate(ev ml_sidecar.TrainingEvent) *trainingdb.TrainingJobRunUpdate {
 	switch ev.Type {
-	case sidecar.EventProgress:
+	case ml_sidecar.EventProgress:
 		if ev.Step == nil {
 			return nil
 		}
@@ -322,7 +322,7 @@ func trainingRunUpdate(ev sidecar.TrainingEvent) *trainingdb.TrainingJobRunUpdat
 			Step: ev.Step,
 			Loss: ev.Loss,
 		}
-	case sidecar.EventStatus:
+	case ml_sidecar.EventStatus:
 		u := &trainingdb.TrainingJobRunUpdate{
 			Status: ev.Status,
 		}
