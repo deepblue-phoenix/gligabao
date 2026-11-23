@@ -588,7 +588,7 @@ func versionHandler(w http.ResponseWriter,
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
 // and are served whether or not the admin UI is on, but only in training mode): the jobs, the trained models of every type (LoRA,
 // GCNII*), the datasets, the evals and audits and the feed of the jobs' progress. This is the only set of handlers for training and model
-// work; the old /v1/gb/model/ routes are part of it now (/v1/gb/training/gcnii/).
+// work.
 //
 // Every route is behind the same authentication as the other routes of users (httputil.Authenticate with auth: an API key, or the
 // gb-user-id header without an auth hook): they are registered on their own mux, which is mounted once, wrapped. A route added here is
