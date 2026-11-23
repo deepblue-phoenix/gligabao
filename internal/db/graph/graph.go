@@ -83,6 +83,10 @@ type (
 	ImageStats                   = model.ImageStats
 	ImageGroup                   = model.ImageGroup
 	Counts                       = model.Counts
+	Stats                        = model.Stats
+	GraphStats                   = model.GraphStats
+	ArtifactStats                = model.ArtifactStats
+	KindCount                    = model.KindCount
 	Tx                           = model.Tx
 	Grounding                    = model.Grounding
 	OntologyEvent                = model.OntologyEvent
@@ -810,6 +814,23 @@ func DatasetCounts(ctx context.Context,
 			dsID)
 	}
 	return Counts{}, unsupported()
+}
+
+// DatasetStats returns the summary of the dataset: graph counts, artifact counts per kind and the depth of the artifact hierarchy.
+func DatasetStats(ctx context.Context,
+	d *sql.DB,
+	dsID int64) (Stats, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.DatasetStats(ctx,
+			d,
+			dsID)
+	case config.DBBackendPostgres:
+		return postgres.DatasetStats(ctx,
+			d,
+			dsID)
+	}
+	return Stats{}, unsupported()
 }
 
 // ListArtifacts returns the artifacts of the dataset by ID.

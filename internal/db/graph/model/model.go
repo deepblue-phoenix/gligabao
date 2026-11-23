@@ -390,6 +390,42 @@ type Counts struct {
 	Artifacts, Entities, Edges, Chunks, Summaries int
 }
 
+// KindCount is a number of artifacts of one kind.
+type KindCount struct {
+	Kind  string `json:"kind"`
+	Count int    `json:"count"`
+}
+
+// GraphStats describes the knowledge graph of a dataset. Edges are all facts; ExpiredEdges are the ones that were superseded or
+// ended (expired_at or invalid_at set), CurrentEdges the rest. EntityTypes and Relations are the number of distinct values.
+type GraphStats struct {
+	Entities     int `json:"entities"`
+	Edges        int `json:"edges"`
+	CurrentEdges int `json:"current_edges"`
+	ExpiredEdges int `json:"expired_edges"`
+	EntityTypes  int `json:"entity_types"`
+	Relations    int `json:"relations"`
+}
+
+// ArtifactStats describes the artifacts of a dataset. Roots are the artifacts with no parent. The depth of an artifact is the
+// number of levels of its hierarchy down from its root, counting the root (a root has depth 1, a chunk of it 2, the summary of that chunk 3).
+// MaxDepth and AvgDepth are over all artifacts (0 for an empty dataset).
+type ArtifactStats struct {
+	Total     int         `json:"total"`
+	Roots     int         `json:"roots"`
+	Chunks    int         `json:"chunks"`
+	Summaries int         `json:"summaries"`
+	ByKind    []KindCount `json:"by_kind"`
+	MaxDepth  int         `json:"max_depth"`
+	AvgDepth  float64     `json:"avg_depth"`
+}
+
+// Stats is the summary of a dataset: its graph and its artifacts.
+type Stats struct {
+	Graph     GraphStats    `json:"graph"`
+	Artifacts ArtifactStats `json:"artifacts"`
+}
+
 //---------------------------------------------------------------------------------------------
 
 // Tx is a backend transaction covering all the graph writes of one Remember. All "not found" results are ErrNotFound.

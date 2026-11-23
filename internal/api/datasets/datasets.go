@@ -294,6 +294,40 @@ func Classes(d *sql.DB) http.HandlerFunc {
 	}
 }
 
+// Stats serves GET /v1/gb/datasets/{name}/stats: the summary of the dataset, {"dataset", "graph": {entities, edges, ...},
+// "artifacts": {total, by_kind, max_depth, avg_depth, ...}}. It makes no LLM call.
+func Stats(d *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		st, err := memory.DatasetStats(r.Context(),
+			d,
+			httputil.UserID(r),
+			r.PathValue("name"))
+		switch {
+		case errors.Is(err, memory_core.ErrInvalidUser):
+			httputil.Error(w,
+				http.StatusBadRequest,
+				err.Error())
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
+			httputil.Error(w,
+				http.StatusNotFound,
+				"dataset not found")
+		case err != nil:
+			log.WithError(err).WithFields(log.Fields{
+				"user_id": httputil.UserID(r),
+				"dataset": r.PathValue("name"),
+			}).Error("dataset stats failed")
+			httputil.Error(w,
+				http.StatusInternalServerError,
+				"failed to get dataset stats")
+		default:
+			httputil.WriteJSON(w,
+				http.StatusOK,
+				st)
+		}
+	}
+}
+
 // Git serves GET /v1/gb/datasets/{name}/git: the dataset as a bare git repository (one commit per remember call, see
 // docs/git-export.md), as a gzip-compressed tar archive with the repository in the directory <name>.git.
 func Git(d *sql.DB) http.HandlerFunc {

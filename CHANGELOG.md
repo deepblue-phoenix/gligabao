@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.239.0] - 2026-11-25
+
+A dataset can be summarized with one call.
+
+### Added
+
+- **`GET /v1/gb/datasets/{name}/stats`**: the graph counts (entities, edges, current and expired edges, entity types, relations) and the artifact counts (total, roots, chunks, summaries, per kind) of a dataset, with the maximum and average depth of its artifact hierarchy. Backed by `graph.DatasetStats` (SQLite and Postgres) and `memory.DatasetStats`.
+
 ## [0.238.0] - 2026-11-24
 
 The training datasets of the LLM/LoRA fine-tuning can be kept in S3, a second choice next to the directories.

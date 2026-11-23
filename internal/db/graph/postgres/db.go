@@ -386,6 +386,73 @@ func DatasetCounts(ctx context.Context,
 	return c, err
 }
 
+// DatasetStats returns the graph and artifact summary of the dataset (see model.Stats): counts, artifacts per kind and the depth of the
+// artifact hierarchy (parent_id), root = 1.
+func DatasetStats(ctx context.Context,
+	d *sql.DB,
+	dsID int64) (model.Stats, error) {
+	var st model.Stats
+	if err := d.QueryRowContext(ctx,
+		`
+		SELECT
+			(SELECT COUNT(*) FROM gb_entities WHERE dataset_id = $1),
+			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = $1),
+			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = $1 AND expired_at IS NULL AND invalid_at IS NULL),
+			(SELECT COUNT(DISTINCT type) FROM gb_entities WHERE dataset_id = $1),
+			(SELECT COUNT(DISTINCT relation) FROM gb_edges WHERE dataset_id = $1),
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1),
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1 AND parent_id IS NULL),
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1 AND chunk_index IS NOT NULL),
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1 AND kind = 'chunk_summary')`,
+		dsID).Scan(&st.Graph.Entities,
+		&st.Graph.Edges,
+		&st.Graph.CurrentEdges,
+		&st.Graph.EntityTypes,
+		&st.Graph.Relations,
+		&st.Artifacts.Total,
+		&st.Artifacts.Roots,
+		&st.Artifacts.Chunks,
+		&st.Artifacts.Summaries); err != nil {
+		return model.Stats{}, fmt.Errorf("dataset stats: %w", err)
+	}
+	st.Graph.ExpiredEdges = st.Graph.Edges - st.Graph.CurrentEdges
+	rows, err := d.QueryContext(ctx,
+		`
+		SELECT kind, COUNT(*) AS n FROM gb_artifacts
+		WHERE dataset_id = $1
+		GROUP BY kind
+		ORDER BY n DESC, kind`,
+		dsID)
+	if err != nil {
+		return model.Stats{}, fmt.Errorf("dataset stats kinds: %w", err)
+	}
+	defer rows.Close()
+	st.Artifacts.ByKind = []model.KindCount{}
+	for rows.Next() {
+		var k model.KindCount
+		if err := rows.Scan(&k.Kind, &k.Count); err != nil {
+			return model.Stats{}, err
+		}
+		st.Artifacts.ByKind = append(st.Artifacts.ByKind, k)
+	}
+	if err := rows.Err(); err != nil {
+		return model.Stats{}, err
+	}
+	if err := d.QueryRowContext(ctx,
+		`
+		WITH RECURSIVE tree(id, depth) AS (
+			SELECT id, 1 FROM gb_artifacts WHERE dataset_id = $1 AND parent_id IS NULL
+			UNION ALL
+			SELECT a.id, tree.depth + 1 FROM gb_artifacts a JOIN tree ON a.parent_id = tree.id
+		)
+		SELECT COALESCE(MAX(depth), 0), COALESCE(AVG(depth), 0)::float8 FROM tree`,
+		dsID).Scan(&st.Artifacts.MaxDepth,
+		&st.Artifacts.AvgDepth); err != nil {
+		return model.Stats{}, fmt.Errorf("dataset stats depth: %w", err)
+	}
+	return st, nil
+}
+
 const artifactColumns = `
 		a.id, a.dataset_id, a.kind, a.text, COALESCE(a.session_id, ''), a.valid_at, a.created_at,
 			COALESCE(a.parent_id, 0), COALESCE(a.chunk_index, 0), COALESCE(a.start_offset, 0), COALESCE(a.end_offset, 0), COALESCE(a.tokens, 0), COALESCE(a.query, ''), COALESCE(a.series_id, 0),

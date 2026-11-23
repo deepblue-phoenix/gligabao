@@ -162,6 +162,45 @@ func TopClasses(ctx context.Context,
 		n)
 }
 
+// DatasetStatsOf is the summary of a dataset: its graph and artifact counts and the depth of its artifact hierarchy.
+type DatasetStatsOf struct {
+	Dataset string `json:"dataset"`
+	graph.Stats
+}
+
+// DatasetStats returns the summary of userID's live dataset called name (empty means the default dataset).
+// It returns ErrDatasetNotFound if there is no such dataset.
+func DatasetStats(ctx context.Context,
+	d *sql.DB,
+	userID,
+	name string) (*DatasetStatsOf, error) {
+	userID, err := memory_core.ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	name, err = memory_core.ResolveDatasetName(name)
+	if err != nil {
+		return nil, err
+	}
+	dsID, err := memory_core.DatasetID(ctx,
+		d,
+		userID,
+		name)
+	if err != nil {
+		return nil, err
+	}
+	st, err := graph.DatasetStats(ctx,
+		d,
+		dsID)
+	if err != nil {
+		return nil, err
+	}
+	return &DatasetStatsOf{
+		Dataset: name,
+		Stats:   st,
+	}, nil
+}
+
 // ErrArtifactNotFound is returned when the artifact does not exist in the dataset.
 var ErrArtifactNotFound = errors.New("artifact not found")
 
