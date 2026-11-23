@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.240.0] - 2026-11-26
+
+Training mode refuses to start without the credentials training needs.
+
+### Changed
+
+- With `training = true` (or `serve --training`), startup now checks that everything training needs is accessible, and halts with one error that lists every problem: the Anthropic API key (judge of the training evals and audits), the sidecar (reachable, and every backend configured and healthy, which proves the provider credentials such as the Modal tokens work), and the AWS credentials for each configured S3 bucket (training datasets, evals). Before, a missing piece only made the training endpoints answer 503. Without training mode nothing changes.
+
 ## [0.239.0] - 2026-11-25
 
 A dataset can be summarized with one call.

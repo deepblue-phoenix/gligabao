@@ -1182,6 +1182,14 @@ func prepare(ctx context.Context,
 	// makes everything that needs the sidecar answer 503 (or do nothing) instead of failing.
 	sc, sidecarActive := connectSidecar(ctx, opts.SidecarURL)
 	SidecarActive.Store(sidecarActive)
+	if opts.TrainingModeEnable {
+		// Training is critical: with it on, the credentials and secrets it needs must work, else the server does not start.
+		if err := requireTrainingCredentials(ctx,
+			opts,
+			sidecarActive); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	// The definitions of the research agents are read once, here: one that is not valid is an error, not an agent that is missing later.
 	agentDefsDir := opts.AgentDefsDir
