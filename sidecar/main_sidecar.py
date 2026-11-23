@@ -34,6 +34,8 @@ def get_config(request: Request) -> SidecarConfig:
     """The config the app was created with, for use in request handlers."""
     return request.app.state.config
 
+#------------------------------------------------------------------------------------
+# CREATE_APP
 
 def create_app(config: SidecarConfig, backend: Optional[Backend] = None) -> FastAPI:
     """Build the app. `config` is kept on `app.state.config`; pass it on to anything that needs config values.
@@ -45,10 +47,14 @@ def create_app(config: SidecarConfig, backend: Optional[Backend] = None) -> Fast
         yield
         await backend.aclose()
 
+    #------------------------
+    # FAST_API
+
     app = FastAPI(title="gligabao sidecar", lifespan=lifespan)
     app.state.config = config
     app.state.backend = backend
 
+    #------------------------
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
@@ -58,16 +64,25 @@ def create_app(config: SidecarConfig, backend: Optional[Backend] = None) -> Fast
         """The backends available for training (today the one configured) with their status; see Backend.status."""
         return {"backends": [await backend.status()]}
 
+    #-----------------------
+    # ROUTES
+
     add_action_routes(app, backend)
     add_model_file_route(app, backend)
     add_backend_routes(app, backend)
+    
+    #-----------------------
+    
     return app
 
+#------------------------------------------------------------------------------------
+# MAIN
 
 def main(config: SidecarConfig) -> None:
     logging.getLogger("uvicorn.access").addFilter(QuietPollFilter())
     uvicorn.run(create_app(config), host=config.host, port=config.port)
 
+#------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     try:

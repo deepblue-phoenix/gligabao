@@ -15,17 +15,33 @@ log = logging.getLogger("uvicorn.error")
 # There are deliberately no dataset routes: training datasets belong to the Go server (database and files), which hands a
 # dataset to the sidecar inside POST /training/job_start. The backend stores it internally.
 ROUTES = (
+    
+    #-----------------------
+    # TRAINING
     ("POST", "/training/job_start"),
     ("GET", "/training/job_progress"),
     ("GET", "/training/job_events"),       # SSE
     ("POST", "/training/job_cancel"),
+
+    #-----------------------
+    # RESEARCH
+
     ("POST", "/research/job_start"),       # the research agent (the gligabao_agent binary) in Modal
     ("GET", "/research/job_events"),       # SSE
     ("POST", "/research/job_cancel"),
     ("GET", "/research/job_export"),       # what the agent handed back (a ZIP archive)
+    
+    #-----------------------
+    # INFERENCE
+
     ("POST", "/infer/query"),
+    
+    #-----------------------
+    # EVALS
     ("POST", "/evals/add_to_dataset"),
     ("GET", "/evals/get_dataset_count"),
+
+    #-----------------------
 )
 
 
@@ -42,9 +58,12 @@ def add_backend_routes(app: FastAPI, backend: Backend) -> None:
                                      background=BackgroundTask(resp.close))
         return handler
 
+    #-----------------------
+    # ADD_ROUTES
     for method, path in ROUTES:
         app.add_api_route(path, make_handler(method, path), methods=[method], include_in_schema=False)
 
+    #-----------------------
 
 def add_action_routes(app: FastAPI, backend: Backend) -> None:
     """Routes answered by the sidecar itself (not forwarded): the backend's long-running actions (backends/actions.py).
@@ -99,10 +118,18 @@ def add_action_routes(app: FastAPI, backend: Backend) -> None:
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     for base in ("/backends/{name}", "/backends/{name}/apps/{app}"):
+
+        #-----------------------
+        # ADD_ROUTES
         app.add_api_route(base + "/actions/{action}", start, methods=["POST"], include_in_schema=False)
         app.add_api_route(base + "/actions/{action}/cancel", cancel, methods=["POST"], include_in_schema=False)
         app.add_api_route(base + "/actions/{action}", get, methods=["GET"], include_in_schema=False)
         app.add_api_route(base + "/actions/{action}/events", events, methods=["GET"], include_in_schema=False)
+
+        #-----------------------
+    
+    #-----------------------
+    # LISTENER_ROUTES
 
     def lister(what: str, call):
         async def handler(name: str) -> Response:
@@ -120,7 +147,8 @@ def add_action_routes(app: FastAPI, backend: Backend) -> None:
     app.add_api_route("/backends/{name}/volumes", lister("volumes", backend.volumes), methods=["GET"], include_in_schema=False)
     app.add_api_route("/backends/{name}/apps", lister("apps", backend.apps), methods=["GET"], include_in_schema=False)
 
-
+    #-----------------------
+    
 def add_model_file_route(app: FastAPI, backend: Backend) -> None:
     """GET /models/file?model_path=trained/<job id>&file=<path in it>: the raw bytes of one file of a trained model, answered
     by the sidecar itself (not forwarded). The Go server fetches a model's weights with it (the model's `files` list says
