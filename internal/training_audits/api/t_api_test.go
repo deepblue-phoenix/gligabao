@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/api"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/audittest"
@@ -36,6 +37,7 @@ func call(t *testing.T,
 	req, _ := http.NewRequest(method,
 		url,
 		strings.NewReader(body))
+	req.Header.Set(httputil.UserIDHeader, audittest.User)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -258,9 +260,13 @@ func TestAuditLiveFeedAndCancel(t *testing.T) {
 	}
 	<-sc.Started
 
-	resp, err := http.Get(fmt.Sprintf("%s/audits/%d/events",
-		base,
-		run.ID))
+	eventsReq, _ := http.NewRequest("GET",
+		fmt.Sprintf("%s/audits/%d/events",
+			base,
+			run.ID),
+		nil)
+	eventsReq.Header.Set(httputil.UserIDHeader, audittest.User)
+	resp, err := http.DefaultClient.Do(eventsReq)
 	if err != nil {
 		t.Fatal(err)
 	}

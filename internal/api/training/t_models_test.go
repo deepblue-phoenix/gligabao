@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -45,7 +46,7 @@ func testTrainedModelEndpoints(t *testing.T,
 	} {
 		if _, _, err := trainingdb.RecordTrainedModel(ctx,
 			d,
-			m); err != nil {
+			withUser(m)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -53,7 +54,7 @@ func testTrainedModelEndpoints(t *testing.T,
 		url,
 		path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("GET",
+		req := userReq("GET",
 			url,
 			nil)
 		if path != "" {
@@ -130,7 +131,7 @@ func testInferWithAnInferenceHook(t *testing.T,
 	} {
 		if _, _, err := trainingdb.RecordTrainedModel(ctx,
 			d,
-			m); err != nil {
+			withUser(m)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -161,7 +162,7 @@ func testInferWithAnInferenceHook(t *testing.T,
 		modelID,
 		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST",
+		req := userReq("POST",
 			"/x",
 			strings.NewReader(body))
 		req.SetPathValue("id", modelID)
@@ -224,7 +225,7 @@ func testInferWithAnInferenceHook(t *testing.T,
 	}
 
 	rec = httptest.NewRecorder()
-	training.ListInferenceHooksOf(hooks)(rec, httptest.NewRequest("GET",
+	training.ListInferenceHooksOf(hooks)(rec, userReq("GET",
 		"/x",
 		nil))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"model":"hooked"`) || !strings.Contains(rec.Body.String(), `"name":"ext"`) {
@@ -242,6 +243,7 @@ func testInferWithATrainedModel(t *testing.T,
 	id, _, err := trainingdb.RecordTrainedModel(ctx,
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         "j2",
 			ModelSize:     "12b",
 			NumTrainSteps: 20,
@@ -261,7 +263,7 @@ func testInferWithATrainedModel(t *testing.T,
 		modelID,
 		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST",
+		req := userReq("POST",
 			"/x",
 			strings.NewReader(body))
 		req.SetPathValue("id", modelID)
@@ -358,7 +360,7 @@ func testInferWithATrainedModel(t *testing.T,
 		t.Fatalf("sidecar down request: %+v", r)
 	}
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest("GET",
+	req := userReq("GET",
 		"/x?limit=2",
 		nil)
 	req.SetPathValue("id", "1")
@@ -372,7 +374,7 @@ func testInferWithATrainedModel(t *testing.T,
 			rec.Body)
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("GET",
+	req = userReq("GET",
 		"/x",
 		nil)
 	req.SetPathValue("id", "9")
@@ -405,6 +407,7 @@ func testDeployATrainedModel(t *testing.T,
 	if _, _, err := trainingdb.RecordTrainedModel(ctx,
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         "job1",
 			ModelSize:     "4b",
 			NumTrainSteps: 1,
@@ -466,7 +469,7 @@ func testDeployATrainedModel(t *testing.T,
 		modelID,
 		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST",
+		req := userReq("POST",
 			"/x",
 			strings.NewReader(body))
 		req.SetPathValue("id", modelID)
@@ -593,7 +596,7 @@ func testDeployATrainedModel(t *testing.T,
 	}
 
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest("GET",
+	req := userReq("GET",
 		"/x?limit=2",
 		nil)
 	req.SetPathValue("id", "1")
@@ -607,7 +610,7 @@ func testDeployATrainedModel(t *testing.T,
 			rec.Body)
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("GET",
+	req = userReq("GET",
 		"/x",
 		nil)
 	req.SetPathValue("id", "9")
@@ -620,7 +623,7 @@ func testDeployATrainedModel(t *testing.T,
 func TestListDeployers(t *testing.T) {
 	list := func(deployers []core.TrainedModelDeployer) string {
 		rec := httptest.NewRecorder()
-		training.ListDeployersOf(deployers)(rec, httptest.NewRequest("GET",
+		training.ListDeployersOf(deployers)(rec, userReq("GET",
 			"/x",
 			nil))
 		if rec.Code != 200 {
@@ -651,6 +654,7 @@ func testDeployProgressIsLive(t *testing.T,
 	if _, _, err := trainingdb.RecordTrainedModel(ctx,
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         "job1",
 			ModelSize:     "4b",
 			NumTrainSteps: 1,
@@ -728,4 +732,22 @@ func testDeployProgressIsLive(t *testing.T,
 	if len(list) != 1 || list[0].Status != trainingdb.TrainedModelDeploymentCompleted || list[0].Updates == nil || len(list[0].Updates) != 0 {
 		t.Fatalf("finished deploy: %+v", list)
 	}
+}
+
+// testUser is the user the tests act as: the owner of the jobs and models they record.
+const testUser = "u1"
+
+// userReq is httptest.NewRequest for a request of testUser.
+func userReq(method,
+	target string,
+	body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	req.Header.Set(httputil.UserIDHeader, testUser)
+	return req
+}
+
+// withUser is m owned by testUser.
+func withUser(m trainingdb.TrainedModel) trainingdb.TrainedModel {
+	m.UserID = testUser
+	return m
 }

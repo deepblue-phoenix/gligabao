@@ -6,6 +6,8 @@ import "time"
 // sidecar reports as started (see internal/sys/sidecar: TrainingJob), and updated as the job's progress events arrive.
 type TrainingJobRun struct {
 	ID int64 `json:"id"`
+	// UserID is the user that started the job; a job is visible to its user only.
+	UserID string `json:"user_id"`
 	// JobID is the sidecar's ID of the job (it names the job's event log there); ProviderJobID is the compute
 	// provider's ID of the spawned call.
 	JobID         string `json:"job_id"`

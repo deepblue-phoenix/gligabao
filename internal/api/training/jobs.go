@@ -34,6 +34,10 @@ func StartJobOf(db *sql.DB,
 	mon *core.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		if sc == nil {
 			httputil.Error(w,
 				http.StatusServiceUnavailable,
@@ -61,6 +65,7 @@ func StartJobOf(db *sql.DB,
 			sc,
 			mon,
 			core.StartJobRequest{
+				UserID:        userID,
 				NumTrainSteps: in.NumTrainSteps,
 				ModelSize:     in.ModelSize,
 				Dataset:       in.Dataset,
@@ -83,6 +88,10 @@ func StopJobOf(db *sql.DB,
 	sc core.JobCanceller) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -96,6 +105,7 @@ func StopJobOf(db *sql.DB,
 		run, err := core.StopJob(r.Context(),
 			db,
 			sc,
+			userID,
 			id)
 		if err != nil {
 			writeErr(w, err)
@@ -113,8 +123,8 @@ const (
 	trainingKeepalive        = 15 * time.Second
 )
 
-// ListJobsOf serves GET /v1/gb/training/jobs[?limit=<n>]: {"jobs": [...]}, the training job runs
-// , newest first, at most limit (default 50, at most 500).
+// ListJobsOf serves GET /v1/gb/training/jobs[?limit=<n>]: {"jobs": [...]}, the training job runs of the user of the request,
+// newest first, at most limit (default 50, at most 500).
 func ListJobsOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
@@ -125,10 +135,14 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		runs, err := trainingdb.ListTrainingJobRuns(r.Context(),
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
+		runs, err := trainingdb.ListUserTrainingJobRuns(r.Context(),
 			db,
-			limit,
-			false)
+			userID,
+			limit)
 		if err != nil {
 			log.WithError(err).Error("training: list training jobs failed")
 			httputil.Error(w,
@@ -149,11 +163,15 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 // With run_id the stream is of that run: first the events already stored (from the one after Last-Event-ID, which a
 // reconnecting EventSource sends, or from the `from` parameter), then the live ones; each has `id: <seq>`. The stream
 // stays open after the run's last event; the client closes it. Without run_id it is the live events of all the runs of the
-// database, to follow the list of jobs (no history, no ids).
+// user, to follow the list of jobs (no history, no ids).
 func EventsOf(db *sql.DB,
 	mon *core.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		q := r.URL.Query()
 		if mon == nil {
 			httputil.Error(w,
@@ -186,13 +204,15 @@ func EventsOf(db *sql.DB,
 		}
 
 		// Subscribe before reading the stored events, so none falls between the two; the overlap is skipped by seq.
-		sub, cancel := mon.Subscribe(runID)
+		sub, cancel := mon.Subscribe(runID,
+			userID)
 		defer cancel()
 		var history []core.FeedEvent
 		if runID != 0 {
 			var err error
 			if history, err = core.JobHistory(r.Context(),
 				db,
+				userID,
 				runID,
 				from); err != nil {
 				writeErr(w, err)

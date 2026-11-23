@@ -2,6 +2,7 @@
 -- One row per training job the sidecar started (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	id              BIGSERIAL PRIMARY KEY,
+	user_id         TEXT NOT NULL DEFAULT '',
 	job_id          TEXT NOT NULL,
 	provider_job_id TEXT NOT NULL DEFAULT '',
 	status          TEXT NOT NULL,
@@ -16,7 +17,10 @@ CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 	finished_at     TIMESTAMPTZ
 );
+-- A database made before the runs had a user gets the column (not filled in: such runs belong to no user).
+ALTER TABLE gb_training_job_runs ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_user ON gb_training_job_runs(user_id, id);
 
 -- The events the sidecar reported for a training job (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_training_job_events (

@@ -69,7 +69,7 @@ func upload(h http.HandlerFunc,
 		mw.WriteField(k, v)
 	}
 	mw.Close()
-	req := httptest.NewRequest("POST",
+	req := userReq("POST",
 		url,
 		&b)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
@@ -279,7 +279,7 @@ func testUploadTrainingDataset(t *testing.T,
 
 	// The list endpoint shows what the manifests found, with the records (made for a dataset added by hand too).
 	lrec := httptest.NewRecorder()
-	training.ListDatasetsOf(d, dsDir)(lrec, httptest.NewRequest("GET",
+	training.ListDatasetsOf(d, dsDir)(lrec, userReq("GET",
 		"/x",
 		nil))
 	for _, want := range []string{`"datasets":[`, `"name":"x"`, `"filename":"x.jsonl"`, `"name":"own"`, `"filename":"own.jsonl"`, `"file":"data.jsonl"`, `"problems":[]`} {
@@ -315,7 +315,7 @@ func testStartJobSendsDataset(t *testing.T,
 		training.StartJobOf(d,
 			dsDir,
 			sc,
-			nil)(rec, httptest.NewRequest("POST",
+			nil)(rec, userReq("POST",
 			"/x",
 			strings.NewReader(body)))
 		return rec

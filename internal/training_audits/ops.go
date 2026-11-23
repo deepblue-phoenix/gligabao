@@ -62,6 +62,9 @@ func Open(backend string,
 	defer cancel()
 	switch backend {
 	case "", config.DBBackendSQLite:
+		if err := addSQLiteUserColumn(ctx, d); err != nil {
+			return err
+		}
 		if _, err := d.ExecContext(ctx, sqlite.Schema); err != nil {
 			return fmt.Errorf("training audits: init schema: %w", err)
 		}
@@ -86,4 +89,30 @@ func Open(backend string,
 		return nil
 	}
 	return fmt.Errorf("unknown training audits db backend %q", backend)
+}
+
+// addSQLiteUserColumn adds user_id to gb_training_audit_runs of a SQLite database made before the audits had a user (SQLite has no
+// ADD COLUMN IF NOT EXISTS); nothing is filled in. A database without the table is left to the schema.
+func addSQLiteUserColumn(ctx context.Context,
+	d *sql.DB) error {
+	var has, hasUser int
+	if err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'gb_training_audit_runs'`).Scan(&has); err != nil {
+		return fmt.Errorf("training audits: init schema: %w", err)
+	}
+	if has == 0 {
+		return nil
+	}
+	if err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('gb_training_audit_runs') WHERE name = 'user_id'`).Scan(&hasUser); err != nil {
+		return fmt.Errorf("training audits: init schema: %w", err)
+	}
+	if hasUser > 0 {
+		return nil
+	}
+	if _, err := d.ExecContext(ctx,
+		`ALTER TABLE gb_training_audit_runs ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("training audits: init schema: %w", err)
+	}
+	return nil
 }

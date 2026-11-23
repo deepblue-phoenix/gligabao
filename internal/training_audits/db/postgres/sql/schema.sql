@@ -1,5 +1,6 @@
 
--- core.AuditRun: one execution of an audit of a trained model over one dataset. trained_model_id is not a foreign key, because the
+-- core.AuditRun: one execution of an audit of a trained model over one dataset. user_id: the user that started it (an audit is its
+-- user's only). trained_model_id is not a foreign key, because the
 -- trained model tables are not part of this schema. dataset: the name of the training dataset that was asked, dataset_sha256 the
 -- digest of the file that was read. status is core.Status: the lifecycle, never a verdict; error says why it errored (status
 -- 'errored' only). params: how the run was invoked (JSON object). counts_*: core.Counts, over the case runs. cost_usd: the judge's
@@ -10,6 +11,7 @@
 -- need a retry). created_at, started_at, finished_at: core.Timing; finished_at is set once the status is final.
 CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
 	id                  BIGSERIAL PRIMARY KEY,
+	user_id             TEXT NOT NULL DEFAULT '',
 	trained_model_id    BIGINT NOT NULL,
 	dataset             TEXT NOT NULL CHECK (dataset <> ''),
 	dataset_sha256      TEXT NOT NULL DEFAULT '',
@@ -40,6 +42,8 @@ CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
 	CHECK (num_correct + num_partial + num_incorrect = num_judged),
 	CHECK (score_sum <= 5 * num_judged)
 );
+-- A database made before the audits had a user gets the column (not filled in: such audits belong to no user).
+ALTER TABLE gb_training_audit_runs ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_gb_training_audit_runs_model ON gb_training_audit_runs(trained_model_id);
 
 -- core.AuditCaseRun: one example of the dataset of an audit run, asked and judged. idx is its position in the examples the run was

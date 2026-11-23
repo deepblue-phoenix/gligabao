@@ -21,9 +21,10 @@ func InsertTrainingJobRun(ctx context.Context,
 	var id int64
 	err := d.QueryRowContext(ctx,
 		`
-		INSERT INTO gb_training_job_runs (job_id, provider_job_id, status, model_size, dataset, num_train_steps, started_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO gb_training_job_runs (user_id, job_id, provider_job_id, status, model_size, dataset, num_train_steps, started_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`,
+		r.UserID,
 		r.JobID,
 		r.ProviderJobID,
 		r.Status,
@@ -38,7 +39,7 @@ func InsertTrainingJobRun(ctx context.Context,
 	return id, nil
 }
 
-const trainingJobRunColumns = `id, job_id, provider_job_id, status, model_size, dataset, num_train_steps, last_step, last_loss,
+const trainingJobRunColumns = `id, user_id, job_id, provider_job_id, status, model_size, dataset, num_train_steps, last_step, last_loss,
 	final_loss, error, started_at, created_at, finished_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
@@ -48,6 +49,7 @@ func scanTrainingJobRun(s rowScanner) (*model.TrainingJobRun, error) {
 	var lastLoss, finalLoss sql.NullFloat64
 	var finished sql.NullTime
 	if err := s.Scan(&r.ID,
+		&r.UserID,
 		&r.JobID,
 		&r.ProviderJobID,
 		&r.Status,
@@ -106,6 +108,35 @@ func ListTrainingJobRuns(ctx context.Context,
 		args = append(args, limit)
 	} else {
 		q += ` ORDER BY id`
+	}
+	rows, err := d.QueryContext(ctx,
+		q,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.TrainingJobRun{}
+	for rows.Next() {
+		r, err := scanTrainingJobRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *r)
+	}
+	return out, rows.Err()
+}
+
+// ListUserTrainingJobRuns returns the newest training job runs of a user first, at most limit of them (all for limit <= 0).
+func ListUserTrainingJobRuns(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	limit int) ([]model.TrainingJobRun, error) {
+	q := `SELECT ` + trainingJobRunColumns + ` FROM gb_training_job_runs WHERE user_id = $1 ORDER BY id DESC`
+	args := []any{userID}
+	if limit > 0 {
+		q += ` LIMIT $2`
+		args = append(args, limit)
 	}
 	rows, err := d.QueryContext(ctx,
 		q,

@@ -31,6 +31,8 @@ type JobCanceller interface {
 
 // StartJobRequest is what the caller of StartJob chooses; the dataset's content is added from the dataset's file.
 type StartJobRequest struct {
+	// UserID is the user the job is for (never empty): the run and the model it makes are theirs.
+	UserID        string
 	NumTrainSteps int
 	ModelSize     string
 	// Dataset is the name of a dataset of the training datasets directory (manifest.go); the data file is sent to the sidecar in
@@ -51,6 +53,9 @@ func StartJob(ctx context.Context,
 	req := sidecar.StartTrainingJobRequest{
 		NumTrainSteps: in.NumTrainSteps,
 		ModelSize:     strings.ToLower(strings.TrimSpace(in.ModelSize)),
+	}
+	if strings.TrimSpace(in.UserID) == "" {
+		return nil, invalidErr("a training job needs a user")
 	}
 	name := strings.TrimSpace(in.Dataset)
 	if name == "" {
@@ -96,6 +101,7 @@ func StartJob(ctx context.Context,
 	id, err := trainingdb.RecordTrainingJobRun(ctx,
 		db,
 		trainingdb.TrainingJobRun{
+			UserID:        in.UserID,
 			JobID:         job.JobID,
 			ProviderJobID: job.ProviderJobID,
 			Status:        job.Status,
@@ -119,14 +125,16 @@ func StartJob(ctx context.Context,
 	return run, nil
 }
 
-// GetJobRun reads training job run id of the database: a KindNotFound or KindInternal Error if it cannot.
+// GetJobRun reads training job run id of the database, which must be a job of userID (the run of another user is as unknown as one that
+// does not exist): a KindNotFound or KindInternal Error if it cannot.
 func GetJobRun(ctx context.Context,
 	db *sql.DB,
+	userID string,
 	id int64) (*trainingdb.TrainingJobRun, error) {
 	run, err := trainingdb.GetTrainingJobRun(ctx,
 		db,
 		id)
-	if errors.Is(err, relational.ErrNotFound) {
+	if errors.Is(err, relational.ErrNotFound) || (err == nil && run.UserID != userID) {
 		return nil, notFoundErr("unknown training job run")
 	} else if err != nil {
 		log.WithError(err).Error("training: read training job run failed")
@@ -142,9 +150,11 @@ func GetJobRun(ctx context.Context,
 func StopJob(ctx context.Context,
 	db *sql.DB,
 	sc JobCanceller,
+	userID string,
 	id int64) (*trainingdb.TrainingJobRun, error) {
 	run, err := GetJobRun(ctx,
 		db,
+		userID,
 		id)
 	if err != nil {
 		return nil, err
@@ -168,10 +178,12 @@ func StopJob(ctx context.Context,
 // Errors are *Error: KindNotFound for an unknown run, KindInternal.
 func JobHistory(ctx context.Context,
 	db *sql.DB,
+	userID string,
 	runID int64,
 	from int) ([]FeedEvent, error) {
 	run, err := GetJobRun(ctx,
 		db,
+		userID,
 		runID)
 	if err != nil {
 		return nil, err
@@ -195,6 +207,7 @@ func JobHistory(ctx context.Context,
 		ev.Seq = e.Seq
 		out = append(out, FeedEvent{
 			RunID:         runID,
+			UserID:        run.UserID,
 			JobID:         run.JobID,
 			TrainingEvent: ev,
 		})

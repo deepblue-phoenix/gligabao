@@ -71,6 +71,26 @@ func ListTrainingJobRuns(ctx context.Context,
 	return nil, unsupported()
 }
 
+// ListUserTrainingJobRuns returns the newest training job runs of one user first, at most limit of them (all for limit <= 0).
+func ListUserTrainingJobRuns(ctx context.Context,
+	d *sql.DB,
+	userID string,
+	limit int) ([]TrainingJobRun, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListUserTrainingJobRuns(ctx,
+			d,
+			userID,
+			limit)
+	case config.DBBackendPostgres:
+		return postgres.ListUserTrainingJobRuns(ctx,
+			d,
+			userID,
+			limit)
+	}
+	return nil, unsupported()
+}
+
 // UpdateTrainingJobRun writes the fields of u that are set to a run, or returns ErrNotFound.
 func UpdateTrainingJobRun(ctx context.Context,
 	d *sql.DB,

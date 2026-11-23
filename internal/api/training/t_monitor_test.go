@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -100,6 +101,7 @@ func openSSE(t *testing.T,
 		"GET",
 		url,
 		nil)
+	req.Header.Set(httputil.UserIDHeader, testUser)
 	for i := 0; i+1 < len(header); i += 2 {
 		req.Header.Set(header[i], header[i+1])
 	}
@@ -194,7 +196,7 @@ func testTrainingMonitor(t *testing.T,
 	training.StartJobOf(d,
 		dsDir,
 		sc,
-		mon)(rec, httptest.NewRequest("POST",
+		mon)(rec, userReq("POST",
 		"/x",
 		strings.NewReader(`{"dataset": "mine", "num_train_steps": 10}`)))
 	if rec.Code != http.StatusCreated {
@@ -328,7 +330,7 @@ func testTrainingMonitor(t *testing.T,
 
 	// Jobs list, newest first.
 	rec = httptest.NewRecorder()
-	training.ListJobsOf(d)(rec, httptest.NewRequest("GET",
+	training.ListJobsOf(d)(rec, userReq("GET",
 		"/x",
 		nil))
 	var list struct{ Jobs []trainingdb.TrainingJobRun }
@@ -341,7 +343,7 @@ func testTrainingMonitor(t *testing.T,
 	// Bad requests.
 	for url, want := range map[string]int{"?run_id=99": 404, "?run_id=x": 400, "?run_id=0x": 400} {
 		rec := httptest.NewRecorder()
-		training.EventsOf(d, mon)(rec, httptest.NewRequest("GET",
+		training.EventsOf(d, mon)(rec, userReq("GET",
 			"/x"+url,
 			nil))
 		if rec.Code != want {
@@ -365,6 +367,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	id1, _ := trainingdb.RecordTrainingJobRun(ctx,
 		d,
 		trainingdb.TrainingJobRun{
+			UserID:        testUser,
 			JobID:         "j1",
 			Status:        "started",
 			ModelSize:     "4b",
@@ -386,6 +389,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	id2, _ := trainingdb.RecordTrainingJobRun(ctx,
 		d,
 		trainingdb.TrainingJobRun{
+			UserID:        testUser,
 			JobID:         "j2",
 			Status:        "started",
 			ModelSize:     "4b",
@@ -439,6 +443,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	id3, _ := trainingdb.RecordTrainingJobRun(ctx,
 		d,
 		trainingdb.TrainingJobRun{
+			UserID:        testUser,
 			JobID:         "j3",
 			Status:        "started",
 			ModelSize:     "4b",
@@ -501,6 +506,7 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 		id, _ := trainingdb.RecordTrainingJobRun(ctx,
 			d,
 			trainingdb.TrainingJobRun{
+				UserID:        testUser,
 				JobID:         "j" + strconv.Itoa(i),
 				Status:        "started",
 				ModelSize:     "4b",
@@ -531,6 +537,7 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 	id, _ := trainingdb.RecordTrainingJobRun(ctx,
 		d,
 		trainingdb.TrainingJobRun{
+			UserID:        testUser,
 			JobID:         "jm",
 			Status:        "started",
 			ModelSize:     "4b",
@@ -578,6 +585,7 @@ func TestTrainingMonitorRetriesAFailedRowUpdate(t *testing.T) {
 	id, _ := trainingdb.RecordTrainingJobRun(ctx,
 		d,
 		trainingdb.TrainingJobRun{
+			UserID:        testUser,
 			JobID:         "j1",
 			Status:        "started",
 			ModelSize:     "4b",

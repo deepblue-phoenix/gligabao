@@ -69,7 +69,7 @@ func ListTrainedModels(ctx context.Context,
 	return nil, unsupported()
 }
 
-// ListUserTrainedModels returns the trained models of one type (ModelTypeGCNII, ...) that belong to the user, newest first, at
+// ListUserTrainedModels returns the trained models of one type (ModelTypeGCNII, ...; every type for "") that belong to the user, newest first, at
 // most limit of them (all for limit <= 0).
 func ListUserTrainedModels(ctx context.Context,
 	d *sql.DB,

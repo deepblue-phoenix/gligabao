@@ -127,6 +127,9 @@ func withSearchPath(dsn,
 	return dsn + " search_path=" + schema
 }
 
+// User is the user of the models RecordModel stores, and the one the tests act as.
+const User = "u1"
+
 // RecordModel stores a trained model trained on dataset (a file name) and returns its ID.
 func RecordModel(t *testing.T,
 	d *sql.DB,
@@ -136,6 +139,7 @@ func RecordModel(t *testing.T,
 	id, _, err := trainingdb.RecordTrainedModel(context.Background(),
 		d,
 		trainingdb.TrainedModel{
+			UserID:        User,
 			JobID:         jobID,
 			ModelSize:     "12b",
 			Dataset:       dataset,

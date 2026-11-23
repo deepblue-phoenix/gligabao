@@ -27,14 +27,16 @@ const (
 	MaxInferTokens = 8192
 )
 
-// GetModel reads trained model id of db: a KindNotFound or KindInternal Error if it cannot.
+// GetModel reads trained model id of db, which must belong to userID (a model of another user is as unknown as one that does not exist):
+// a KindNotFound or KindInternal Error if it cannot.
 func GetModel(ctx context.Context,
 	db *sql.DB,
+	userID string,
 	id int64) (*trainingdb.TrainedModel, error) {
 	tm, err := trainingdb.GetTrainedModel(ctx,
 		db,
 		id)
-	if errors.Is(err, relational.ErrNotFound) {
+	if errors.Is(err, relational.ErrNotFound) || (err == nil && tm.UserID != userID) {
 		return nil, notFoundErr("unknown trained model")
 	} else if err != nil {
 		log.WithError(err).Error("training: read trained model failed")
@@ -47,9 +49,11 @@ func GetModel(ctx context.Context,
 // another type (a GCNII* model of sargo) is a KindConflict Error, its weights are not on the sidecar.
 func GetSidecarModel(ctx context.Context,
 	db *sql.DB,
+	userID string,
 	id int64) (*trainingdb.TrainedModel, error) {
 	tm, err := GetModel(ctx,
 		db,
+		userID,
 		id)
 	if err != nil {
 		return nil, err

@@ -90,6 +90,7 @@ func (m *Manager) Done() <-chan struct{} { return m.ctx.Done() }
 // unknown model, KindConflict if the model has an audit running already, KindUnavailable without a sidecar or an LLM,
 // KindInternal.
 func (m *Manager) Start(ctx context.Context,
+	userID string,
 	modelID int64,
 	opts Options) (*core.AuditRun, error) {
 	if m.Sc == nil {
@@ -102,7 +103,7 @@ func (m *Manager) Start(ctx context.Context,
 	if err != nil {
 		return nil, invalidErr(err.Error())
 	}
-	tm, err := m.getModel(ctx, modelID)
+	tm, err := m.getModel(ctx, userID, modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +139,7 @@ func (m *Manager) Start(ctx context.Context,
 	dbCtx := context.WithoutCancel(ctx)
 	started := time.Now().UTC().Truncate(time.Second)
 	run := &core.AuditRun{
+		UserID:         userID,
 		TrainedModelID: tm.ID,
 		Dataset:        ds.Name,
 		DatasetSHA256:  ds.SHA256,
@@ -181,11 +183,13 @@ func (m *Manager) Start(ctx context.Context,
 	return &rec, nil
 }
 
-// getModel reads trained model id, as an *Error.
+// getModel reads trained model id of userID, as an *Error.
 func (m *Manager) getModel(ctx context.Context,
+	userID string,
 	id int64) (*trainingdb.TrainedModel, error) {
 	tm, err := training.GetSidecarModel(ctx,
 		m.DB,
+		userID,
 		id)
 	var te *training.Error
 	switch {
@@ -363,9 +367,10 @@ func (m *Manager) publishEnd(ctx context.Context,
 // ListRuns returns the audits of trained model modelID (without their case runs), newest first, at most limit. Errors are *Error:
 // KindNotFound for an unknown model, KindInternal.
 func (m *Manager) ListRuns(ctx context.Context,
+	userID string,
 	modelID int64,
 	limit int) ([]core.AuditRun, error) {
-	if _, err := m.getModel(ctx, modelID); err != nil {
+	if _, err := m.getModel(ctx, userID, modelID); err != nil {
 		return nil, err
 	}
 	list, err := m.Ops.Store.ListAuditRuns(ctx,
@@ -379,13 +384,15 @@ func (m *Manager) ListRuns(ctx context.Context,
 	return list, nil
 }
 
-// GetRun reads audit id, without its case runs. Errors are *Error: KindNotFound, KindInternal.
+// GetRun reads audit id of userID (the audit of another user is as unknown as one that does not exist), without its case runs. Errors
+// are *Error: KindNotFound, KindInternal.
 func (m *Manager) GetRun(ctx context.Context,
+	userID string,
 	id core.AuditRunID) (*core.AuditRun, error) {
 	run, err := m.Ops.Store.GetAuditRun(ctx,
 		m.DB,
 		id)
-	if errors.Is(err, db.ErrNotFound) {
+	if errors.Is(err, db.ErrNotFound) || (err == nil && run.UserID != userID) {
 		return nil, notFoundErr("unknown audit")
 	} else if err != nil {
 		log.WithError(err).Error("training audits: read audit failed")
@@ -396,8 +403,9 @@ func (m *Manager) GetRun(ctx context.Context,
 
 // GetRunWithCaseRuns reads audit id with its CaseRuns: those stored so far, in dataset order. Errors are those of GetRun.
 func (m *Manager) GetRunWithCaseRuns(ctx context.Context,
+	userID string,
 	id core.AuditRunID) (*core.AuditRun, error) {
-	run, err := m.GetRun(ctx, id)
+	run, err := m.GetRun(ctx, userID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -422,8 +430,9 @@ func (m *Manager) caseRuns(ctx context.Context,
 // CancelRun stops a running audit (it ends as cancelled, keeping the batches done so far) and returns it as it was. Errors are
 // *Error: KindNotFound for an unknown audit, KindConflict when it is not running.
 func (m *Manager) CancelRun(ctx context.Context,
+	userID string,
 	id core.AuditRunID) (*core.AuditRun, error) {
-	run, err := m.GetRun(ctx, id)
+	run, err := m.GetRun(ctx, userID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -469,6 +478,7 @@ func (w *Watch) Close() {
 // answered that the judge has not scored yet, as StatusRunning), and the events that follow while the audit goes on. The caller
 // must Close it. Errors are *Error: KindNotFound for an unknown audit, KindInternal.
 func (m *Manager) Watch(ctx context.Context,
+	userID string,
 	id core.AuditRunID) (*Watch, error) {
 	// Subscribe before reading the database, so no event falls between the two; the overlap is harmless: the case runs are
 	// applied by idx, and the stored version wins.
@@ -483,7 +493,7 @@ func (m *Manager) Watch(ctx context.Context,
 		pending, w.Events = feed.Subscribe()
 	}
 	fail := func(err error) (*Watch, error) { w.Close(); return nil, err }
-	run, err := m.GetRun(ctx, id)
+	run, err := m.GetRun(ctx, userID, id)
 	if err != nil {
 		return fail(err)
 	}

@@ -89,7 +89,7 @@ func testStartTrainingJob(t *testing.T,
 		url,
 		body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		h(rec, httptest.NewRequest("POST",
+		h(rec, userReq("POST",
 			url,
 			strings.NewReader(body)))
 		return rec
@@ -190,7 +190,7 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	training.StartJobOf(d,
 		[]string{dir},
 		sc,
-		nil)(rec, httptest.NewRequest("POST",
+		nil)(rec, userReq("POST",
 		"/x",
 		strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
@@ -211,6 +211,7 @@ func testStopTrainingJob(t *testing.T,
 		if _, err := trainingdb.RecordTrainingJobRun(ctx,
 			d,
 			trainingdb.TrainingJobRun{
+				UserID:        testUser,
 				JobID:         jobID,
 				Status:        "training",
 				ModelSize:     "4b",
@@ -232,7 +233,7 @@ func testStopTrainingJob(t *testing.T,
 	}
 	stop := func(h http.HandlerFunc,
 		id string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST",
+		req := userReq("POST",
 			"/x",
 			nil)
 		req.SetPathValue("id", id)

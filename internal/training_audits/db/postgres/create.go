@@ -54,12 +54,13 @@ func CreateAuditRun(ctx context.Context,
 	var id int64
 	if err := q.QueryRowContext(ctx,
 		`
-		INSERT INTO gb_training_audit_runs (trained_model_id, dataset, dataset_sha256, status, error, params,
+		INSERT INTO gb_training_audit_runs (user_id, trained_model_id, dataset, dataset_sha256, status, error, params,
 			counts_total, counts_pending, counts_running, counts_completed, counts_errored, counts_cancelled, cost_usd,
 			judge_model, num_answered, num_judged, num_correct, num_partial, num_incorrect, score_sum, num_batches, judge_calls,
 			judge_input_tokens, judge_output_tokens, created_at, started_at, finished_at)
-		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
 		RETURNING id`,
+		r.UserID,
 		r.TrainedModelID,
 		r.Dataset,
 		r.DatasetSHA256,

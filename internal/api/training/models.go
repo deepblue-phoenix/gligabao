@@ -22,8 +22,7 @@ const (
 )
 
 // ListModelsOf serves GET /v1/gb/training/models[?model_type=<type>][&limit=<n>]: {"models": [...]}, the trained models of every
-// type ("lora", "gcnii"; model_type narrows it to one), newest first, at most limit (default 100, at most 500). A GCNII* model belongs to
-// one user, so only the ones of the user of the request are listed.
+// type ("lora", "gcnii"; model_type narrows it to one), newest first, at most limit (default 100, at most 500). Only the models of the user of the request are listed.
 func ListModelsOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
@@ -43,29 +42,21 @@ func ListModelsOf(db *sql.DB) http.HandlerFunc {
 				`model_type must be "`+trainingdb.ModelTypeLoRA+`" or "`+trainingdb.ModelTypeGCNII+`"`)
 			return
 		}
-		all, err := trainingdb.ListTrainedModels(r.Context(),
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
+		models, err := trainingdb.ListUserTrainedModels(r.Context(),
 			db,
-			0)
+			modelType,
+			userID,
+			limit)
 		if err != nil {
 			log.WithError(err).Error("training: list trained models failed")
 			httputil.Error(w,
 				http.StatusInternalServerError,
 				"failed to list the trained models")
 			return
-		}
-		userID := httputil.UserID(r)
-		models := make([]trainingdb.TrainedModel, 0, len(all))
-		for _, m := range all {
-			if modelType != "" && m.ModelType != modelType {
-				continue
-			}
-			if m.ModelType == trainingdb.ModelTypeGCNII && m.UserID != userID {
-				continue
-			}
-			if len(models) == limit {
-				break
-			}
-			models = append(models, m)
 		}
 		httputil.WriteJSON(w,
 			http.StatusOK,
@@ -77,12 +68,17 @@ func ListModelsOf(db *sql.DB) http.HandlerFunc {
 func GetModelOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		m, err := core.GetModel(r.Context(),
 			db,
+			userID,
 			id)
 		if err != nil {
 			writeErr(w, err)
@@ -106,6 +102,10 @@ func InferOf(db *sql.DB,
 	router *core.InferRouter) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -134,6 +134,7 @@ func InferOf(db *sql.DB,
 		}
 		m, err := core.GetSidecarModel(r.Context(),
 			db,
+			userID,
 			id)
 		if err != nil {
 			writeErr(w, err)
@@ -169,6 +170,10 @@ func InferOf(db *sql.DB,
 func ListInferencesOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -182,6 +187,7 @@ func ListInferencesOf(db *sql.DB) http.HandlerFunc {
 		}
 		if _, err := core.GetModel(r.Context(),
 			db,
+			userID,
 			id); err != nil {
 			writeErr(w, err)
 			return
@@ -216,6 +222,10 @@ func DeployOf(db *sql.DB,
 	dir string) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -234,6 +244,7 @@ func DeployOf(db *sql.DB,
 		}
 		m, err := core.GetSidecarModel(r.Context(),
 			db,
+			userID,
 			id)
 		if err != nil {
 			writeErr(w, err)
@@ -271,6 +282,10 @@ func DeployOf(db *sql.DB,
 func ListDeploymentsOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -284,6 +299,7 @@ func ListDeploymentsOf(db *sql.DB) http.HandlerFunc {
 		}
 		if _, err := core.GetModel(r.Context(),
 			db,
+			userID,
 			id); err != nil {
 			writeErr(w, err)
 			return

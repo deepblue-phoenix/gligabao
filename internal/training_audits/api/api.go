@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/core"
@@ -50,6 +51,20 @@ func (h *Handlers) Register(mux *http.ServeMux,
 	mux.HandleFunc("GET "+prefix+"/audits/{id}", h.GetOf())
 	mux.HandleFunc("GET "+prefix+"/audits/{id}/events", h.EventsOf())
 	mux.HandleFunc("POST "+prefix+"/audits/{id}/cancel", h.CancelOf())
+}
+
+// userOf is the checked ID of the user of the request (the routes are behind the authentication, which sets it); if it is not valid the
+// 400 is already written and ok is false. The audits of a user are theirs only.
+func userOf(w http.ResponseWriter,
+	r *http.Request) (userID string, ok bool) {
+	userID, err := memory_core.ResolveUserID(httputil.UserID(r))
+	if err != nil {
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
+		return "", false
+	}
+	return userID, true
 }
 
 // writeErr answers with the status of the Kind of err (500 for any other error).
@@ -125,6 +140,10 @@ func limitParam(w http.ResponseWriter,
 func (h *Handlers) StartOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -139,6 +158,7 @@ func (h *Handlers) StartOf() http.HandlerFunc {
 			return
 		}
 		run, err := h.m.Start(r.Context(),
+			userID,
 			id,
 			in)
 		if err != nil {
@@ -156,6 +176,10 @@ func (h *Handlers) StartOf() http.HandlerFunc {
 func (h *Handlers) ListOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -168,6 +192,7 @@ func (h *Handlers) ListOf() http.HandlerFunc {
 			return
 		}
 		list, err := h.m.ListRuns(r.Context(),
+			userID,
 			id,
 			limit)
 		if err != nil {
@@ -185,11 +210,15 @@ func (h *Handlers) ListOf() http.HandlerFunc {
 func (h *Handlers) GetOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := h.m.GetRunWithCaseRuns(r.Context(), core.AuditRunID(id))
+		run, err := h.m.GetRunWithCaseRuns(r.Context(), userID, core.AuditRunID(id))
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -205,11 +234,15 @@ func (h *Handlers) GetOf() http.HandlerFunc {
 func (h *Handlers) CancelOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := h.m.CancelRun(r.Context(), core.AuditRunID(id))
+		run, err := h.m.CancelRun(r.Context(), userID, core.AuditRunID(id))
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -229,11 +262,15 @@ func (h *Handlers) CancelOf() http.HandlerFunc {
 func (h *Handlers) EventsOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		watch, err := h.m.Watch(r.Context(), core.AuditRunID(id))
+		watch, err := h.m.Watch(r.Context(), userID, core.AuditRunID(id))
 		if err != nil {
 			writeErr(w, err)
 			return

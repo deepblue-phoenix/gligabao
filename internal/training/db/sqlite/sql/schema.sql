@@ -1,6 +1,7 @@
 
 -- Training jobs started on the sidecar (internal/sys/sidecar, sidecar/ai_train): ONE ROW PER JOB the sidecar reported as started,
 -- made from the TrainingJob it returned from POST /training/job_start.
+--   user_id          the user that started the job (the user of the request); the job, its model and everything made from them are theirs only
 --   job_id           the sidecar's ID of the job (names its progress file there); provider_job_id is the compute provider's
 --   status           'started' when the sidecar reports the job started, then the job's status events ('running', 'training'),
 --                    finally 'completed' or 'failed'
@@ -12,6 +13,7 @@
 --   started_at       when the sidecar says the job started; created_at is when the row was made; finished_at when it ended
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id         TEXT NOT NULL DEFAULT '',
 	job_id          TEXT NOT NULL,
 	provider_job_id TEXT NOT NULL DEFAULT '',
 	status          TEXT NOT NULL,
@@ -27,6 +29,7 @@ CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	finished_at     DATETIME
 );
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_user ON gb_training_job_runs(user_id, id);
 
 -- The events the sidecar reported for a training job (status changes and progress with the loss), in the order of the
 -- sidecar's progress file: seq is the event's index there, so a reconnect can resume after the last seq stored.
@@ -45,7 +48,7 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 -- can be picked to run inference on. A LoRA row is made from the job's "completed" event (internal/training/monitor.go), a GCNII*
 -- row when sargo's training of a user is done (internal/api/model/weights.go).
 --   model_type       'lora' (the sidecar's adapters, also every row made before types existed) or 'gcnii' (a GCNII* graph classifier)
---   user_id          the user a model belongs to: the user of the request that trained a GCNII* model; '' for LoRA models
+--   user_id          the user a model belongs to: the user of the request that trained it (for a LoRA model, the user of the job run)
 --   storage          where the weights are: 'modal_volume' (sidecar), 's3' (the weights bucket) or 'local' (a directory of the server)
 --   run_id           the job run (gb_training_job_runs) that made it; NULL if that run was deleted. job_id is unique: a job makes one model
 --   name             for lists; made from the settings when the row is made

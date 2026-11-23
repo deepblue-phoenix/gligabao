@@ -140,15 +140,15 @@ func ListTrainedModels(ctx context.Context,
 	return out, rows.Err()
 }
 
-// ListUserTrainedModels returns the trained models of one type that belong to a user, newest first, at most limit of them (all for
+// ListUserTrainedModels returns the trained models of one type (every type for "") that belong to a user, newest first, at most limit of them (all for
 // limit <= 0).
 func ListUserTrainedModels(ctx context.Context,
 	d *sql.DB,
 	modelType,
 	userID string,
 	limit int) ([]model.TrainedModel, error) {
-	q := `SELECT ` + trainedModelColumns + ` FROM gb_trained_models WHERE model_type = $1 AND user_id = $2 ORDER BY id DESC`
-	args := []any{modelType, userID}
+	q := `SELECT ` + trainedModelColumns + ` FROM gb_trained_models WHERE user_id = $1 AND ($2 = '' OR model_type = $2) ORDER BY id DESC`
+	args := []any{userID, modelType}
 	if limit > 0 {
 		q += ` LIMIT $3`
 		args = append(args, limit)

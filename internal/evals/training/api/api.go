@@ -15,6 +15,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/training"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
 )
@@ -84,6 +85,24 @@ func writeErr(w http.ResponseWriter,
 	httputil.Error(w,
 		status,
 		e.Msg)
+}
+
+// userOf is the checked ID of the user of the request (the routes are behind the authentication, which sets it); if it is not valid, or is
+// the reserved owner of the evals of the command line (core.SystemUser), the 400 is already written and ok is false. The evals, their
+// runs and the experiments of a user are theirs only.
+func userOf(w http.ResponseWriter,
+	r *http.Request) (userID string, ok bool) {
+	userID, err := memory_core.ResolveUserID(httputil.UserID(r))
+	if err == nil && userID == core.SystemUser {
+		err = errors.New("user " + core.SystemUser + " is reserved")
+	}
+	if err != nil {
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
+		return "", false
+	}
+	return userID, true
 }
 
 // pathID reads the {id} of the path, answering 400 itself if it is not a positive integer.
@@ -170,6 +189,10 @@ func (h *Handlers) DefinitionsOf() http.HandlerFunc {
 func (h *Handlers) StartOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -184,6 +207,7 @@ func (h *Handlers) StartOf() http.HandlerFunc {
 			return
 		}
 		run, err := h.m.Start(r.Context(),
+			userID,
 			id,
 			in)
 		if err != nil {
@@ -201,6 +225,10 @@ func (h *Handlers) StartOf() http.HandlerFunc {
 func (h *Handlers) ListOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -213,6 +241,7 @@ func (h *Handlers) ListOf() http.HandlerFunc {
 			return
 		}
 		list, err := h.m.ListRuns(r.Context(),
+			userID,
 			id,
 			limit)
 		if err != nil {
@@ -230,16 +259,20 @@ func (h *Handlers) ListOf() http.HandlerFunc {
 func (h *Handlers) GetOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := h.m.GetRun(r.Context(), id)
+		run, err := h.m.GetRun(r.Context(), userID, id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		cases, err := h.m.RunCases(r.Context(), id)
+		cases, err := h.m.RunCases(r.Context(), userID, id)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -255,11 +288,15 @@ func (h *Handlers) GetOf() http.HandlerFunc {
 func (h *Handlers) CancelOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := h.m.CancelRun(r.Context(), id)
+		run, err := h.m.CancelRun(r.Context(), userID, id)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -275,7 +312,11 @@ func (h *Handlers) CancelOf() http.HandlerFunc {
 func (h *Handlers) ExperimentsOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
-		list, err := h.m.ListExperiments(r.Context())
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
+		list, err := h.m.ListExperiments(r.Context(), userID)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -292,11 +333,15 @@ func (h *Handlers) ExperimentsOf() http.HandlerFunc {
 func (h *Handlers) ExperimentOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		x, runs, err := h.m.GetExperiment(r.Context(), id)
+		x, runs, err := h.m.GetExperiment(r.Context(), userID, id)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -316,11 +361,15 @@ func (h *Handlers) ExperimentOf() http.HandlerFunc {
 func (h *Handlers) EventsOf() http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		watch, err := h.m.Watch(r.Context(), id)
+		watch, err := h.m.Watch(r.Context(), userID, id)
 		if err != nil {
 			writeErr(w, err)
 			return

@@ -32,6 +32,8 @@ type Sidecar interface {
 type FeedEvent struct {
 	RunID int64  `json:"run_id"`
 	JobID string `json:"job_id"`
+	// UserID is the user of the job: a subscription gets only the events of its user. It is not sent to the client.
+	UserID string `json:"-"`
 	sidecar.TrainingEvent
 }
 
@@ -63,8 +65,9 @@ type Monitor struct {
 
 // Subscription is a subscriber to the monitor's events: they arrive on C.
 type Subscription struct {
-	runID int64 // 0: every run
-	C     chan FeedEvent
+	runID  int64  // 0: every run (of the user)
+	userID string // only the events of the jobs of this user; "" (in-process users of the monitor only, never a request): every user
+	C      chan FeedEvent
 }
 
 // MonitorOption configures a Monitor.
@@ -253,6 +256,7 @@ func (m *Monitor) record(run trainingdb.TrainingJobRun,
 	}
 	m.publish(FeedEvent{
 		RunID:         run.ID,
+		UserID:        run.UserID,
 		JobID:         run.JobID,
 		TrainingEvent: ev,
 	})
@@ -271,6 +275,7 @@ func (m *Monitor) recordModel(ctx context.Context,
 		return nil
 	}
 	tm := trainingdb.TrainedModel{
+		UserID:        run.UserID,
 		RunID:         &run.ID,
 		JobID:         run.JobID,
 		BaseModel:     info.BaseModel,
@@ -330,12 +335,15 @@ func trainingRunUpdate(ev sidecar.TrainingEvent) *trainingdb.TrainingJobRunUpdat
 	return nil
 }
 
-// Subscribe returns a subscription to the events of one run (runID 0: of every run). cancel ends it. The
-// channel is closed, without cancel, when the subscriber falls too far behind.
-func (m *Monitor) Subscribe(runID int64) (*Subscription, func()) {
+// Subscribe returns a subscription to the events of one run (runID 0: of every run) of the jobs of userID (a request always gives its
+// user; "" is for code that runs inside the server and follows every user). cancel ends it. The channel is closed, without cancel, when
+// the subscriber falls too far behind.
+func (m *Monitor) Subscribe(runID int64,
+	userID string) (*Subscription, func()) {
 	s := &Subscription{
-		runID: runID,
-		C:     make(chan FeedEvent, subBuffer),
+		runID:  runID,
+		userID: userID,
+		C:      make(chan FeedEvent, subBuffer),
 	}
 	m.mu.Lock()
 	m.subs[s] = struct{}{}
@@ -358,6 +366,9 @@ func (m *Monitor) publish(ev FeedEvent) {
 	defer m.mu.Unlock()
 	for s := range m.subs {
 		if s.runID != 0 && s.runID != ev.RunID {
+			continue
+		}
+		if s.userID != "" && s.userID != ev.UserID {
 			continue
 		}
 		select {

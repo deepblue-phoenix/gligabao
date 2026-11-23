@@ -117,11 +117,13 @@ func (m *Manager) HasEval(name string) bool {
 	return err == nil && slices.ContainsFunc(evals, func(e Eval) bool { return e.Name == name })
 }
 
-// getModel reads trained model id, as an *Error.
+// getModel reads trained model id of userID, as an *Error.
 func (m *Manager) getModel(ctx context.Context,
+	userID string,
 	id int64) (*trainingdb.TrainedModel, error) {
 	tm, err := trainingcore.GetSidecarModel(ctx,
 		m.DB,
+		userID,
 		id)
 	var te *trainingcore.Error
 	switch {
@@ -172,6 +174,7 @@ func Generator(sc Inferer,
 // no eval has its name), KindNotFound for an unknown model, KindConflict if the model has an eval running already, KindUnavailable
 // without a sidecar or an LLM, KindInternal.
 func (m *Manager) Start(ctx context.Context,
+	userID string,
 	modelID int64,
 	opts Options) (*RunView, error) {
 	if m.Sc == nil {
@@ -184,7 +187,7 @@ func (m *Manager) Start(ctx context.Context,
 	if err != nil {
 		return nil, invalidErr(err.Error())
 	}
-	tm, err := m.getModel(ctx, modelID)
+	tm, err := m.getModel(ctx, userID, modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +246,7 @@ func (m *Manager) Start(ctx context.Context,
 	r := runner.New(m.DB, m.Store)
 	// The whole eval is put in the database (so that its order stays that of the file); the run asks the chosen cases of it.
 	def, err := r.UpsertEvalDef(dbCtx,
-		core.SystemUser,
+		userID,
 		Spec(selectedFull(evals, name)))
 	if err != nil {
 		release()
@@ -260,7 +263,7 @@ func (m *Manager) Start(ctx context.Context,
 			cfgParams = core.Params(opts.ExperimentConfig)
 		}
 		xd, err := r.EnsureExperimentWith(dbCtx,
-			core.SystemUser,
+			userID,
 			x,
 			opts.ExperimentDescription,
 			cfgParams,
@@ -310,6 +313,7 @@ func (m *Manager) Start(ctx context.Context,
 		defer m.wg.Done()
 		defer release()
 		m.run(runCtx,
+			userID,
 			r,
 			def,
 			x,
@@ -346,6 +350,7 @@ func evalfileNames(evals []Eval) []string {
 // run is the eval's goroutine: it runs the eval with the runner, which stores every finished batch, and ends the records. failed
 // gets the error if the eval run could not even be recorded.
 func (m *Manager) run(ctx context.Context,
+	userID string,
 	r *runner.Runner,
 	def *core.EvalDef,
 	x *Executor,
@@ -412,6 +417,7 @@ func (m *Manager) run(ctx context.Context,
 		logf.WithError(err).Warn("training evals: eval failed")
 	}
 	m.publishEnd(dbCtx,
+		userID,
 		feed,
 		ended.ID,
 		def.Name)
@@ -451,6 +457,7 @@ func (m *Manager) runRecovering(ctx context.Context,
 
 // publishEnd announces the end of eval id on its feed, with the run as stored.
 func (m *Manager) publishEnd(ctx context.Context,
+	userID string,
 	f *Feed,
 	id core.EvalRunID,
 	eval string) {
@@ -461,7 +468,7 @@ func (m *Manager) publishEnd(ctx context.Context,
 	m.mu.Unlock()
 	if run, err := m.Store.GetEvalRun(ctx,
 		m.DB,
-		core.SystemUser,
+		userID,
 		id); err == nil {
 		f.End(ViewOfRun(run, eval))
 	} else {

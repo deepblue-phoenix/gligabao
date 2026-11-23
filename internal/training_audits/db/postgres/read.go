@@ -35,7 +35,7 @@ func timePtr(t sql.NullTime) *time.Time {
 // scanner is what *sql.Row and *sql.Rows share.
 type scanner interface{ Scan(dest ...any) error }
 
-const runColumns = `id, trained_model_id, dataset, dataset_sha256, status, error, params,
+const runColumns = `id, user_id, trained_model_id, dataset, dataset_sha256, status, error, params,
 	counts_total, counts_pending, counts_running, counts_completed, counts_errored, counts_cancelled, cost_usd,
 	judge_model, num_answered, num_judged, num_correct, num_partial, num_incorrect, score_sum, num_batches, judge_calls,
 	judge_input_tokens, judge_output_tokens, created_at, started_at, finished_at`
@@ -47,6 +47,7 @@ func scanRun(s scanner) (*core.AuditRun, error) {
 	var params []byte
 	var started, finished sql.NullTime
 	if err := s.Scan(&id,
+		&r.UserID,
 		&r.TrainedModelID,
 		&r.Dataset,
 		&r.DatasetSHA256,

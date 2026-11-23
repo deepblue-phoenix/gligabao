@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -138,6 +139,7 @@ func evalModel(t *testing.T,
 	mid, _, err := trainingdb.RecordTrainedModel(context.Background(),
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         job,
 			ModelSize:     "12b",
 			Dataset:       theEval + ".jsonl",
@@ -273,7 +275,7 @@ func startEval(m *mgr,
 	modelID,
 	body string) evalCall {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST",
+	req := userReq("POST",
 		"/x",
 		strings.NewReader(body))
 	req.SetPathValue("id", modelID)
@@ -286,7 +288,7 @@ func getEval(t *testing.T,
 	id int64) (training.RunView, []training.CaseView) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET",
+	req := userReq("GET",
 		"/x",
 		nil)
 	req.SetPathValue("id", fmt.Sprint(id))
@@ -411,7 +413,7 @@ func testEvalATrainedModel(t *testing.T,
 	}
 	m.Wait()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET",
+	req := userReq("GET",
 		"/x",
 		nil)
 	req.SetPathValue("id", fmt.Sprint(mid))
@@ -435,6 +437,7 @@ func TestEvalRefusals(t *testing.T) {
 	dflt, _, _ := trainingdb.RecordTrainedModel(ctx,
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         "j-default",
 			ModelSize:     "4b",
 			NumTrainSteps: 1,
@@ -443,6 +446,7 @@ func TestEvalRefusals(t *testing.T) {
 	other, _, _ := trainingdb.RecordTrainedModel(ctx,
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         "j-other",
 			ModelSize:     "4b",
 			Dataset:       "other.jsonl",
@@ -514,7 +518,7 @@ func TestEvalRefusals(t *testing.T) {
 	}
 	for _, h := range []http.HandlerFunc{m.GetOf(), m.CancelOf()} {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("GET",
+		req := userReq("GET",
 			"/x",
 			nil)
 		req.SetPathValue("id", "99")
@@ -557,7 +561,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST",
+	req := userReq("POST",
 		"/x",
 		nil)
 	req.SetPathValue("id", fmt.Sprint(id))
@@ -578,7 +582,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 	}
 	// A finished eval cannot be cancelled again, and the model can be evaluated again.
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("POST",
+	req = userReq("POST",
 		"/x",
 		nil)
 	req.SetPathValue("id", fmt.Sprint(id))
@@ -637,6 +641,7 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	mid, _, _ := trainingdb.RecordTrainedModel(ctx,
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         "j1",
 			ModelSize:     "4b",
 			NumTrainSteps: 1,
@@ -734,7 +739,7 @@ func testEvalLiveFeed(t *testing.T,
 		fmt.Sprint(mid),
 		`{"limit": 3, "batch_size": 2}`).eval(t)
 	<-sc.started
-	resp, err := http.Get(fmt.Sprintf("%s/evals/%d/events",
+	resp, err := userGet(fmt.Sprintf("%s/evals/%d/events",
 		srv.URL,
 		started.ID))
 	if err != nil {
@@ -798,7 +803,7 @@ func testEvalLiveFeed(t *testing.T,
 	m.Wait()
 
 	// A watcher that comes after the end gets what was stored, then the end.
-	resp2, err := http.Get(fmt.Sprintf("%s/evals/%d/events",
+	resp2, err := userGet(fmt.Sprintf("%s/evals/%d/events",
 		srv.URL,
 		started.ID))
 	if err != nil {
@@ -813,7 +818,7 @@ func testEvalLiveFeed(t *testing.T,
 		t.Fatalf("late end: %+v", e)
 	}
 
-	if resp3, err := http.Get(srv.URL + "/evals/999/events"); err != nil || resp3.StatusCode != 404 {
+	if resp3, err := userGet(srv.URL + "/evals/999/events"); err != nil || resp3.StatusCode != 404 {
 		t.Fatalf("unknown eval: %v %v",
 			resp3,
 			err)
@@ -829,6 +834,7 @@ func testEvalExperiments(t *testing.T,
 	mid, _, err := trainingdb.RecordTrainedModel(ctx,
 		d,
 		trainingdb.TrainedModel{
+			UserID:        testUser,
 			JobID:         "jobexp1",
 			ModelSize:     "4b",
 			Dataset:       theEval + ".jsonl",
@@ -878,7 +884,7 @@ func testEvalExperiments(t *testing.T,
 	}
 
 	rec := httptest.NewRecorder()
-	m.ExperimentsOf()(rec, httptest.NewRequest("GET",
+	m.ExperimentsOf()(rec, userReq("GET",
 		"/x",
 		nil))
 	var list struct {
@@ -892,7 +898,7 @@ func testEvalExperiments(t *testing.T,
 	}
 
 	rec = httptest.NewRecorder()
-	req := httptest.NewRequest("GET",
+	req := userReq("GET",
 		"/x",
 		nil)
 	req.SetPathValue("id", fmt.Sprint(list.Experiments[0].ID))
@@ -913,7 +919,7 @@ func testEvalExperiments(t *testing.T,
 	}
 
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("GET",
+	req = userReq("GET",
 		"/x",
 		nil)
 	req.SetPathValue("id", "99")
@@ -928,7 +934,7 @@ func TestEvalDefinitions(t *testing.T) {
 	newMgr(context.Background(),
 		dbtest.OpenSQLite(t),
 		nil,
-		nil).DefinitionsOf()(rec, httptest.NewRequest("GET",
+		nil).DefinitionsOf()(rec, userReq("GET",
 		"/x",
 		nil))
 	var out struct {
@@ -945,4 +951,26 @@ func TestEvalDefinitions(t *testing.T) {
 	if e := out.Evals[0]; e.Name != theEval || len(e.Cases) != len(evalCases(t)) || e.Cases[0].Name == "" || e.Cases[0].Instruction == "" || e.Cases[0].Output == "" {
 		t.Fatalf("eval: %+v", e)
 	}
+}
+
+// testUser is the user the tests act as: the owner of the models they record.
+const testUser = "u1"
+
+// userReq is httptest.NewRequest for a request of testUser.
+func userReq(method,
+	target string,
+	body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	req.Header.Set(httputil.UserIDHeader, testUser)
+	return req
+}
+
+// userGet is http.Get for a request of testUser.
+func userGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set(httputil.UserIDHeader, testUser)
+	return http.DefaultClient.Do(req)
 }

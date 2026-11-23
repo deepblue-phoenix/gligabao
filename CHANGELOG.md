@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.237.0] - 2026-11-23
+
+Training is per user: jobs, models, evals, audits and the progress feed belong to the user of the request.
+
+### Changed
+
+- **Breaking: every `/v1/gb/training/...` route except the datasets works on the data of the user of the request.** A training job, a trained model (LoRA too), a deployment, an inference, an eval, an experiment and an audit of another user is as unknown as one that does not exist (`404`). `GET /training/jobs` and `GET /training/models` list the user's own. The training datasets stay shared files on disk (they move to S3 later). User `system` (the reserved owner of the evals of the command line) is refused by the eval routes.
+- **The progress feed knows the user:** `GET /training/events` only carries the events of the user's jobs; with `run_id` of another user's job it is a `404`. The monitor's subscriptions take a user.
+- **Trained models of the LoRA type get the user of the job** that made them (`gb_trained_models.user_id`, which was `''` for them).
+- **Evals and audits are tracked by user:** an eval of a trained model is recorded under the user who started it (its eval definition, run, cases and experiments are that user's; before, the owner was always `system`), and audit runs have a `user_id`.
+
+### Added
+
+- Schema: `gb_training_job_runs.user_id` and `gb_training_audit_runs.user_id` (with an index on the first). Existing SQLite and PostgreSQL databases get the columns when the server starts; nothing is filled in, so rows made before belong to no user and are not visible through the API.
+- `ListUserTrainedModels` with an empty type lists every type of the user; `ListUserTrainingJobRuns`.
+
 ## [0.236.0] - 2026-11-23
 
 One set of training and model endpoints: the GCNII* routes are part of `/v1/gb/training/`, and every training route needs a user.

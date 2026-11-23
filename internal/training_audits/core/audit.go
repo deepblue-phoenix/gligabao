@@ -6,6 +6,8 @@ import "time"
 // point back here through AuditCaseRun.RunID), and an LLM judging the answers in batches. It holds no list of its case runs.
 type AuditRun struct {
 	ID AuditRunID `json:"id"`
+	// UserID is the user that started the audit; an audit is visible to its user only.
+	UserID string `json:"user_id"`
 	// TrainedModelID is the trained model that was asked. It is not a foreign key: the trained models are not part of this schema.
 	TrainedModelID int64 `json:"trained_model_id"`
 	// Dataset is the name of the training dataset whose examples were asked (without ".jsonl") and DatasetSHA256 the digest of the

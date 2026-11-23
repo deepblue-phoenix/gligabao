@@ -36,6 +36,7 @@ func testAuditATrainedModel(t *testing.T,
 
 	temp := 0.2
 	started, err := m.Start(ctx,
+		audittest.User,
 		mid,
 		training_audits.Options{
 			BatchSize:   2,
@@ -56,7 +57,7 @@ func testAuditATrainedModel(t *testing.T,
 	}
 	m.Wait()
 
-	run, err := m.GetRunWithCaseRuns(ctx, started.ID)
+	run, err := m.GetRunWithCaseRuns(ctx, audittest.User, started.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +117,7 @@ func testAuditATrainedModel(t *testing.T,
 
 	// The model's audits are listed, newest first, and run again.
 	second, err := m.Start(ctx,
+		audittest.User,
 		mid,
 		training_audits.Options{
 			Limit: 3,
@@ -127,6 +129,7 @@ func testAuditATrainedModel(t *testing.T,
 	}
 	m.Wait()
 	list, err := m.ListRuns(ctx,
+		audittest.User,
 		mid,
 		10)
 	if err != nil || len(list) != 2 || list[0].ID != second.ID || list[0].Status != core.StatusCompleted || list[0].CaseRuns != nil || list[1].ID != started.ID {
@@ -135,6 +138,7 @@ func testAuditATrainedModel(t *testing.T,
 			err)
 	}
 	if list, err = m.ListRuns(ctx,
+		audittest.User,
 		mid,
 		1); err != nil || len(list) != 1 {
 		t.Fatalf("limited list: %+v %v",
@@ -190,6 +194,7 @@ func testAuditRefusals(t *testing.T,
 		}, training_audits.KindInvalid, "max_tokens"},
 	} {
 		_, err := m.Start(ctx,
+			audittest.User,
 			tc.model,
 			tc.opts)
 		var e *training_audits.Error
@@ -200,17 +205,18 @@ func testAuditRefusals(t *testing.T,
 		}
 	}
 	if _, err := m.ListRuns(ctx,
+		audittest.User,
 		999,
 		10); !isKind(err, training_audits.KindNotFound) {
 		t.Errorf("list of an unknown model: %v", err)
 	}
-	if _, err := m.GetRun(ctx, 999); !isKind(err, training_audits.KindNotFound) {
+	if _, err := m.GetRun(ctx, audittest.User, 999); !isKind(err, training_audits.KindNotFound) {
 		t.Errorf("get of an unknown audit: %v", err)
 	}
-	if _, err := m.CancelRun(ctx, 999); !isKind(err, training_audits.KindNotFound) {
+	if _, err := m.CancelRun(ctx, audittest.User, 999); !isKind(err, training_audits.KindNotFound) {
 		t.Errorf("cancel of an unknown audit: %v", err)
 	}
-	if _, err := m.Watch(ctx, 999); !isKind(err, training_audits.KindNotFound) {
+	if _, err := m.Watch(ctx, audittest.User, 999); !isKind(err, training_audits.KindNotFound) {
 		t.Errorf("watch of an unknown audit: %v", err)
 	}
 	if rs, _ := ops.Store.ListAuditRuns(ctx,
@@ -227,6 +233,7 @@ func testAuditRefusals(t *testing.T,
 		[]string{dir},
 		nil,
 		&audittest.Judge{}).Start(ctx,
+		audittest.User,
 		ok,
 		training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
 		t.Errorf("no sidecar: %v", err)
@@ -237,6 +244,7 @@ func testAuditRefusals(t *testing.T,
 		[]string{dir},
 		&audittest.Sidecar{},
 		nil).Start(ctx,
+		audittest.User,
 		ok,
 		training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
 		t.Errorf("no LLM: %v", err)
@@ -271,6 +279,7 @@ func testAuditOneAtATimeAndCancel(t *testing.T,
 		&audittest.Judge{})
 
 	run, err := m.Start(ctx,
+		audittest.User,
 		mid,
 		training_audits.Options{
 			BatchSize: 3,
@@ -280,15 +289,16 @@ func testAuditOneAtATimeAndCancel(t *testing.T,
 	}
 	<-sc.Started
 	if _, err := m.Start(ctx,
+		audittest.User,
 		mid,
 		training_audits.Options{}); !isKind(err, training_audits.KindConflict) {
 		t.Fatalf("second start while running: %v", err)
 	}
-	if _, err := m.CancelRun(ctx, run.ID); err != nil {
+	if _, err := m.CancelRun(ctx, audittest.User, run.ID); err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
-	got, _ := m.GetRunWithCaseRuns(ctx, run.ID)
+	got, _ := m.GetRunWithCaseRuns(ctx, audittest.User, run.ID)
 	if got.Status != core.StatusCancelled || got.FinishedAt == nil || got.Error != "" {
 		t.Fatalf("cancelled: %+v", got)
 	}
@@ -302,12 +312,13 @@ func testAuditOneAtATimeAndCancel(t *testing.T,
 			got.Counts,
 			got.CaseRuns)
 	}
-	if _, err := m.CancelRun(ctx, run.ID); !isKind(err, training_audits.KindConflict) {
+	if _, err := m.CancelRun(ctx, audittest.User, run.ID); !isKind(err, training_audits.KindConflict) {
 		t.Errorf("cancel of a finished audit: %v", err)
 	}
 	// The model is free again.
 	close(sc.Block)
 	again, err := m.Start(ctx,
+		audittest.User,
 		mid,
 		training_audits.Options{
 			BatchSize: 3,
@@ -316,7 +327,7 @@ func testAuditOneAtATimeAndCancel(t *testing.T,
 		t.Fatalf("start after the cancel: %v", err)
 	}
 	m.Wait()
-	if got, _ := m.GetRun(ctx, again.ID); got.Status != core.StatusCompleted {
+	if got, _ := m.GetRun(ctx, audittest.User, again.ID); got.Status != core.StatusCompleted {
 		t.Errorf("second audit: %+v", got)
 	}
 }
@@ -341,6 +352,7 @@ func testAuditFailsWhenTheModelDoes(t *testing.T,
 		sc,
 		&audittest.Judge{})
 	run, err := m.Start(ctx,
+		audittest.User,
 		mid,
 		training_audits.Options{
 			BatchSize: 2,
@@ -349,7 +361,7 @@ func testAuditFailsWhenTheModelDoes(t *testing.T,
 		t.Fatal(err)
 	}
 	m.Wait()
-	got, _ := m.GetRunWithCaseRuns(ctx, run.ID)
+	got, _ := m.GetRunWithCaseRuns(ctx, audittest.User, run.ID)
 	if got.Status != core.StatusErrored || !strings.Contains(got.Error, "model failed to answer 2 batches in a row") || !strings.Contains(got.Error, "out of memory") {
 		t.Fatalf("errored: %+v", got)
 	}
@@ -376,6 +388,7 @@ func testAuditsInterruptedByARestart(t *testing.T,
 		"j-restart",
 		"mine.jsonl")
 	r := &core.AuditRun{
+		UserID:         audittest.User,
 		TrainedModelID: mid,
 		Dataset:        "mine",
 		Status:         core.StatusRunning,
@@ -391,7 +404,7 @@ func testAuditsInterruptedByARestart(t *testing.T,
 		[]string{audittest.DatasetDir(t, 1)},
 		&audittest.Sidecar{},
 		&audittest.Judge{})
-	got, err := m.GetRun(ctx, r.ID)
+	got, err := m.GetRun(ctx, audittest.User, r.ID)
 	if err != nil || got.Status != core.StatusErrored || !strings.Contains(got.Error, "restarted") || got.FinishedAt == nil {
 		t.Fatalf("%+v %v",
 			got,
@@ -399,6 +412,7 @@ func testAuditsInterruptedByARestart(t *testing.T,
 	}
 	// A run that nothing runs, but that is marked running, is cancelled by the cancel.
 	r2 := &core.AuditRun{
+		UserID:         audittest.User,
 		TrainedModelID: mid,
 		Dataset:        "mine",
 		Status:         core.StatusRunning,
@@ -408,10 +422,10 @@ func testAuditsInterruptedByARestart(t *testing.T,
 		r2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.CancelRun(ctx, r2.ID); err != nil {
+	if _, err := m.CancelRun(ctx, audittest.User, r2.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := m.GetRun(ctx, r2.ID); got.Status != core.StatusCancelled {
+	if got, _ := m.GetRun(ctx, audittest.User, r2.ID); got.Status != core.StatusCancelled {
 		t.Errorf("%+v", got)
 	}
 }
@@ -437,6 +451,7 @@ func testWatchAnAudit(t *testing.T,
 		sc,
 		&audittest.Judge{})
 	run, err := m.Start(ctx,
+		audittest.User,
 		mid,
 		training_audits.Options{
 			BatchSize: 2,
@@ -445,7 +460,7 @@ func testWatchAnAudit(t *testing.T,
 		t.Fatal(err)
 	}
 	<-sc.Started
-	w, err := m.Watch(ctx, run.ID)
+	w, err := m.Watch(ctx, audittest.User, run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,7 +510,7 @@ loop:
 	m.Wait()
 
 	// A watch of a finished audit is the snapshot as stored, and no feed.
-	w2, err := m.Watch(ctx, run.ID)
+	w2, err := m.Watch(ctx, audittest.User, run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,5 +519,53 @@ loop:
 		t.Errorf("snapshot of a finished audit: %+v %+v",
 			w2.Run,
 			w2.CaseRuns)
+	}
+}
+
+func TestAuditsBelongToTheirUser(t *testing.T) { audittest.Run(t, testAuditsBelongToTheirUser) }
+
+func testAuditsBelongToTheirUser(t *testing.T,
+	d *sql.DB,
+	ops training_audits.Ops) {
+	ctx := context.Background()
+	mid := audittest.RecordModel(t,
+		d,
+		"j-owner",
+		"mine.jsonl")
+	m := training_audits.NewManager(ctx,
+		d,
+		ops,
+		[]string{audittest.DatasetDir(t, 2)},
+		&audittest.Sidecar{},
+		&audittest.Judge{})
+	run, err := m.Start(ctx,
+		audittest.User,
+		mid,
+		training_audits.Options{})
+	if err != nil || run.UserID != audittest.User {
+		t.Fatalf("%+v %v", run, err)
+	}
+	m.Wait()
+	const other = "u2"
+	if _, err := m.Start(ctx, other, mid, training_audits.Options{}); !isKind(err, training_audits.KindNotFound) {
+		t.Errorf("start on the model of another user: %v", err)
+	}
+	if _, err := m.ListRuns(ctx, other, mid, 10); !isKind(err, training_audits.KindNotFound) {
+		t.Errorf("list: %v", err)
+	}
+	if _, err := m.GetRun(ctx, other, run.ID); !isKind(err, training_audits.KindNotFound) {
+		t.Errorf("get: %v", err)
+	}
+	if _, err := m.GetRunWithCaseRuns(ctx, other, run.ID); !isKind(err, training_audits.KindNotFound) {
+		t.Errorf("get with case runs: %v", err)
+	}
+	if _, err := m.CancelRun(ctx, other, run.ID); !isKind(err, training_audits.KindNotFound) {
+		t.Errorf("cancel: %v", err)
+	}
+	if _, err := m.Watch(ctx, other, run.ID); !isKind(err, training_audits.KindNotFound) {
+		t.Errorf("watch: %v", err)
+	}
+	if got, err := m.GetRun(ctx, audittest.User, run.ID); err != nil || got.ID != run.ID {
+		t.Errorf("the owner: %+v %v", got, err)
 	}
 }

@@ -3,7 +3,8 @@
 // the training datasets directory that have a manifest), the trained models and their inferences, and the evals of
 // trained models. They are registered by internal/sys/server; the admin UI is one of their clients.
 //
-// The handlers only read the request and write the response: what they do is in internal/training.
+// The handlers only read the request and write the response: what they do is in internal/training. Every route acts as the user of the
+// request (see userOf), except those of the datasets (files on disk, shared) and the lists of the registered hooks.
 package training
 
 import (
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 )
@@ -39,6 +41,21 @@ func writeErr(w http.ResponseWriter,
 	httputil.Error(w,
 		status,
 		e.Msg)
+}
+
+// userOf is the checked ID of the user of the request (the routes are behind the authentication, which sets it); if it is not valid the
+// 400 is already written and ok is false. Everything but the training datasets is per user: a job, a model, an eval or an audit of
+// another user is as unknown as one that does not exist (404).
+func userOf(w http.ResponseWriter,
+	r *http.Request) (userID string, ok bool) {
+	userID, err := memory_core.ResolveUserID(httputil.UserID(r))
+	if err != nil {
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
+		return "", false
+	}
+	return userID, true
 }
 
 // pathID reads the {id} of the path, answering 400 itself if it is not a positive integer.
