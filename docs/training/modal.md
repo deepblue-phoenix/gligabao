@@ -167,7 +167,7 @@ curl           http://127.0.0.1:8787/backends/modal/volumes
 
 ## In the container
 
-`Dockerfile.ml_sidecar` copies `ml_sidecar/ai_train/` to `/app/ai_train`, next to the ML sidecar, because that is the code a deploy uploads (and where the three scripts live); it is still not imported by the ML sidecar process. The scripts run as the image's non-root `ml_sidecar` user, which has no home directory and needs none. Only `modal` from `requirements_ml_sidecar.txt` is needed to deploy: the heavy ML packages are installed in Modal's images, not in the ML sidecar's.
+The `Dockerfile` copies `ml_sidecar/ai_train/` to `/app/ml_sidecar/ai_train`, next to the ML sidecar, because that is the code a deploy uploads (and where the three scripts live); it is still not imported by the ML sidecar process. The scripts run as the image's non-root `ml_sidecar` user, which has no home directory and needs none. Only `modal` from `requirements_ml_sidecar.txt` is needed to deploy: the heavy ML packages are installed in Modal's images, not in the ML sidecar's.
 
 ## Troubleshooting
 

@@ -235,6 +235,10 @@ type Config struct {
 	// starts the ML sidecar itself as a child process (stopped with the server). Default true; false leaves starting it to you. A URL that
 	// is not on this machine is never started.
 	MLSidecarAutoStart bool `toml:"ml_sidecar_autostart"`
+	// MLSidecarForwardLogs: the ML sidecar started by the server (ml_sidecar_autostart) has its stdout and stderr forwarded to the server's
+	// own stdout and stderr, so whoever runs the server (a container's log) sees both. Default true; false drops the ML sidecar's output.
+	// Temporary, until the ML sidecar's logs go elsewhere.
+	MLSidecarForwardLogs bool `toml:"ml_sidecar_forward_logs"`
 	// MLSidecarDir is the ml_sidecar directory (the one with main_ml_sidecar.py) the server starts it from. Default: ML_SIDECAR_DIR, else
 	// the first of ml_sidecar next to the binary, ml_sidecar in the working directory, ../gligabao/ml_sidecar.
 	MLSidecarDir string `toml:"ml_sidecar_dir"`
@@ -425,21 +429,22 @@ func Default() *Config {
 	return &Config{
 		Port: DefaultPort,
 
-		DBBackend:           DBBackendSQLite,
-		VectorStore:         VectorStoreChromem,
-		EmbeddingDimensions: DefaultEmbeddingDimensions,
-		ChunkSize:           memory_chunk.DefaultSize,
-		ChunkOverlapPercent: memory_chunk.DefaultOverlapPercent,
-		GeoRadiusKm:         DefaultGeoRadiusKm,
-		PostgresDSN:         os.Getenv(EnvPostgresDSN),
-		AnthropicKey:        os.Getenv(EnvAnthropicKey),
-		OpenAIKey:           os.Getenv(EnvOpenAIKey),
-		JevKey:              os.Getenv(EnvJevKey),
-		LinkupKey:           os.Getenv(EnvLinkupKey),
-		JevBaseURL:          os.Getenv(EnvJevBaseURL),
-		MLSidecarURL:        os.Getenv(EnvMLSidecarURL),
-		MLSidecarAutoStart:  true,
-		MLSidecarDir:        os.Getenv(EnvMLSidecarDir),
+		DBBackend:            DBBackendSQLite,
+		VectorStore:          VectorStoreChromem,
+		EmbeddingDimensions:  DefaultEmbeddingDimensions,
+		ChunkSize:            memory_chunk.DefaultSize,
+		ChunkOverlapPercent:  memory_chunk.DefaultOverlapPercent,
+		GeoRadiusKm:          DefaultGeoRadiusKm,
+		PostgresDSN:          os.Getenv(EnvPostgresDSN),
+		AnthropicKey:         os.Getenv(EnvAnthropicKey),
+		OpenAIKey:            os.Getenv(EnvOpenAIKey),
+		JevKey:               os.Getenv(EnvJevKey),
+		LinkupKey:            os.Getenv(EnvLinkupKey),
+		JevBaseURL:           os.Getenv(EnvJevBaseURL),
+		MLSidecarURL:         os.Getenv(EnvMLSidecarURL),
+		MLSidecarAutoStart:   true,
+		MLSidecarForwardLogs: true,
+		MLSidecarDir:         os.Getenv(EnvMLSidecarDir),
 
 		PineconeKey:       os.Getenv(EnvPineconeKey),
 		PineconeIndexHost: os.Getenv(EnvPineconeHost),

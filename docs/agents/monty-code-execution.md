@@ -222,7 +222,7 @@ ENV GLIGABAO_MONTY_PYTHON=/opt/monty/bin/python MONTY_BIN=/opt/monty/bin/monty
 - The venv is world-readable and the `gligabao` user (10001) only runs it: no write access is needed at run time (`PYTHONDONTWRITEBYTECODE=1` can be set to keep it so).
 - The version is a build `ARG`, so an upgrade is a one-line change; the bridge's `protocol` check and the integration test ([Tests](#tests)) catch an incompatible release.
 - The comment above the `ENV` line in the Dockerfile says what the venv is for, in the style of the other lines. The `docker run` documentation in the docs (the README / deploy notes that mention the image) says that the image includes the code sandbox and that it is only used by agents with `[code] enabled`.
-- `Dockerfile.ml_sidecar` (training/Modal) is unchanged: the code sandbox does not run in Modal, since an investigative agent is local only.
+- The ML sidecar part of the image (training/Modal) is unchanged: the code sandbox does not run in Modal, since an investigative agent is local only.
 
 A bare-metal install (`go install`, the release binaries) needs `pip install pydantic-monty` somewhere and `monty_python` / `monty_bin` pointing at it; the docs say so, and `gligabao doctor`-style output (the startup log) prints whether the sandbox is available.
 

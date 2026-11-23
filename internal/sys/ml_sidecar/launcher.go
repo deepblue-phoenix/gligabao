@@ -41,7 +41,8 @@ type LaunchOptions struct {
 	Dir string
 	// Env is added to the environment the child inherits (KEY=VALUE).
 	Env []string
-	// Stdout and Stderr receive the output of the ML sidecar (nil: os.Stderr for both, so its log is next to the server's).
+	// Stdout and Stderr receive the output of the ML sidecar (nil: the server's own os.Stdout and os.Stderr respectively, so whoever
+	// watches the server sees the log of the ML sidecar too; io.Discard drops it).
 	Stdout io.Writer
 	Stderr io.Writer
 	// ReadyTimeout is how long to wait for /health (0: 60 seconds).
@@ -92,8 +93,10 @@ func Launch(ctx context.Context,
 		"ML_SIDECAR_HOST="+host,
 		"ML_SIDECAR_PORT="+port),
 		opts.Env...)
-	cmd.Stdout = firstWriter(opts.Stdout)
-	cmd.Stderr = firstWriter(opts.Stderr)
+	cmd.Stdout = writerOr(opts.Stdout,
+		os.Stdout)
+	cmd.Stderr = writerOr(opts.Stderr,
+		os.Stderr)
 	cmd.Cancel = interruptOrKill(cmd)
 	cmd.WaitDelay = stopGrace
 	if err := cmd.Start(); err != nil {
@@ -248,10 +251,11 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// firstWriter is w, or os.Stderr when it is nil.
-func firstWriter(w io.Writer) io.Writer {
+// writerOr is w, or fallback when w is nil.
+func writerOr(w io.Writer,
+	fallback io.Writer) io.Writer {
 	if w == nil {
-		return os.Stderr
+		return fallback
 	}
 	return w
 }

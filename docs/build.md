@@ -61,6 +61,6 @@ Shell wrappers: `./run_build.sh [--no-admin-ui] [--sargo]` is `ops/build.py all`
 
 ## Not done by this program
 
-- The container images (`Dockerfile`, `Dockerfile.ml_sidecar`, `run_build_container.sh`, `run_build_ml_sidecar.sh`) build in their own Docker stages. The `Dockerfile` does not yet include sargo (see `leftover_tasks/`).
+- The container image (`Dockerfile`, `run_build_container.sh`; it contains the ML sidecar too) builds in their own Docker stages. The `Dockerfile` does not yet include sargo (see `leftover_tasks/`).
 - The PyPI packaging (staging, wheels, twine, upload) is `ops/pypi.py`, which uses `ops/build.py` for the admin UI, sargo and the server binary. See [pypi.md](pypi.md).
 - Running one OS's pipeline for another OS's sargo (e.g. in CI, use one runner per OS and run `all --sargo` on each).

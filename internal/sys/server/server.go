@@ -111,7 +111,10 @@ type Options struct {
 	// MLSidecarAutoStart makes the server start the ML sidecar as a child process in training mode (TrainingModeEnable) when nothing
 	// answers at MLSidecarURL and that URL is local. MLSidecarDir is the ml_sidecar directory (empty: searched, see ml_sidecar.SearchDirs).
 	MLSidecarAutoStart bool
-	MLSidecarDir       string
+	// MLSidecarForwardLogs forwards the stdout/stderr of the ML sidecar the server started to the server's own stdout/stderr. Temporary
+	// (until the ML sidecar's logs go elsewhere); the config default is true.
+	MLSidecarForwardLogs bool
+	MLSidecarDir         string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]llm.Price
 	// TrajectoryDir is where the ATIF trajectories of the eval calls are stored as JSON.

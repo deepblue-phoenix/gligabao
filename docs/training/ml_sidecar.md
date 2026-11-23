@@ -1,6 +1,6 @@
 # Python ML sidecar
 
-`internal/api/training/`, `ml_sidecar/`, `ml_sidecar/routes.py`, `ml_sidecar/backends/`, `ml_sidecar/ai_train/`, `Dockerfile.ml_sidecar`, `docker-compose.yml`, `run_build_ml_sidecar.sh`, `internal/sys/ml_sidecar/`
+`internal/api/training/`, `ml_sidecar/`, `ml_sidecar/routes.py`, `ml_sidecar/backends/`, `ml_sidecar/ai_train/`, `docker-compose.yml`, `internal/sys/ml_sidecar/`
 
 The ML sidecar is a small Python service that runs next to the Go server and that the server talks to over HTTP. It exists for work that is easier to do in Python (libraries that have no good Go equivalent). **The Go server only ever talks to the ML sidecar, and the ML sidecar proxies to the compute backend (Modal today).** The Go code never calls Modal or any other provider, never holds provider credentials and never learns what runs behind the ML sidecar's REST API.
 
@@ -56,7 +56,7 @@ curl http://127.0.0.1:8787/health
 
 ## Remote training bootstrap
 
-`ml_sidecar/ai_train/` fine-tunes Gemma-4 (4B, 12B and 31B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal and is not imported by `main_ml_sidecar.py`; `Dockerfile.ml_sidecar` copies it only so that the ML sidecar can deploy it (see [modal.md](modal.md)).
+`ml_sidecar/ai_train/` fine-tunes Gemma-4 (4B, 12B and 31B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal and is not imported by `main_ml_sidecar.py`; the `Dockerfile` copies it only so that the ML sidecar can deploy it (see [modal.md](modal.md)).
 
 ```
 ml_sidecar/ai_train/
@@ -271,10 +271,11 @@ The ML sidecar's address is `ml_sidecar_url` / `ML_SIDECAR_URL` (default `http:/
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `ml_sidecar_autostart` | `true` | `false` leaves starting the ML sidecar to you (`./run_server_ml_sidecar_local.sh`, or the container). |
+| `ml_sidecar_autostart` | `true` | `false` leaves starting the ML sidecar to you (`./run_server_ml_sidecar_local.sh`). |
+| `ml_sidecar_forward_logs` | `true` | The stdout and stderr of the ML sidecar the server started are forwarded to the server's own stdout and stderr, so whoever runs the server (a container's log) sees both. `false` drops them. Temporary. |
 | `ml_sidecar_dir` / `ML_SIDECAR_DIR` | *(searched)* | The `ml_sidecar` directory (the one with `main_ml_sidecar.py`). Default: `ml_sidecar` next to the binary, `ml_sidecar` in the working directory, then `../gligabao/ml_sidecar`. The interpreter is `ml_sidecar/.venv/bin/python` if it exists, else `python3` (`python` on Windows); the requirements must be installed in it. |
 
-The container images do not contain the ML sidecar: the server images (`Dockerfile` of gligabao and of gligabao_int) have no Python ML sidecar code, so there nothing is found to start, and the ML sidecar has to run as its own container (`Dockerfile.ml_sidecar`, see `docker-compose.yml`) with `ml_sidecar_url` pointing to it.
+The container images contain the ML sidecar (see [The container](#the-container)): the server starts it inside the same container.
 
 Local tests: `cd ml_sidecar/ai_train && python -m unittest test_ai_train_core -v`.
 
@@ -316,7 +317,7 @@ The same Modal app also runs the [research agent](../deep-research-agent.md) whe
 - **The export.** The function runs the binary with `--export <job directory>/export.zip`. When the binary ends (also if it failed or was stopped) and left the file, `agent_run.py` stores it in the event log with `EventLog.put_export`: the file in chunks of 4 MiB (`<job>:x<n>`, one Dict update each, retried), then its description (`<job>:export`: bytes, SHA-256, chunks), and only then the final status event, which gets the field `export` (`{"bytes", "sha256"}`): whoever sees the final event finds the file. `GET /research/job_export` reads the chunks back and streams them; the Go server checks the size and the SHA-256. A file over 256 MiB, an empty one, or a Dict that keeps failing is not stored: a `log` event says the knowledge of the agent is lost, and the job ends as it would have (its `completed` status and report do not depend on it). If the binary ended with a report but exited with an error because only the export failed, the job is `completed` with that report and a `log` event. The entries expire with the job's (7 days in a Dict); the server downloads the export as soon as it sees the final event.
 - **Stopping.** The stop flag of the job is looked at every 2 seconds (before the binary starts, too); then the binary gets `SIGTERM` (it ends the research as stopped) and `SIGKILL` 20 seconds later; the job ends `cancelled`.
 - **Without the binary.** `run_agent` is always defined (a Modal app must define the same functions in every container) but the web API only spawns it when its image says the binary was there at deploy time (`ML_SIDECAR_AGENT_DEPLOYED`, set in the image of the web function): else `/research/job_start` answers `503` and tells how to fix it. Deploy again after building the binary.
-- **Where the binary comes from.** `./run_build.sh` builds `build/gligabao_agent_linux_amd64`; `Dockerfile.ml_sidecar` builds it in a Go stage and copies it next to `ai_train/`, so a deploy from the ML sidecar container needs nothing else. Try it by hand: `cd ml_sidecar/ai_train && modal run app.py --action agent --prompt "topic"`.
+- **Where the binary comes from.** `./run_build.sh` builds `build/gligabao_agent_linux_amd64`; the `Dockerfile` builds it in a Go stage and copies it next to `ai_train/`, so a deploy from the container needs nothing else. Try it by hand: `cd ml_sidecar/ai_train && modal run app.py --action agent --prompt "topic"`.
 - **Go side.** `internal/sys/ml_sidecar/research_jobs.go` (`StartResearchJob`, `CancelResearchJob`, `StreamResearchJobEvents`, `DownloadResearchExport`); the server's adapter is `internal/sys/server/research_remote.go`, and `internal/agent_research/remote.go` follows the events, records them in the run and imports the export (`internal/db/dbimport`).
 
 ### How the provider abstraction works
@@ -341,15 +342,9 @@ To add a provider (e.g. AWS): implement `Provider` in `providers/aws/provider.py
 
 ## The container
 
-`Dockerfile.ml_sidecar` (in the repo root; the plain `Dockerfile` is the Go server's) packages the ML sidecar on `python:3.13-slim`: it installs the requirements, copies `main_ml_sidecar.py`, `ml_sidecar_config.py`, `routes.py`, `backends/` and `ai_train/` (what the deploy action uploads to Modal) and, built in a Go stage, `gligabao_agent_linux_amd64` (the research agent that the deploy bakes into the Modal app), runs as the non-root user `ml_sidecar` and starts `python main_ml_sidecar.py`. The image sets `ML_SIDECAR_HOST=0.0.0.0` (a container must listen on all interfaces for a published port to reach it) and exposes `8787`.
+There is no dedicated image for the ML sidecar (for now): it is packaged in the server's image, in `/app/ml_sidecar`, and the server starts it as a child process in training mode (default `ml_sidecar_url` is local). In the `Dockerfile` of gligabao the image has Python, a venv `/app/ml_sidecar/.venv` with the requirements installed (the interpreter the server looks for), `main_ml_sidecar.py`, `ml_sidecar_config.py`, `routes.py`, `backends/`, `ai_train/` (what the deploy action uploads to Modal) and `gligabao_agent_linux_amd64` (the research agent that the deploy bakes into the Modal app, built in the Go stage). The `Dockerfile` of gligabao_int does the same: `./run_build_container.sh` there stages a copy of `../gligabao/ml_sidecar` in `build/ml_sidecar`, builds the agent into `build/gligabao_agent_linux_amd64`, and the Dockerfile copies both. The log of the ML sidecar appears in the container's log (`ml_sidecar_forward_logs`). Pass `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` to the container: without them the ML sidecar exits at startup, and training mode refuses to start.
 
-```sh
-./run_build_ml_sidecar.sh                         # builds gligabao-ml-sidecar:latest
-./run_build_ml_sidecar.sh myrepo/ml_sidecar:dev      # or a name of your choice
-docker run --rm -p 127.0.0.1:8787:8787 -e MODAL_TOKEN_ID -e MODAL_TOKEN_SECRET gligabao-ml-sidecar:latest
-```
-
-Without the two Modal variables the container exits at startup. Publish the port on `127.0.0.1` (as above) unless the ML sidecar must be reachable from other machines: it has no authentication.
+The ML sidecar has no authentication and listens on `127.0.0.1` inside the container; nothing publishes its port.
 
 ### With docker compose
 
@@ -390,5 +385,5 @@ The tests (`internal/sys/ml_sidecar/*_test.go`) run the client against an `httpt
 2. Implement it in the backend: for `modal`, a route of the web API in `ml_sidecar/ai_train/api/`. Another backend must serve the same path.
 3. Add a method to `Client` in `internal/sys/ml_sidecar` (a new file per topic, like `training_jobs.go`), with typed request and response structs. Keep all calls to the ML sidecar in that package, and never call a backend from Go.
 4. If the Go server should start it, add an admin handler in `internal/api/admin` that takes the client through a small interface.
-5. A route answered by the ML sidecar itself, like `/health`, goes in `ml_sidecar/main_ml_sidecar.py` instead (and any new package in `ml_sidecar/requirements_ml_sidecar.txt`). If the Dockerfile must copy new files, update `Dockerfile.ml_sidecar`.
+5. A route answered by the ML sidecar itself, like `/health`, goes in `ml_sidecar/main_ml_sidecar.py` instead (and any new package in `ml_sidecar/requirements_ml_sidecar.txt`). If the Dockerfile must copy new files, update the `Dockerfile` (and, for gligabao_int, `run_build_container.sh` and its `Dockerfile`).
 6. Document the endpoint in the tables above.

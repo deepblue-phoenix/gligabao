@@ -1,14 +1,11 @@
-# Runs the gligabao server and its Python ML sidecar on one private network.
+# Runs the gligabao server. In training mode it starts the Python ML sidecar itself, inside the same container (the image has it), and
+# forwards its stdout/stderr to its own (ml_sidecar_forward_logs), so `docker compose logs` shows both.
 #
 #   export ANTHROPIC_API_KEY=...     # required for remember/query
 #   export OPENAI_API_KEY=...        # required: embeddings (remember embeds what it stores, query the question)
 #   docker compose up --build
 #
 # Server:  http://127.0.0.1:7878   (GET /health)
-# ML sidecar: http://127.0.0.1:8787   (GET /health)
-#
-# Inside the network the containers reach each other by service name: the server finds the ML sidecar at
-# http://ml-sidecar:8787 (not 127.0.0.1, which inside a container is the container itself).
 
 services:
   gligabao:
@@ -19,41 +16,15 @@ services:
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # The ML sidecar (training) needs the Modal credentials.
+      MODAL_TOKEN_ID: ${MODAL_TOKEN_ID:-}
+      MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET:-}
     ports:
       - "127.0.0.1:7878:7878"
     volumes:
       # SQLite db, vector store and images (/data in the image).
       - gligabao-data:/data
-    depends_on:
-      ml-sidecar:
-        condition: service_healthy
-    networks:
-      - gligabao
     restart: unless-stopped
-
-  ml-sidecar:
-    build:
-      context: .
-      dockerfile: Dockerfile.ml_sidecar
-    image: gligabao-ml-sidecar:latest
-    # The image already sets ML_SIDECAR_HOST=0.0.0.0 and ML_SIDECAR_PORT=8787.
-    # The ML sidecar has no authentication: it is published on localhost only, and other containers on the
-    # "gligabao" network reach it directly as ml-sidecar:8787 (the published port is only for your own debugging).
-    ports:
-      - "127.0.0.1:8787:8787"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=2)"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
-    networks:
-      - gligabao
-    restart: unless-stopped
-
-networks:
-  gligabao:
-    driver: bridge
 
 volumes:
   gligabao-data:

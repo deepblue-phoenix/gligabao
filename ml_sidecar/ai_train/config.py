@@ -20,7 +20,7 @@ AGENT_BINARY_NAME = "gligabao_agent_linux_amd64"
 
 def _agent_binary() -> str:
     """The gligabao_agent binary (Linux, x86-64: what a Modal container runs) that is baked into the agent's image: ML_SIDECAR_AGENT_BINARY,
-    else the one next to the ML sidecar's code (the ML sidecar image has it there, see Dockerfile.ml_sidecar), else the one `run_build.sh` builds
+    else the one next to the ML sidecar's code (the container image has it there, see Dockerfile), else the one `run_build.sh` builds
     in the repo's build/ directory. "" if there is none: the Modal app is then deployed without the ability to run research agents."""
     env = os.environ.get("ML_SIDECAR_AGENT_BINARY")
     if env is not None:

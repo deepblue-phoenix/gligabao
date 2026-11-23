@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 
 	log "github.com/sirupsen/logrus"
 
@@ -21,10 +22,17 @@ func startMLSidecar(ctx context.Context,
 		log.WithFields(fields).Info("the ML sidecar is already running; not starting one")
 		return
 	}
+	// Forwarding (the default): the output of the ML sidecar goes to the server's stdout/stderr (nil writers). Off: it is dropped.
+	var stdout, stderr io.Writer
+	if !opts.MLSidecarForwardLogs {
+		stdout, stderr = io.Discard, io.Discard
+	}
 	p, err := ml_sidecar.Launch(ctx,
 		ml_sidecar.LaunchOptions{
-			URL: opts.MLSidecarURL,
-			Dir: opts.MLSidecarDir,
+			URL:    opts.MLSidecarURL,
+			Dir:    opts.MLSidecarDir,
+			Stdout: stdout,
+			Stderr: stderr,
 		})
 	switch {
 	case errors.Is(err, ml_sidecar.ErrNotLocal):
@@ -33,9 +41,10 @@ func startMLSidecar(ctx context.Context,
 		log.WithError(err).WithFields(fields).Warn("could not start the ML sidecar")
 	default:
 		log.WithFields(log.Fields{
-			"url":    opts.MLSidecarURL,
-			"dir":    p.Dir,
-			"python": p.Python,
+			"url":          opts.MLSidecarURL,
+			"dir":          p.Dir,
+			"python":       p.Python,
+			"forward_logs": opts.MLSidecarForwardLogs,
 		}).Info("the ML sidecar was started by the server (training mode); it stops with the server")
 	}
 }

@@ -16,12 +16,20 @@ RUN go mod download
 COPY . .
 COPY --from=admin_ui /src/admin_ui/dist ./admin_ui/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
+# The research agent binary (Linux x86-64: what a Modal container runs), baked into the Modal app by the ML sidecar's "deploy" action.
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" \
+    -o /out/gligabao_agent_linux_amd64 ./cmd/gligabao_agent
 
 FROM debian:bookworm-slim
 ARG MONTY_VERSION=0.0.21
+# The ML sidecar (Python, ml_sidecar/): the server starts it itself in training mode (docs/training/ml_sidecar.md), so it is in this image too, with
+# its own venv (ml_sidecar/.venv, the interpreter the server looks for). Its requirements are installed first, for the layer cache.
+COPY ml_sidecar/requirements_ml_sidecar.txt /app/ml_sidecar/requirements_ml_sidecar.txt
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
     && python3 -m venv /opt/monty \
     && /opt/monty/bin/pip install --no-cache-dir "pydantic-monty==${MONTY_VERSION}" \
+    && python3 -m venv /app/ml_sidecar/.venv \
+    && /app/ml_sidecar/.venv/bin/pip install --no-cache-dir -r /app/ml_sidecar/requirements_ml_sidecar.txt \
     && apt-get purge -y --auto-remove python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --no-create-home gligabao && mkdir /data && chown gligabao /data
@@ -29,6 +37,12 @@ WORKDIR /app
 COPY --from=build /out/gligabao /app/gligabao
 # Config is read from next to the binary by default.
 COPY build/gligabao.toml /app/gligabao.toml
+# The code of the ML sidecar (the venv and requirements are above); ai_train/ is what the "deploy" action uploads to Modal, and the agent binary
+# goes next to it, where ai_train/config.py looks for it.
+COPY ml_sidecar/main_ml_sidecar.py ml_sidecar/ml_sidecar_config.py ml_sidecar/routes.py /app/ml_sidecar/
+COPY ml_sidecar/backends /app/ml_sidecar/backends
+COPY ml_sidecar/ai_train /app/ml_sidecar/ai_train
+COPY --from=build /out/gligabao_agent_linux_amd64 /app/ml_sidecar/gligabao_agent_linux_amd64
 # The evals of trained models (static definitions), read from disk.
 COPY build/evals_training /app/evals_training
 # The ontology files that can be loaded by name (POST /v1/gb/ontologies with "file"; ontology_dirs of the config).

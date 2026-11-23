@@ -222,7 +222,7 @@ The rows of the relational database go in **one transaction**: an import that fa
 
 **Setting it up.**
 
-1. Build the agent for the containers: `./run_build.sh` makes `build/gligabao_agent_linux_amd64` (a static Linux x86-64 binary, whatever the machine). The ML sidecar image (`Dockerfile.ml_sidecar`) builds it itself and has it next to `ai_train/`; `ML_SIDECAR_AGENT_BINARY` points the ML sidecar at another file.
+1. Build the agent for the containers: `./run_build.sh` makes `build/gligabao_agent_linux_amd64` (a static Linux x86-64 binary, whatever the machine). The container image (`Dockerfile`) builds it itself and has it next to `ml_sidecar/ai_train/`; `ML_SIDECAR_AGENT_BINARY` points the ML sidecar at another file.
 2. Create the Modal secret with the keys: `modal secret create gligabao-agent ANTHROPIC_API_KEY=... OPENAI_API_KEY=...` and set `ML_SIDECAR_AGENT_SECRET=gligabao-agent` for the ML sidecar. (Without a secret the agent runs without keys and fails with a message saying which one is missing.)
 3. **Deploy the Modal app again** (the admin UI's training view, or `modal deploy app.py`): the deploy bakes the binary into the agent's image. An app deployed without the binary has no agent: starting a `modal` research answers `503` ("this Modal app has no research agent ...").
 4. Start a research with `runner: "modal"`. The server only needs a reachable ML sidecar (`ml_sidecar_url`).

@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.242.0] - 2026-11-23
+
+The ML sidecar is packaged in the server's container image, and its log is forwarded.
+
+### Added
+
+- **`ml_sidecar_forward_logs`** (default `true`): the stdout and stderr of the ML sidecar the server started are forwarded to the server's own stdout and stderr. Temporary; `false` drops them.
+
+### Changed
+
+- **The `Dockerfile` contains the ML sidecar** (Python, a venv with its requirements at `/app/ml_sidecar/.venv`, its code, and the research agent for Modal at `/app/ml_sidecar/`), so the server starts it inside the same container. `docker-compose.yml` runs only the server (pass `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`).
+
+### Removed
+
+- `Dockerfile.ml_sidecar` and `run_build_ml_sidecar.sh`: there is no dedicated ML sidecar image for now.
+
 ## [0.241.0] - 2026-11-23
 
 The Python sidecar is now called the **ML sidecar**, and the server starts it in training mode.
