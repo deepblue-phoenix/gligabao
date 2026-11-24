@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.243.0] - 2026-11-24
+
+Provider events: the embedding program can receive what the compute provider (Modal) does for the training jobs.
+
+### Added
+
+- **`Hooks.ProviderEvents`** (`monitoring.Hooks`): a callback that is called once when `Serve` starts, with a channel (`<-chan ProviderEvent`, depth 1000) that the provider events arrive on, so the program reads them asynchronously, whenever it likes. Each callback has its own channel; the channel is closed when `Serve` returns. An event that finds the channel full is dropped (with a warning), so a slow consumer never slows the server.
+- **`ProviderEvent`** (`provider_type`, `type`, `kind`, `time`, `data`): every event says which provider it belongs to (`provider_type` is `modal` for now; other providers will emit their own). Emitted for training jobs: `training_job.started`, `.status` (running, training, completed, failed, cancelled), `.progress` (step, loss, learning rate, epoch), `.log`, `.model_recorded`, `.stop_requested` and `.stream_error`; `kind` is `lifecycle`, `progress` or `log`.
+
 ## [0.242.0] - 2026-11-23
 
 The ML sidecar is packaged in the server's container image, and its log is forwarded.

@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -121,6 +122,10 @@ func StartJob(ctx context.Context,
 		log.WithError(err).WithField("job_id", job.JobID).Error("training: read training job run failed")
 		return nil, internalErr("failed to read the training job run", err)
 	}
+	monitoring.EmitProviderEvent(jobEvent(ProviderEventJobStarted,
+		monitoring.KindLifecycle,
+		*run,
+		monitoring.Event{"num_train_steps": run.NumTrainSteps}))
 	mon.Watch(*run)
 	return run, nil
 }
@@ -171,6 +176,10 @@ func StopJob(ctx context.Context,
 		return nil, &Error{KindUpstream, "ML sidecar failed to stop the training job", err}
 	}
 	log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Info("training: stop requested")
+	monitoring.EmitProviderEvent(jobEvent(ProviderEventJobStopRequested,
+		monitoring.KindLifecycle,
+		*run,
+		nil))
 	return run, nil
 }
 

@@ -25,6 +25,8 @@ type SystemEventHook func(ctx context.Context,
 type Hooks struct {
 	// SystemEvent is called for every system event.
 	SystemEvent SystemEventHook
+	// ProviderEvents receives the channel the events of the compute providers (Modal, ...) arrive on; see provider_events.go.
+	ProviderEvents ProviderEventsHook
 }
 
 var hooks atomic.Pointer[[]Hooks]
@@ -32,6 +34,7 @@ var hooks atomic.Pointer[[]Hooks]
 // SetHooks replaces the installed hook sets (a nil or empty list removes them all). Serve calls this with
 // ServeOptions.Hooks.
 func SetHooks(h []Hooks) {
+	installProviderEvents(h)
 	if len(h) == 0 {
 		hooks.Store(nil)
 		return

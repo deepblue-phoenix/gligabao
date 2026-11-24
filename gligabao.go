@@ -84,6 +84,9 @@ const DefaultDBPath = db.DefaultSQLitePath
 // Hooks is a set of callbacks gligabao invokes (e.g. for system events); see package monitoring.
 type Hooks = monitoring.Hooks
 
+// ProviderEvent is an event of a compute provider (Modal, ...); see Hooks.ProviderEvents and package monitoring.
+type ProviderEvent = monitoring.ProviderEvent
+
 // SystemEvent is the key/value data attached to a system event.
 type SystemEvent = monitoring.Event
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -170,6 +171,10 @@ func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
 		}
 		if err != nil {
 			l.WithError(err).Warn("training: training job: ml_sidecar event stream ended with an error")
+			monitoring.EmitProviderEvent(jobEvent(ProviderEventStreamError,
+				monitoring.KindLifecycle,
+				run,
+				monitoring.Event{"error": err.Error()}))
 		}
 		if time.Now().After(deadline) {
 			l.Warn("training: training job: no end reported in time, marking it failed")
@@ -254,6 +259,7 @@ func (m *Monitor) record(run trainingdb.TrainingJobRun,
 		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
 			Errorf("training: training job failed\n%s", ev.Traceback)
 	}
+	monitoring.EmitProviderEvent(trainingEventToProviderEvent(run, ev))
 	m.publish(FeedEvent{
 		RunID:         run.ID,
 		UserID:        run.UserID,
@@ -307,6 +313,10 @@ func (m *Monitor) recordModel(ctx context.Context,
 	}
 	if isNew {
 		l.WithFields(log.Fields{"model_id": id, "path": tm.Path, "files": len(tm.Files), "size_bytes": tm.SizeBytes}).Info("training: trained model recorded")
+		monitoring.EmitProviderEvent(jobEvent(ProviderEventModelRecorded,
+			monitoring.KindLifecycle,
+			run,
+			monitoring.Event{"model_id": id, "path": tm.Path, "files": len(tm.Files), "size_bytes": tm.SizeBytes}))
 	}
 	return nil
 }
