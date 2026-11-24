@@ -1,6 +1,7 @@
 """Fine-tuning pipeline for Gemma-4 via Unsloth (4B, 12B and 31B). Unsloth image only.
 """
 import unsloth  # noqa: F401  must be imported before torch/trl/transformers/peft
+import os
 import time
 from typing import Callable, Optional
 
@@ -12,6 +13,7 @@ from ..progress import ProgressCallback
 from ..event_log import EventLog
 from ..progress_events import JobCancelled, stop_requested, write_log
 from .prompt_format import bos_prefix, dataset_formatting_func, format_instruction
+from ..system_events import Timer, gpu_memory_mb, system_event
 from ..trained_model import describe, model_dir
 from ..training_common import (add_text_prefix, load_training_dataset, print_dependency_versions, save_adapters,
                               setup_training_arguments, training_result)
@@ -39,17 +41,27 @@ def run_finetuning(dataset_path: str, num_train_steps: int = 100, model_size: st
         """Report a stage, and stop here if the job was asked to."""
         write_log(events, f"{message} ({time.time() - t0:.0f}s since the start)")
         if stop_requested(events):
+            system_event(events, "job.stop_observed", "the stop request was seen", where=message)
             raise JobCancelled(f"stopped: {message}")
 
     config = get_model_config(model_size)
     print("=" * 60 + f"\nGEMMA-4 FINE-TUNING (UNSLOTH) - {config['display_name']}\n" + "=" * 60)
 
+    system_event(events, "dataset.loading", "reading the training dataset", path=dataset_path)
+    timer = Timer()
     examples, train_dataset = load_training_dataset(format_instruction, dataset_path)
+    system_event(events, "dataset.loaded", f"{len(examples)} examples", path=dataset_path, examples=len(examples),
+                 size_bytes=os.path.getsize(dataset_path), seconds=timer.seconds())
     stage(f"dataset loaded: {len(examples)} examples; loading the {config['display_name']} model (4-bit)")
 
     max_seq_length, lora_rank, lora_alpha, learning_rate = 2048, 16, 16, 2e-4
+    system_event(events, "model.loading", f"loading {config['model_name']} (downloaded on the first use, then cached on the volume)",
+                 model_name=config["model_name"], model_size=model_size, load_in_4bit=True, max_seq_length=max_seq_length)
+    timer = Timer()
     model, tokenizer_or_processor, model_config = load_gemma4_model(
         model_size=model_size, max_seq_length=max_seq_length, load_in_4bit=True)
+    system_event(events, "model.loaded", "the base model is in memory", model_name=config["model_name"],
+                 seconds=timer.seconds(), gpu_memory_mb=gpu_memory_mb())
 
     # Gemma-4 returns a Gemma4Processor; SFTTrainer needs the plain tokenizer (the processor
     # lacks `eos_token`), so pass it explicitly via processing_class.
@@ -61,8 +73,11 @@ def run_finetuning(dataset_path: str, num_train_steps: int = 100, model_size: st
     print(f"BOS prefix added to the training text: {prefix!r}")
 
     stage("model loaded; adding the LoRA adapters")
+    system_event(events, "lora.adding", "attaching the LoRA adapters", rank=lora_rank, alpha=lora_alpha)
     model = add_lora_adapters(model, model_config=model_config, lora_rank=lora_rank, lora_alpha=lora_alpha,
                               lora_dropout=0, use_gradient_checkpointing=True)
+    system_event(events, "lora.added", "the LoRA adapters are attached", rank=lora_rank, alpha=lora_alpha,
+                 gpu_memory_mb=gpu_memory_mb())
 
     training_args = setup_training_arguments(
         num_train_steps=num_train_steps,
@@ -76,6 +91,10 @@ def run_finetuning(dataset_path: str, num_train_steps: int = 100, model_size: st
           f"accumulation {training_args.gradient_accumulation_steps})")
     print("\n[5/5] Starting fine-tuning...")
     print_dependency_versions()
+    system_event(events, "trainer.building", "building the trainer",
+                 batch_size=training_args.per_device_train_batch_size,
+                 gradient_accumulation_steps=training_args.gradient_accumulation_steps, max_steps=num_train_steps)
+    timer = Timer()
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
@@ -84,7 +103,9 @@ def run_finetuning(dataset_path: str, num_train_steps: int = 100, model_size: st
         args=training_args,
         callbacks=[ProgressCallback(events)],
     )
+    system_event(events, "trainer.ready", "the trainer is built", seconds=timer.seconds(), gpu_memory_mb=gpu_memory_mb())
     stage("trainer ready; training starts (the first step is slow: kernels compile)")
+    system_event(events, "training.started", "training starts", max_steps=num_train_steps, examples=len(examples))
     train_result = trainer.train()
 
     print("\n" + "=" * 60 + "\nTRAINING COMPLETE\n" + "=" * 60)
@@ -92,7 +113,10 @@ def run_finetuning(dataset_path: str, num_train_steps: int = 100, model_size: st
 
     stage("training done; saving the adapters")
     save_dir = model_dir(job_id)
+    system_event(events, "adapters.saving", "saving the adapters and committing the models volume", path=save_dir)
+    timer = Timer()
     save_adapters(model, tokenizer, save_dir, commit_fn)
+    system_event(events, "adapters.saved", "the adapters are saved and committed", path=save_dir, seconds=timer.seconds())
     result = training_result(model_config, model_size, train_result, len(examples), num_train_steps)
     result["model"] = describe(
         save_dir, base_model=model_config["model_name"], model_size=model_size, num_examples=len(examples),

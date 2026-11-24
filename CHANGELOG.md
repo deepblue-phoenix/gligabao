@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.245.0] - 2026-11-25
+
+System events of the Modal training jobs as provider events.
+
+### Added
+
+- **System events** (`kind` `system`, `monitoring.KindSystem`) in `Hooks.ProviderEvents`: what happens around a training job, not in it. The training container reports them (`ml_sidecar/ai_train/ai_train_core/system_events.py`) and the server emits each as `training_job.<name>`: `container.started` (cold or warm start, container id, region, cloud, Python), `image.ready` (the cached image id), `gpu.info`, `libraries.importing` / `.imported`, `dataset.loading` / `.loaded`, `model.loading` / `.loaded`, `lora.adding` / `.added`, `trainer.building` / `.ready`, `training.started`, `adapters.saving` / `.saved` and `job.stop_observed`; stages carry their `seconds`. They are stored with the job's other events (event type `system`).
+
 ## [0.244.0] - 2026-11-24
 
 Every hook gets the `Runtime`, and there is a startup hook. **Breaking** for programs that embed gligabao.

@@ -21,6 +21,7 @@ func TestTrainingEventToProviderEvent(t *testing.T) {
 		{"status", ml_sidecar.TrainingEvent{Type: ml_sidecar.EventStatus, Status: "completed"}, ProviderEventJobStatus, monitoring.KindLifecycle, "status"},
 		{"progress", ml_sidecar.TrainingEvent{Type: ml_sidecar.EventProgress, Step: &step, Loss: &loss, Timestamp: 1700000000.5}, ProviderEventJobProgress, monitoring.KindProgress, "step"},
 		{"log", ml_sidecar.TrainingEvent{Type: ml_sidecar.EventLog, Message: "hi"}, ProviderEventJobLog, monitoring.KindLog, "message"},
+		{"system", ml_sidecar.TrainingEvent{Type: ml_sidecar.EventSystem, System: "model.loaded", Message: "ok", Data: map[string]any{"seconds": 1.5}}, "training_job.model.loaded", monitoring.KindSystem, "seconds"},
 	}
 	for _, c := range cases {
 		got := trainingEventToProviderEvent(run, c.ev)

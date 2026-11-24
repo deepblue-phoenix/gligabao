@@ -15,6 +15,7 @@ from .dataset import resolve_dataset_path
 from .event_log import EventLog
 from .model_families import DEFAULT_MODEL_FAMILY, family_module
 from .progress_events import JobCancelled, write_log, write_status
+from .system_events import Timer, report_container_start, system_event
 
 
 def run_ping(volume_paths: list) -> dict:
@@ -47,9 +48,14 @@ def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callabl
     log = EventLog(event_kv, job_id) if event_kv is not None else None
     write_status(log, "running", model_size=model_size, num_train_steps=num_train_steps)
     try:
+        report_container_start(log)
         dataset_path = resolve_dataset_path(dataset)
         write_log(log, f"importing the training libraries; dataset {dataset}")
+        system_event(log, "libraries.importing", "importing the training libraries", dataset=dataset,
+                     model_size=model_size, model_family=model_family)
+        timer = Timer()
         model_train = family_module("model_train", model_family)
+        system_event(log, "libraries.imported", "the training libraries are imported", seconds=timer.seconds())
         result = model_train.run_finetuning(num_train_steps=num_train_steps, model_size=model_size,
                                             commit_fn=commit_fn, dataset_path=dataset_path, job_id=job_id, events=log)
     except JobCancelled as e:

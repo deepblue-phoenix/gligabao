@@ -77,6 +77,8 @@ def _describe(ev: dict) -> str:
         return f"step {ev.get('step')} loss {ev.get('loss')}"
     if ev["type"] == "log":
         return str(ev.get("message"))
+    if ev["type"] == "system":
+        return f"system {ev.get('event')}"
     if ev["type"] == "state":   # a research job
         return f"{ev.get('agent')}: {ev.get('state')}"
     if ev["type"] == "usage":

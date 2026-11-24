@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from unittest import mock
 
 import training_data
-from ai_train_core import agent_run, dataset, event_log, paths, progress_events, trained_model
+from ai_train_core import agent_run, dataset, event_log, paths, progress_events, system_events, trained_model
 from providers.base import CallStatus
 from ai_train_core import model_families, training_common
 from ai_train_core.gemma4 import prompt_format
@@ -1223,6 +1223,37 @@ class InferenceCacheTest(unittest.TestCase):
                 with self.assertRaises(FileNotFoundError):
                     self.inference._get_model("4b", str(Path(self.dir.name) / "none"))
             self.assertEqual(load.call_count, 2)
+
+
+class SystemEventsTest(unittest.TestCase):
+    def setUp(self):
+        self.log = event_log.EventLog(FakeKV(), "j", sleep=lambda s: None)
+        self.addCleanup(setattr, system_events, "_container_used", False)
+        system_events._container_used = False
+
+    def events(self):
+        return [e for _, e in self.log.read_from(0)]
+
+    def test_system_event_shape_and_none_dropped(self):
+        system_events.system_event(self.log, "model.loaded", "ok", name="clash", seconds=1.5, gpu_memory_mb=None)
+        (ev,) = self.events()
+        self.assertEqual((ev["type"], ev["event"], ev["message"]), ("system", "model.loaded", "ok"))
+        self.assertEqual(ev["data"], {"name": "clash", "seconds": 1.5})
+
+    def test_container_start_cold_then_warm(self):
+        with mock.patch.object(system_events, "gpu_info", return_value=None):
+            system_events.report_container_start(self.log)
+            system_events.report_container_start(self.log)
+        starts = [e["data"]["start"] for e in self.events() if e["event"] == "container.started"]
+        self.assertEqual(starts, ["cold", "warm"])
+        self.assertEqual(sum(e["event"] == "image.ready" for e in self.events()), 2)
+
+    def test_container_info_reads_modal_env(self):
+        info = system_events.container_info({"MODAL_TASK_ID": "ta-1", "MODAL_REGION": "us-east"})
+        self.assertEqual((info["container_id"], info["region"]), ("ta-1", "us-east"))
+
+    def test_no_log_is_fine(self):
+        system_events.system_event(None, "x.y")
 
 
 if __name__ == "__main__":

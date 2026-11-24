@@ -26,6 +26,10 @@ const (
 	ProviderEventStreamError      = "training_job.stream_error"   // lifecycle: the event stream of the job failed (it is retried)
 )
 
+// ProviderEventSystemPrefix starts the type of a system event of the job's container (ml_sidecar/ai_train/ai_train_core/
+// system_events.py): "training_job." + its name, e.g. "training_job.container.started", "training_job.model.loaded".
+const ProviderEventSystemPrefix = "training_job."
+
 // jobFields are the fields every provider event of a run has.
 func jobFields(run trainingdb.TrainingJobRun) monitoring.Event {
 	return monitoring.Event{
@@ -97,6 +101,12 @@ func trainingEventToProviderEvent(run trainingdb.TrainingJobRun,
 		}
 		if ev.ElapsedSeconds != nil {
 			extra["elapsed_seconds"] = *ev.ElapsedSeconds
+		}
+	case ml_sidecar.EventSystem:
+		typ, kind = ProviderEventSystemPrefix+ev.System, monitoring.KindSystem
+		extra["message"] = ev.Message
+		for k, v := range ev.Data {
+			extra[k] = v
 		}
 	default:
 		extra["message"] = ev.Message

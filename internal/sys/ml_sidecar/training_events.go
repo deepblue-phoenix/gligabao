@@ -17,6 +17,7 @@ const (
 	EventStatus   = "status"
 	EventProgress = "progress"
 	EventLog      = "log"
+	EventSystem   = "system"
 )
 
 // TrainingEvent is one event of a training job's progress (ml_sidecar/ai_train/ai_train_core/progress_events.py): a status
@@ -33,6 +34,10 @@ type TrainingEvent struct {
 	Error     string   `json:"error,omitempty"`
 	// Message is the text of a log event: what the job is doing (loading the model, ...).
 	Message string `json:"message,omitempty"`
+	// System is the name of a system event ("container.started", "model.loaded", ...: ai_train_core/system_events.py) and Data
+	// its details; Message says it in words.
+	System string         `json:"event,omitempty"`
+	Data   map[string]any `json:"data,omitempty"`
 	// Traceback is the Python traceback of a failed job (its last part), for diagnosis.
 	Traceback string `json:"traceback,omitempty"`
 	// Progress events: the Trainer's step, loss (nil when the log has none, or it is not finite), learning rate and epoch,

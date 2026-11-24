@@ -23,6 +23,7 @@ const (
 	KindLifecycle = "lifecycle"
 	KindProgress  = "progress"
 	KindLog       = "log"
+	KindSystem    = "system" // the provider's system events: container, image, GPU, dataset, model and trainer set-up
 )
 
 // ProviderEventsBuffer is the depth of the channel each ProviderEvents callback gets. An event that finds it full is dropped
@@ -35,7 +36,7 @@ type ProviderEvent struct {
 	ProviderType string `json:"provider_type"`
 	// Type is what happened, "<subject>.<what>", e.g. "training_job.started", "training_job.status", "training_job.progress".
 	Type string `json:"type"`
-	// Kind is KindLifecycle, KindProgress or KindLog.
+	// Kind is KindLifecycle, KindProgress, KindLog or KindSystem.
 	Kind string `json:"kind"`
 	// Time is when the event happened.
 	Time time.Time `json:"time"`
