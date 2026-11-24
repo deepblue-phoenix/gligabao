@@ -5,7 +5,7 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 | Hook | Where it is set | Called | Purpose |
 |---|---|---|---|
 | [`Hooks.OnStart`](#runtime-and-onstart) | `ServeOptions.Hooks` | once, when the server starts, after gligabao has set everything up and before it accepts requests | prepare what your other hooks need (create tables, warm up clients) with the clients of the `Runtime` |
-| [`Hooks.ProviderEvents`](#provider-events) | `ServeOptions.Hooks` | once, at the same moment, with the channel the events of the compute providers (Modal) arrive on | record or forward what the providers do for the training jobs |
+| [`Hooks.TrainingEvents`](#training-events) | `ServeOptions.Hooks` | once, at the same moment, with the channel the events of the training jobs arrive on | record or forward what happens in the training jobs and what the compute provider (Modal) does for them |
 | [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `query` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
 | [`Auth`](#auth) | `ServeOptions.Auth` | at the start of every request to a user route (`remember`, `query`, datasets, timeseries, ontologies, research), with the API key of the request | authenticate the caller: map an API key to the user it belongs to |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
@@ -45,11 +45,18 @@ Hooks: []gligabao.Hooks{{
 - Called **once**, by `Serve` and by `Mount`, after the databases are open and the providers and managers exist, and **before** the server listens (before `Mount` returns), before the scheduled agents run.
 - Several hook sets: called in the order of the list, one after the other, on the starting goroutine.
 - **Fail fast:** an error (or a panic, turned into an error) aborts the start: `Serve` / `Mount` returns it and nothing is served.
-- `Hooks.ProviderEvents` callbacks are called right after the `OnStart` hooks, so the tables they write to exist.
+- `Hooks.TrainingEvents` callbacks are called right after the `OnStart` hooks, so the tables they write to exist.
 
-## Provider events
+## Training events
 
-`Hooks.ProviderEvents` is called once, at startup, with the `Runtime` and a channel (`<-chan gligabao.ProviderEvent`, depth 1000) the events of the compute providers arrive on (`provider_type` is `modal` for now: the training jobs started, status, progress, log lines, model recorded, stop requested; and `system` events of the training container: `training_job.container.started` (cold/warm), `.image.ready`, `.gpu.info`, `.libraries.importing`, `.dataset.loaded`, `.model.loaded`, `.trainer.ready`, `.training.started`, `.adapters.saved`, ...). It must return quickly: start a goroutine that ranges over the channel. Each callback has its own channel, closed when `Serve` returns; events emitted before the callback is called wait in the channel; an event that finds it full is dropped with a warning. Fields of `ProviderEvent`: `ProviderType`, `UserID` (the user the event belongs to, the owner of the training job; empty only for a job made before jobs had a user), `Type` (`training_job.started`, `.status`, `.progress`, ...), `Kind` (`lifecycle`, `progress`, `log`, `system`), `Time`, `Data`. See the [changelog](../CHANGELOG.md) for the list.
+`Hooks.TrainingEvents` is called once, at startup, with the `Runtime` and a channel (`<-chan gligabao.TrainingEvent`, depth 1000) the events of the training jobs arrive on. They are the same events, in the same struct, as the SSE feed `GET /v1/gb/training/events` serves (see [training/ml_sidecar.md](training/ml_sidecar.md)): `Type` says what each one is. It must return quickly: start a goroutine that ranges over the channel. Each callback has its own channel, closed when `Serve` returns; events emitted before the callback is called wait in the channel; an event that finds it full is dropped with a warning. The events are shared with the feed and the other callbacks: read-only.
+
+`Type` is one of:
+
+- from the ML sidecar's log of the job: `status` (`Status`: `running`, `training`, `completed`, `failed`, `cancelled`; `MaxSteps`, `FinalLoss`, `Error`), `progress` (`Step`, `Loss`, `LearningRate`, `Epoch`, `ElapsedSeconds`), `log` (`Message`) and `system` (an event of the training container: `System` is `container.started` (cold/warm), `image.ready`, `gpu.info`, `libraries.importing`, `dataset.loaded`, `model.loaded`, `trainer.ready`, `training.started`, `adapters.saved`, ..., with `Message` and `Data`);
+- from gligabao itself: `started` (the provider accepted the job), `stop_requested`, `model_recorded` (`ModelID`, `Model`: the weights of a completed job were recorded) and `stream_error` (`Error`: the job's event stream failed, it is retried). Their `Seq` is `monitoring.NoSeq` (-1): they are not in the stored log of the job.
+
+Fields of every event: `RunID` and `JobID` (the job), `UserID` (the user the job belongs to, the owner of the job; empty only for a job made before jobs had a user; it is not sent on the SSE feed), `ProviderType` (the compute provider the event is about, `modal` for now; empty for an event that is not about a provider: a program that wants only what the provider does keeps the events that have it), `Seq`, `Type` and `Timestamp` (seconds since the Unix epoch). Which fields an event has depends on its `Type`; the others are zero.
 
 ## System events
 
@@ -77,7 +84,7 @@ type SystemEventHook func(ctx context.Context, rt *gbruntime.Runtime, eventType 
 type Hooks struct {
     OnStart        OnStartHook        // nil: skipped
     SystemEvent    SystemEventHook    // nil: skipped
-    ProviderEvents ProviderEventsHook // nil: skipped
+    TrainingEvents TrainingEventsHook // nil: skipped
 }
 ```
 

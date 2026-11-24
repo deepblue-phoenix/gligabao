@@ -242,7 +242,7 @@ func testStopTrainingJob(t *testing.T,
 		h(rec, req)
 		return rec
 	}
-	h := training.StopJobOf(d, sc)
+	h := training.StopJobOf(d, sc, nil)
 
 	if rec := stop(h, "1"); rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"stopping"`) {
 		t.Fatalf("stop: %d %s",
@@ -278,7 +278,7 @@ func testStopTrainingJob(t *testing.T,
 	if rec := stop(h, "1"); rec.Code != http.StatusBadGateway {
 		t.Fatalf("ml_sidecar error: %d", rec.Code)
 	}
-	if rec := stop(training.StopJobOf(d, nil), "1"); rec.Code != http.StatusServiceUnavailable {
+	if rec := stop(training.StopJobOf(d, nil, nil), "1"); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no ML sidecar: %d", rec.Code)
 	}
 }

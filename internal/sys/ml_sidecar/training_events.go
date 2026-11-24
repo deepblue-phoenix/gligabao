@@ -10,76 +10,28 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
-// Types of a TrainingEvent.
+// Types of a TrainingEvent (the ones the ML sidecar reports).
 const (
-	EventStatus   = "status"
-	EventProgress = "progress"
-	EventLog      = "log"
-	EventSystem   = "system"
+	EventStatus   = monitoring.EventStatus
+	EventProgress = monitoring.EventProgress
+	EventLog      = monitoring.EventLog
+	EventSystem   = monitoring.EventSystem
 )
 
 // TrainingEvent is one event of a training job's progress (ml_sidecar/ai_train/ai_train_core/progress_events.py): a status
-// change or a progress report. Fields that an event does not have are nil / empty.
-type TrainingEvent struct {
-	// Seq is the event's index in the job's event log (the SSE id); StreamTrainingJobEvents sets it.
-	Seq  int    `json:"seq"`
-	Type string `json:"type"` // EventStatus, EventProgress or EventLog
-	// Status ("running", "training", "completed", "failed", "cancelled") is set on status events. A completed event has the
-	// FinalLoss, a failed or cancelled one the Error; a "training" one the MaxSteps.
-	Status    string   `json:"status,omitempty"`
-	MaxSteps  *int     `json:"max_steps,omitempty"`
-	FinalLoss *float64 `json:"final_loss,omitempty"`
-	Error     string   `json:"error,omitempty"`
-	// Message is the text of a log event: what the job is doing (loading the model, ...).
-	Message string `json:"message,omitempty"`
-	// System is the name of a system event ("container.started", "model.loaded", ...: ai_train_core/system_events.py) and Data
-	// its details; Message says it in words.
-	System string         `json:"event,omitempty"`
-	Data   map[string]any `json:"data,omitempty"`
-	// Traceback is the Python traceback of a failed job (its last part), for diagnosis.
-	Traceback string `json:"traceback,omitempty"`
-	// Progress events: the Trainer's step, loss (nil when the log has none, or it is not finite), learning rate and epoch,
-	// and the seconds since training began.
-	Step           *int     `json:"step,omitempty"`
-	Loss           *float64 `json:"loss,omitempty"`
-	LearningRate   *float64 `json:"learning_rate,omitempty"`
-	Epoch          *float64 `json:"epoch,omitempty"`
-	ElapsedSeconds *float64 `json:"elapsed_seconds,omitempty"`
-	// Model is on the "completed" event: the weights the job saved (nil from an ML sidecar that does not report them).
-	Model *TrainedModelInfo `json:"model,omitempty"`
-	// Timestamp is when the event was written, in seconds since the Unix epoch.
-	Timestamp float64 `json:"timestamp,omitempty"`
-}
+// change, a progress report, a log line or a system event. It is the public monitoring.TrainingEvent, which the server completes
+// with the job it is of and passes on; StreamTrainingJobEvents sets its Seq.
+type TrainingEvent = monitoring.TrainingEvent
 
-// TrainedModelInfo describes the weights a completed training job saved (ml_sidecar/ai_train/ai_train_core/trained_model.py:
-// describe).
-type TrainedModelInfo struct {
-	BaseModel string `json:"base_model"`
-	ModelSize string `json:"model_size"`
-	// Path is the directory of the weights on the ML sidecar's models volume, relative to it ("trained/<job id>"): the
-	// `model_path` of an inference request.
-	Path      string             `json:"path"`
-	Files     []TrainedModelFile `json:"files"`
-	SizeBytes int64              `json:"size_bytes"`
-	// NumExamples and DatasetSHA256 are of the dataset file the job read; Params are the other training settings.
-	NumExamples   int             `json:"num_examples"`
-	DatasetSHA256 string          `json:"dataset_sha256"`
-	Params        json.RawMessage `json:"params,omitempty"`
-}
+// TrainedModelInfo describes the weights a completed training job saved.
+type TrainedModelInfo = monitoring.TrainedModelInfo
 
 // TrainedModelFile is one file of a trained model's weights.
-type TrainedModelFile struct {
-	Path      string `json:"path"`
-	SizeBytes int64  `json:"size_bytes"`
-	SHA256    string `json:"sha256,omitempty"`
-}
-
-// Finished reports whether the event ends the job.
-func (e TrainingEvent) Finished() bool {
-	return e.Type == EventStatus && (e.Status == "completed" || e.Status == "failed" || e.Status == "cancelled")
-}
+type TrainedModelFile = monitoring.TrainedModelFile
 
 // StreamTrainingJobEvents follows the progress of a training job: it calls GET /training/job_events (Server-Sent Events)
 // and calls fn with each event, from the one with index `from` (0 = the first) on. It returns nil when the ML sidecar ends

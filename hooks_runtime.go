@@ -12,7 +12,7 @@ import (
 
 // Every hook of the embedding program is called with the Runtime: the clients gligabao assembled when the server started (the
 // databases, ...), so the hook reuses them instead of opening its own. The hooks of this file are the per-request ones; the
-// lifecycle and event hooks are in package monitoring (Hooks.OnStart, Hooks.SystemEvent, Hooks.ProviderEvents) and take the Runtime too.
+// lifecycle and event hooks are in package monitoring (Hooks.OnStart, Hooks.SystemEvent, Hooks.TrainingEvents) and take the Runtime too.
 //
 // The internal code of gligabao calls hooks without a Runtime; the functions below (bind*) close each public hook over the Runtime
 // of the server (a gbruntime.Ref the server fills once the databases are open, before it accepts requests), and give the internal

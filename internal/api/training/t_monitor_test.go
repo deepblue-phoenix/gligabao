@@ -19,6 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
 // streamMLSidecar is an ML sidecar whose job events the test feeds: StreamTrainingJobEvents replays what was fed so far from
@@ -124,7 +125,7 @@ func openSSE(t *testing.T,
 
 type sseEvent struct {
 	ID, Name string
-	Data     core.FeedEvent
+	Data     monitoring.TrainingEvent
 }
 
 // next returns the next event, skipping comments.
@@ -219,6 +220,12 @@ func testTrainingMonitor(t *testing.T,
 				1)
 			return n == 3
 		})
+	// the events of gligabao itself are on the same feed: live only (seq -1, no id), first on the feed of all the runs
+	if ev := all.next(); ev.Name != monitoring.EventStarted || ev.Data.Seq != monitoring.NoSeq || ev.ID != "" ||
+		ev.Data.RunID != 1 || ev.Data.JobID != "fc-4b" || ev.Data.ProviderType != monitoring.ProviderModal ||
+		ev.Data.MaxSteps == nil || *ev.Data.MaxSteps != 10 || ev.Data.UserID != "" {
+		t.Fatalf("started event: %+v", ev)
+	}
 	for i, want := range []string{"status", "progress", "progress"} {
 		for _, c := range []*sseClient{all, live} {
 			ev := c.next()
@@ -262,6 +269,10 @@ func testTrainingMonitor(t *testing.T,
 		Params:        json.RawMessage(`{"lora_rank":16}`),
 	}
 	sc.feed <- done
+	// the model is recorded before the completed event is passed on, and says so (live only, no id)
+	if ev := live.next(); ev.Name != monitoring.EventModelRecorded || ev.Data.ModelID != 1 || ev.Data.Model == nil || ev.Data.Model.Path != "trained/fc-4b" || ev.ID != "" {
+		t.Fatalf("model_recorded event: %+v", ev)
+	}
 	if ev := live.next(); ev.Name != "status" || ev.Data.Status != "completed" || ev.ID != "3" {
 		t.Fatalf("completed event: %+v", ev)
 	}

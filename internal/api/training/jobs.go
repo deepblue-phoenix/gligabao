@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -85,7 +86,8 @@ func StartJobOf(db *sql.DB,
 // any other: the answer is 202 with {"id": <run>, "status": "stopping"}, and the job's row changes when the event arrives.
 // 404 is for an unknown run, 409 for one that is over already, 503 for a nil sc, 502 for an ML sidecar error.
 func StopJobOf(db *sql.DB,
-	sc core.JobCanceller) http.HandlerFunc {
+	sc core.JobCanceller,
+	mon *core.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := userOf(w, r)
@@ -105,6 +107,7 @@ func StopJobOf(db *sql.DB,
 		run, err := core.StopJob(r.Context(),
 			db,
 			sc,
+			mon,
 			userID,
 			id)
 		if err != nil {
@@ -157,8 +160,11 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 }
 
 // EventsOf serves GET /v1/gb/training/events[?run_id=<id>] as Server-Sent Events, the feed of the
-// events the ML sidecar reports for training jobs (forwarded by mon): `event: status`, `event: progress` or `event: log` (what
-// the job is doing: loading the model, ...), `data:` a FeedEvent as JSON.
+// training events of the jobs (forwarded by mon), the same ones the Hooks.TrainingEvents callbacks get. `event:` is the type of the event
+// (monitoring.TrainingEvent.Type): `status`, `progress`, `log` (what the job is doing: loading the model, ...) and `system` (of the job's
+// container) from the ML sidecar, and `started`, `stop_requested`, `model_recorded` and `stream_error` from gligabao itself; `data:` is the
+// monitoring.TrainingEvent as JSON. The events of gligabao itself are live only: their seq is -1 (monitoring.NoSeq), they have no `id:` and
+// they are not replayed.
 //
 // With run_id the stream is of that run: first the events already stored (from the one after Last-Event-ID, which a
 // reconnecting EventSource sends, or from the `from` parameter), then the live ones; each has `id: <seq>`. The stream
@@ -207,7 +213,7 @@ func EventsOf(db *sql.DB,
 		sub, cancel := mon.Subscribe(runID,
 			userID)
 		defer cancel()
-		var history []core.FeedEvent
+		var history []monitoring.TrainingEvent
 		if runID != 0 {
 			var err error
 			if history, err = core.JobHistory(r.Context(),
@@ -226,12 +232,12 @@ func EventsOf(db *sql.DB,
 		h.Set("Cache-Control", "no-cache")
 		h.Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
-		send := func(ev core.FeedEvent) bool {
+		send := func(ev monitoring.TrainingEvent) bool {
 			b, err := json.Marshal(ev)
 			if err != nil {
 				return true
 			}
-			if runID != 0 {
+			if runID != 0 && ev.Seq != monitoring.NoSeq {
 				_, err = w.Write([]byte("id: " + strconv.Itoa(ev.Seq) + "\n"))
 			}
 			if err == nil {
@@ -262,13 +268,15 @@ func EventsOf(db *sql.DB,
 				if !ok { // fell behind: the client reconnects and is caught up from the database
 					return
 				}
-				if runID != 0 && ev.Seq < next {
+				if runID != 0 && ev.Seq != monitoring.NoSeq && ev.Seq < next {
 					continue
 				}
 				if !send(ev) {
 					return
 				}
-				next = ev.Seq + 1
+				if ev.Seq != monitoring.NoSeq {
+					next = ev.Seq + 1
+				}
 			case <-keepalive.C:
 				if _, err := w.Write([]byte(": keepalive\n\n")); err != nil || rc.Flush() != nil {
 					return

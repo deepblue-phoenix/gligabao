@@ -29,15 +29,6 @@ type MLSidecar interface {
 		fn func(ml_sidecar.TrainingEvent) error) error
 }
 
-// FeedEvent is an event as the admin UI receives it: the ML sidecar's event and which job it is of.
-type FeedEvent struct {
-	RunID int64  `json:"run_id"`
-	JobID string `json:"job_id"`
-	// UserID is the user of the job: a subscription gets only the events of its user. It is not sent to the client.
-	UserID string `json:"-"`
-	ml_sidecar.TrainingEvent
-}
-
 const (
 	// DefaultWatchTimeout is how long after a job started the monitor waits for it to report that it ended
 	// (the ML sidecar's train timeout is 2 hours, ML_SIDECAR_TRAIN_TIMEOUT_S); then the job is marked failed.
@@ -68,7 +59,7 @@ type Monitor struct {
 type Subscription struct {
 	runID  int64  // 0: every run (of the user)
 	userID string // only the events of the jobs of this user; "" (in-process users of the monitor only, never a request): every user
-	C      chan FeedEvent
+	C      chan monitoring.TrainingEvent
 }
 
 // MonitorOption configures a Monitor.
@@ -171,10 +162,9 @@ func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
 		}
 		if err != nil {
 			l.WithError(err).Warn("training: training job: ml_sidecar event stream ended with an error")
-			monitoring.EmitProviderEvent(jobEvent(ProviderEventStreamError,
-				monitoring.KindLifecycle,
-				run,
-				monitoring.Event{"error": err.Error()}))
+			streamErr := jobEvent(run, monitoring.EventStreamError)
+			streamErr.Error = err.Error()
+			m.Emit(streamErr)
 		}
 		if time.Now().After(deadline) {
 			l.Warn("training: training job: no end reported in time, marking it failed")
@@ -259,13 +249,7 @@ func (m *Monitor) record(run trainingdb.TrainingJobRun,
 		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
 			Errorf("training: training job failed\n%s", ev.Traceback)
 	}
-	monitoring.EmitProviderEvent(trainingEventToProviderEvent(run, ev))
-	m.publish(FeedEvent{
-		RunID:         run.ID,
-		UserID:        run.UserID,
-		JobID:         run.JobID,
-		TrainingEvent: ev,
-	})
+	m.Emit(ofRun(run, ev))
 	return nil
 }
 
@@ -313,10 +297,10 @@ func (m *Monitor) recordModel(ctx context.Context,
 	}
 	if isNew {
 		l.WithFields(log.Fields{"model_id": id, "path": tm.Path, "files": len(tm.Files), "size_bytes": tm.SizeBytes}).Info("training: trained model recorded")
-		monitoring.EmitProviderEvent(jobEvent(ProviderEventModelRecorded,
-			monitoring.KindLifecycle,
-			run,
-			monitoring.Event{"model_id": id, "path": tm.Path, "files": len(tm.Files), "size_bytes": tm.SizeBytes}))
+		recorded := jobEvent(run, monitoring.EventModelRecorded)
+		recorded.ModelID = id
+		recorded.Model = info
+		m.Emit(recorded)
 	}
 	return nil
 }
@@ -345,6 +329,15 @@ func trainingRunUpdate(ev ml_sidecar.TrainingEvent) *trainingdb.TrainingJobRunUp
 	return nil
 }
 
+// Emit sends the event to the hooks (monitoring.EmitTrainingEvent) and to the subscribers of the feed: the one way out of every training event.
+// It is safe on a nil monitor, which has no subscribers.
+func (m *Monitor) Emit(ev monitoring.TrainingEvent) {
+	monitoring.EmitTrainingEvent(ev)
+	if m != nil {
+		m.publish(ev)
+	}
+}
+
 // Subscribe returns a subscription to the events of one run (runID 0: of every run) of the jobs of userID (a request always gives its
 // user; "" is for code that runs inside the server and follows every user). cancel ends it. The channel is closed, without cancel, when
 // the subscriber falls too far behind.
@@ -353,7 +346,7 @@ func (m *Monitor) Subscribe(runID int64,
 	s := &Subscription{
 		runID:  runID,
 		userID: userID,
-		C:      make(chan FeedEvent, subBuffer),
+		C:      make(chan monitoring.TrainingEvent, subBuffer),
 	}
 	m.mu.Lock()
 	m.subs[s] = struct{}{}
@@ -371,7 +364,7 @@ func (m *Monitor) Subscribe(runID int64,
 // Done is closed when the monitor's context is done.
 func (m *Monitor) Done() <-chan struct{} { return m.ctx.Done() }
 
-func (m *Monitor) publish(ev FeedEvent) {
+func (m *Monitor) publish(ev monitoring.TrainingEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for s := range m.subs {

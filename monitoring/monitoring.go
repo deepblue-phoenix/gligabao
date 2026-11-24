@@ -39,8 +39,8 @@ type Hooks struct {
 	OnStart OnStartHook
 	// SystemEvent is called for every system event.
 	SystemEvent SystemEventHook
-	// ProviderEvents receives the channel the events of the compute providers (Modal, ...) arrive on; see provider_events.go.
-	ProviderEvents ProviderEventsHook
+	// TrainingEvents receives the channel the events of the training jobs arrive on; see training_events.go.
+	TrainingEvents TrainingEventsHook
 }
 
 var hooks atomic.Pointer[[]Hooks]
@@ -52,7 +52,7 @@ var current gbruntime.Ref
 // ServeOptions.Hooks.
 func SetHooks(h []Hooks) {
 	current.Set(nil)
-	installProviderEvents(h)
+	installTrainingEvents(h)
 	if len(h) == 0 {
 		hooks.Store(nil)
 		return
@@ -62,7 +62,7 @@ func SetHooks(h []Hooks) {
 }
 
 // Start tells the installed hooks that the server is up: it makes rt the runtime the hooks get, calls the OnStart callback of every
-// Hooks in order and then hands each ProviderEvents callback its channel (events that were emitted before are waiting in it). It
+// Hooks in order and then hands each TrainingEvents callback its channel (events that were emitted before are waiting in it). It
 // stops at the first OnStart error (a panic counts as one) and returns it; the server must then not start. Call it once, after
 // SetHooks, when everything the hooks may use is ready and before requests are accepted.
 func Start(ctx context.Context,
@@ -81,7 +81,7 @@ func Start(ctx context.Context,
 			}
 		}
 	}
-	startProviderEvents(rt)
+	startTrainingEvents(rt)
 	return nil
 }
 

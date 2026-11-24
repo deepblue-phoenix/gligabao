@@ -84,8 +84,8 @@ const DefaultDBPath = db.DefaultSQLitePath
 // Hooks is a set of callbacks gligabao invokes (e.g. for system events); see package monitoring.
 type Hooks = monitoring.Hooks
 
-// ProviderEvent is an event of a compute provider (Modal, ...); see Hooks.ProviderEvents and package monitoring.
-type ProviderEvent = monitoring.ProviderEvent
+// TrainingEvent is an event of a training job (status, progress, log, system, started, ...); see Hooks.TrainingEvents and package monitoring.
+type TrainingEvent = monitoring.TrainingEvent
 
 // SystemEvent is the key/value data attached to a system event.
 type SystemEvent = monitoring.Event
@@ -246,7 +246,7 @@ type ServeOptions struct {
 	// admin UI, the training and eval endpoints (use MountOptions.Wrap).
 	Auth Authenticator
 	// Hooks are installed for the lifetime of Serve: OnStart runs once before requests are accepted, SystemEvent for each system event,
-	// ProviderEvents gets the channel of the provider events. Every hook of the program is called with the Runtime.
+	// TrainingEvents gets the channel of the training events. Every hook of the program is called with the Runtime.
 	Hooks []Hooks
 }
 

@@ -174,7 +174,7 @@ type Options struct {
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
 	TimeseriesProviders []memory_core.SeriesProvider
 	// RuntimeRef, if set, receives the Runtime (the clients of the opened databases) as soon as it is built, so the hooks that are called
-	// per request can read it. Prepare also hands the same Runtime to the OnStart and ProviderEvents hooks (monitoring.Start).
+	// per request can read it. Prepare also hands the same Runtime to the OnStart and TrainingEvents hooks (monitoring.Start).
 	RuntimeRef *gbruntime.Ref
 	// GeoResolver finds the coordinates of the places remember extracts as entities (see package memory_geo). Nil: the Nominatim resolver
 	// of OpenStreetMap if Geo is true, else remember does not look at places.
@@ -656,7 +656,7 @@ func registerTraining(ctx context.Context,
 		dirs.Store(),
 		sc,
 		mon))
-	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc))
+	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc, mon))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))

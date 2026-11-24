@@ -8,15 +8,15 @@ import (
 	"github.com/deepblue-phoenix/gligabao/gbruntime"
 )
 
-func TestProviderEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T) {
-	got := make([]chan ProviderEvent, 2)
+func TestTrainingEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T) {
+	got := make([]chan TrainingEvent, 2)
 	for i := range got {
-		got[i] = make(chan ProviderEvent, 1)
+		got[i] = make(chan TrainingEvent, 1)
 	}
 	hooks := []Hooks{}
 	for i := range got {
 		i := i
-		hooks = append(hooks, Hooks{ProviderEvents: func(_ *gbruntime.Runtime, ch <-chan ProviderEvent) {
+		hooks = append(hooks, Hooks{TrainingEvents: func(_ *gbruntime.Runtime, ch <-chan TrainingEvent) {
 			go func() {
 				for ev := range ch {
 					got[i] <- ev
@@ -29,14 +29,14 @@ func TestProviderEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T)
 	t.Cleanup(func() { SetHooks(nil) })
 
 	// emitted before Start: it waits in the channel until the callback gets it
-	EmitProviderEvent(ProviderEvent{ProviderType: ProviderModal, Type: "x.y", Kind: KindLifecycle})
+	EmitTrainingEvent(TrainingEvent{ProviderType: ProviderModal, Type: EventStarted})
 	if err := Start(context.Background(), &gbruntime.Runtime{}); err != nil {
 		t.Fatal(err)
 	}
 	for i, c := range got {
 		select {
 		case ev := <-c:
-			if ev.ProviderType != ProviderModal || ev.Type != "x.y" || ev.Time.IsZero() {
+			if ev.ProviderType != ProviderModal || ev.Type != EventStarted {
 				t.Fatalf("callback %d got %+v", i, ev)
 			}
 		case <-time.After(time.Second):
@@ -56,29 +56,29 @@ func TestProviderEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T)
 	}
 }
 
-func TestProviderEventsDropWhenFullAndNeverBlock(t *testing.T) {
-	var ch <-chan ProviderEvent
-	SetHooks([]Hooks{{ProviderEvents: func(_ *gbruntime.Runtime, c <-chan ProviderEvent) { ch = c }}})
+func TestTrainingEventsDropWhenFullAndNeverBlock(t *testing.T) {
+	var ch <-chan TrainingEvent
+	SetHooks([]Hooks{{TrainingEvents: func(_ *gbruntime.Runtime, c <-chan TrainingEvent) { ch = c }}})
 	t.Cleanup(func() { SetHooks(nil) })
 	if err := Start(context.Background(), &gbruntime.Runtime{}); err != nil {
 		t.Fatal(err)
 	}
 
-	for range ProviderEventsBuffer + 50 {
-		EmitProviderEvent(ProviderEvent{ProviderType: ProviderModal, Type: "x"})
+	for range TrainingEventsBuffer + 50 {
+		EmitTrainingEvent(TrainingEvent{ProviderType: ProviderModal, Type: "x"})
 	}
-	if len(ch) != ProviderEventsBuffer {
-		t.Fatalf("queued %d, want %d", len(ch), ProviderEventsBuffer)
+	if len(ch) != TrainingEventsBuffer {
+		t.Fatalf("queued %d, want %d", len(ch), TrainingEventsBuffer)
 	}
 }
 
-func TestProviderEventsNoHookOrPanickingHook(t *testing.T) {
+func TestTrainingEventsNoHookOrPanickingHook(t *testing.T) {
 	SetHooks(nil)
-	EmitProviderEvent(ProviderEvent{Type: "x"})
-	SetHooks([]Hooks{{ProviderEvents: func(*gbruntime.Runtime, <-chan ProviderEvent) { panic("boom") }}})
+	EmitTrainingEvent(TrainingEvent{Type: "x"})
+	SetHooks([]Hooks{{TrainingEvents: func(*gbruntime.Runtime, <-chan TrainingEvent) { panic("boom") }}})
 	t.Cleanup(func() { SetHooks(nil) })
 	if err := Start(context.Background(), &gbruntime.Runtime{}); err != nil {
 		t.Fatal(err)
 	}
-	EmitProviderEvent(ProviderEvent{Type: "x"})
+	EmitTrainingEvent(TrainingEvent{Type: "x"})
 }

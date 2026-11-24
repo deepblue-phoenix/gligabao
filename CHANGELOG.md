@@ -5,6 +5,21 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.246.0] - 2026-11-25
+
+Provider events and training events are one thing: the training events. **Breaking** for programs that embed gligabao and use `Hooks.ProviderEvents`.
+
+### Changed
+
+- **One event type for the training jobs: `TrainingEvent`** (`monitoring.TrainingEvent`, also `gligabao.TrainingEvent`). The events of the ML sidecar's log (`status`, `progress`, `log`, `system`) and the events gligabao makes itself (`started`, `stop_requested`, `model_recorded`, `stream_error`; they were provider events) have the same struct, completed with the job (`run_id`, `job_id`, and `user_id` for the hooks) and `provider_type` (`modal`: the compute provider the event is about). `ml_sidecar.TrainingEvent` is now an alias of it, and `FeedEvent` is gone.
+- **`GET /v1/gb/training/events` carries all of them.** The events of gligabao itself are on the feed too, as `event: started|stop_requested|model_recorded|stream_error`. They are live only: `seq` is `-1` (`monitoring.NoSeq`), they have no `id:` (a reconnect resumes after the last stored event) and they are not stored or replayed. `model_recorded` is passed on before the `completed` status event of the job. A client that listens to the event names it knows ignores the new ones.
+- **`Hooks.ProviderEvents` is now `Hooks.TrainingEvents`** (`func(rt, <-chan TrainingEvent)`; `monitoring.TrainingEventsHook`, depth `TrainingEventsBuffer`; `monitoring.EmitTrainingEvent`). The channel gets every training event, the same ones the feed carries, not only what the provider does: a hook that wants only the provider's keeps those with a `ProviderType`.
+- `training.StopJob` and `api/training.StopJobOf` take the `Monitor`, which passes the `stop_requested` event on to the feed.
+
+### Removed
+
+- `monitoring.ProviderEvent`, `ProviderEventsHook`, `EmitProviderEvent`, `ProviderEventsBuffer`, the `Kind*` constants (`kind` is gone: it follows from `Type`) and the `Data` map of an event: its fields are fields of `TrainingEvent` now (`status`, `step`, `loss`, `error`, `model_id`, ...). `provider_job_id`, `dataset` and `model_size` are not on the event any more (the run has them: `run_id`).
+
 ## [0.245.0] - 2026-11-25
 
 System events of the Modal training jobs as provider events.

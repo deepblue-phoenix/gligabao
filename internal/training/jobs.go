@@ -122,10 +122,9 @@ func StartJob(ctx context.Context,
 		log.WithError(err).WithField("job_id", job.JobID).Error("training: read training job run failed")
 		return nil, internalErr("failed to read the training job run", err)
 	}
-	monitoring.EmitProviderEvent(jobEvent(ProviderEventJobStarted,
-		monitoring.KindLifecycle,
-		*run,
-		monitoring.Event{"num_train_steps": run.NumTrainSteps}))
+	started := jobEvent(*run, monitoring.EventStarted)
+	started.MaxSteps = &run.NumTrainSteps
+	mon.Emit(started)
 	mon.Watch(*run)
 	return run, nil
 }
@@ -155,6 +154,7 @@ func GetJobRun(ctx context.Context,
 func StopJob(ctx context.Context,
 	db *sql.DB,
 	sc JobCanceller,
+	mon *Monitor,
 	userID string,
 	id int64) (*trainingdb.TrainingJobRun, error) {
 	run, err := GetJobRun(ctx,
@@ -176,10 +176,7 @@ func StopJob(ctx context.Context,
 		return nil, &Error{KindUpstream, "ML sidecar failed to stop the training job", err}
 	}
 	log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Info("training: stop requested")
-	monitoring.EmitProviderEvent(jobEvent(ProviderEventJobStopRequested,
-		monitoring.KindLifecycle,
-		*run,
-		nil))
+	mon.Emit(jobEvent(*run, monitoring.EventStopRequested))
 	return run, nil
 }
 
@@ -189,7 +186,7 @@ func JobHistory(ctx context.Context,
 	db *sql.DB,
 	userID string,
 	runID int64,
-	from int) ([]FeedEvent, error) {
+	from int) ([]monitoring.TrainingEvent, error) {
 	run, err := GetJobRun(ctx,
 		db,
 		userID,
@@ -205,7 +202,7 @@ func JobHistory(ctx context.Context,
 		log.WithError(err).Error("training: read training job events failed")
 		return nil, internalErr("failed to read the training job events", err)
 	}
-	out := make([]FeedEvent,
+	out := make([]monitoring.TrainingEvent,
 		0,
 		len(history))
 	for _, e := range history {
@@ -214,12 +211,7 @@ func JobHistory(ctx context.Context,
 			continue
 		}
 		ev.Seq = e.Seq
-		out = append(out, FeedEvent{
-			RunID:         runID,
-			UserID:        run.UserID,
-			JobID:         run.JobID,
-			TrainingEvent: ev,
-		})
+		out = append(out, ofRun(*run, ev))
 	}
 	return out, nil
 }
