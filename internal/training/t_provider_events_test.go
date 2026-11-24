@@ -24,7 +24,7 @@ func TestTrainingEventToProviderEvent(t *testing.T) {
 	}
 	for _, c := range cases {
 		got := trainingEventToProviderEvent(run, c.ev)
-		if got.ProviderType != monitoring.ProviderModal || got.Type != c.wantType || got.Kind != c.wantKind {
+		if got.ProviderType != monitoring.ProviderModal || got.Type != c.wantType || got.Kind != c.wantKind || got.UserID != "u" {
 			t.Fatalf("%s: %+v", c.name, got)
 		}
 		if _, ok := got.Data[c.wantKey]; !ok || got.Data["job_id"] != "j1" || got.Data["run_id"] != int64(7) {

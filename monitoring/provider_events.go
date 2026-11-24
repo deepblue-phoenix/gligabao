@@ -4,13 +4,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/gbruntime"
 	log "github.com/sirupsen/logrus"
 )
 
 // Provider events: what the compute providers behind the ML sidecar (Modal today, others later) report about their work:
 // lifecycle (a job started, ended, was asked to stop), progress (a training step) and log lines. Unlike system events, they are
-// delivered asynchronously: a Hooks.ProviderEvents callback is given a channel once, when the hooks are installed, and reads
-// the events from it whenever it likes.
+// delivered asynchronously: a Hooks.ProviderEvents callback is given a channel once, when the server starts (see Start), and
+// reads the events from it whenever it likes.
 
 // Provider types: the ProviderType of an event says which provider it belongs to.
 const (
@@ -38,49 +39,68 @@ type ProviderEvent struct {
 	Kind string `json:"kind"`
 	// Time is when the event happened.
 	Time time.Time `json:"time"`
-	// Data are the details (run_id, job_id, user_id, status, step, loss, ...). The same map goes to every callback: read-only.
+	// UserID is the user the event belongs to (the owner of the training job): the provenance of the event. Every event of a job has
+	// it; it is empty only for a job made before jobs had a user.
+	UserID string `json:"user_id"`
+	// Data are the details (run_id, job_id, status, step, loss, ...). The same map goes to every callback: read-only.
 	Data Event `json:"data,omitempty"`
 }
 
-// ProviderEventsHook is the callback of Hooks.ProviderEvents. It is called once, when the hooks are installed (Serve start), with
-// the channel the events arrive on; it must return quickly (start a goroutine that ranges over the channel). The channel is
-// closed when the hooks are removed (Serve returns), which ends that goroutine. Each callback has a channel of its own.
-type ProviderEventsHook func(events <-chan ProviderEvent)
+// ProviderEventsHook is the callback of Hooks.ProviderEvents. It is called once, when the server starts (after the OnStart hooks,
+// before requests are accepted), with the runtime and the channel the events arrive on; it must return quickly (start a goroutine
+// that ranges over the channel). Events emitted before it is called wait in the channel. The channel is closed when the hooks are
+// removed (Serve returns), which ends that goroutine. Each callback has a channel of its own.
+type ProviderEventsHook func(rt *gbruntime.Runtime,
+	events <-chan ProviderEvent)
+
+// providerSub is one ProviderEvents callback and the channel that is its own.
+type providerSub struct {
+	hook ProviderEventsHook
+	ch   chan ProviderEvent
+}
 
 var (
-	providerMu    sync.RWMutex
-	providerChans []chan ProviderEvent
+	providerMu   sync.RWMutex
+	providerSubs []providerSub
 )
 
 // installProviderEvents closes the channels of the previous hooks and makes a new one for each hook of h that wants provider
-// events, then hands it to the callback. A panicking callback is contained.
+// events. The callbacks get them later, in startProviderEvents.
 func installProviderEvents(h []Hooks) {
-	fresh := make([]chan ProviderEvent, 0, len(h))
+	fresh := make([]providerSub, 0, len(h))
 	for _, set := range h {
 		if set.ProviderEvents != nil {
-			fresh = append(fresh, make(chan ProviderEvent, ProviderEventsBuffer))
+			fresh = append(fresh, providerSub{
+				hook: set.ProviderEvents,
+				ch:   make(chan ProviderEvent, ProviderEventsBuffer),
+			})
 		}
 	}
 	providerMu.Lock()
-	for _, ch := range providerChans {
-		close(ch)
+	for _, sub := range providerSubs {
+		close(sub.ch)
 	}
-	providerChans = fresh
+	providerSubs = fresh
 	providerMu.Unlock()
+}
 
-	i := 0
-	for _, set := range h {
-		if set.ProviderEvents != nil {
-			callProviderHook(set.ProviderEvents, fresh[i])
-			i++
-		}
+// startProviderEvents hands every callback its channel. A panicking callback is contained.
+func startProviderEvents(rt *gbruntime.Runtime) {
+	providerMu.RLock()
+	subs := append([]providerSub(nil), providerSubs...)
+	providerMu.RUnlock()
+	for _, sub := range subs {
+		callProviderHook(sub.hook,
+			rt,
+			sub.ch)
 	}
 }
 
 func callProviderHook(f ProviderEventsHook,
+	rt *gbruntime.Runtime,
 	ch <-chan ProviderEvent) {
 	defer func() { _ = recover() }()
-	f(ch)
+	f(rt, ch)
 }
 
 // EmitProviderEvent sends ev to the channel of every installed ProviderEvents callback; Time is set to now if zero. It never
@@ -91,9 +111,9 @@ func EmitProviderEvent(ev ProviderEvent) {
 	}
 	providerMu.RLock()
 	defer providerMu.RUnlock()
-	for _, ch := range providerChans {
+	for _, sub := range providerSubs {
 		select {
-		case ch <- ev:
+		case sub.ch <- ev:
 		default:
 			log.WithFields(log.Fields{
 				"provider_type": ev.ProviderType,

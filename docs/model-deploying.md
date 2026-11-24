@@ -33,7 +33,7 @@ err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
     TrainedModelDeployers: []gligabao.TrainedModelDeployer{{
         Name: "bucket",
         Description: "Uploads the model's files to the releases bucket.",
-        Deploy: func(ctx context.Context, req gligabao.DeployTrainedModelRequest) (gligabao.DeployTrainedModelResult, error) {
+        Deploy: func(ctx context.Context, rt *gligabao.Runtime, req gligabao.DeployTrainedModelRequest) (gligabao.DeployTrainedModelResult, error) {
             dest := fmt.Sprintf("models/%s/deploy-%d", req.Model.JobID, req.DeployID)
             for _, f := range req.Model.Files {
                 // f.Path is relative to req.Dir; the file is complete and verified
@@ -53,7 +53,7 @@ err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
 | Type | Fields |
 |---|---|
 | `gligabao.TrainedModelDeployer` | `Name`, `Description` (optional, shown in the admin UI), `Deploy` |
-| `gligabao.DeployTrainedModelFunc` | `func(ctx context.Context, req DeployTrainedModelRequest) (DeployTrainedModelResult, error)`, the type of `Deploy` |
+| `gligabao.DeployTrainedModelFunc` | `func(ctx context.Context, rt *Runtime, req DeployTrainedModelRequest) (DeployTrainedModelResult, error)`, the type of `Deploy` |
 | `gligabao.DeployTrainedModelRequest` | `DeployID`, `Model`, `Dir`, `Options`, `Update` |
 | `gligabao.DeployTrainedModelResult` | `Ref`, `Details` |
 

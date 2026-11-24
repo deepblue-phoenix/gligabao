@@ -4,6 +4,8 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 
 | Hook | Where it is set | Called | Purpose |
 |---|---|---|---|
+| [`Hooks.OnStart`](#runtime-and-onstart) | `ServeOptions.Hooks` | once, when the server starts, after gligabao has set everything up and before it accepts requests | prepare what your other hooks need (create tables, warm up clients) with the clients of the `Runtime` |
+| [`Hooks.ProviderEvents`](#provider-events) | `ServeOptions.Hooks` | once, at the same moment, with the channel the events of the compute providers (Modal) arrive on | record or forward what the providers do for the training jobs |
 | [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `query` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
 | [`Auth`](#auth) | `ServeOptions.Auth` | at the start of every request to a user route (`remember`, `query`, datasets, timeseries, ontologies, research), with the API key of the request | authenticate the caller: map an API key to the user it belongs to |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
@@ -12,9 +14,42 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 | [`TrainedModelInferenceHook.Infer`](#trained-model-inference-hooks) | `ServeOptions.TrainedModelInferenceHooks` | when a trained model whose name the hook targets is prompted (admin UI prompt dialog, `POST /v1/gb/training/models/{id}/infer`) | run the prompts of a trained model on your own infrastructure or a provider, instead of the ML sidecar (Modal) |
 | [`TrainedModelDeployer.Deploy`](#trained-model-deployers) | `ServeOptions.TrainedModelDeployers` | when a request deploys a trained model (`POST /v1/gb/training/models/{id}/deployments`) | hand the weights of a trained model to somewhere else (an upload, a copy, a conversion, ...) |
 
+**Every hook gets the [`Runtime`](#runtime-and-onstart)** (the clients gligabao assembled at startup, e.g. the relational database) as an argument, right after `ctx`.
+
 Not a callback, but also supplied by the embedding program: [admin UI extensions](admin-extensions.md) (`ServeOptions.AdminExtensions`) add views and UI to the admin page.
 
 Everything else (the remember queue, the stores, the LLM clients) lives under `internal/` and is not part of the public API; it cannot be hooked from outside the module.
+
+## Runtime and OnStart
+
+`gligabao.Runtime` (defined in package `gbruntime`, outside `internal/`) holds the clients gligabao assembled when the server started, so a hook reuses them instead of opening its own connections:
+
+| Field | Meaning |
+|---|---|
+| `Relational` | `*sql.DB`, the relational database that holds the `gb_*` tables. A hook may keep tables of its own in it. Never close it: gligabao owns it |
+| `DBBackend` | `"sqlite"` or `"postgres"` (`gbruntime.BackendSQLite`, `gbruntime.BackendPostgres`): the SQL dialect of `Relational` (placeholders, column types) |
+
+Every hook is called with the `Runtime` as the argument after `ctx` (`Authenticator`, `GraphEmbedder`, `ClassifyingTrainingHook`, `TimeseriesProvider.Fetch`, `TrainedModelInferenceHook.Infer`, `TrainedModelDeployer.Deploy`, `GeoResolver.Resolve`, and the hooks of `ServeOptions.Hooks`). It is the same value for the whole life of the server. The admin extension `Handler` is a plain `http.Handler` and does not get it.
+
+`Hooks.OnStart` is the central startup hook:
+
+```go
+Hooks: []gligabao.Hooks{{
+    OnStart: func(ctx context.Context, rt *gligabao.Runtime) error {
+        _, err := rt.Relational.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS my_table (...)`)
+        return err
+    },
+}},
+```
+
+- Called **once**, by `Serve` and by `Mount`, after the databases are open and the providers and managers exist, and **before** the server listens (before `Mount` returns), before the scheduled agents run.
+- Several hook sets: called in the order of the list, one after the other, on the starting goroutine.
+- **Fail fast:** an error (or a panic, turned into an error) aborts the start: `Serve` / `Mount` returns it and nothing is served.
+- `Hooks.ProviderEvents` callbacks are called right after the `OnStart` hooks, so the tables they write to exist.
+
+## Provider events
+
+`Hooks.ProviderEvents` is called once, at startup, with the `Runtime` and a channel (`<-chan gligabao.ProviderEvent`, depth 1000) the events of the compute providers arrive on (`provider_type` is `modal` for now: the training jobs started, status, progress, log lines, model recorded, stop requested. It must return quickly: start a goroutine that ranges over the channel. Each callback has its own channel, closed when `Serve` returns; events emitted before the callback is called wait in the channel; an event that finds it full is dropped with a warning. Fields of `ProviderEvent`: `ProviderType`, `UserID` (the user the event belongs to, the owner of the training job; empty only for a job made before jobs had a user), `Type` (`training_job.started`, `.status`, `.progress`, ...), `Kind` (`lifecycle`, `progress`, `log`), `Time`, `Data`. See the [changelog](../CHANGELOG.md) for the list.
 
 ## System events
 
@@ -24,7 +59,7 @@ import "github.com/deepblue-phoenix/gligabao"
 err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
     DBPath: "data/gligabao.db",
     Hooks: []gligabao.Hooks{{
-        SystemEvent: func(ctx context.Context, eventType string, ev gligabao.SystemEvent) {
+        SystemEvent: func(ctx context.Context, rt *gligabao.Runtime, eventType string, ev gligabao.SystemEvent) {
             log.Printf("%s: %v", eventType, ev)
         },
     }},
@@ -38,9 +73,11 @@ type Hooks = monitoring.Hooks
 type SystemEvent = monitoring.Event // map[string]any
 
 // in package monitoring:
-type SystemEventHook func(ctx context.Context, eventType string, event Event)
+type SystemEventHook func(ctx context.Context, rt *gbruntime.Runtime, eventType string, event Event)
 type Hooks struct {
-    SystemEvent SystemEventHook // nil: skipped
+    OnStart        OnStartHook        // nil: skipped
+    SystemEvent    SystemEventHook    // nil: skipped
+    ProviderEvents ProviderEventsHook // nil: skipped
 }
 ```
 
@@ -120,7 +157,7 @@ Fields: `user_id`, `dataset`, `series` (number in the request), `duration_ms`, `
 ### Example: metrics and alerts
 
 ```go
-SystemEvent: func(_ context.Context, typ string, ev gligabao.SystemEvent) {
+SystemEvent: func(_ context.Context, _ *gligabao.Runtime, typ string, ev gligabao.SystemEvent) {
     ms, _ := ev["duration_ms"].(int64)
     requestDuration.WithLabelValues(typ).Observe(float64(ms) / 1000)
     if strings.HasSuffix(typ, ".failed") {
@@ -141,7 +178,7 @@ By default gligabao does not authenticate: every request says which user it acts
 
 ```go
 gligabao.ServeOptions{
-    Auth: func(ctx context.Context, apiKey string) (userID string, err error) {
+    Auth: func(ctx context.Context, rt *gligabao.Runtime, apiKey string) (userID string, err error) {
         u, err := myKeyStore.Lookup(ctx, apiKey)
         if err != nil {
             return "", err // unknown, revoked, ...: the request is rejected with 401
@@ -153,7 +190,7 @@ gligabao.ServeOptions{
 
 | Type | Definition |
 |---|---|
-| `gligabao.Authenticator` | `func(ctx context.Context, apiKey string) (userID string, err error)` |
+| `gligabao.Authenticator` | `func(ctx context.Context, rt *gligabao.Runtime, apiKey string) (userID string, err error)` |
 
 - The key is read from the header `Authorization: Bearer <key>`. A request without one gets `401` and the hook is not called.
 - When the hook returns a user ID, the request acts as that user: the `gb-user-id` header is **set** to it, whatever the caller sent or left out (the handlers read the user from the header only, never from the body or the query string). A caller can therefore only reach the data of the owner of its key.
@@ -174,7 +211,7 @@ gligabao.ServeOptions{
         Name:        "prices",
         Description: "Daily stock prices. Use for publicly traded companies.",
         QueryFormat: "the ticker symbol, e.g. AAPL",
-        Fetch: func(ctx context.Context, req gligabao.TimeseriesFetchRequest) ([]gligabao.TimeseriesData, error) {
+        Fetch: func(ctx context.Context, rt *gligabao.Runtime, req gligabao.TimeseriesFetchRequest) ([]gligabao.TimeseriesData, error) {
             /* ... */
         },
     }},
@@ -194,7 +231,7 @@ Contract, in short: `Fetch` is called concurrently, with a 60 s timeout per call
 ```go
 err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
     DBPath: "data/gligabao.db",
-    GraphEmbedder: func(ctx context.Context, req gligabao.GraphEmbedRequest) ([]float32, error) {
+    GraphEmbedder: func(ctx context.Context, rt *gligabao.Runtime, req gligabao.GraphEmbedRequest) ([]float32, error) {
         // req.Entities and req.Edges are the graph; call your model and return its embedding
         return myModel.EmbedGraph(ctx, req.Entities, req.Edges)
     },
@@ -208,7 +245,7 @@ The hook turns a **graph as a whole** into one embedding. It is not the text emb
 ### Types
 
 ```go
-type GraphEmbedder = memory_core.GraphEmbedder // func(ctx context.Context, req GraphEmbedRequest) ([]float32, error)
+type GraphEmbedder func(ctx context.Context, rt *Runtime, req GraphEmbedRequest) ([]float32, error)
 ```
 
 | Type | Fields |
@@ -252,7 +289,7 @@ A hook for training, next to the [graph embedder](#graph-embedder) (which is for
 ```go
 gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
     DBPath: "data/gligabao.db",
-    ClassifyingTrainingHook: func(ctx context.Context, ds gligabao.KnowledgeDataset) (gligabao.TrainingDataset, error) {
+    ClassifyingTrainingHook: func(ctx context.Context, rt *gligabao.Runtime, ds gligabao.KnowledgeDataset) (gligabao.TrainingDataset, error) {
         td := gligabao.TrainingDataset{Classes: map[int64]string{}}
         td.UserID, td.Dataset, td.DatasetID = ds.UserID, ds.Dataset, ds.DatasetID
         for _, g := range ds.Graphs {
@@ -279,7 +316,7 @@ gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
 ### Types
 
 ```go
-type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook // func(ctx context.Context, ds KnowledgeDataset) (TrainingDataset, error)
+type ClassifyingTrainingHook func(ctx context.Context, rt *Runtime, ds KnowledgeDataset) (TrainingDataset, error)
 ```
 
 | Type | Fields |
@@ -325,7 +362,7 @@ gligabao.ServeOptions{
         {
             Name:  "together",
             Model: "4b-mine.jsonl-100steps-1a2b3c4d", // the name of the trained model (as listed in the admin UI)
-            Infer: func(ctx context.Context, req gligabao.InferTrainedModelRequest) (gligabao.InferTrainedModelResult, error) {
+            Infer: func(ctx context.Context, rt *gligabao.Runtime, req gligabao.InferTrainedModelRequest) (gligabao.InferTrainedModelResult, error) {
                 // req.Model is the trained model, req.Prompt, req.MaxTokens (0: none chosen), req.Temperature (nil: none chosen)
                 return gligabao.InferTrainedModelResult{Response: "...", InputTokens: 120, OutputTokens: 80}, nil
             },
@@ -365,7 +402,7 @@ gligabao.ServeOptions{
     TrainedModelDeployers: []gligabao.TrainedModelDeployer{{
         Name: "bucket",
         Description: "Uploads the model's files to the releases bucket.",
-        Deploy: func(ctx context.Context, req gligabao.DeployTrainedModelRequest) (gligabao.DeployTrainedModelResult, error) {
+        Deploy: func(ctx context.Context, rt *gligabao.Runtime, req gligabao.DeployTrainedModelRequest) (gligabao.DeployTrainedModelResult, error) {
             // req.Dir has req.Model.Files: adapter_config.json, adapter_model.safetensors, ...
             return gligabao.DeployTrainedModelResult{Ref: "models/my-adapter", Details: map[string]any{"job_id": "..."}}, nil
         },

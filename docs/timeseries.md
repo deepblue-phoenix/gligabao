@@ -111,7 +111,7 @@ err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
         Description: "Daily open, high, low, close and volume of stocks. Use for entities that are companies whose shares " +
             "are publicly traded on a stock exchange (e.g. Apple, Toyota). Not for private companies, people, places or concepts.",
         QueryFormat: "the ticker symbol on the company's main exchange, e.g. AAPL",
-        Fetch: func(ctx context.Context, req gligabao.TimeseriesFetchRequest) ([]gligabao.TimeseriesData, error) {
+        Fetch: func(ctx context.Context, rt *gligabao.Runtime, req gligabao.TimeseriesFetchRequest) ([]gligabao.TimeseriesData, error) {
             bars, err := myPriceAPI.Daily(ctx, req.Query, req.From, req.To) // req.Query is "AAPL"
             if err != nil {
                 return nil, err // the fetch failed

@@ -173,6 +173,12 @@ type Resolver interface {
 	Name() string
 	Resolve(ctx context.Context, q memory_geo.Query) (*memory_geo.Place, error) // memory_geo.ErrNotFound if it knows no such place
 }
+
+// the public hook, ServeOptions.GeoResolver, is the same with the Runtime after ctx:
+type GeoResolver interface {
+	Name() string
+	Resolve(ctx context.Context, rt *gligabao.Runtime, q gligabao.GeoQuery) (*gligabao.GeoPlace, error)
+}
 ```
 
 `memory_geo.Cached(r)` adds a cache, `memory_geo.NewManager(ctx, r)` is the [geo manager](#the-geo-manager) (a `Resolver` itself, and a `memory_geo.Queue` for `remember`), `memory_geo.NewNominatim(memory_geo.NominatimOptions{BaseURL: ..., MinInterval: -1})` points at your own Nominatim

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepblue-phoenix/gligabao/gbruntime"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
@@ -458,6 +459,7 @@ func testDeployATrainedModel(t *testing.T,
 	var events []string
 	monitoring.SetHooks([]monitoring.Hooks{{
 		SystemEvent: func(_ context.Context,
+			_ *gbruntime.Runtime,
 			typ string,
 			_ monitoring.Event) {
 			events = append(events, typ)

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
+	"github.com/deepblue-phoenix/gligabao/gbruntime"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
@@ -51,6 +52,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 	coretraining "github.com/deepblue-phoenix/gligabao/internal/training"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 	auditsapi "github.com/deepblue-phoenix/gligabao/internal/training_audits/api"
@@ -171,6 +173,9 @@ type Options struct {
 	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
 	TimeseriesProviders []memory_core.SeriesProvider
+	// RuntimeRef, if set, receives the Runtime (the clients of the opened databases) as soon as it is built, so the hooks that are called
+	// per request can read it. Prepare also hands the same Runtime to the OnStart and ProviderEvents hooks (monitoring.Start).
+	RuntimeRef *gbruntime.Ref
 	// GeoResolver finds the coordinates of the places remember extracts as entities (see package memory_geo). Nil: the Nominatim resolver
 	// of OpenStreetMap if Geo is true, else remember does not look at places.
 	GeoResolver memory_geo.Resolver
@@ -1031,6 +1036,15 @@ func prepare(ctx context.Context,
 		return nil, nil, err
 	}
 	cleanups = append(cleanups, func() { database.Close() })
+	rt := &gbruntime.Runtime{
+		Relational: database.Relational,
+		DBBackend:  database.Backend,
+	}
+	opts.RuntimeRef.Set(rt)
+	cleanups = append(cleanups, func() { // runs before the databases close
+		monitoring.Stop()
+		opts.RuntimeRef.Set(nil)
+	})
 	// Only non-secret fields are logged (never the DSN).
 	log.WithFields(log.Fields{
 		"backend":              database.Backend,
@@ -1318,6 +1332,11 @@ func prepare(ctx context.Context,
 		evalSvc,
 		opts.GCNII,
 		extra...)
+	// Everything the hooks may use exists: the OnStart hooks run (a failure aborts the start) and the provider events start flowing to
+	// their callbacks, before any request is accepted and before the scheduled agents run.
+	if err := monitoring.Start(ctx, rt); err != nil {
+		return nil, nil, fmt.Errorf("start hooks: %w", err)
+	}
 	// The agents that have a schedule start running by it now that their knowledge base is set up (by newMux). They stop with mgrCtx.
 	if n := research.RunSchedules(); n > 0 {
 		log.Infof("agent research: %d agent(s) run on a schedule", n)

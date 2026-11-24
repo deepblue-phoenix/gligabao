@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/gbruntime"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	modelapi "github.com/deepblue-phoenix/gligabao/internal/api/model"
@@ -34,7 +35,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sargo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
-	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 	"github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
@@ -90,10 +90,6 @@ type ProviderEvent = monitoring.ProviderEvent
 // SystemEvent is the key/value data attached to a system event.
 type SystemEvent = monitoring.Event
 
-// GeoResolver turns the name of a place into its coordinates (see ServeOptions.GeoResolver). Resolve returns the best place for the
-// query, or GeoNotFound if it knows none; any other error means the resolver failed.
-type GeoResolver = memory_geo.Resolver
-
 // GeoQuery is what a GeoResolver is asked for, and GeoPlace what it answers.
 type (
 	GeoQuery = memory_geo.Query
@@ -102,11 +98,6 @@ type (
 
 // GeoNotFound is the error of a GeoResolver that knows no place for the query.
 var GeoNotFound = memory_geo.ErrNotFound
-
-// TimeseriesProvider is a source of timeseries that remember can fetch from (see ServeOptions.TimeseriesProviders and
-// docs/timeseries.md). Description says in natural language when the provider applies, so an LLM can decide which
-// entities it is for; Fetch is the callback, with the logic of fetching.
-type TimeseriesProvider = memory_core.SeriesProvider
 
 // TimeseriesFetchRequest is what a TimeseriesProvider's Fetch callback is asked for: the entity, the query the LLM chose
 // for it (following the provider's QueryFormat) and the period.
@@ -120,15 +111,6 @@ type TimeseriesData = memory_core.SeriesData
 
 // TimeseriesPoint is one value of a series at a time.
 type TimeseriesPoint = memory_core.SeriesPoint
-
-// Authenticator is the auth hook (see ServeOptions.Auth and docs/hooks.md): it is called with the API key of a request and returns
-// the ID of the user the key belongs to, or an error to reject it.
-type Authenticator = httputil.Authenticator
-
-// GraphEmbedder is the graph embedding hook (see ServeOptions.GraphEmbedder and docs/hooks.md): it returns the embedding of a whole graph.
-//
-// IMPORTANT: gligabao does not store the embeddings yet; they must be stored in the vector store.
-type GraphEmbedder = memory_core.GraphEmbedder
 
 // GraphEmbedRequest is the graph a GraphEmbedder is asked to embed: where it comes from (remember or query, the run and, for a remember, the
 // artifact), the name of the graph embedding index the request asked for (graph_index; empty: none, the hook picks), and its entities and edges.
@@ -145,10 +127,6 @@ const (
 	GraphEmbedRemember = memory_core.GraphEmbedRemember
 	GraphEmbedQuery    = memory_core.GraphEmbedQuery
 )
-
-// ClassifyingTrainingHook is the classifying training hook (see ServeOptions.ClassifyingTrainingHook and docs/hooks.md): it gets a whole
-// knowledge dataset (every artifact and its graph) and returns the training dataset of a graph classifier, which may be a filtered subset.
-type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook
 
 // KnowledgeDataset is what a ClassifyingTrainingHook gets: the artifacts of a dataset and the graphs that come with them.
 type KnowledgeDataset = memory_core.KnowledgeDataset
@@ -169,28 +147,12 @@ type TrainingDataset = memory_core.TrainingDataset
 // Artifact is an artifact of a KnowledgeDataset.
 type Artifact = graph.Artifact
 
-// TrainedModelDeployer is a named hook that deploys trained models (see ServeOptions.TrainedModelDeployers and
-// docs/hooks.md): gligabao fetches the weights of the model to a local directory and calls Deploy with it; what Deploy does
-// with the files (upload them to a third party, copy them, ...) is up to the embedding program.
-type TrainedModelDeployer = training.TrainedModelDeployer
-
-// DeployTrainedModelFunc is the Deploy callback of a TrainedModelDeployer.
-type DeployTrainedModelFunc = training.DeployTrainedModelFunc
-
 // DeployTrainedModelRequest is what a TrainedModelDeployer's Deploy callback is asked to deploy: the trained model, the local
 // directory with its files, and the options of the request.
 type DeployTrainedModelRequest = training.DeployTrainedModelRequest
 
 // DeployTrainedModelResult is what a Deploy callback reports: a reference to what it made and optional details.
 type DeployTrainedModelResult = training.DeployTrainedModelResult
-
-// TrainedModelInferenceHook is a named hook that runs the prompts of one trained model somewhere other than the ML sidecar (Modal): see
-// ServeOptions.TrainedModelInferenceHooks and docs/hooks.md. Model is the name of the trained model it targets; when that model is
-// prompted, gligabao calls Infer instead of the ML sidecar. Several hooks can be supplied, each for a different model.
-type TrainedModelInferenceHook = training.TrainedModelInferenceHook
-
-// InferTrainedModelFunc is the Infer callback of a TrainedModelInferenceHook.
-type InferTrainedModelFunc = training.InferTrainedModelFunc
 
 // InferTrainedModelRequest is what a hook's Infer callback is asked to run: the trained model, the prompt and the limits chosen by the caller.
 type InferTrainedModelRequest = training.InferTrainedModelRequest
@@ -283,7 +245,8 @@ type ServeOptions struct {
 	// request, trusted as is (400 without it). The user is never taken from the query string or the body. It does not cover the
 	// admin UI, the training and eval endpoints (use MountOptions.Wrap).
 	Auth Authenticator
-	// Hooks are installed for the lifetime of Serve; every one is called for each event.
+	// Hooks are installed for the lifetime of Serve: OnStart runs once before requests are accepted, SystemEvent for each system event,
+	// ProviderEvents gets the channel of the provider events. Every hook of the program is called with the Runtime.
 	Hooks []Hooks
 }
 
@@ -498,6 +461,7 @@ func serverOptions(cfg *Config,
 	if opts.DBPath == "" {
 		opts.DBPath = DefaultDBPath
 	}
+	runtimeRef := &gbruntime.Ref{} // the server fills it with the Runtime once the databases are open
 	restore = func() {
 		monitoring.SetHooks(nil)
 	}
@@ -579,17 +543,18 @@ func serverOptions(cfg *Config,
 		MLSidecarDir:         cfg.MLSidecarDir,
 		Prices:               aiPrices(cfg),
 
-		Auth:                    opts.Auth,
-		GeoResolver:             opts.GeoResolver,
-		GraphEmbedder:           opts.GraphEmbedder,
-		ClassifyingTrainingHook: opts.ClassifyingTrainingHook,
+		RuntimeRef:              runtimeRef,
+		Auth:                    bindAuth(runtimeRef, opts.Auth),
+		GeoResolver:             bindGeoResolver(runtimeRef, opts.GeoResolver),
+		GraphEmbedder:           bindGraphEmbedder(runtimeRef, opts.GraphEmbedder),
+		ClassifyingTrainingHook: bindClassifyingTrainingHook(runtimeRef, opts.ClassifyingTrainingHook),
 		Geo:                     cfg.Geo,
 		GeoRadiusKm:             cfg.GeoRadiusKm,
 		MCPEnable:               cfg.MCP,
-		TimeseriesProviders:     opts.TimeseriesProviders,
-		TrainedModelDeployers:   opts.TrainedModelDeployers,
+		TimeseriesProviders:     bindTimeseriesProviders(runtimeRef, opts.TimeseriesProviders),
+		TrainedModelDeployers:   bindDeployers(runtimeRef, opts.TrainedModelDeployers),
 
-		TrainedModelInferenceHooks: opts.TrainedModelInferenceHooks,
+		TrainedModelInferenceHooks: bindInferenceHooks(runtimeRef, opts.TrainedModelInferenceHooks),
 		AdminExtensions:            opts.AdminExtensions,
 
 		TrajectoryDir: trajectoryDir(opts,

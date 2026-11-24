@@ -32,7 +32,6 @@ func jobFields(run trainingdb.TrainingJobRun) monitoring.Event {
 		"run_id":          run.ID,
 		"job_id":          run.JobID,
 		"provider_job_id": run.ProviderJobID,
-		"user_id":         run.UserID,
 		"dataset":         run.Dataset,
 		"model_size":      run.ModelSize,
 	}
@@ -59,6 +58,7 @@ func jobEvent(typ,
 		ProviderType: providerType,
 		Type:         typ,
 		Kind:         kind,
+		UserID:       run.UserID,
 		Data:         withFields(jobFields(run), extra),
 	}
 }

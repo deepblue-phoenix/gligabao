@@ -5,6 +5,21 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.244.0] - 2026-11-24
+
+Every hook gets the `Runtime`, and there is a startup hook. **Breaking** for programs that embed gligabao.
+
+### Added
+
+- **`gligabao.Runtime`** (package `gbruntime`): the clients gligabao assembles when the server starts, handed to the hooks so they reuse them. For now: `Relational` (`*sql.DB`, the database of the `gb_*` tables) and `DBBackend` (`sqlite` or `postgres`).
+- **`Hooks.OnStart`** (`func(ctx, rt) error`): called once by `Serve` and `Mount`, after everything is set up and before the server accepts requests (before it listens). An error or a panic aborts the start.
+
+### Changed
+
+- **Breaking: every hook takes `rt *gligabao.Runtime` right after `ctx`**: `Hooks.SystemEvent`, `Hooks.ProviderEvents` (`func(rt, events)`), `Authenticator`, `GraphEmbedder`, `ClassifyingTrainingHook`, `TimeseriesProvider.Fetch`, `TrainedModelInferenceHook.Infer`, `TrainedModelDeployer.Deploy` and `GeoResolver.Resolve`. `TimeseriesProvider`, `TrainedModelDeployer`, `TrainedModelInferenceHook` and `GeoResolver` are now types of gligabao itself (not aliases of internal ones) with the same fields. The admin extension `Handler` (a plain `http.Handler`) does not get it.
+- **`ProviderEvent.UserID`**: the user an event belongs to (the owner of the training job) is a field of the event, for its provenance, set on every event of a job (it was `Data["user_id"]`, which is gone).
+- `Hooks.ProviderEvents` is called at startup, after the `OnStart` hooks (it was called when the hooks were installed); events emitted before wait in the channel.
+
 ## [0.243.0] - 2026-11-24
 
 Provider events: the embedding program can receive what the compute provider (Modal) does for the training jobs.

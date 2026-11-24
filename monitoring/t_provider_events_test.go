@@ -1,8 +1,11 @@
 package monitoring
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/deepblue-phoenix/gligabao/gbruntime"
 )
 
 func TestProviderEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T) {
@@ -13,7 +16,7 @@ func TestProviderEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T)
 	hooks := []Hooks{}
 	for i := range got {
 		i := i
-		hooks = append(hooks, Hooks{ProviderEvents: func(ch <-chan ProviderEvent) {
+		hooks = append(hooks, Hooks{ProviderEvents: func(_ *gbruntime.Runtime, ch <-chan ProviderEvent) {
 			go func() {
 				for ev := range ch {
 					got[i] <- ev
@@ -25,7 +28,11 @@ func TestProviderEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T)
 	SetHooks(hooks)
 	t.Cleanup(func() { SetHooks(nil) })
 
+	// emitted before Start: it waits in the channel until the callback gets it
 	EmitProviderEvent(ProviderEvent{ProviderType: ProviderModal, Type: "x.y", Kind: KindLifecycle})
+	if err := Start(context.Background(), &gbruntime.Runtime{}); err != nil {
+		t.Fatal(err)
+	}
 	for i, c := range got {
 		select {
 		case ev := <-c:
@@ -51,8 +58,11 @@ func TestProviderEventsReachEveryCallbackAndChannelClosesOnRemoval(t *testing.T)
 
 func TestProviderEventsDropWhenFullAndNeverBlock(t *testing.T) {
 	var ch <-chan ProviderEvent
-	SetHooks([]Hooks{{ProviderEvents: func(c <-chan ProviderEvent) { ch = c }}})
+	SetHooks([]Hooks{{ProviderEvents: func(_ *gbruntime.Runtime, c <-chan ProviderEvent) { ch = c }}})
 	t.Cleanup(func() { SetHooks(nil) })
+	if err := Start(context.Background(), &gbruntime.Runtime{}); err != nil {
+		t.Fatal(err)
+	}
 
 	for range ProviderEventsBuffer + 50 {
 		EmitProviderEvent(ProviderEvent{ProviderType: ProviderModal, Type: "x"})
@@ -65,7 +75,10 @@ func TestProviderEventsDropWhenFullAndNeverBlock(t *testing.T) {
 func TestProviderEventsNoHookOrPanickingHook(t *testing.T) {
 	SetHooks(nil)
 	EmitProviderEvent(ProviderEvent{Type: "x"})
-	SetHooks([]Hooks{{ProviderEvents: func(<-chan ProviderEvent) { panic("boom") }}})
+	SetHooks([]Hooks{{ProviderEvents: func(*gbruntime.Runtime, <-chan ProviderEvent) { panic("boom") }}})
 	t.Cleanup(func() { SetHooks(nil) })
+	if err := Start(context.Background(), &gbruntime.Runtime{}); err != nil {
+		t.Fatal(err)
+	}
 	EmitProviderEvent(ProviderEvent{Type: "x"})
 }
