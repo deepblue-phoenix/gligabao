@@ -146,11 +146,11 @@ func TestGCNIIJobIsFollowedByTheMonitor(t *testing.T) {
 	if started.Type() != trainingdb.ModelTypeGCNII || started.NumTrainSteps != 3 || started.Status != "running" {
 		t.Fatalf("run %+v", started)
 	}
-	svc.update(func(j *sargo.GCNIIJob) { j.Epoch, j.EpochLoss = 1, ptr(0.9) })
+	svc.update(func(j *sargo.GCNIIJob) { j.Epoch, j.EpochLoss, j.EpochLosses = 1, ptr(0.9), []float64{0.9} })
 	waitFor(t, "the first epoch", func() bool { return run(t, db, started.ID).LastStep == 1 })
 	acc := 0.75
 	svc.update(func(j *sargo.GCNIIJob) {
-		j.Status, j.Epoch, j.EpochLoss, j.Loss, j.Accuracy = sargo.GCNIIJobDone, 3, ptr(0.2), ptr(0.25), &acc
+		j.Status, j.Epoch, j.EpochLoss, j.EpochLosses, j.Loss, j.Accuracy = sargo.GCNIIJobDone, 3, ptr(0.2), []float64{0.9, 0.5, 0.2}, ptr(0.25), &acc
 	})
 	waitFor(t, "the end", func() bool { return run(t, db, started.ID).Status == trainingdb.TrainingJobCompleted })
 	r := run(t, db, started.ID)
@@ -159,7 +159,7 @@ func TestGCNIIJobIsFollowedByTheMonitor(t *testing.T) {
 	}
 
 	var types []string
-	for len(types) < 4 {
+	for len(types) < 6 {
 		select {
 		case ev := <-sub.C:
 			if ev.ProviderType != monitoring.ProviderSargo || ev.RunID != started.ID {
@@ -170,7 +170,7 @@ func TestGCNIIJobIsFollowedByTheMonitor(t *testing.T) {
 			t.Fatalf("events so far: %v", types)
 		}
 	}
-	if types[0] != "started/" || types[1] != "status/running" || types[2] != "progress/" || types[3] != "status/completed" {
+	if types[0] != "started/" || types[1] != "status/running" || types[2] != "progress/" || types[3] != "progress/" || types[4] != "progress/" || types[5] != "status/completed" {
 		t.Fatalf("events %v", types)
 	}
 	history, err := training.JobHistory(context.Background(),

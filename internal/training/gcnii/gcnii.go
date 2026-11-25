@@ -339,7 +339,7 @@ func (b *Backend) saveHistory(run *modeltrain.Run) {
 }
 
 // Stream follows the job of the run by polling sargo, and turns what changed into events. The first call of a run has the "running" status
-// event; a progress event follows each epoch that was seen finished (at most one per poll); the event that ends the job is a "completed"
+// event; a progress event follows every finished epoch (sargo reports the loss of each, so a slow poll skips none); the event that ends the job is a "completed"
 // (its Data is sargo's job: accuracy, loss, val_accuracy, val_loss, classes, ...), "failed" or "cancelled" status. It returns nil after it.
 func (b *Backend) Stream(ctx context.Context,
 	run trainingdb.TrainingJobRun,
@@ -357,7 +357,31 @@ func (b *Backend) Stream(ctx context.Context,
 			return err
 		}
 	}
-	lastEpoch := 0
+	emitted := 0 // epochs already sent as progress events
+	// emitEpochs sends one progress event for each epoch of the job not sent yet (sargo keeps every epoch's loss, so none is skipped).
+	emitEpochs := func(job *sargo.GCNIIJob) error {
+		send := func(epoch int, loss float64) error {
+			step, l := epoch, loss
+			return emit(monitoring.TrainingEvent{
+				Type:     monitoring.EventProgress,
+				Step:     &step,
+				Loss:     &l,
+				MaxSteps: &run.NumTrainSteps,
+				Message:  fmt.Sprintf("epoch %d/%d", epoch, job.Epochs),
+			})
+		}
+		if len(job.EpochLosses) == 0 && job.EpochLoss != nil && job.Epoch > emitted { // sargo without epoch_losses: the last epoch only
+			emitted = job.Epoch
+			return send(job.Epoch, *job.EpochLoss)
+		}
+		for emitted < len(job.EpochLosses) {
+			emitted++
+			if err := send(emitted, job.EpochLosses[emitted-1]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	for {
 		st, err := b.cfg.Svc.GCNIITrainStatus(ctx, run.UserID)
 		if err != nil {
@@ -373,20 +397,13 @@ func (b *Backend) Stream(ctx context.Context,
 				Error:  "sargo lost the training (it restarted, or another training replaced it)",
 			})
 		case job.Status == sargo.GCNIIJobRunning:
-			if job.Epoch > lastEpoch {
-				lastEpoch = job.Epoch
-				step := job.Epoch
-				if err := emit(monitoring.TrainingEvent{
-					Type:     monitoring.EventProgress,
-					Step:     &step,
-					Loss:     job.EpochLoss,
-					MaxSteps: &run.NumTrainSteps,
-					Message:  fmt.Sprintf("epoch %d/%d", job.Epoch, job.Epochs),
-				}); err != nil {
-					return err
-				}
+			if err := emitEpochs(job); err != nil {
+				return err
 			}
 		case job.Status == sargo.GCNIIJobDone:
+			if err := emitEpochs(job); err != nil { // the epochs that finished since the last poll
+				return err
+			}
 			return emit(monitoring.TrainingEvent{
 				Type:      monitoring.EventStatus,
 				Status:    trainingdb.TrainingJobCompleted,

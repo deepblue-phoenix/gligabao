@@ -195,6 +195,10 @@ impl UserModels {
                         }
                     }
                 }
+                // every finished epoch's loss (also after the job ended), so a watcher that polls slower than the epochs misses none
+                if let Some(ctl) = locked(&self.controls).get(user_id) {
+                    job["epoch_losses"] = json!(ctl.epoch_losses());
+                }
                 json!({"user_id": user_id, "trained": trained, "job": job})
             }
             None => json!({"user_id": user_id, "trained": trained, "job": null}),

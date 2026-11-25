@@ -12,16 +12,34 @@ use super::metrics::{GradMap, GradStats, ProbeStats};
 use super::math::{argmax, softmax, softmax_ce, Rng};
 use super::model::{add_grads, GcniiStar, ModelConfig};
 use serde_json::json;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::time::Instant;
 
 /// Shared between a training thread and whoever watches or stops it: the training reports its progress here (the last finished epoch
 /// and its mean loss) and checks `cancel` between batches.
-#[derive(Default)]
 pub struct TrainControl {
     pub cancel: AtomicBool,
     epoch: AtomicUsize,
     loss_bits: AtomicU32,
+    // in-memory queue of the mean training loss of every finished epoch: the training thread only pushes (an unbounded channel never
+    // blocks the sender), the watchers drain it into `seen` when they ask, so training never waits for a consumer
+    queue: Sender<f32>,
+    drain: Mutex<(Receiver<f32>, Vec<f32>)>, // (the queue's receiving end, the losses drained so far: index = epoch - 1)
+}
+
+impl Default for TrainControl {
+    fn default() -> Self {
+        let (queue, rx) = channel();
+        TrainControl {
+            cancel: AtomicBool::new(false),
+            epoch: AtomicUsize::new(0),
+            loss_bits: AtomicU32::new(0),
+            queue,
+            drain: Mutex::new((rx, Vec::new())),
+        }
+    }
 }
 
 impl TrainControl {
@@ -32,7 +50,15 @@ impl TrainControl {
     pub fn progress(&self) -> (usize, f32) {
         (self.epoch.load(Ordering::Relaxed), f32::from_bits(self.loss_bits.load(Ordering::Relaxed)))
     }
+    /// The mean training loss of every finished epoch so far, in order (epoch 1 first).
+    pub fn epoch_losses(&self) -> Vec<f32> {
+        let mut guard = self.drain.lock().unwrap_or_else(|e| e.into_inner());
+        let (rx, seen) = &mut *guard;
+        seen.extend(rx.try_iter());
+        seen.clone()
+    }
     fn report(&self, epoch: usize, loss: f32) {
+        let _ = self.queue.send(loss); // never blocks; the receiver lives as long as this struct
         self.loss_bits.store(loss.to_bits(), Ordering::Relaxed);
         self.epoch.store(epoch, Ordering::Relaxed);
     }

@@ -58,9 +58,11 @@ type GCNIIJob struct {
 	Epochs           int      `json:"epochs"`
 	StartedUnix      int64    `json:"started_unix"`
 	// Epoch is the last epoch a running job finished (0 before the first) and EpochLoss the mean training loss of it (nil before the first).
-	Epoch        int      `json:"epoch,omitempty"`
-	EpochLoss    *float64 `json:"epoch_loss,omitempty"`
-	FinishedUnix int64    `json:"finished_unix,omitempty"`
+	Epoch     int      `json:"epoch,omitempty"`
+	EpochLoss *float64 `json:"epoch_loss,omitempty"`
+	// EpochLosses is the mean training loss of every finished epoch, in order (index 0 is epoch 1); it stays after the job ended.
+	EpochLosses  []float64 `json:"epoch_losses,omitempty"`
+	FinishedUnix int64     `json:"finished_unix,omitempty"`
 	// Accuracy and Loss are measured on the training graphs, once the job is done.
 	Accuracy *float64 `json:"accuracy,omitempty"`
 	Loss     *float64 `json:"loss,omitempty"`

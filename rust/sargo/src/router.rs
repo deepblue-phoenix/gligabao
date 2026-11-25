@@ -12,7 +12,7 @@
 //!       409 if that user is already training
 //!   POST /v1/gcnii/train/status   body: {"user_id"} -> {"user_id", "trained", "job"} (job: running | done | failed | cancelled)
 //!   POST /v1/gcnii/train/cancel   body: {"user_id"} -> 202 {"user_id", "trained", "job"}: stops the training of that user (it ends as
-//!       `cancelled` at its next batch); 409 if that user is not training. A running job also reports `epoch` and `epoch_loss`.
+//!       `cancelled` at its next batch); 409 if that user is not training. A running job also reports `epoch` and `epoch_loss`; any job reports `epoch_losses` (the mean loss of every finished epoch).
 //!   GET  /health     ->  {"status":"ok"}
 //! Errors are `{"error": "..."}` with status 400 (bad request), 502 (provider failed),
 //! 503 (provider not configured).
