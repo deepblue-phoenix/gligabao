@@ -1,19 +1,15 @@
-// Package model contains the HTTP handlers of the GCNII* graph classifier (the per-user models of sargo), part of the training endpoints
-// (/v1/gb/training/, see Register). The work is done by sargo (rust/sargo), which gligabao starts once and then talks to over HTTP:
-// these handlers take the user of the request (never from the body), check the input and pass it, with the user ID, to sargo. Each user
-// has their own model: training one user does not touch another's. The body's "model_type", if sent, must be "gcnii" (the path already
+// Package model contains the HTTP handlers of the GCNII* graph classifier that are not training (the per-user models of sargo), part of the
+// training endpoints (/v1/gb/training/, see Register). The work is done by sargo (rust/sargo), which gligabao starts once and then talks to
+// over HTTP: these handlers take the user of the request (never from the body), check the input and pass it, with the user ID, to sargo. Each
+// user has their own model: training one user does not touch another's. The body's "model_type", if sent, must be "gcnii" (the path already
 // says it).
 //
-//	POST /v1/gb/training/gcnii/train                  body {"graphs": [{n, edges, nodes?, class}, ...], epochs?, lr?, batch?, hidden?, depth?, seed?} -> 202 job
-//	GET  /v1/gb/training/gcnii/train                  the state of the training of the user -> {"user_id", "trained", "job"}
-//	POST /v1/gb/training/gcnii/train/dataset          body {"dataset"?, "classes"?, "min_graphs_per_class"?, "validation_fraction"?, "split_seed"?, epochs?, ...} -> 202 job
-//	                                                  trains on the graphs of a dataset with the classes an LLM gave them (see TrainDataset)
-//	GET  /v1/gb/training/gcnii/train/dataset/runs     the history of the trainings on a dataset (?dataset=)
 //	POST /v1/gb/training/gcnii/infer                  body {"graph": {n, edges, nodes?}, "classes"?} -> the class of the graph
 //	POST /v1/gb/training/gcnii/embed                  body {"graph": {n, edges, nodes?}, "normalize"?} -> the embedding of the graph
 //
-// The trained models are listed with the ones of the other types: GET /v1/gb/training/models?model_type=gcnii (their weights are in the
-// store of the weights, see Recorder).
+// The training of the model is not here: it is a job like the LoRA ones, started, followed, stopped and listed by the one set of handlers of
+// the training API (POST /v1/gb/training/jobs with "model_type": "gcnii", see internal/api/training), run by the GCNII* backend of the training
+// pipeline (internal/training/gcnii). The trained models are listed with the ones of the other types: GET /v1/gb/training/models?model_type=gcnii.
 package model
 
 import (
@@ -36,11 +32,13 @@ const ModelGCNII = "gcnii"
 // maxBodyBytes bounds a request body; it is also sargo's default limit for one request (10 MiB), minus room for the user ID.
 const maxBodyBytes = 10<<20 - 4<<10
 
-// Service is what the handlers need from sargo; *sargo.Client is one.
+// Service is what the handlers (and the GCNII* training backend, internal/training/gcnii) need from sargo; *sargo.Client is one.
 type Service interface {
 	GCNIITrain(ctx context.Context,
 		req *sargo.GCNIITrainRequest) (*sargo.GCNIITrainResponse, error)
 	GCNIITrainStatus(ctx context.Context,
+		userID string) (*sargo.GCNIIStatus, error)
+	GCNIICancel(ctx context.Context,
 		userID string) (*sargo.GCNIIStatus, error)
 	GCNIIInfer(ctx context.Context,
 		req *sargo.GCNIIInferRequest) (*sargo.GCNIIInferResponse, error)
@@ -48,84 +46,29 @@ type Service interface {
 		req *sargo.GCNIIEmbedRequest) (*sargo.GCNIIEmbedResponse, error)
 }
 
-// Train serves POST /v1/gb/training/gcnii/train: it starts the training of the model of the model_type of the body, for the user of the request.
-func Train(svc Service,
-	rec *Recorder) http.HandlerFunc {
-	return func(w http.ResponseWriter,
-		r *http.Request) {
-		userID, ok := user(w, r)
-		if !ok {
-			return
-		}
-		var req sargo.GCNIITrainRequest
-		if !decode(w, r, &req) {
-			return
-		}
-		req.UserID = userID
-		claim, err := rec.Claim(r.Context(),
-			userID,
-			trainInfo{
-				Params: modeltrain.TrainParams{
-					Epochs: req.Epochs,
-					LR:     req.LR,
-					Batch:  req.Batch,
-					Hidden: req.Hidden,
-					Depth:  req.Depth,
-					Seed:   req.Seed,
-				},
-				Graphs:           len(req.Graphs),
-				ValidationGraphs: len(req.Validation),
-			})
-		if err != nil {
-			failClaim(w, r, err)
-			return
-		}
-		resp, err := svc.GCNIITrain(r.Context(), &req)
-		if err != nil {
-			rec.Abort(claim, err)
-			fail(w, r, "model train", err)
-			return
-		}
-		rec.Watch(claim,
-			userID,
-			resp.Job)
-		httputil.WriteJSON(w,
-			http.StatusAccepted,
-			resp)
-	}
+// WeightsService is a Service that also keeps the weights of the models it trains; the sargo service of gligabao is one.
+type WeightsService interface {
+	Service
+	Weights() *modeltrain.Weights
 }
 
-// TrainStatus serves GET /v1/gb/training/gcnii/train: the state of the training of the user of the request.
-func TrainStatus(svc Service,
-	rec *Recorder) http.HandlerFunc {
-	return func(w http.ResponseWriter,
-		r *http.Request) {
-		userID, ok := user(w, r)
-		if !ok {
-			return
-		}
-		if !checkType(w, r.URL.Query().Get("model_type")) {
-			return
-		}
-		syncModel(r.Context(), rec, userID)
-		resp, err := svc.GCNIITrainStatus(r.Context(), userID)
-		if err != nil {
-			fail(w, r, "model train status", err)
-			return
-		}
-		resp.Job = rec.JobOf(r.Context(),
-			userID,
-			resp.Job)
-		httputil.WriteJSON(w,
-			http.StatusOK,
-			resp)
-	}
+// HistoryService is a Service that also says where the history of the trainings on datasets is kept (a directory; "" means none).
+type HistoryService interface {
+	Service
+	HistoryDir() string
+}
+
+// Syncer makes the model in the directory of sargo the latest recorded one of the user before it is used (see gcnii.Backend.Sync); nil does
+// nothing.
+type Syncer interface {
+	Sync(ctx context.Context,
+		userID string) (bool, error)
 }
 
 // Infer serves POST /v1/gb/training/gcnii/infer: it runs the model of the model_type of the body on a graph, for the user of the request (404 if
 // they have not trained one).
 func Infer(svc Service,
-	rec *Recorder) http.HandlerFunc {
+	rec Syncer) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := user(w, r)
@@ -152,7 +95,7 @@ func Infer(svc Service,
 // Embed serves POST /v1/gb/training/gcnii/embed: it embeds a graph with the model of the model_type of the body, for the user of the request (404 if
 // they have not trained one).
 func Embed(svc Service,
-	rec *Recorder) http.HandlerFunc {
+	rec Syncer) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		userID, ok := user(w, r)
@@ -264,28 +207,15 @@ func fail(w http.ResponseWriter,
 		what+" failed")
 }
 
-// syncModel makes the model in the directory of sargo the latest recorded one of the user (see Recorder.Sync); a failure is logged and the
-// request goes on with the model sargo has.
+// syncModel makes the model in the directory of sargo the latest recorded one of the user (see Syncer); a failure is logged and the request
+// goes on with the model sargo has.
 func syncModel(ctx context.Context,
-	rec *Recorder,
+	rec Syncer,
 	userID string) {
+	if rec == nil {
+		return
+	}
 	if _, err := rec.Sync(ctx, userID); err != nil {
 		log.WithError(err).WithField("user_id", userID).Error("model: syncing the latest recorded model failed")
 	}
-}
-
-// failClaim answers the error of Recorder.Claim: 409 if the user is already training.
-func failClaim(w http.ResponseWriter,
-	r *http.Request,
-	err error) {
-	if errors.Is(err, ErrBusy) {
-		httputil.Error(w,
-			http.StatusConflict,
-			"a training for this user is already running")
-		return
-	}
-	log.WithError(err).WithField("user_id", httputil.UserID(r)).Error("model train: claiming the training failed")
-	httputil.Error(w,
-		http.StatusInternalServerError,
-		"failed to start the training")
 }

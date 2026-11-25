@@ -7,11 +7,12 @@ package training
 type Kind int
 
 const (
-	KindInternal Kind = iota // something failed on our side
-	KindInvalid              // the request is not acceptable as it is
-	KindNotFound             // what was asked for does not exist
-	KindConflict             // the request clashes with the current state
-	KindUpstream             // the ML sidecar failed
+	KindInternal    Kind = iota // something failed on our side
+	KindInvalid                 // the request is not acceptable as it is
+	KindNotFound                // what was asked for does not exist
+	KindConflict                // the request clashes with the current state
+	KindUpstream                // the ML sidecar (or sargo) failed
+	KindUnavailable             // the backend that runs this kind of training is not on
 )
 
 // Error is a failure of a training operation.

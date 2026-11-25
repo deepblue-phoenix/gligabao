@@ -28,6 +28,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	evalsroutes "github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	modelapi "github.com/deepblue-phoenix/gligabao/internal/api/model"
+	gcniitrain "github.com/deepblue-phoenix/gligabao/internal/training/gcnii"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
@@ -186,7 +187,7 @@ type Options struct {
 	// ClassifyingTrainingHook is the classifying training hook (see memory_core.ClassifyingTrainingHook), served as
 	// POST /v1/gb/datasets/{name}/training. Nil: the route is not mounted.
 	ClassifyingTrainingHook memory_core.ClassifyingTrainingHook
-	// GCNII serves the per-user model routes (/v1/gb/training/gcnii/: train, train/dataset, infer, embed; part of the training endpoints, so also needs training mode): it is sargo, the Rust
+	// GCNII serves the per-user model routes (/v1/gb/training/gcnii/: infer, embed, and the backend of the GCNII* training jobs of POST /v1/gb/training/jobs; part of the training endpoints, so also needs training mode): it is sargo, the Rust
 	// server gligabao started, which trains and runs the models over HTTP (a *sargo.Client). Nil: the routes are not mounted.
 	GCNII modelapi.Service
 	// Geo turns the geo stage of remember on (with GeoResolver, or Nominatim if there is none); a GeoResolver turns it on by itself.
@@ -620,9 +621,24 @@ func registerTraining(ctx context.Context,
 	sc coretraining.MLSidecar,
 	lm memory_core.LLM) {
 	mux := http.NewServeMux() // the training routes, mounted on hostMux at the end, behind the authentication
+	// The one training pipeline: a backend for each kind of model, where its jobs run (the ML sidecar for the LoRA ones, sargo for GCNII*).
+	var gcniiBackend *gcniitrain.Backend // nil without sargo
+	var backendList []coretraining.Backend
+	if sc != nil {
+		backendList = append(backendList, coretraining.NewMLSidecarBackend(trainingDB,
+			dirs.Store(),
+			sc))
+	}
+	if gcniiSvc != nil {
+		gcniiBackend = gcniitrain.New(gcniiConfig(gcniiSvc,
+			trainingDB,
+			trainingHook))
+		backendList = append(backendList, gcniiBackend)
+	}
+	backends := coretraining.NewBackends(backendList...)
 	mon := coretraining.NewMonitor(ctx,
 		trainingDB,
-		sc)
+		backends)
 	// The evals and the training data audits are those of internal/evals and internal/training_audits (their own tables).
 	evalStore, err := evals.StoreFor(backend)
 	if err != nil {
@@ -653,11 +669,10 @@ func registerTraining(ctx context.Context,
 		auditInf,
 		lm)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB,
-		dirs.Store(),
-		sc,
+		backends,
 		mon))
-	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc, mon))
-	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
+	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, backends, mon))
+	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB, backends))
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))
 	var inferMLSidecar coretraining.Inferer // likewise nil without an ML sidecar
@@ -684,16 +699,38 @@ func registerTraining(ctx context.Context,
 	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dirs.Store()))
 	mux.HandleFunc("GET /v1/gb/training/events", training.EventsOf(trainingDB, mon))
 	// Needs sargo: mounted only if it is on (see the comment above).
+	var syncer modelapi.Syncer // not gcniiBackend itself: a nil backend must become a nil Syncer
+	if gcniiBackend != nil {
+		syncer = gcniiBackend
+	}
 	modelapi.Register(mux,
 		"/v1/gb/training",
 		gcniiSvc,
-		trainingDB,
-		trainingHook)
+		syncer)
 
 	authenticated := httputil.Authenticate(auth, mux)
 	for _, m := range mountMethods { // one pattern per method, not a method-less one: see mountMethods
 		hostMux.Handle(m+" /v1/gb/training/", authenticated)
 	}
+}
+
+// gcniiConfig is the configuration of the GCNII* training backend: sargo, and the store of the weights and the history directory when the
+// service has them (see modelapi.WeightsService, modelapi.HistoryService).
+func gcniiConfig(svc modelapi.Service,
+	trainingDB *sql.DB,
+	hook memory_core.ClassifyingTrainingHook) gcniitrain.Config {
+	cfg := gcniitrain.Config{
+		Svc:  svc,
+		DB:   trainingDB,
+		Hook: hook,
+	}
+	if ws, ok := svc.(modelapi.WeightsService); ok {
+		cfg.Weights = ws.Weights()
+	}
+	if hs, ok := svc.(modelapi.HistoryService); ok {
+		cfg.HistoryDir = hs.HistoryDir()
+	}
+	return cfg
 }
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the

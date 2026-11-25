@@ -159,3 +159,29 @@ func TestGCNIITrainValidation(t *testing.T) {
 		t.Fatalf("a validation graph without class: %v", err)
 	}
 }
+
+func TestGCNIICancel(t *testing.T) {
+	var path string
+	var body map[string]any
+	c := gcniiServer(t,
+		http.StatusAccepted,
+		`{"user_id":"alice","trained":false,"job":{"status":"running","epoch":2,"epoch_loss":0.5}}`,
+		&path,
+		&body)
+	st, err := c.GCNIICancel(context.Background(), "alice")
+	if err != nil || path != "/v1/gcnii/train/cancel" || body["user_id"] != "alice" || st.Job.Epoch != 2 || *st.Job.EpochLoss != 0.5 {
+		t.Fatalf("cancel: %v %s %v %+v", err, path, body, st)
+	}
+	if _, err := c.GCNIICancel(context.Background(), ""); err == nil {
+		t.Fatal("a cancel without a user was sent")
+	}
+	c = gcniiServer(t,
+		http.StatusConflict,
+		`{"error":"user alice is not training"}`,
+		&path,
+		&body)
+	var apiErr *APIError
+	if _, err := c.GCNIICancel(context.Background(), "alice"); !errors.As(err, &apiErr) || apiErr.Status != http.StatusConflict {
+		t.Fatalf("conflict: %v", err)
+	}
+}

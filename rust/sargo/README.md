@@ -37,7 +37,8 @@ DIR holds graph documents `{"n": N, "edges": [[a,b],...], "nodes": [{"name", "ty
 With `[gcnii] models_dir` set (gligabao sets it, through `$SARGO_GCNII_MODELS_DIR`, to `sargo_gcnii_dir`), sargo trains and serves one GCNII* model **per user id**, saved in `<models_dir>/<hex of the user id>/` (`model.weights`, `classes.json`) and loaded on first use:
 
 - `POST /v1/gcnii/train` with `{"user_id", "graphs": [{"n", "edges", "nodes"?, "class"}, ...], "epochs"?, "lr"?, "batch"?, "hidden"?, "depth"?, "seed"?}` checks the data and starts the training on a background thread: `202 {"user_id", "job"}`. `400` bad data, `409` if that user is already training, `503` without `models_dir`.
-- `POST /v1/gcnii/train/status` with `{"user_id"}` answers `{"user_id", "trained", "job"}`; `job.status` is `running`, `done` (with `accuracy` and `loss` on the training graphs) or `failed` (with `error`). A finished training replaces the user's model.
+- `POST /v1/gcnii/train/status` with `{"user_id"}` answers `{"user_id", "trained", "job"}`; `job.status` is `running` (with `epoch` and `epoch_loss`, the last finished epoch and its mean loss), `done` (with `accuracy` and `loss` on the training graphs), `failed` (with `error`) or `cancelled`.
+- `POST /v1/gcnii/train/cancel` with `{"user_id"}` stops that user's training at its next batch (`202`, the job ends `cancelled`, the user's previous model is kept; `409` if the user is not training). A finished training replaces the user's model.
 - `POST /v1/gcnii/infer` and `/v1/gcnii/embed` take an optional `"user_id"`: with it they use that user's model (`404` if the user has none), without it the global `[gcnii] weights` model.
 
 gligabao's Go side (`internal/sargo/gcnii.go`, `internal/api/model`) starts sargo once at startup and then only calls these endpoints; see `docs/gcnii.md`.

@@ -44,6 +44,8 @@ const (
 	GCNIIJobRunning = "running"
 	GCNIIJobDone    = "done"
 	GCNIIJobFailed  = "failed"
+	// GCNIIJobCancelled is a job stopped with GCNIICancel; it saved no model.
+	GCNIIJobCancelled = "cancelled"
 )
 
 // GCNIIJob is a training of one user, as sargo reports it.
@@ -55,7 +57,10 @@ type GCNIIJob struct {
 	Classes          []string `json:"classes"`
 	Epochs           int      `json:"epochs"`
 	StartedUnix      int64    `json:"started_unix"`
-	FinishedUnix     int64    `json:"finished_unix,omitempty"`
+	// Epoch is the last epoch a running job finished (0 before the first) and EpochLoss the mean training loss of it (nil before the first).
+	Epoch        int      `json:"epoch,omitempty"`
+	EpochLoss    *float64 `json:"epoch_loss,omitempty"`
+	FinishedUnix int64    `json:"finished_unix,omitempty"`
 	// Accuracy and Loss are measured on the training graphs, once the job is done.
 	Accuracy *float64 `json:"accuracy,omitempty"`
 	Loss     *float64 `json:"loss,omitempty"`
@@ -216,6 +221,23 @@ func (c *Client) GCNIITrainStatus(ctx context.Context,
 	var resp GCNIIStatus
 	if err := c.postJSON(ctx,
 		"/v1/gcnii/train/status",
+		map[string]string{"user_id": userID},
+		&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GCNIICancel stops the training of one user (POST /v1/gcnii/train/cancel): the job ends as GCNIIJobCancelled at its next batch, and the
+// previous model of the user, if any, is kept. A user that is not training gets an *APIError with status 409.
+func (c *Client) GCNIICancel(ctx context.Context,
+	userID string) (*GCNIIStatus, error) {
+	if err := validateGCNIIUser(userID); err != nil {
+		return nil, err
+	}
+	var resp GCNIIStatus
+	if err := c.postJSON(ctx,
+		"/v1/gcnii/train/cancel",
 		map[string]string{"user_id": userID},
 		&resp); err != nil {
 		return nil, err

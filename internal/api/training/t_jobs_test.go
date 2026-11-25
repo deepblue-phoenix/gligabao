@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -73,8 +74,7 @@ func testStartTrainingJob(t *testing.T,
 	dsDir := core.DirStore{t.TempDir()}
 	sc := &fakeMLSidecar{}
 	h := training.StartJobOf(d,
-		dsDir,
-		sc,
+		loraBackends(d, dsDir, sc),
 		nil)
 	if rec := upload(training.UploadDatasetOf(d, dsDir),
 		"/x",
@@ -163,8 +163,7 @@ func testStartTrainingJob(t *testing.T,
 		t.Fatalf("a failed start was recorded: %v", err)
 	}
 	if rec := post(training.StartJobOf(d,
-		dsDir,
-		nil,
+		loraBackends(d, dsDir, nil),
 		nil),
 		"/x",
 		""); rec.Code != http.StatusServiceUnavailable {
@@ -189,8 +188,7 @@ func TestStartTrainingJobMLSidecarRejects(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	training.StartJobOf(d,
-		core.DirStore{dir},
-		sc,
+		loraBackends(d, core.DirStore{dir}, sc),
 		nil)(rec, userReq("POST",
 		"/x",
 		strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
@@ -242,7 +240,7 @@ func testStopTrainingJob(t *testing.T,
 		h(rec, req)
 		return rec
 	}
-	h := training.StopJobOf(d, sc, nil)
+	h := training.StopJobOf(d, loraBackends(d, nil, sc), nil)
 
 	if rec := stop(h, "1"); rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"stopping"`) {
 		t.Fatalf("stop: %d %s",
@@ -278,7 +276,24 @@ func testStopTrainingJob(t *testing.T,
 	if rec := stop(h, "1"); rec.Code != http.StatusBadGateway {
 		t.Fatalf("ml_sidecar error: %d", rec.Code)
 	}
-	if rec := stop(training.StopJobOf(d, nil, nil), "1"); rec.Code != http.StatusServiceUnavailable {
+	if rec := stop(training.StopJobOf(d, core.Backends{}, nil), "1"); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no ML sidecar: %d", rec.Code)
 	}
+}
+
+// loraBackends is the backends of a server whose only backend is the ML sidecar sc (nil: none) with the datasets of ds.
+func loraBackends(d *sql.DB,
+	ds core.DatasetStore,
+	sc core.MLSidecarJobs) core.Backends {
+	if sc == nil || (reflect.ValueOf(sc).Kind() == reflect.Ptr && reflect.ValueOf(sc).IsNil()) {
+		return core.Backends{}
+	}
+	return core.NewBackends(core.NewMLSidecarBackend(d, ds, sc))
+}
+
+func (f *fakeMLSidecar) StreamTrainingJobEvents(context.Context,
+	string,
+	int,
+	func(ml_sidecar.TrainingEvent) error) error {
+	return nil
 }

@@ -313,8 +313,7 @@ func testStartJobSendsDataset(t *testing.T,
 	start := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		training.StartJobOf(d,
-			dsDir,
-			sc,
+			loraBackends(d, dsDir, sc),
 			nil)(rec, userReq("POST",
 			"/x",
 			strings.NewReader(body)))

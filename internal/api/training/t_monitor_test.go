@@ -184,7 +184,7 @@ func testTrainingMonitor(t *testing.T,
 	sc := newStreamMLSidecar()
 	mon := core.NewMonitor(ctx,
 		d,
-		sc,
+		loraBackends(d, nil, sc),
 		core.WithRetryDelay(time.Millisecond))
 
 	events := httptest.NewServer(training.EventsOf(d, mon))
@@ -195,8 +195,7 @@ func testTrainingMonitor(t *testing.T,
 
 	rec := httptest.NewRecorder()
 	training.StartJobOf(d,
-		dsDir,
-		sc,
+		loraBackends(d, dsDir, sc),
 		mon)(rec, userReq("POST",
 		"/x",
 		strings.NewReader(`{"dataset": "mine", "num_train_steps": 10}`)))
@@ -341,7 +340,7 @@ func testTrainingMonitor(t *testing.T,
 
 	// Jobs list, newest first.
 	rec = httptest.NewRecorder()
-	training.ListJobsOf(d)(rec, userReq("GET",
+	training.ListJobsOf(d, nil)(rec, userReq("GET",
 		"/x",
 		nil))
 	var list struct{ Jobs []trainingdb.TrainingJobRun }
@@ -418,7 +417,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	sc.sent = []ml_sidecar.TrainingEvent{status("running"), progress(1, 3)}
 	core.NewMonitor(ctx,
 		d,
-		sc,
+		loraBackends(d, nil, sc),
 		core.WithRetryDelay(time.Millisecond),
 		core.WithWatchTimeout(time.Hour))
 	waitFor(t,
@@ -448,7 +447,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	sc2 := newStreamMLSidecar()
 	mon := core.NewMonitor(ctx,
 		d,
-		sc2,
+		loraBackends(d, nil, sc2),
 		core.WithRetryDelay(time.Millisecond),
 		core.WithWatchTimeout(50*time.Millisecond))
 	id3, _ := trainingdb.RecordTrainingJobRun(ctx,
@@ -497,7 +496,7 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 	sc := newStreamMLSidecar()
 	mon := core.NewMonitor(ctx,
 		d,
-		sc,
+		loraBackends(d, nil, sc),
 		core.WithRetryDelay(time.Millisecond))
 	model := &ml_sidecar.TrainedModelInfo{
 		Path: "trained/x",
@@ -512,7 +511,7 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 		sc := newStreamMLSidecar()
 		mon := core.NewMonitor(ctx,
 			d,
-			sc,
+			loraBackends(d, nil, sc),
 			core.WithRetryDelay(time.Millisecond))
 		id, _ := trainingdb.RecordTrainingJobRun(ctx,
 			d,
@@ -611,7 +610,7 @@ func TestTrainingMonitorRetriesAFailedRowUpdate(t *testing.T) {
 	sc.sent = []ml_sidecar.TrainingEvent{status("completed")}
 	core.NewMonitor(ctx,
 		d,
-		sc,
+		loraBackends(d, nil, sc),
 		core.WithRetryDelay(time.Millisecond),
 		core.WithWatchTimeout(time.Hour))
 	// The stream is opened again and again: the event is retried each time.

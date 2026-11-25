@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // TrainingJobRun is one training job started on the ML sidecar (gb_training_job_runs): a record is made for each job the
 // ml_sidecar reports as started (see internal/sys/ml_sidecar: TrainingJob), and updated as the job's progress events arrive.
@@ -8,6 +11,13 @@ type TrainingJobRun struct {
 	ID int64 `json:"id"`
 	// UserID is the user that started the job; a job is visible to its user only.
 	UserID string `json:"user_id"`
+	// ModelType is what the job trains: ModelTypeLoRA (on the ML sidecar) or ModelTypeGCNII (on sargo). The two are followed, recorded and
+	// stopped by the same pipeline (internal/training: Backend); the fields below mean the same for both, with ModelSize "" and
+	// NumTrainSteps the epochs for a gcnii job.
+	ModelType string `json:"model_type"`
+	// Info is what the request that started the job knew and the backend needs to follow it (a gcnii job: the dataset, the settings, the
+	// history record); "{}" for a lora job. It is not part of the answers of the API.
+	Info json.RawMessage `json:"-"`
 	// JobID is the ML sidecar's ID of the job (it names the job's event log there); ProviderJobID is the compute
 	// provider's ID of the spawned call.
 	JobID         string `json:"job_id"`
@@ -32,6 +42,17 @@ type TrainingJobRun struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	FinishedAt *time.Time `json:"finished_at"`
 }
+
+// Type is ModelType, ModelTypeLoRA for a run made before types existed.
+func (r TrainingJobRun) Type() string {
+	if r.ModelType == "" {
+		return ModelTypeLoRA
+	}
+	return r.ModelType
+}
+
+// InfoJSON is Info as stored ("{}" when empty).
+func (r TrainingJobRun) InfoJSON() string { return objectOrEmpty(r.Info) }
 
 // Statuses of a training job that end it.
 const (

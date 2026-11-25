@@ -3,7 +3,6 @@ package training
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -16,22 +15,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// maxTrainingJobBody bounds the request body of StartJobOf.
-const maxTrainingJobBody = 1 << 16
+// maxTrainingJobBody bounds the request body of StartJobOf (a GCNII* job may bring its graphs: it is also sargo's limit for one request).
+const maxTrainingJobBody = 10<<20 - 4<<10
 
-// The dataset a job names is one of the training datasets directory (internal/training/manifest.go; also what UploadDatasetOf adds to it), by its
-// name; its data file is sent to the ML sidecar in the request that starts the job (the ML sidecar has no dataset
-// endpoints). A job needs a dataset: no name, or a name not in the directory, answers 400.
+// StartJobOf serves POST /v1/gb/training/jobs: it starts a training job (of any model type: this is the one handler, and the pipeline behind it
+// the one of every kind of training) and stores the run in the gb_training_job_runs table (the first without db), then has mon (may be nil)
+// follow the job's progress. The body is JSON with "model_type" ("lora", the default, or "gcnii") and the fields of that type:
 //
-// StartJobOf serves POST /v1/gb/training/jobs with a JSON body
-// {"dataset": "my-dataset", "num_train_steps": 100, "model_size": "4b"} (only dataset is required): it starts a training job on the ML sidecar through sc
-// (the ML sidecar's REST API) and stores the TrainingJob the ML sidecar reports in the gb_training_job_runs table
-// (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
-// (trainingdb.TrainingJobRun). A nil sc (no ML sidecar) answers 503, an ML sidecar error 502, except that a request the ML sidecar
-// rejects as invalid answers 400 with its message.
+//	lora:  {"dataset": "my-dataset", "num_train_steps": 100, "model_size": "4b"} (only dataset is required). The dataset is one of the training
+//	       datasets directory (internal/training/manifest.go; also what UploadDatasetOf adds to it), by its name; its data file is sent to the
+//	       ML sidecar in the request that starts the job. A job needs a dataset: no name, or a name not in the directory, answers 400.
+//	gcnii: {"dataset"?, "classes"?, "min_graphs_per_class"?, "validation_fraction"?, "split_seed"?, "epochs"?, "lr"?, ...} (see gcnii.Params):
+//	       trains the model of the user on the graphs of a dataset with the classes an LLM gave them, or on the labelled "graphs" of the body.
+//
+// It answers 201 with the stored record (trainingdb.TrainingJobRun). A model type whose backend is not on (no ML sidecar, no sargo) answers
+// 503, a bad request 400, a user that is training a GCNII* model already 409, a backend service error 502.
 func StartJobOf(db *sql.DB,
-	datasets core.DatasetStore,
-	sc core.JobStarter,
+	backends core.Backends,
 	mon *core.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
@@ -39,22 +39,19 @@ func StartJobOf(db *sql.DB,
 		if !ok {
 			return
 		}
-		if sc == nil {
+		raw, err := io.ReadAll(http.MaxBytesReader(w,
+			r.Body,
+			maxTrainingJobBody))
+		if err != nil {
 			httputil.Error(w,
-				http.StatusServiceUnavailable,
-				"ML sidecar is not active")
+				http.StatusBadRequest,
+				"invalid body")
 			return
 		}
-		// Only these fields come from the client; the dataset's content is added from the dataset's file.
-		var in struct {
-			NumTrainSteps int    `json:"num_train_steps"`
-			ModelSize     string `json:"model_size"`
-			Dataset       string `json:"dataset"`
+		var head struct {
+			ModelType string `json:"model_type"`
 		}
-		body := http.MaxBytesReader(w,
-			r.Body,
-			maxTrainingJobBody)
-		if err := json.NewDecoder(body).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+		if len(raw) != 0 && json.Unmarshal(raw, &head) != nil {
 			httputil.Error(w,
 				http.StatusBadRequest,
 				"invalid JSON body")
@@ -62,14 +59,12 @@ func StartJobOf(db *sql.DB,
 		}
 		run, err := core.StartJob(r.Context(),
 			db,
-			datasets,
-			sc,
+			backends,
 			mon,
 			core.StartJobRequest{
-				UserID:        userID,
-				NumTrainSteps: in.NumTrainSteps,
-				ModelSize:     in.ModelSize,
-				Dataset:       in.Dataset,
+				UserID:    userID,
+				ModelType: head.ModelType,
+				Params:    raw,
 			})
 		if err != nil {
 			writeErr(w, err)
@@ -81,12 +76,12 @@ func StartJobOf(db *sql.DB,
 	}
 }
 
-// StopJobOf serves POST /v1/gb/training/jobs/{id}/stop: it asks the ML sidecar to stop the job run {id}. The
+// StopJobOf serves POST /v1/gb/training/jobs/{id}/stop: it asks the backend of the job run {id} (the ML sidecar, sargo) to stop it. The
 // job ends at its next step (or at the next stage of its setup) with a "cancelled" event, which the monitor records like
 // any other: the answer is 202 with {"id": <run>, "status": "stopping"}, and the job's row changes when the event arrives.
-// 404 is for an unknown run, 409 for one that is over already, 503 for a nil sc, 502 for an ML sidecar error.
+// 404 is for an unknown run, 409 for one that is over already, 503 for a backend that is not on, 502 for a backend service error.
 func StopJobOf(db *sql.DB,
-	sc core.JobCanceller,
+	backends core.Backends,
 	mon *core.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
@@ -98,15 +93,9 @@ func StopJobOf(db *sql.DB,
 		if !ok {
 			return
 		}
-		if sc == nil {
-			httputil.Error(w,
-				http.StatusServiceUnavailable,
-				"ML sidecar is not active")
-			return
-		}
 		run, err := core.StopJob(r.Context(),
 			db,
-			sc,
+			backends,
 			mon,
 			userID,
 			id)
@@ -126,9 +115,11 @@ const (
 	trainingKeepalive        = 15 * time.Second
 )
 
-// ListJobsOf serves GET /v1/gb/training/jobs[?limit=<n>]: {"jobs": [...]}, the training job runs of the user of the request,
-// newest first, at most limit (default 50, at most 500).
-func ListJobsOf(db *sql.DB) http.HandlerFunc {
+// ListJobsOf serves GET /v1/gb/training/jobs[?limit=<n>][&model_type=<type>]: {"jobs": [...]}, the training job runs of the user of the
+// request (of every model type, or only the one of model_type), newest first, at most limit (default 50, at most 500). The runs whose
+// instance stopped are marked failed first (Backend.Reap).
+func ListJobsOf(db *sql.DB,
+	backends core.Backends) http.HandlerFunc {
 	return func(w http.ResponseWriter,
 		r *http.Request) {
 		limit, ok := limitParam(w,
@@ -142,10 +133,19 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		modelType := r.URL.Query().Get("model_type")
+		for _, b := range backends {
+			if err := b.Reap(r.Context(), userID); err != nil {
+				log.WithError(err).WithField("user_id", userID).Warn("training: reaping the runs of a stopped instance failed")
+			}
+		}
 		runs, err := trainingdb.ListUserTrainingJobRuns(r.Context(),
 			db,
 			userID,
-			limit)
+			0)
+		if err == nil {
+			runs = jobsOf(runs, modelType, limit)
+		}
 		if err != nil {
 			log.WithError(err).Error("training: list training jobs failed")
 			httputil.Error(w,
@@ -160,9 +160,9 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 }
 
 // EventsOf serves GET /v1/gb/training/events[?run_id=<id>] as Server-Sent Events, the feed of the
-// training events of the jobs (forwarded by mon), the same ones the Hooks.TrainingEvents callbacks get. `event:` is the type of the event
-// (monitoring.TrainingEvent.Type): `status`, `progress`, `log` (what the job is doing: loading the model, ...) and `system` (of the job's
-// container) from the ML sidecar, and `started`, `stop_requested`, `model_recorded` and `stream_error` from gligabao itself; `data:` is the
+// training events of the jobs of every model type (forwarded by mon), the same ones the Hooks.TrainingEvents callbacks get. `event:` is the type of the event
+// (monitoring.TrainingEvent.Type): `status` and `progress` from every backend (a GCNII* job reports one progress per epoch), `log` (what the
+// job is doing: loading the model, ...) and `system` (of the job's container) from the ML sidecar, and `started`, `stop_requested`, `model_recorded` and `stream_error` from gligabao itself; `data:` is the
 // monitoring.TrainingEvent as JSON. The events of gligabao itself are live only: their seq is -1 (monitoring.NoSeq), they have no `id:` and
 // they are not replayed.
 //
@@ -284,4 +284,17 @@ func EventsOf(db *sql.DB,
 			}
 		}
 	}
+}
+
+// jobsOf are the runs of the model type ("": all), at most limit of them, in the order they are given.
+func jobsOf(runs []trainingdb.TrainingJobRun,
+	modelType string,
+	limit int) []trainingdb.TrainingJobRun {
+	out := make([]trainingdb.TrainingJobRun, 0, min(limit, len(runs)))
+	for _, r := range runs {
+		if (modelType == "" || r.Type() == modelType) && len(out) < limit {
+			out = append(out, r)
+		}
+	}
+	return out
 }

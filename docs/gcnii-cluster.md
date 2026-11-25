@@ -8,7 +8,7 @@ gligabao starts one **sargo** child process per instance. Sargo trains in memory
 
 | Failure | What would happen |
 | --- | --- |
-| Status from another instance | `GET /v1/gb/training/gcnii/train` lands on instance B, whose sargo never trained anything: "not trained", no job. |
+| Status from another instance | `GET /v1/gb/training/jobs?model_type=gcnii` lands on instance B, whose sargo never trained anything: "not trained", no job. |
 | Concurrent trainings | Two `POST`s of the same user land on A and B: both train, and the user's model is whichever finishes last. |
 | Lost disk | The Nomad container is replaced: its local directory, and the only copy of every model, are gone. |
 | Stale model | A trains a new model; B keeps serving the old one from its own directory and memory. |
@@ -18,7 +18,7 @@ gligabao starts one **sargo** child process per instance. Sargo trains in memory
 
 ```
         load balancer ──► any instance (A, B, ...)
-                               │ handlers: internal/api/model (Recorder)
+                               │ handlers: internal/api/training, backend: internal/training/gcnii
                                ▼
    ┌─────────────── shared ───────────────┐          ┌──────── per instance ────────┐
    │ database                             │          │ sargo (in memory + files)    │
@@ -76,10 +76,10 @@ Sargo caches the loaded model together with the modification time of its weights
 ## The life of a training
 
 ```
-client ─POST /v1/gb/training/gcnii/train(/dataset)─► instance A
+client ─POST /v1/gb/training/jobs (model_type gcnii)─► instance A
   1. CLAIM    INSERT gb_model_train_jobs (running, instance A)       ── 409 if the user already has a running row anywhere
   2. START    A's sargo: POST /v1/gcnii/train                        ── on refusal the row is ended `failed`, the user may retry
-  3. 202      answer to the client; the Recorder's watcher starts on A
+  3. 202      answer to the client; the training monitor starts following it on A (gcnii.Backend.Stream)
   4. WATCH    every ~2 s: read A's sargo status; heartbeat the row (and store sargo's report)
   5. DONE     sargo reports `done`:
                 a. copy model.weights + classes.json to S3 under the job id        (sha256 of each)
@@ -94,11 +94,11 @@ The order in step 5 is deliberate: the job stays `running` until the marker is w
 
 ### Status
 
-`GET /v1/gb/training/gcnii/train` returns the **newest job of the user as the database has it**, so every instance gives the same answer. Status mapping: `running`, `done`, and `failed` (a `lost` job is `failed`, `error` says the instance stopped). A job that exists only in the local sargo and not in the table (a training from before the table existed, or the feature off) is shown from sargo; if the local one is newer than the row, the local one wins.
+`GET /v1/gb/training/jobs?model_type=gcnii` returns the **runs of the user as the database has them**, so every instance gives the same answer. Status mapping: `running`, `done`, and `failed` (a `lost` job is `failed`, `error` says the instance stopped). A job that exists only in the local sargo and not in the table (a training from before the table existed, or the feature off) is shown from sargo; if the local one is newer than the row, the local one wins.
 
 ### Inference and embedding: the sync
 
-Before `/infer`, `/embed` and the status, the instance runs `Recorder.Sync(user)`:
+Before `/infer`, `/embed` and the status, the instance runs `gcnii.Backend.Sync(user)`:
 
 1. If the user's newest job is `running` **on this instance**, do nothing (see "Races" below).
 2. Read the latest `gb_trained_models` row of the user. None: do nothing (sargo answers as before, `404` if it has no model).
@@ -156,7 +156,7 @@ This one mechanism covers both a **new model from another instance** (the marker
 
 | What | Where |
 | --- | --- |
-| Claim, watch, beat, record, sync, status merge | `internal/api/model/weights.go` (`Recorder`) |
+| Claim, watch, beat, record, sync, status merge | `internal/training/gcnii` (`lease.go`) |
 | Handlers that call them | `internal/api/model/model.go`, `dataset.go` |
 | Jobs table (SQL, SQLite and PostgreSQL) | `internal/training/db/{sqlite,postgres}/db_model_train_job.go`, `sql/schema.sql` |
 | Models table and its new columns | `internal/training/db/db_trained_model.go`, `model/trained_model.go` |

@@ -29,6 +29,8 @@ func initSchema(d *sql.DB) error {
 		"gb_training_job_runs",
 		[][2]string{
 			{"user_id", "TEXT NOT NULL DEFAULT ''"},
+			{"model_type", "TEXT NOT NULL DEFAULT 'lora'"},
+			{"info", "TEXT NOT NULL DEFAULT '{}'"},
 		}); err != nil {
 		return err
 	}

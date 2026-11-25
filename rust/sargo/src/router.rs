@@ -10,7 +10,9 @@
 //!   POST /v1/gcnii/train   body: {"user_id", "graphs": [{n, edges, nodes?, class}, ...], validation?: [same], epochs?, lr?, batch?, hidden?, depth?, seed?}
 //!       -> 202 {"user_id", "job"}: starts training that user's model in the background (needs `[gcnii] models_dir`);
 //!       409 if that user is already training
-//!   POST /v1/gcnii/train/status   body: {"user_id"} -> {"user_id", "trained", "job"} (job: running | done | failed)
+//!   POST /v1/gcnii/train/status   body: {"user_id"} -> {"user_id", "trained", "job"} (job: running | done | failed | cancelled)
+//!   POST /v1/gcnii/train/cancel   body: {"user_id"} -> 202 {"user_id", "trained", "job"}: stops the training of that user (it ends as
+//!       `cancelled` at its next batch); 409 if that user is not training. A running job also reports `epoch` and `epoch_loss`.
 //!   GET  /health     ->  {"status":"ok"}
 //! Errors are `{"error": "..."}` with status 400 (bad request), 502 (provider failed),
 //! 503 (provider not configured).
@@ -149,6 +151,14 @@ impl Router {
         users.status(user_id).map_err(user_error)
     }
 
+    /// `POST /v1/gcnii/train/cancel`: body `{"user_id"}`; stops the training of that user (409 if none runs).
+    fn gcnii_train_cancel(&self, body: &[u8]) -> Result<Value, RouterError> {
+        let doc = parse_body(body)?;
+        let users = self.users_or_503()?;
+        let user_id = doc.get("user_id").and_then(|v| v.as_str()).unwrap_or("");
+        users.cancel(user_id).map_err(user_error)
+    }
+
     /// Finds the provider called `name`. The result BORROWS from `self`: it is a reference to a
     /// provider stored inside the router, valid as long as the router is.
     /// To add a provider: add a field above and one arm here.
@@ -206,6 +216,10 @@ impl RequestHandler for Router {
             },
             ("POST", "/v1/gcnii/train/status") => match self.gcnii_train_status(&request.body) {
                 Ok(answer) => HttpResponse::json(200, answer.to_string()),
+                Err(err) => error_response(&err),
+            },
+            ("POST", "/v1/gcnii/train/cancel") => match self.gcnii_train_cancel(&request.body) {
+                Ok(answer) => HttpResponse::json(202, answer.to_string()),
                 Err(err) => error_response(&err),
             },
             _ => error_response(&RouterError::new(404, "not found")),

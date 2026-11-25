@@ -14,6 +14,8 @@
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id         TEXT NOT NULL DEFAULT '',
+	model_type      TEXT NOT NULL DEFAULT 'lora',
+	info            TEXT NOT NULL DEFAULT '{}',
 	job_id          TEXT NOT NULL,
 	provider_job_id TEXT NOT NULL DEFAULT '',
 	status          TEXT NOT NULL,

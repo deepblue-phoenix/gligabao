@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	rpostgres "github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
@@ -21,10 +22,12 @@ func InsertTrainingJobRun(ctx context.Context,
 	var id int64
 	err := d.QueryRowContext(ctx,
 		`
-		INSERT INTO gb_training_job_runs (user_id, job_id, provider_job_id, status, model_size, dataset, num_train_steps, started_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO gb_training_job_runs (user_id, model_type, info, job_id, provider_job_id, status, model_size, dataset, num_train_steps, started_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id`,
 		r.UserID,
+		r.Type(),
+		r.InfoJSON(),
 		r.JobID,
 		r.ProviderJobID,
 		r.Status,
@@ -39,7 +42,7 @@ func InsertTrainingJobRun(ctx context.Context,
 	return id, nil
 }
 
-const trainingJobRunColumns = `id, user_id, job_id, provider_job_id, status, model_size, dataset, num_train_steps, last_step, last_loss,
+const trainingJobRunColumns = `id, user_id, model_type, info, job_id, provider_job_id, status, model_size, dataset, num_train_steps, last_step, last_loss,
 	final_loss, error, started_at, created_at, finished_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
@@ -48,8 +51,11 @@ func scanTrainingJobRun(s rowScanner) (*model.TrainingJobRun, error) {
 	var r model.TrainingJobRun
 	var lastLoss, finalLoss sql.NullFloat64
 	var finished sql.NullTime
+	var info string
 	if err := s.Scan(&r.ID,
 		&r.UserID,
+		&r.ModelType,
+		&info,
 		&r.JobID,
 		&r.ProviderJobID,
 		&r.Status,
@@ -65,6 +71,7 @@ func scanTrainingJobRun(s rowScanner) (*model.TrainingJobRun, error) {
 		&finished); err != nil {
 		return nil, err
 	}
+	r.Info = json.RawMessage(info)
 	if lastLoss.Valid {
 		r.LastLoss = &lastLoss.Float64
 	}

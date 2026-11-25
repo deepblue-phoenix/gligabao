@@ -17,6 +17,8 @@ import (
 // Provider types: the ProviderType of an event says which compute provider it is about.
 const (
 	ProviderModal = "modal"
+	// ProviderSargo runs the GCNII* graph classifier trainings (sargo, in the process of the server or beside it).
+	ProviderSargo = "sargo"
 )
 
 // Types of a TrainingEvent (its Type field, also the name of the event on the SSE feed).

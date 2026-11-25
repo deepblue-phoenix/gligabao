@@ -5,6 +5,26 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.247.0] - 2026-11-26
+
+GCNII* trainings go through the one training pipeline of the LoRA jobs: the same endpoints, run records, monitor, events and feed. **Breaking** for clients of the old GCNII* training routes and for programs that embed gligabao and use `training.StartJob`, `StopJob`, `NewMonitor` or `api/model`.
+
+### Added
+
+- **Training backends** (`internal/training`, `Backend`, `Backends`): where a kind of job runs. `MLSidecarBackend` is the LoRA fine-tuning on the ML sidecar (as before), `internal/training/gcnii` is the GCNII* classifier on sargo. The monitor, `StartJob`, `StopJob`, the run rows and the SSE feed are one for both; a GCNII* job's events (`provider_type` `sargo`: a `status` running, one `progress` per finished epoch with its loss, and the end as `completed` with the scores in its `data`, `failed` or `cancelled`) arrive on `GET /v1/gb/training/events` and the hooks like the LoRA ones.
+- **`POST /v1/gb/training/jobs` takes `model_type`** (`lora`, the default, or `gcnii`) and the fields of that type: for `gcnii` the dataset options and training settings of the old `gcnii/train/dataset`, or labelled `graphs` (and `validation`) like the old `gcnii/train`. `GET /v1/gb/training/jobs` takes `model_type` to list one type; every run has `model_type`. `POST /v1/gb/training/jobs/{id}/stop` stops a GCNII* job too. A backend that is not on answers `503` (`training.KindUnavailable`).
+- **Cancel in sargo:** `POST /v1/gcnii/train/cancel` (`{"user_id"}`, `202`; `409` if the user is not training) stops a training at its next batch; the job ends `cancelled`, the user's previous model is kept. A running job also reports `epoch` and `epoch_loss`. Client: `sargo.Client.GCNIICancel`.
+- `gb_training_job_runs` has the columns `model_type` (default `lora`) and `info` (what the backend needs to follow the job); added to existing databases.
+
+### Removed
+
+- The GCNII* training routes `POST` and `GET /v1/gb/training/gcnii/train`, `POST /v1/gb/training/gcnii/train/dataset` and `GET /v1/gb/training/gcnii/train/dataset/runs` (no aliases). Start with `POST /v1/gb/training/jobs`, follow with `GET /v1/gb/training/jobs?model_type=gcnii` and the events feed. `/gcnii/infer` and `/gcnii/embed` stay. The history of the trainings on datasets is still written (its run id is in the model's `params`), it is not listed by an endpoint any more.
+- `api/model`: `Train`, `TrainStatus`, `TrainDataset`, `TrainDatasetRuns` and the `Recorder`; their work is the GCNII* backend (`internal/training/gcnii`).
+
+### Changed
+
+- `training.StartJob`, `StopJob` and `NewMonitor` take the `Backends` instead of the ML sidecar and the dataset store; `api/training.StartJobOf`, `StopJobOf` and `ListJobsOf` take them too. `model.Register` takes a `Syncer` instead of the database and the classifying hook.
+
 ## [0.246.0] - 2026-11-25
 
 Provider events and training events are one thing: the training events. **Breaking** for programs that embed gligabao and use `Hooks.ProviderEvents`.

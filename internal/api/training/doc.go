@@ -37,6 +37,8 @@ func writeErr(w http.ResponseWriter,
 		status = http.StatusConflict
 	case core.KindUpstream:
 		status = http.StatusBadGateway
+	case core.KindUnavailable:
+		status = http.StatusServiceUnavailable
 	}
 	httputil.Error(w,
 		status,

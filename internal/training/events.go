@@ -12,8 +12,14 @@ import (
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
-// providerType is the provider of the ML sidecar's backend.
-const providerType = monitoring.ProviderModal
+// providerOf is the compute provider that runs the jobs of a model type: the ML sidecar's backend (Modal) for the LoRA jobs, sargo for
+// the GCNII* ones.
+func providerOf(modelType string) string {
+	if modelType == trainingdb.ModelTypeGCNII {
+		return monitoring.ProviderSargo
+	}
+	return monitoring.ProviderModal
+}
 
 // ofRun is the event ev of the ML sidecar's log of the job run, completed with the job it is of (ev is not changed).
 func ofRun(run trainingdb.TrainingJobRun,
@@ -21,7 +27,7 @@ func ofRun(run trainingdb.TrainingJobRun,
 	ev.RunID = run.ID
 	ev.JobID = run.JobID
 	ev.UserID = run.UserID
-	ev.ProviderType = providerType
+	ev.ProviderType = providerOf(run.Type())
 	return ev
 }
 

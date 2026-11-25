@@ -13,7 +13,7 @@
 
 use super::dataset::samples_from_split;
 use super::model::{GcniiStar, DEFAULT_DEPTH, DEFAULT_HIDDEN};
-use super::train::{evaluate, train, TrainOptions};
+use super::train::{evaluate, train_with, TrainControl, TrainOptions};
 use super::weights;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -42,7 +42,12 @@ pub struct UserModels {
     /// cluster, through a restore) may replace the file, and `get` then loads it again.
     models: Mutex<HashMap<String, (Option<SystemTime>, Arc<UserModel>)>>,
     jobs: Mutex<HashMap<String, Value>>,
+    /// The control of the running (or last) training of each user: its progress, and the flag that stops it.
+    controls: Mutex<HashMap<String, Arc<TrainControl>>>,
 }
+
+/// The error a training that was stopped ends with (see `UserModels::cancel`).
+const CANCELLED: &str = "cancelled";
 
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -105,9 +110,10 @@ fn run_training(
     docs: &[Value],
     validation: &[Value],
     opts: &TrainOptions,
+    ctl: &TrainControl,
 ) -> Result<Trained, String> {
     let (samples, val_samples, classes) = samples_from_split(docs, validation)?;
-    let model = train(&samples, &classes, opts);
+    let model = train_with(&samples, &classes, opts, Some(ctl)).ok_or_else(|| CANCELLED.to_string())?;
     let scores = evaluate(&model, &samples)?;
     let val_scores = if val_samples.is_empty() { None } else { Some(evaluate(&model, &val_samples)?) };
     fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
@@ -146,6 +152,7 @@ impl UserModels {
             dir: dir.to_path_buf(),
             models: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            controls: Mutex::new(HashMap::new()),
         })
     }
 
@@ -177,7 +184,19 @@ impl UserModels {
         check_user_id(user_id)?;
         let trained = self.user_dir(user_id).join(WEIGHTS_FILE).is_file();
         Ok(match locked(&self.jobs).get(user_id) {
-            Some(job) => json!({"user_id": user_id, "trained": trained, "job": job}),
+            Some(job) => {
+                let mut job = job.clone();
+                if job["status"] == "running" {
+                    if let Some(ctl) = locked(&self.controls).get(user_id) {
+                        let (epoch, loss) = ctl.progress();
+                        job["epoch"] = json!(epoch);
+                        if epoch > 0 {
+                            job["epoch_loss"] = json!(loss);
+                        }
+                    }
+                }
+                json!({"user_id": user_id, "trained": trained, "job": job})
+            }
             None => json!({"user_id": user_id, "trained": trained, "job": null}),
         })
     }
@@ -209,15 +228,29 @@ impl UserModels {
             }
             jobs.insert(user_id.to_string(), job.clone());
         }
+        let ctl = Arc::new(TrainControl::default());
+        locked(&self.controls).insert(user_id.to_string(), Arc::clone(&ctl));
         let running = job.clone();
         let (this, user, docs, validation, dir) =
             (Arc::clone(self), user_id.to_string(), docs.to_vec(), validation.to_vec(), self.user_dir(user_id));
         std::thread::spawn(move || {
-            let outcome = catch_unwind(AssertUnwindSafe(|| run_training(&dir, &docs, &validation, &opts)))
+            let outcome = catch_unwind(AssertUnwindSafe(|| run_training(&dir, &docs, &validation, &opts, &ctl)))
                 .unwrap_or_else(|_| Err("training panicked".to_string()));
             this.finish(&user, running, outcome);
         });
         Ok(json!({"user_id": user_id, "job": job}))
+    }
+
+    /// Stops the running training of `user_id`: it ends (status `cancelled`) at its next batch, and the user's previous model, if any,
+    /// is left as it was. 409 if the user is not training.
+    pub fn cancel(&self, user_id: &str) -> Result<Value, UserError> {
+        check_user_id(user_id)?;
+        let running = locked(&self.jobs).get(user_id).is_some_and(|j| j["status"] == "running");
+        match locked(&self.controls).get(user_id) {
+            Some(ctl) if running => ctl.cancel.store(true, std::sync::atomic::Ordering::Relaxed),
+            _ => return Err((409, format!("user {user_id} is not training"))),
+        }
+        self.status(user_id)
     }
 
     /// Records the outcome of a training: swaps in the new model and updates the job.
@@ -234,6 +267,7 @@ impl UserModels {
                 }
                 done
             }
+            Err(err) if err == CANCELLED => json!({"status": "cancelled", "finished_unix": done_at}),
             Err(err) => {
                 eprintln!("gcnii training of user {user_id} failed: {err}");
                 json!({"status": "failed", "error": err, "finished_unix": done_at})
@@ -277,6 +311,21 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[test]
+    fn cancel_stops_a_training_and_keeps_the_old_model() {
+        let dir = std::env::temp_dir().join(format!("sargo_gcnii_cancel_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let models = Arc::new(UserModels::new(&dir).unwrap());
+        assert_eq!(models.cancel("alice").unwrap_err().0, 409, "nothing to cancel");
+        let opts = options_from_value(&json!({"epochs": 100000, "hidden": 4, "depth": 2, "seed": 1})).unwrap();
+        models.start("alice", &docs(), &[], opts).unwrap();
+        models.cancel("alice").unwrap();
+        let status = wait_done(&models, "alice");
+        assert_eq!(status["job"]["status"], "cancelled", "{status}");
+        assert_eq!(status["trained"], false, "a cancelled training saves nothing");
+        assert_eq!(models.cancel("alice").unwrap_err().0, 409, "it is over");
     }
 
     #[test]

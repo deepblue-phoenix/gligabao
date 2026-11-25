@@ -3,6 +3,8 @@
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	id              BIGSERIAL PRIMARY KEY,
 	user_id         TEXT NOT NULL DEFAULT '',
+	model_type      TEXT NOT NULL DEFAULT 'lora',
+	info            TEXT NOT NULL DEFAULT '{}',
 	job_id          TEXT NOT NULL,
 	provider_job_id TEXT NOT NULL DEFAULT '',
 	status          TEXT NOT NULL,
@@ -19,6 +21,8 @@ CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 );
 -- A database made before the runs had a user gets the column (not filled in: such runs belong to no user).
 ALTER TABLE gb_training_job_runs ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_training_job_runs ADD COLUMN IF NOT EXISTS model_type TEXT NOT NULL DEFAULT 'lora';
+ALTER TABLE gb_training_job_runs ADD COLUMN IF NOT EXISTS info TEXT NOT NULL DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_user ON gb_training_job_runs(user_id, id);
 

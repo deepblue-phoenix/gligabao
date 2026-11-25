@@ -12,7 +12,31 @@ use super::metrics::{GradMap, GradStats, ProbeStats};
 use super::math::{argmax, softmax, softmax_ce, Rng};
 use super::model::{add_grads, GcniiStar, ModelConfig};
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::time::Instant;
+
+/// Shared between a training thread and whoever watches or stops it: the training reports its progress here (the last finished epoch
+/// and its mean loss) and checks `cancel` between batches.
+#[derive(Default)]
+pub struct TrainControl {
+    pub cancel: AtomicBool,
+    epoch: AtomicUsize,
+    loss_bits: AtomicU32,
+}
+
+impl TrainControl {
+    pub fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+    /// The last finished epoch (0 before the first) and its mean training loss.
+    pub fn progress(&self) -> (usize, f32) {
+        (self.epoch.load(Ordering::Relaxed), f32::from_bits(self.loss_bits.load(Ordering::Relaxed)))
+    }
+    fn report(&self, epoch: usize, loss: f32) {
+        self.loss_bits.store(loss.to_bits(), Ordering::Relaxed);
+        self.epoch.store(epoch, Ordering::Relaxed);
+    }
+}
 
 pub struct TrainOptions {
     pub epochs: usize,
@@ -149,6 +173,17 @@ fn train_batch(model: GcniiStar, batch: &[&Featured], lr: f32, monitor: Monitor)
 
 /// Trains a new model on the samples. `classes`: the class names (one output each).
 pub fn train(samples: &[Sample], classes: &[String], opts: &TrainOptions) -> GcniiStar {
+    train_with(samples, classes, opts, None).expect("a training without a control is never cancelled")
+}
+
+/// Like `train`, reporting the progress to `ctl` and stopping (`None`) as soon as `ctl.cancel` is set (at the next batch).
+pub fn train_with(
+    samples: &[Sample],
+    classes: &[String],
+    opts: &TrainOptions,
+    ctl: Option<&TrainControl>,
+) -> Option<GcniiStar> {
+    let cancelled = || ctl.is_some_and(|c| c.cancelled());
     let vocab = TypeVocab::build(samples.iter().map(|s| &s.graph), MAX_TYPES);
     println!(
         "node types: {} in the vocabulary (max {MAX_TYPES}) {:?}, {} input features",
@@ -174,6 +209,9 @@ pub fn train(samples: &[Sample], classes: &[String], opts: &TrainOptions) -> Gcn
         let (model, loss, correct, monitor) = order.chunks(batch).fold(
             (model, 0.0f32, 0usize, monitor),
             |(model, loss, correct, monitor), chunk| {
+                if cancelled() {
+                    return (model, loss, correct, monitor);
+                }
                 let items: Vec<&Featured> = chunk.iter().map(|&i| &data[i]).collect();
                 let (next, batch_loss, batch_correct, monitor) = train_batch(model, &items, opts.lr, monitor);
                 (next, loss + batch_loss, correct + batch_correct, monitor)
@@ -181,6 +219,11 @@ pub fn train(samples: &[Sample], classes: &[String], opts: &TrainOptions) -> Gcn
         );
         let monitor = monitor.end_epoch();
         let n = data.len() as f32;
+        if let Some(c) = ctl {
+            if !c.cancelled() {
+                c.report(epoch, loss / n);
+            }
+        }
         println!(
             "== epoch {epoch}/{}: loss {:.4}, acc {:.1}%, epoch {:.1?}, total {:.1?}",
             opts.epochs,
@@ -192,7 +235,11 @@ pub fn train(samples: &[Sample], classes: &[String], opts: &TrainOptions) -> Gcn
         (model, monitor)
     });
     monitor.finish();
-    model
+    if cancelled() {
+        None
+    } else {
+        Some(model)
+    }
 }
 
 /// Accuracy (0..1) and mean loss of the model over the samples.

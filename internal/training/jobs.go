@@ -1,15 +1,14 @@
 package training
 
-// Starting and stopping training jobs on the ML sidecar, and reading the events a job reported (the Monitor stores them).
+// Starting and stopping training jobs on their backends (backend.go), and reading the events a job reported (the Monitor stores them).
 
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
@@ -18,115 +17,99 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// JobStarter starts training jobs on the ML sidecar; *ml_sidecar.Client is one.
-type JobStarter interface {
-	StartTrainingJob(ctx context.Context,
-		req ml_sidecar.StartTrainingJobRequest) (ml_sidecar.TrainingJob, error)
-}
-
-// JobCanceller asks the ML sidecar to stop training jobs; *ml_sidecar.Client is one.
-type JobCanceller interface {
-	CancelTrainingJob(ctx context.Context,
-		jobID string) error
-}
-
-// StartJobRequest is what the caller of StartJob chooses; the dataset's content is added from the dataset's file.
+// StartJobRequest is what the caller of StartJob chooses.
 type StartJobRequest struct {
 	// UserID is the user the job is for (never empty): the run and the model it makes are theirs.
-	UserID        string
-	NumTrainSteps int
-	ModelSize     string
-	// Dataset is the name of a dataset of the training datasets directory (manifest.go); the data file is sent to the ML sidecar in
-	// the request that starts the job (the ML sidecar has no dataset endpoints).
-	Dataset string
+	UserID string
+	// ModelType is what to train ("" is LoRA), and so which backend runs the job.
+	ModelType string
+	// Params is the body of the request, as the backend of the model type reads it (LoRAParams for LoRA: dataset, num_train_steps,
+	// model_size; for GCNII* see internal/training/gcnii).
+	Params json.RawMessage
 }
 
-// StartJob starts a training job on the ML sidecar through sc (the ML sidecar's REST API) and stores the TrainingJob the ML sidecar
-// reports in the gb_training_job_runs table of the database, then has mon (may be nil) follow the job's progress. It returns the stored
-// record. Errors are *Error: KindInvalid for a bad request (also one the ML sidecar rejects as invalid, with its message), KindUpstream
-// for an ML sidecar error, KindInternal.
+// StartJob starts a training job of in.ModelType on its backend and stores the run in the gb_training_job_runs table of the database, then
+// has mon (may be nil) follow the job's progress. It returns the stored record. Errors are *Error: KindInvalid for a bad request,
+// KindUnavailable for a model type whose backend is not on, KindConflict for a user that is training already (GCNII*), KindUpstream for
+// a backend service error, KindInternal.
 func StartJob(ctx context.Context,
 	db *sql.DB,
-	datasets DatasetStore,
-	sc JobStarter,
+	backends Backends,
 	mon *Monitor,
 	in StartJobRequest) (*trainingdb.TrainingJobRun, error) {
-	req := ml_sidecar.StartTrainingJobRequest{
-		NumTrainSteps: in.NumTrainSteps,
-		ModelSize:     strings.ToLower(strings.TrimSpace(in.ModelSize)),
-	}
 	if strings.TrimSpace(in.UserID) == "" {
 		return nil, invalidErr("a training job needs a user")
 	}
-	name := strings.TrimSpace(in.Dataset)
-	if name == "" {
-		return nil, invalidErr("dataset is required: the name of a training dataset")
-	}
-	if req.NumTrainSteps < 0 {
-		return nil, invalidErr("num_train_steps must be positive")
-	}
-	switch req.ModelSize {
-	case "", ml_sidecar.ModelSize4B, ml_sidecar.ModelSize12B, ml_sidecar.ModelSize31B:
-	default:
-		return nil, invalidErr("model_size must be \"4b\", \"12b\" or \"31b\"")
-	}
-
-	dataset, content, err := LoadTrainingDataset(ctx,
-		db,
-		datasets,
-		name)
-	if errors.Is(err, ErrUnknownDataset) {
-		return nil, invalidErr("unknown dataset " + name + ": there is no dataset of that name in the training datasets")
-	} else if err != nil {
-		return nil, internalErr(err.Error(), err)
-	}
-	req.Dataset, req.DatasetContent = dataset.Filename, base64.StdEncoding.EncodeToString(content)
-	job, err := sc.StartTrainingJob(ctx, req)
+	b, err := backends.Of(in.ModelType)
 	if err != nil {
-		var se *ml_sidecar.StatusError
-		if errors.As(err, &se) && se.Code == http.StatusBadRequest {
-			return nil, &Error{KindInvalid, se.Message(), err}
-		}
-		log.WithError(err).Error("training: start training job failed")
-		return nil, &Error{KindUpstream, "ML sidecar failed to start the training job", err}
+		return nil, err
 	}
-	// The job is running now: record it even if the caller went away meanwhile.
-	ctx = context.WithoutCancel(ctx)
-	// the ML sidecar has taken this version of the file
-	if _, err := trainingdb.MarkTrainingDatasetSynced(ctx,
-		db,
-		dataset.ID,
-		dataset.SHA256); err != nil {
-		log.WithError(err).WithField("filename", dataset.Filename).Error("training: mark training dataset synced failed")
+	if err := b.Reap(ctx, in.UserID); err != nil {
+		log.WithError(err).WithField("user_id", in.UserID).Warn("training: reaping the runs of a stopped instance failed")
 	}
-	id, err := trainingdb.RecordTrainingJobRun(ctx,
-		db,
-		trainingdb.TrainingJobRun{
-			UserID:        in.UserID,
-			JobID:         job.JobID,
-			ProviderJobID: job.ProviderJobID,
-			Status:        job.Status,
-			ModelSize:     job.ModelSize,
-			Dataset:       job.Dataset,
-			NumTrainSteps: job.NumTrainSteps,
-			StartedAt:     job.StartedAt,
+	run, err := b.Start(ctx,
+		StartInput{
+			UserID: in.UserID,
+			Params: in.Params,
+			Record: func(ctx context.Context,
+				r trainingdb.TrainingJobRun) (*trainingdb.TrainingJobRun, error) {
+				return recordRun(ctx,
+					db,
+					b.ModelType(),
+					r)
+			},
+			Abort: func(ctx context.Context,
+				r trainingdb.TrainingJobRun,
+				cause error) {
+				abortRun(ctx,
+					db,
+					r,
+					cause)
+			},
 		})
 	if err != nil {
-		log.WithError(err).WithField("job_id", job.JobID).Error("training: record training job run failed")
-		return nil, internalErr("training job "+job.JobID+" started but could not be recorded", err)
-	}
-	run, err := trainingdb.GetTrainingJobRun(ctx,
-		db,
-		id)
-	if err != nil {
-		log.WithError(err).WithField("job_id", job.JobID).Error("training: read training job run failed")
-		return nil, internalErr("failed to read the training job run", err)
+		return nil, err
 	}
 	started := jobEvent(*run, monitoring.EventStarted)
 	started.MaxSteps = &run.NumTrainSteps
 	mon.Emit(started)
 	mon.Watch(*run)
 	return run, nil
+}
+
+// recordRun stores a run of the model type and reads it back. A GCNII* run of a user that has an unfinished one is refused (KindConflict).
+func recordRun(ctx context.Context,
+	db *sql.DB,
+	modelType string,
+	r trainingdb.TrainingJobRun) (*trainingdb.TrainingJobRun, error) {
+	r.ModelType = modelType
+	id, err := trainingdb.RecordTrainingJobRun(ctx,
+		db,
+		r)
+	if err != nil {
+		return nil, err
+	}
+	return trainingdb.GetTrainingJobRun(ctx,
+		db,
+		id)
+}
+
+// abortRun marks a run that its service refused to start as failed, with the cause.
+func abortRun(ctx context.Context,
+	db *sql.DB,
+	r trainingdb.TrainingJobRun,
+	cause error) {
+	now := time.Now().UTC()
+	if err := trainingdb.UpdateTrainingJobRun(context.WithoutCancel(ctx),
+		db,
+		r.ID,
+		trainingdb.TrainingJobRunUpdate{
+			Status:     trainingdb.TrainingJobFailed,
+			Error:      cause.Error(),
+			FinishedAt: &now,
+		}); err != nil {
+		log.WithError(err).WithField("run_id", r.ID).Error("training: marking a refused run failed failed")
+	}
 }
 
 // GetJobRun reads training job run id of the database, which must be a job of userID (the run of another user is as unknown as one that
@@ -147,13 +130,13 @@ func GetJobRun(ctx context.Context,
 	return run, nil
 }
 
-// StopJob asks the ML sidecar to stop the job run id. The job ends at its next step (or at the next stage of its setup) with a
+// StopJob asks the backend of the job run id to stop it. The job ends at its next step (or at the next stage of its setup) with a
 // "cancelled" event, which the monitor records like any other: the job's row changes when the event arrives. It returns the
-// run. Errors are *Error: KindNotFound for an unknown run, KindConflict for one that is over already, KindUpstream for a
-// ml_sidecar error.
+// run. Errors are *Error: KindNotFound for an unknown run, KindConflict for one that is over already (or runs on another instance),
+// KindUnavailable for a backend that is not on, KindUpstream for a backend service error.
 func StopJob(ctx context.Context,
 	db *sql.DB,
-	sc JobCanceller,
+	backends Backends,
 	mon *Monitor,
 	userID string,
 	id int64) (*trainingdb.TrainingJobRun, error) {
@@ -167,13 +150,12 @@ func StopJob(ctx context.Context,
 	if trainingdb.TrainingJobFinished(run.Status) {
 		return nil, conflictErr("the training job is over already (" + run.Status + ")")
 	}
-	if err := sc.CancelTrainingJob(ctx, run.JobID); err != nil {
-		var se *ml_sidecar.StatusError
-		if errors.As(err, &se) && se.Code == http.StatusConflict {
-			return nil, &Error{KindConflict, se.Message(), err}
-		}
-		log.WithError(err).WithField("job_id", run.JobID).Error("training: stop training job failed")
-		return nil, &Error{KindUpstream, "ML sidecar failed to stop the training job", err}
+	b, err := backends.Of(run.Type())
+	if err != nil {
+		return nil, err
+	}
+	if err := b.Cancel(ctx, *run); err != nil {
+		return nil, err
 	}
 	log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Info("training: stop requested")
 	mon.Emit(jobEvent(*run, monitoring.EventStopRequested))
