@@ -21,7 +21,7 @@ def top():
 `
 
 func TestExtractPython(t *testing.T) {
-	g, err := ExtractAuto(sample)
+	g, err := ExtractAuto("", sample)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestExtractPython(t *testing.T) {
 }
 
 func TestUnsupportedLanguage(t *testing.T) {
-	if _, err := ExtractAuto("package main\n"); err == nil {
+	if _, err := ExtractAuto("", "package main\n"); err == nil {
 		t.Fatal("expected error for go")
 	}
 }

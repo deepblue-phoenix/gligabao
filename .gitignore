@@ -10,3 +10,6 @@ __pycache__/
 *.pyc
 
 # build/pypi (run_pypi.sh staging directories) is ignored by build/* above
+
+# Copy of the parser of esbuild, made by `go run ./internal/memory/memory_code/gen_esbuild` (build tag "esbuild"); never committed.
+internal/memory/memory_code/esparser/

@@ -12,7 +12,8 @@ There is one pipeline per platform (build_linux, build_macos, build_windows). Ea
 
   1. the admin UI (npm, embedded into the server binary),
   2. sargo, the Rust model router (cargo), optionally embedded into the server binary,
-  3. the Go binaries: build/gligabao (server), build/gligabao_agent, build/gligabao_worker, and always
+  3. the parser of esbuild (generate_esbuild: `go run ./internal/memory/memory_code/gen_esbuild`, needed by every Go build below),
+  4. the Go binaries: build/gligabao (server), build/gligabao_agent, build/gligabao_worker, and always
      build/gligabao_agent_linux_amd64 (baked into the Modal app by the ML sidecar).
 
 Go cross-compiles from any host (CGO is off), so the Go binaries can be built for any target OS/arch from any machine.
@@ -25,6 +26,7 @@ Usage (run `python3 ops/build.py --help`, or `<command> --help`):
   python3 ops/build.py admin-ui [--no-admin-ui]
   python3 ops/build.py sargo   [--os ..] [--arch ..] [--static] [--embed]
   python3 ops/build.py go      [--os ..] [--arch ..]
+  python3 ops/build.py esbuild                                         (only the generate step; for builds that are not made here)
   python3 ops/build.py server  --out FILE [--os ..] [--arch ..]       (release server binary, used by ops/pypi.py)
 
 --os and --arch default to the environment variables GOOS and GOARCH, then to the host.
@@ -50,6 +52,16 @@ BUILD_DIR = ROOT / "build"
 
 OSES = ("linux", "darwin", "windows")
 ARCHES = ("amd64", "arm64")
+
+# The Go build tag that compiles the TypeScript/JavaScript code extraction (internal/memory/memory_code/typescript.go). It imports
+# internal/memory/memory_code/esparser, a copy of the parser of esbuild that is NOT in git (about 2 MB of third party code that would sit
+# in the history for good): it is made by gen_esbuild, so generate_esbuild() must run before any Go build that passes the tag. Without the
+# tag the code compiles with no generate step (a stub reports TypeScript as unsupported), which is what plain `go build` / `go get` give.
+# Every Go build made by this file passes the tag, so the binaries it makes (and ops/pypi.py's) always support TypeScript. A build of
+# gligabao_int (the sibling repo that embeds gligabao) must do the same: its run_build.sh calls `python3 ops/build.py esbuild` of this repo and
+# builds with `-tags esbuild`.
+ESBUILD_TAG = "esbuild"
+ESBUILD_GEN_PACKAGE = "./internal/memory/memory_code/gen_esbuild"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -137,13 +149,22 @@ def go_env(target: Target,
     return {**base, "CGO_ENABLED": "0", "GOOS": target.os, "GOARCH": target.arch}
 
 
+def generate_esbuild() -> None:
+    """Makes internal/memory/memory_code/esparser (the copy of esbuild's parser; see ESBUILD_TAG). Quick when it is already up to date.
+
+    It runs `go` from ROOT: the copy always lands in this repo, also when the build that needs it is the one of gligabao_int.
+    """
+    require_tool("go", "Install Go (https://go.dev/dl).")
+    run(["go", "run", ESBUILD_GEN_PACKAGE], cwd=ROOT)
+
+
 def go_release_args(version: str,
                     out: Path,
                     package: str,
                     stamp_version: bool) -> list[str]:
     """Stripped, reproducible-path build. The main package of the agent and worker take the version through -X."""
     ldflags = "-s -w" + (f" -X main.version={version}" if stamp_version else "")
-    return ["go", "build", "-trimpath", "-ldflags", ldflags, "-o", str(out), package]
+    return ["go", "build", "-tags", ESBUILD_TAG, "-trimpath", "-ldflags", ldflags, "-o", str(out), package]
 
 
 def sargo_env(target: Target,
@@ -244,11 +265,12 @@ def go_server_binary(target: Target,
                      release: bool,
                      version: str) -> None:
     """The server (cmd/gligabao). Its version comes from the embedded VERSION file, so no -X is needed."""
+    generate_esbuild()
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = (
         go_release_args(version, out, "./cmd/gligabao", stamp_version=False)
         if release
-        else ["go", "build", "-o", str(out), "./cmd/gligabao"]
+        else ["go", "build", "-tags", ESBUILD_TAG, "-o", str(out), "./cmd/gligabao"]
     )
     run(cmd, env=go_env(target, os.environ))
 
@@ -260,6 +282,7 @@ def go_binaries(target: Target,
     require_tool("go", "Install Go (https://go.dev/dl).")
     version = read_version()
     BUILD_DIR.mkdir(exist_ok=True)
+    generate_esbuild()  # before the first Go build with the tag (the agent and the worker are built with it too)
 
     go_server_binary(target, BUILD_DIR / f"gligabao{target.exe}", release=False, version=version)
     details = "" if admin_ui_enabled is None else (
@@ -437,6 +460,8 @@ def make_parser() -> argparse.ArgumentParser:
     sargo_cmd.add_argument("--static", action="store_true", help="statically linked build for --os/--arch (Linux: musl)")
     sargo_cmd.add_argument("--embed", action="store_true", help="implies --static, then copy to rust/sargo/bin/sargo for the Go build")
 
+    commands.add_parser("esbuild", help="generate the parser of esbuild that the build tag 'esbuild' needs (no build)")
+
     go_cmd = commands.add_parser("go", help="build the Go binaries into build/")
     add_target_args(go_cmd)
 
@@ -457,6 +482,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 build_sargo(host_target(), static=False, embed=False)
             else:
                 build_sargo(target_from(args.os, args.arch, os.environ), static=args.static, embed=args.embed)
+        elif args.command == "esbuild":
+            generate_esbuild()
         elif args.command == "go":
             go_binaries(target_from(args.os, args.arch, os.environ), None, None)
         elif args.command == "server":

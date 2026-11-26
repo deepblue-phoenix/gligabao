@@ -332,6 +332,7 @@ func (j *job) extractText(ctx context.Context,
 			memory_core.GraphExtractRequest{
 				Text:        text,
 				ContentType: contentType,
+				Filename:    j.co.Filename,
 				Image:       j.co.GraphExtractImage,
 				UserID:      j.userID,
 				Dataset:     j.dataset,
@@ -347,7 +348,8 @@ func (j *job) extractText(ctx context.Context,
 		}
 	}
 	if j.co.ContentType == memory_core.ContentCode {
-		g, err := memory_code.ExtractAuto(text)
+		g, err := memory_code.ExtractAuto(j.co.Filename,
+			text)
 		if err != nil {
 			return nil, fmt.Errorf("memory: code extraction: %w", err)
 		}

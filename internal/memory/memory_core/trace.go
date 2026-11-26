@@ -102,6 +102,8 @@ type CallOptions struct {
 	GraphExtractor GraphExtractor
 	// ContentType is the kind of content of the call (ContentText, ContentCode), set by WithContentType; "" is ContentText. The hook gets it.
 	ContentType string
+	// Filename is the name of the file the text comes from (WithFilename); "" if none. For code it picks the language.
+	Filename string
 	// GraphExtractImage is the image of a ContentImage call, set by WithGraphExtractImage; nil otherwise.
 	GraphExtractImage *GraphExtractImage
 	// GraphIndex is the name of the graph embedding index the call is for, set by WithGraphIndex; "" names none. The hook gets it.

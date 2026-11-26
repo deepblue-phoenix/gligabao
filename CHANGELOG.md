@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.253.0] - 2026-11-30
+
+### Added
+
+- **TypeScript and JavaScript code extraction.** `remember` with `content_type: "code"` now reads the graph of TypeScript (`.ts`, `.tsx`, `.mts`, `.cts`) and JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`) with the parser of esbuild: classes (with `extends`), functions, arrow functions bound to a name, methods, namespaces and enums as entities; `defines`, `inherits`, `calls` and `imports` (static, dynamic `import()` and `require`) as edges. Imported names are resolved (`import {a} from "m"; a()` calls `m.a`). Interfaces and type aliases are not in the graph (esbuild drops them). It needs the Go build tag `esbuild`: the parser is a copy of esbuild's `internal/` packages (which cannot be imported), made into `internal/memory/memory_code/esparser` (not committed, git-ignored) by `go run ./internal/memory/memory_code/gen_esbuild`. `ops/build.py` (all commands, so also `ops/pypi.py`), the Dockerfile and `run_tests.sh` generate it and build with `-tags esbuild`; new command `python3 ops/build.py esbuild` only generates. A plain `go build` / `go get` works without the tag but reports TypeScript/JavaScript as unsupported (400 for a request with such a `filename`).
+- New optional request field `filename` of `POST /v1/gb/remember` (and `RememberRequest.Filename` of the Go client, `WithFilename`, `GraphExtractRequest.Filename`): the extension picks the language of the code. Without it the code is taken as Python, as before. Code with an unsupported extension is a `400`.
+
+### Changed
+
+- `memory_code` has a language table (`Language`: name, extensions, extractor) instead of a fixed switch; `Detect` and `ExtractAuto` take the file name. A TypeScript/JavaScript syntax error fails the call.
+
 ## [0.252.1] - 2026-11-29
 
 ### Added

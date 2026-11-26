@@ -364,7 +364,7 @@ func TestPythonPrograms(t *testing.T) {
 			if diags := parseDiagnostics(code); len(diags) > 0 {
 				t.Fatalf("syntax errors: %v", diags)
 			}
-			g, err := ExtractAuto(code)
+			g, err := ExtractAuto("", code)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -265,7 +265,7 @@ type GraphExtractor func(ctx context.Context, rt *Runtime, req GraphExtractReque
 
 | Type | Fields |
 |---|---|
-| `gligabao.GraphExtractRequest` | `Text` (the text of the call, or one chunk of it for a document that was split; for an image, what the LLM read from it), `ContentType`, `Image` (`*gligabao.GraphExtractImage`: `Data`, `MediaType`, `SHA256`; only for `image`, else nil), `UserID`, `Dataset`, `Chunk` (0-based) and `Chunks` (1 when the text was not split) |
+| `gligabao.GraphExtractRequest` | `Text` (the text of the call, or one chunk of it for a document that was split; for an image, what the LLM read from it), `ContentType`, `Filename` (the optional `filename` of the request, `""` if none), `Image` (`*gligabao.GraphExtractImage`: `Data`, `MediaType`, `SHA256`; only for `image`, else nil), `UserID`, `Dataset`, `Chunk` (0-based) and `Chunks` (1 when the text was not split) |
 | `gligabao.GraphExtractResult` | `Pass` (true: the hook does not handle it, the LLM extracts and `Entities`/`Edges` are ignored), `Entities` and `Edges` (the graph, when not `Pass`; empty is a valid graph) |
 
 An edge names its `Source` and `Target` by entity name. An edge without a source, target or relation is dropped; a missing `Description` is made from them; a zero `ValidAt` is the reference time of the call. The entities and edges of a hook carry no model ID (no model made them) and no inference.

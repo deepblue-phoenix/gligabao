@@ -72,6 +72,8 @@ type GraphExtractRequest struct {
 	Text string
 	// ContentType is the kind of content of the call: ContentText (the default), ContentCode or ContentImage.
 	ContentType string
+	// Filename is the file name the client gave the text (may be ""); it tells the language of code.
+	Filename string
 	// Image is the image when ContentType is ContentImage (Text is then what the LLM read from it); nil otherwise.
 	Image *GraphExtractImage
 	// UserID and Dataset (already resolved) are where the call runs.
@@ -107,6 +109,10 @@ func WithGraphExtractor(f GraphExtractor) Option {
 // WithContentType sets the content type of the call (ContentText or ContentCode), which the graph extractor hook gets. It is used as given:
 // validate it with ResolveContentType first. Empty is ContentText. It has no effect without WithGraphExtractor.
 func WithContentType(t string) Option { return func(o *CallOptions) { o.ContentType = t } }
+
+// WithFilename sets the file name of the text of the call (only the extension matters): code is parsed in the language of it, and the graph
+// extractor hook gets it. Empty (the default) leaves the language to be guessed.
+func WithFilename(name string) Option { return func(o *CallOptions) { o.Filename = name } }
 
 // WithGraphExtractImage sets the image of the call, which the graph extractor hook gets as GraphExtractRequest.Image. memory_image sets it, together
 // with WithContentType(ContentImage), on the remember of the description of an image.
