@@ -128,6 +128,8 @@ func (b *Backend) Model(ctx context.Context,
 		Loss:        job.Loss,
 		ValAccuracy: job.ValAccuracy,
 		ValLoss:     job.ValLoss,
+		LinkEval:    job.LinkEval,
+		ValLinkEval: job.ValLinkEval,
 	})
 	if err != nil {
 		return nil, err

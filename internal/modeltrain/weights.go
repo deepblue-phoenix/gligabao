@@ -266,6 +266,9 @@ type WeightsParams struct {
 	Loss        *float64 `json:"loss,omitempty"`
 	ValAccuracy *float64 `json:"val_accuracy,omitempty"`
 	ValLoss     *float64 `json:"val_loss,omitempty"`
+	// LinkEval and ValLinkEval are the link prediction metrics of a link training (both methods, see sargo.GCNIIJob).
+	LinkEval    json.RawMessage `json:"link_eval,omitempty"`
+	ValLinkEval json.RawMessage `json:"val_link_eval,omitempty"`
 }
 
 // NewModel is the row of a GCNII* model whose weights are the files in the store of w.

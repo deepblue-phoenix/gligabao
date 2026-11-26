@@ -37,7 +37,24 @@ type GCNIITrainRequest struct {
 	Hidden     int          `json:"hidden,omitempty"`
 	Depth      int          `json:"depth,omitempty"`
 	Seed       *uint64      `json:"seed,omitempty"`
+	// Task is GCNIITaskClassify (the default) or GCNIITaskLink: the link-prediction head is trained instead (see the fields below, and
+	// docs/gcnii-link.md). The graphs of a link training need no class (unless ClassWeight > 0).
+	Task string `json:"task,omitempty"`
+	// Link training only. Holdout is the fraction of the edges of a graph taken out as positive pairs each epoch (0: 0.2). Encoder is
+	// "frozen" (train only the head on top of the model the user has; the default when starting from it) or "train" (the encoder too).
+	// ClassWeight > 0 adds the classification loss at that weight (needs Encoder "train"). Init starts from the user's current model
+	// (default: true for a frozen encoder, false otherwise).
+	Holdout     float64 `json:"holdout,omitempty"`
+	Encoder     string  `json:"encoder,omitempty"`
+	ClassWeight float64 `json:"class_weight,omitempty"`
+	Init        *bool   `json:"init,omitempty"`
 }
+
+// The tasks of a GCNIITrainRequest.
+const (
+	GCNIITaskClassify = "classify"
+	GCNIITaskLink     = "link"
+)
 
 // GCNII job states (GCNIIJob.Status).
 const (
@@ -69,6 +86,16 @@ type GCNIIJob struct {
 	// ValAccuracy and ValLoss are measured on the validation graphs (only if the request had some), once the job is done.
 	ValAccuracy *float64 `json:"val_accuracy,omitempty"`
 	ValLoss     *float64 `json:"val_loss,omitempty"`
+	// Task is GCNIITaskClassify or GCNIITaskLink.
+	Task string `json:"task,omitempty"`
+	// Link training: Encoder and FromCurrent say how it started; LinkEval and ValLinkEval are the link prediction metrics of both methods
+	// (the cosine of the embeddings and the head) on nodes held out of the training graphs and of the validation graphs, once the job
+	// is done: {"cases", "cosine": {auc, mrr, hits_at_10}, "head": {...}}.
+	Encoder     string          `json:"encoder,omitempty"`
+	FromCurrent bool            `json:"from_current,omitempty"`
+	LinkLoss    *float64        `json:"link_loss,omitempty"`
+	LinkEval    json.RawMessage `json:"link_eval,omitempty"`
+	ValLinkEval json.RawMessage `json:"val_link_eval,omitempty"`
 	// Error is why a failed job failed.
 	Error string `json:"error,omitempty"`
 }
@@ -132,7 +159,15 @@ type GCNIILinkRequest struct {
 	Graph  GCNIIGraph    `json:"graph"`
 	Node   GCNIILinkNode `json:"node"`
 	TopK   int           `json:"top_k,omitempty"`
+	// Method is GCNIIMethodCosine or GCNIIMethodHead; "" is the head if the user's model has one, else the cosine.
+	Method string `json:"method,omitempty"`
 }
+
+// The ways to score a pair of nodes.
+const (
+	GCNIIMethodCosine = "cosine"
+	GCNIIMethodHead   = "head"
+)
 
 // GCNIILinkScore is the score (0..1, the cosine of the node embeddings) of the link of the new node with node Node of the graph;
 // Connected is true for the links the request already gave.
@@ -145,9 +180,36 @@ type GCNIILinkScore struct {
 
 // GCNIILinkResponse is the link prediction: Node is the index the new node got (= Nodes), Scores the nodes of the graph, best first.
 type GCNIILinkResponse struct {
+	// Method is the one that scored.
+	Method string           `json:"method"`
 	Node   int              `json:"node"`
 	Nodes  int              `json:"nodes"`
 	Scores []GCNIILinkScore `json:"scores"`
+}
+
+// GCNIILinkEvalRequest tests both ways to predict links on nodes held out of Graphs, with the model of UserID. Nodes (0: 5) are taken out of each
+// graph, Reveal (0: 0.5) is the fraction of their neighbours given as known, Seed (0: 1) picks them.
+type GCNIILinkEvalRequest struct {
+	UserID string       `json:"user_id"`
+	Graphs []GCNIIGraph `json:"graphs"`
+	Nodes  int          `json:"nodes,omitempty"`
+	Reveal float64      `json:"reveal,omitempty"`
+	Seed   *uint64      `json:"seed,omitempty"`
+}
+
+// GCNIILinkMetrics are the scores of one method: the mean over Cases of the AUC, the reciprocal rank of the best target and the hit in the top 10.
+type GCNIILinkMetrics struct {
+	Cases    int     `json:"cases"`
+	AUC      float64 `json:"auc"`
+	MRR      float64 `json:"mrr"`
+	HitsAt10 float64 `json:"hits_at_10"`
+}
+
+// GCNIILinkEvalResponse has the scores of both methods on the same cases; Head is nil for a model without a link head.
+type GCNIILinkEvalResponse struct {
+	Cases  int               `json:"cases"`
+	Cosine GCNIILinkMetrics  `json:"cosine"`
+	Head   *GCNIILinkMetrics `json:"head"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -193,6 +255,33 @@ func (r *GCNIITrainRequest) Validate() error {
 	}
 	if r.Epochs < 0 || r.LR < 0 || r.Batch < 0 || r.Hidden < 0 || r.Depth < 0 {
 		return invalidGCNII("train: epochs, lr, batch, hidden and depth must not be negative")
+	}
+	switch r.Task {
+	case "", GCNIITaskClassify:
+		if r.Holdout != 0 || r.Encoder != "" || r.ClassWeight != 0 || r.Init != nil {
+			return invalidGCNII("train: holdout, encoder, class_weight and init are for the task %q", GCNIITaskLink)
+		}
+	case GCNIITaskLink:
+		if r.Holdout < 0 || r.Holdout >= 1 || r.ClassWeight < 0 {
+			return invalidGCNII("train: holdout must be in [0, 1) and class_weight >= 0")
+		}
+		if r.Encoder != "" && r.Encoder != "frozen" && r.Encoder != "train" {
+			return invalidGCNII("train: encoder must be frozen or train")
+		}
+	default:
+		return invalidGCNII("train: unknown task %q (%s or %s)",
+			r.Task,
+			GCNIITaskClassify,
+			GCNIITaskLink)
+	}
+	if r.Task == GCNIITaskLink && r.ClassWeight == 0 {
+		// the classes do not matter to the link head
+		for i, g := range append(append([]GCNIIGraph{}, r.Graphs...), r.Validation...) {
+			if err := g.Validate(); err != nil {
+				return fmt.Errorf("graph %d: %w", i, err)
+			}
+		}
+		return nil
 	}
 	if err := validateLabelled("graphs", r.Graphs); err != nil {
 		return err
@@ -332,6 +421,11 @@ func (c *Client) GCNIILink(ctx context.Context,
 	if req.TopK < 0 {
 		return nil, invalidGCNII("top_k must be >= 0")
 	}
+	if req.Method != "" && req.Method != GCNIIMethodCosine && req.Method != GCNIIMethodHead {
+		return nil, invalidGCNII("method must be %s or %s",
+			GCNIIMethodCosine,
+			GCNIIMethodHead)
+	}
 	for _, i := range req.Node.Neighbors {
 		if i < 0 || i >= req.Graph.N {
 			return nil, invalidGCNII("node: neighbor %d outside nodes 0..%d",
@@ -342,6 +436,36 @@ func (c *Client) GCNIILink(ctx context.Context,
 	var resp GCNIILinkResponse
 	if err := c.postJSON(ctx,
 		"/v1/gcnii/link",
+		req,
+		&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GCNIILinkEval tests both ways to predict links (POST /v1/gcnii/link/eval) with the model of req.UserID. A user without a trained model gets
+// an *APIError with status 404.
+func (c *Client) GCNIILinkEval(ctx context.Context,
+	req *GCNIILinkEvalRequest) (*GCNIILinkEvalResponse, error) {
+	if err := validateGCNIIUser(req.UserID); err != nil {
+		return nil, err
+	}
+	if len(req.Graphs) == 0 {
+		return nil, invalidGCNII("link eval: no graphs")
+	}
+	for i, g := range req.Graphs {
+		if err := g.Validate(); err != nil {
+			return nil, fmt.Errorf("graphs[%d]: %w",
+				i,
+				err)
+		}
+	}
+	if req.Nodes < 0 || req.Reveal < 0 || req.Reveal >= 1 {
+		return nil, invalidGCNII("link eval: nodes must be >= 0 and reveal in [0, 1)")
+	}
+	var resp GCNIILinkEvalResponse
+	if err := c.postJSON(ctx,
+		"/v1/gcnii/link/eval",
 		req,
 		&resp); err != nil {
 		return nil, err

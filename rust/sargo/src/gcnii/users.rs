@@ -4,7 +4,8 @@
 //! hex-encoded, so any id is a safe directory name and two ids never collide.
 //!
 //! Training runs on a background thread (one at a time per user); `start` returns at once and `status` tells how it is going:
-//! `running`, `done` (with accuracy / loss on the training data) or `failed` (with the error). A finished model replaces the
+//! `running`, `done` (with accuracy / loss on the training data) or `failed` (with the error). A training is a classification training
+//! (`start`) or a link-prediction one (`start_link`, see `link_train.rs`; it can start from the user's current model and gives it a link head). A finished model replaces the
 //! user's previous one in the in-memory cache and on disk (the weights file is written to a temporary name and renamed).
 //!
 //! MEMORY NOTE: `UserModels` is shared as `Arc<UserModels>` between the HTTP threads and the training threads. Its two maps are
@@ -12,6 +13,8 @@
 //! `Arc<UserModel>`, so inference borrows it without copying the weights and a retrain swaps the `Arc`, never mutating it.
 
 use super::dataset::samples_from_split;
+use super::link_eval::{compare, EvalOptions};
+use super::link_train::{train_link, Encoder, LinkOptions};
 use super::model::{GcniiStar, DEFAULT_DEPTH, DEFAULT_HIDDEN};
 use super::train::{evaluate, train_with, TrainControl, TrainOptions};
 use super::weights;
@@ -101,8 +104,18 @@ pub fn options_from_value(doc: &Value) -> Result<TrainOptions, UserError> {
     })
 }
 
-/// The outcome of a training: the model, (accuracy, loss) on the training graphs and, if there were validation graphs, on those.
-type Trained = (UserModel, (f32, f32), Option<(f32, f32)>);
+/// The outcome of a training: the model and the numbers the job reports (accuracy and loss on the training graphs and, if there were validation
+/// graphs, on those; for a link training the link metrics, see `link_eval.rs`).
+type Trained = (UserModel, Value);
+
+/// Writes the model of a user (weights through a temporary name, then the classes).
+fn save_user_model(dir: &Path, model: &GcniiStar, classes: &[String]) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+    let tmp = dir.join(format!("{WEIGHTS_FILE}.tmp"));
+    weights::save(model, &tmp)?;
+    fs::rename(&tmp, dir.join(WEIGHTS_FILE)).map_err(|err| format!("cannot save the weights: {err}"))?;
+    fs::write(dir.join(CLASSES_FILE), json!(classes).to_string()).map_err(|err| format!("cannot save the classes: {err}"))
+}
 
 /// Trains, evaluates on the training data (and on the validation data, if any) and saves the model of one user into `dir`.
 fn run_training(
@@ -114,15 +127,106 @@ fn run_training(
 ) -> Result<Trained, String> {
     let (samples, val_samples, classes) = samples_from_split(docs, validation)?;
     let model = train_with(&samples, &classes, opts, Some(ctl)).ok_or_else(|| CANCELLED.to_string())?;
-    let scores = evaluate(&model, &samples)?;
-    let val_scores = if val_samples.is_empty() { None } else { Some(evaluate(&model, &val_samples)?) };
-    fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
-    let tmp = dir.join(format!("{WEIGHTS_FILE}.tmp"));
-    weights::save(&model, &tmp)?;
-    fs::rename(&tmp, dir.join(WEIGHTS_FILE)).map_err(|err| format!("cannot save the weights: {err}"))?;
-    fs::write(dir.join(CLASSES_FILE), json!(classes).to_string())
-        .map_err(|err| format!("cannot save the classes: {err}"))?;
-    Ok((UserModel { model, classes }, scores, val_scores))
+    let (accuracy, loss) = evaluate(&model, &samples)?;
+    let mut numbers = json!({"accuracy": accuracy, "loss": loss});
+    if !val_samples.is_empty() {
+        let (val_accuracy, val_loss) = evaluate(&model, &val_samples)?;
+        numbers["val_accuracy"] = json!(val_accuracy);
+        numbers["val_loss"] = json!(val_loss);
+    }
+    save_user_model(dir, &model, &classes)?;
+    Ok((UserModel { model, classes }, numbers))
+}
+
+/// Trains the link head (see `link_train.rs`) of the model of one user, starting from `init` (the user's model) if given, evaluates both ways
+/// to predict links on the training graphs (and on the validation ones) and saves the model, with its head, into `dir`.
+fn run_link_training(
+    dir: &Path,
+    docs: &[Value],
+    validation: &[Value],
+    opts: &LinkOptions,
+    init: Option<Arc<UserModel>>,
+    ctl: &TrainControl,
+) -> Result<Trained, String> {
+    let (samples, val_samples, found_classes) = samples_from_split(docs, validation)?;
+    let classes = init.as_ref().map_or(found_classes, |m| m.classes.clone());
+    let start = init.map(|m| m.model.clone());
+    let model = train_link(&samples, &classes, start, opts, Some(ctl))?.ok_or_else(|| CANCELLED.to_string())?;
+    let eval = EvalOptions {
+        seed: opts.seed,
+        ..Default::default()
+    };
+    let scored = |set: &[super::dataset::Sample]| compare(&model, set, &eval).unwrap_or_else(|err| json!({"error": err}));
+    let (_, last_loss) = ctl.progress();
+    let mut numbers = json!({"task": "link", "link_loss": last_loss, "link_eval": scored(&samples)});
+    if !val_samples.is_empty() {
+        numbers["val_link_eval"] = scored(&val_samples);
+    }
+    save_user_model(dir, &model, &classes)?;
+    Ok((UserModel { model, classes }, numbers))
+}
+
+/// The body of a link training: the classification options' keys plus `holdout` (0..1, default 0.2), `encoder` (`frozen` | `train`, default
+/// `frozen` when starting from the user's model, else `train`), `class_weight` (default 0, needs `encoder` train) and `init` (bool: start
+/// from the current model of the user; default true for a frozen encoder, else false). Returns the options and `init`.
+pub fn link_options_from_value(doc: &Value) -> Result<(LinkOptions, bool), UserError> {
+    let base = options_from_value(doc)?;
+    let get = |key: &str| doc.get(key).filter(|v| !v.is_null());
+    let init_flag = match get("init") {
+        None => None,
+        Some(v) => Some(v.as_bool().ok_or((400, "init must be true or false".to_string()))?),
+    };
+    let encoder = match get("encoder") {
+        Some(v) => Encoder::parse(v.as_str().unwrap_or("")).map_err(|err| (400, err))?,
+        None if init_flag == Some(false) => Encoder::Train,
+        None if init_flag == Some(true) => Encoder::Frozen,
+        None => Encoder::Frozen,
+    };
+    let init = init_flag.unwrap_or(encoder == Encoder::Frozen);
+    let holdout = get("holdout").map_or(Ok(0.2), |v| {
+        v.as_f64()
+            .filter(|&x| x > 0.0 && x < 1.0)
+            .ok_or((400, "holdout must be a number between 0 and 1".to_string()))
+    })?;
+    let class_weight = get("class_weight").map_or(Ok(0.0), |v| {
+        v.as_f64()
+            .filter(|&x| x >= 0.0 && x.is_finite())
+            .ok_or((400, "class_weight must be a number >= 0".to_string()))
+    })?;
+    if encoder == Encoder::Frozen && !init {
+        return Err((400, "a frozen encoder needs init (a model to start from)".to_string()));
+    }
+    if encoder == Encoder::Frozen && class_weight > 0.0 {
+        return Err((400, "class_weight needs encoder train".to_string()));
+    }
+    Ok((
+        LinkOptions {
+            epochs: base.epochs,
+            lr: base.lr,
+            batch: base.batch,
+            hidden: base.hidden,
+            depth: base.depth,
+            seed: base.seed,
+            holdout: holdout as f32,
+            encoder,
+            class_weight: class_weight as f32,
+        },
+        init,
+    ))
+}
+
+/// Graph documents of a link training do not need a `class` (it only matters with a class weight): a missing one becomes `_`.
+fn with_default_class(docs: &[Value], needs_class: bool) -> Vec<Value> {
+    docs.iter()
+        .map(|d| match d {
+            Value::Object(o) if !needs_class && o.get("class").map_or(true, Value::is_null) => {
+                let mut o = o.clone();
+                o.insert("class".to_string(), json!("_"));
+                Value::Object(o)
+            }
+            other => other.clone(),
+        })
+        .collect()
 }
 
 /// When the weights file of `dir` was last written (`None` if it has none).
@@ -219,12 +323,59 @@ impl UserModels {
         let (_, _, classes) = samples_from_split(docs, validation).map_err(|err| (400, err))?;
         let job = json!({
             "status": "running",
+            "task": "classify",
             "graphs": docs.len(),
             "validation_graphs": validation.len(),
             "classes": classes,
             "epochs": opts.epochs,
             "started_unix": now_unix(),
         });
+        let (docs, validation) = (docs.to_vec(), validation.to_vec());
+        self.launch(user_id, job, move |dir, ctl| run_training(dir, &docs, &validation, &opts, ctl))
+    }
+
+    /// Starts the link-prediction training of the model of `user_id` (see `link_train.rs`): the graphs need no `class` unless
+    /// `opts.class_weight` > 0. With `from_current` it starts from the user's trained model (404 if there is none), which keeps what it learned
+    /// and gets a link head; the job reports `link_eval` (both ways to predict links, on the training graphs) and `val_link_eval`.
+    pub fn start_link(
+        self: &Arc<Self>,
+        user_id: &str,
+        docs: &[Value],
+        validation: &[Value],
+        opts: LinkOptions,
+        from_current: bool,
+    ) -> Result<Value, UserError> {
+        check_user_id(user_id)?;
+        let needs_class = opts.class_weight > 0.0;
+        let (docs, validation) = (with_default_class(docs, needs_class), with_default_class(validation, needs_class));
+        let (_, _, classes) = samples_from_split(&docs, &validation).map_err(|err| (400, err))?;
+        let init = if from_current {
+            Some(
+                self.get(user_id)?
+                    .ok_or((404, format!("user {user_id} has no trained model to start the link training from")))?,
+            )
+        } else {
+            None
+        };
+        let job = json!({
+            "status": "running",
+            "task": "link",
+            "graphs": docs.len(),
+            "validation_graphs": validation.len(),
+            "classes": classes,
+            "epochs": opts.epochs,
+            "encoder": format!("{:?}", opts.encoder).to_lowercase(),
+            "from_current": from_current,
+            "started_unix": now_unix(),
+        });
+        self.launch(user_id, job, move |dir, ctl| run_link_training(dir, &docs, &validation, &opts, init, ctl))
+    }
+
+    /// Registers the job (409 if the user is already training) and runs `work` on a background thread.
+    fn launch<F>(self: &Arc<Self>, user_id: &str, job: Value, work: F) -> Result<Value, UserError>
+    where
+        F: FnOnce(&Path, &TrainControl) -> Result<Trained, String> + Send + 'static,
+    {
         {
             let mut jobs = locked(&self.jobs);
             if jobs.get(user_id).is_some_and(|j| j["status"] == "running") {
@@ -235,11 +386,9 @@ impl UserModels {
         let ctl = Arc::new(TrainControl::default());
         locked(&self.controls).insert(user_id.to_string(), Arc::clone(&ctl));
         let running = job.clone();
-        let (this, user, docs, validation, dir) =
-            (Arc::clone(self), user_id.to_string(), docs.to_vec(), validation.to_vec(), self.user_dir(user_id));
+        let (this, user, dir) = (Arc::clone(self), user_id.to_string(), self.user_dir(user_id));
         std::thread::spawn(move || {
-            let outcome = catch_unwind(AssertUnwindSafe(|| run_training(&dir, &docs, &validation, &opts, &ctl)))
-                .unwrap_or_else(|_| Err("training panicked".to_string()));
+            let outcome = catch_unwind(AssertUnwindSafe(|| work(&dir, &ctl))).unwrap_or_else(|_| Err("training panicked".to_string()));
             this.finish(&user, running, outcome);
         });
         Ok(json!({"user_id": user_id, "job": job}))
@@ -261,13 +410,12 @@ impl UserModels {
     fn finish(&self, user_id: &str, job: Value, outcome: Result<Trained, String>) {
         let done_at = now_unix();
         let finished = match outcome {
-            Ok((model, (accuracy, loss), val_scores)) => {
+            Ok((model, numbers)) => {
                 let mtime = weights_mtime(&self.user_dir(user_id));
                 locked(&self.models).insert(user_id.to_string(), (mtime, Arc::new(model)));
-                let mut done = json!({"status": "done", "accuracy": accuracy, "loss": loss, "finished_unix": done_at});
-                if let Some((val_accuracy, val_loss)) = val_scores {
-                    done["val_accuracy"] = json!(val_accuracy);
-                    done["val_loss"] = json!(val_loss);
+                let mut done = json!({"status": "done", "finished_unix": done_at});
+                if let (Value::Object(base), Value::Object(extra)) = (&mut done, numbers) {
+                    base.extend(extra);
                 }
                 done
             }
@@ -376,6 +524,43 @@ mod tests {
         let status = wait_done(&models, "carol");
         assert_eq!(status["job"]["status"], "done", "{status}");
         assert!(status["job"]["val_accuracy"].is_number() && status["job"]["val_loss"].is_number(), "{status}");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn link_training_starts_from_the_classifier_and_keeps_it() {
+        let dir = std::env::temp_dir().join(format!("sargo_gcnii_users4_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let models = Arc::new(UserModels::new(&dir).unwrap());
+        let link = |extra: Value| {
+            let mut body = json!({"epochs": 4, "hidden": 4, "depth": 2, "seed": 1});
+            body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            link_options_from_value(&body).unwrap()
+        };
+        let (opts, from_current) = link(json!({}));
+        assert!(from_current, "frozen by default from the current model");
+        assert_eq!(models.start_link("dave", &docs(), &[], opts, from_current).unwrap_err().0, 404, "nothing to start from");
+        let opts = options_from_value(&json!({"epochs": 3, "hidden": 4, "depth": 2, "seed": 1})).unwrap();
+        models.start("dave", &docs(), &[], opts).unwrap();
+        assert_eq!(wait_done(&models, "dave")["job"]["status"], "done");
+        let before = models.get("dave").unwrap().unwrap();
+        assert!(before.model.link.is_none());
+        let (opts, from_current) = link(json!({}));
+        let unlabeled: Vec<Value> = docs().into_iter().map(|mut d| { d.as_object_mut().unwrap().remove("class"); d }).collect();
+        models.start_link("dave", &unlabeled, &[], opts, from_current).unwrap();
+        let status = wait_done(&models, "dave");
+        assert_eq!(status["job"]["status"], "done", "{status}");
+        assert_eq!(status["job"]["task"], "link");
+        assert!(status["job"]["link_eval"]["head"]["auc"].is_number() && status["job"]["link_eval"]["cosine"]["auc"].is_number(), "{status}");
+        let after = models.get("dave").unwrap().unwrap();
+        assert!(after.model.link.is_some());
+        assert_eq!(after.model.params, before.model.params, "the classifier is unchanged");
+        assert_eq!(after.classes, before.classes);
+        // from scratch needs the encoder trained
+        assert!(link_options_from_value(&json!({"init": false, "encoder": "frozen"})).is_err());
+        assert!(link_options_from_value(&json!({"encoder": "frozen", "class_weight": 1})).is_err());
+        let (_, from_current) = link(json!({"init": false}));
+        assert!(!from_current);
         let _ = fs::remove_dir_all(dir);
     }
 

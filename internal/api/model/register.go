@@ -26,4 +26,5 @@ func Register(mux *http.ServeMux,
 	mux.Handle("POST "+base+"/infer", Infer(svc, sync))
 	mux.Handle("POST "+base+"/embed", Embed(svc, sync))
 	mux.Handle("POST "+base+"/link", Link(svc, sync))
+	mux.Handle("POST "+base+"/link/eval", LinkEval(svc, sync))
 }

@@ -6,7 +6,8 @@
 //
 //	POST /v1/gb/training/gcnii/infer                  body {"graph": {n, edges, nodes?}, "classes"?} -> the class of the graph
 //	POST /v1/gb/training/gcnii/embed                  body {"graph": {n, edges, nodes?}, "normalize"?} -> the embedding of the graph
-//	POST /v1/gb/training/gcnii/link                   body {"graph": {n, edges, nodes?}, "node": {name?, type?, neighbors?}, "top_k"?} -> link prediction: the score of a new node against every node of the graph
+//	POST /v1/gb/training/gcnii/link                   body {"graph": {n, edges, nodes?}, "node": {name?, type?, neighbors?}, "top_k"?, "method"?: "cosine"|"head"} -> link prediction: the score of a new node against every node of the graph
+//	POST /v1/gb/training/gcnii/link/eval              body {"graphs": [{n, edges, nodes?}, ...], "nodes"?, "reveal"?, "seed"?} -> both ways to predict links tested on nodes held out of the graphs
 //
 // The training of the model is not here: it is a job like the LoRA ones, started, followed, stopped and listed by the one set of handlers of
 // the training API (POST /v1/gb/training/jobs with "model_type": "gcnii", see internal/api/training), run by the GCNII* backend of the training
@@ -47,6 +48,8 @@ type Service interface {
 		req *sargo.GCNIIEmbedRequest) (*sargo.GCNIIEmbedResponse, error)
 	GCNIILink(ctx context.Context,
 		req *sargo.GCNIILinkRequest) (*sargo.GCNIILinkResponse, error)
+	GCNIILinkEval(ctx context.Context,
+		req *sargo.GCNIILinkEvalRequest) (*sargo.GCNIILinkEvalResponse, error)
 }
 
 // WeightsService is a Service that also keeps the weights of the models it trains; the sargo service of gligabao is one.
@@ -141,6 +144,33 @@ func Link(svc Service,
 		resp, err := svc.GCNIILink(r.Context(), &req)
 		if err != nil {
 			fail(w, r, "model link", err)
+			return
+		}
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			resp)
+	}
+}
+
+// LinkEval serves POST /v1/gb/training/gcnii/link/eval: it tests both ways to predict links (the cosine of the embeddings and the link head) on
+// the same nodes held out of the graphs of the body, with the model of the user of the request (404 if they have not trained one).
+func LinkEval(svc Service,
+	rec Syncer) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		userID, ok := user(w, r)
+		if !ok {
+			return
+		}
+		var req sargo.GCNIILinkEvalRequest
+		if !decode(w, r, &req) {
+			return
+		}
+		req.UserID = userID
+		syncModel(r.Context(), rec, userID)
+		resp, err := svc.GCNIILinkEval(r.Context(), &req)
+		if err != nil {
+			fail(w, r, "model link eval", err)
 			return
 		}
 		httputil.WriteJSON(w,

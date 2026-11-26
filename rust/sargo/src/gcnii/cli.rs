@@ -7,6 +7,15 @@
 //!   sargo gcnii embed DIR|GRAPH.json|- --load FILE --out FILE [--normalize]
 //!   sargo gcnii link  GRAPH.json|- --load FILE [--type T] [--name N] [--neighbors 0,3] [--top-k K]
 //!
+//!   sargo gcnii train-link DIR --save FILE [--init FILE] [--encoder frozen|train] [--class-weight X=0] [--holdout X=0.2]
+//!                          [--epochs N=30] [--lr X=0.01] [--batch N=4] [--seed N] [--hidden N=16] [--depth N=16]
+//!   sargo gcnii eval-link DIR --load FILE [--nodes N=5] [--reveal X=0.5] [--seed N]
+//!
+//! `train-link` trains the link-prediction head (`link_train.rs`), next to the classification training: from a model trained with `train`
+//! (`--init`, the encoder is then `frozen` by default and the model keeps classifying as before) or from scratch (`--encoder train`, with
+//! `--class-weight` > 0 to train the classification at the same time). `eval-link` tests both ways to predict links, the cosine of the
+//! embeddings and the head, on the same nodes held out of the graphs (`link_eval.rs`). `link --method cosine|head` picks the way.
+//!
 //! `link` is link prediction: it prints the scores of a new node against every node of the graph (`link.rs`).
 //!
 //! `train` also takes `--grad-stats K` (@grad lines, a gradient histogram per K steps), `--grad-map K` (@gradmap
@@ -23,7 +32,9 @@
 use super::dataset::load_dataset;
 use super::embed::{embed, export_dataset, write_jsonl, Entry};
 use super::graph::Graph;
-use super::link::{predict, NewNode};
+use super::link::{predict, Method, NewNode};
+use super::link_eval::{compare, EvalOptions};
+use super::link_train::{train_link, Encoder, LinkOptions};
 use super::model::{DEFAULT_DEPTH, DEFAULT_HIDDEN};
 use super::train::{evaluate, infer, train, TrainOptions};
 use super::weights;
@@ -35,7 +46,9 @@ pub const USAGE: &str = "usage: sargo gcnii train DIR --save FILE [--epochs N=30
        sargo gcnii eval DIR --load FILE
        sargo gcnii infer GRAPH.json|- --load FILE [--classes a,b,c]
        sargo gcnii embed DIR|GRAPH.json|- --load FILE --out FILE [--normalize]
-       sargo gcnii link GRAPH.json|- --load FILE [--type T] [--name N] [--neighbors 0,3] [--top-k K]
+       sargo gcnii link GRAPH.json|- --load FILE [--type T] [--name N] [--neighbors 0,3] [--top-k K] [--method cosine|head]
+       sargo gcnii train-link DIR --save FILE [--init FILE] [--encoder frozen|train] [--class-weight X=0] [--holdout X=0.2] [--epochs N] [--lr X] [--batch N] [--seed N] [--hidden N] [--depth N]
+       sargo gcnii eval-link DIR --load FILE [--nodes N=5] [--reveal X=0.5] [--seed N]
        (train also: [--grad-stats K] [--grad-map K] [--export-embeddings FILE] [--normalize])";
 
 /// `args`: everything after `gcnii`. Returns the process exit code.
@@ -104,6 +117,8 @@ fn dispatch(args: &[String]) -> Result<(), String> {
         "eval" => cmd_eval(input, Path::new(need("load")?)),
         "infer" => cmd_infer(input, Path::new(need("load")?), flags.get("classes")),
         "embed" => cmd_embed(input, Path::new(need("load")?), Path::new(need("out")?), flag_switch(&flags, "normalize")),
+        "train-link" => cmd_train_link(input, Path::new(need("save")?), &flags),
+        "eval-link" => cmd_eval_link(input, Path::new(need("load")?), &flags),
         "link" => cmd_link(input, Path::new(need("load")?), &flags),
         _ => Err(format!("unknown command {cmd:?}\n{USAGE}")),
     }
@@ -217,6 +232,7 @@ fn cmd_infer(graph: &str, load: &Path, classes: Option<&String>) -> Result<(), S
 fn cmd_link(graph: &str, load: &Path, flags: &HashMap<String, String>) -> Result<(), String> {
     let model = weights::load(load)?;
     let g = read_graph(graph)?;
+    let method = flags.get("method").map(|m| Method::parse(m)).transpose()?;
     let neighbors = flags
         .get("neighbors")
         .map(|v| {
@@ -232,6 +248,48 @@ fn cmd_link(graph: &str, load: &Path, flags: &HashMap<String, String>) -> Result
         node_type: flags.get("type").cloned().unwrap_or_default(),
         neighbors,
     };
-    println!("{}", predict(&model, &g, &node, flag_opt(flags, "top-k")?)?);
+    println!("{}", predict(&model, &g, &node, flag_opt(flags, "top-k")?, method)?);
+    Ok(())
+}
+
+fn cmd_train_link(dir: &str, save: &Path, flags: &HashMap<String, String>) -> Result<(), String> {
+    let init = flags.get("init").map(|p| weights::load(Path::new(p))).transpose()?;
+    let encoder = match flags.get("encoder") {
+        Some(e) => Encoder::parse(e)?,
+        None if init.is_some() => Encoder::Frozen,
+        None => Encoder::Train,
+    };
+    let opts = LinkOptions {
+        epochs: flag_num(flags, "epochs", 30)?,
+        lr: flag_num(flags, "lr", 0.01)?,
+        batch: flag_num::<usize>(flags, "batch", 4)?.max(1),
+        hidden: flag_num(flags, "hidden", DEFAULT_HIDDEN)?,
+        depth: flag_num(flags, "depth", DEFAULT_DEPTH)?,
+        seed: flag_num(flags, "seed", SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1))?,
+        holdout: flag_num(flags, "holdout", 0.2)?,
+        encoder,
+        class_weight: flag_num(flags, "class-weight", 0.0)?,
+    };
+    if !(opts.holdout > 0.0 && opts.holdout < 1.0) {
+        return Err("--holdout must be between 0 and 1".to_string());
+    }
+    let (samples, classes) = load_dataset(Path::new(dir))?;
+    println!("link training: {} graphs, {} classes {:?}", samples.len(), classes.len(), classes);
+    let model = train_link(&samples, &classes, init, &opts, None)?.ok_or("cancelled")?;
+    weights::save(&model, save)?;
+    println!("saved weights (with the link head) to {}", save.display());
+    Ok(())
+}
+
+fn cmd_eval_link(dir: &str, load: &Path, flags: &HashMap<String, String>) -> Result<(), String> {
+    let model = weights::load(load)?;
+    let (samples, _) = load_dataset(Path::new(dir))?;
+    let defaults = EvalOptions::default();
+    let opts = EvalOptions {
+        nodes: flag_num(flags, "nodes", defaults.nodes)?,
+        reveal: flag_num(flags, "reveal", defaults.reveal)?,
+        seed: flag_num(flags, "seed", defaults.seed)?,
+    };
+    println!("{}", compare(&model, &samples, &opts)?);
     Ok(())
 }

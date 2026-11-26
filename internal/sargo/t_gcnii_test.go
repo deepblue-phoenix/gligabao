@@ -207,3 +207,71 @@ func TestGCNIICancel(t *testing.T) {
 		t.Fatalf("conflict: %v", err)
 	}
 }
+
+func TestGCNIILinkTrainValidation(t *testing.T) {
+	req := trainRequest()
+	req.Graphs[0].Class = ""
+	if err := req.Validate(); !errors.Is(err, ErrInvalidGCNII) {
+		t.Fatalf("classification needs the classes: %v", err)
+	}
+	req.Task = GCNIITaskLink
+	req.Encoder = "frozen"
+	if err := req.Validate(); err != nil {
+		t.Fatalf("link training does not: %v", err)
+	}
+	req.ClassWeight = 1
+	if err := req.Validate(); !errors.Is(err, ErrInvalidGCNII) {
+		t.Fatalf("a class weight brings the classes back: %v", err)
+	}
+	for _, bad := range []func(*GCNIITrainRequest){
+		func(r *GCNIITrainRequest) { r.Task = "other" },
+		func(r *GCNIITrainRequest) { r.Encoder = "half" },
+		func(r *GCNIITrainRequest) { r.Holdout = 1 },
+	} {
+		r := trainRequest()
+		r.Task = GCNIITaskLink
+		bad(r)
+		if err := r.Validate(); !errors.Is(err, ErrInvalidGCNII) {
+			t.Fatalf("bad link request accepted: %v", err)
+		}
+	}
+	r := trainRequest()
+	r.Holdout = 0.3
+	if err := r.Validate(); !errors.Is(err, ErrInvalidGCNII) {
+		t.Fatalf("link settings on a classification: %v", err)
+	}
+}
+
+func TestGCNIILinkEvalAndMethod(t *testing.T) {
+	var path string
+	var body map[string]any
+	graph := GCNIIGraph{
+		N:     4,
+		Edges: [][2]int{{0, 1}, {1, 2}, {2, 3}},
+	}
+	c := gcniiServer(t,
+		http.StatusOK,
+		`{"cases":3,"cosine":{"cases":3,"auc":0.8,"mrr":0.5,"hits_at_10":1},"head":{"cases":3,"auc":0.9,"mrr":0.6,"hits_at_10":1}}`,
+		&path,
+		&body)
+	resp, err := c.GCNIILinkEval(context.Background(),
+		&GCNIILinkEvalRequest{
+			UserID: "alice",
+			Graphs: []GCNIIGraph{graph},
+		})
+	if err != nil || path != "/v1/gcnii/link/eval" || body["user_id"] != "alice" || resp.Head == nil || resp.Head.AUC != 0.9 || resp.Cosine.AUC != 0.8 {
+		t.Fatalf("link eval: %v %s %v %+v", err, path, body, resp)
+	}
+	if _, err := c.GCNIILinkEval(context.Background(),
+		&GCNIILinkEvalRequest{UserID: "alice"}); !errors.Is(err, ErrInvalidGCNII) {
+		t.Fatalf("no graphs: %v", err)
+	}
+	if _, err := c.GCNIILink(context.Background(),
+		&GCNIILinkRequest{
+			UserID: "alice",
+			Graph:  graph,
+			Method: "magic",
+		}); !errors.Is(err, ErrInvalidGCNII) {
+		t.Fatalf("bad method: %v", err)
+	}
+}

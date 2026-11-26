@@ -5,6 +5,9 @@
 //! hidden, depth; then the node type vocabulary: the number of types and, for each, its byte length and its
 //! UTF-8 bytes; then all parameters as little-endian f32, in the order of `GcniiStar::params`.
 //! The shape of the parameters is derived from the header.
+//!
+//! A model with a link head (`GcniiStar::link`) has the magic `GCNL` instead, and `hidden + 1` more f32 after the parameters (the head
+//! weights, then its bias): the rest of the file is the same, so a `GCN*` file is still what deepblue writes and reads.
 
 use super::features::TypeVocab;
 use super::math::Rng;
@@ -14,6 +17,9 @@ use std::path::Path;
 
 /// Never change it, or the weights files stop loading. (The vanilla GCNII of deepblue uses `GCN2`, not supported.)
 pub const MAGIC: [u8; 4] = *b"GCN*";
+
+/// The magic of a file that also holds a link head.
+pub const MAGIC_LINK: [u8; 4] = *b"GCNL";
 
 const HEADER_BYTES: usize = 20;
 
@@ -33,8 +39,14 @@ pub fn encode(m: &GcniiStar) -> Vec<u8> {
             .into_iter()
             .chain(t.as_bytes().iter().copied())
     });
-    let params = m.params.iter().flatten().flat_map(|w| w.to_le_bytes());
-    MAGIC
+    let params = m
+        .params
+        .iter()
+        .chain(m.link.iter())
+        .flatten()
+        .flat_map(|w| w.to_le_bytes());
+    let magic = if m.link.is_some() { MAGIC_LINK } else { MAGIC };
+    magic
         .into_iter()
         .chain(header)
         .chain(types)
@@ -56,9 +68,10 @@ pub fn load(path: &Path) -> Result<GcniiStar, String> {
 
 /// Parses the contents of a weights file; the model size and the type vocabulary come from its header.
 pub fn decode(bytes: &[u8]) -> Result<GcniiStar, String> {
-    if bytes.len() < HEADER_BYTES + 4 || bytes[..4] != MAGIC {
-        return Err("not a GCNII* weights file (magic GCN*)".to_string());
+    if bytes.len() < HEADER_BYTES + 4 || (bytes[..4] != MAGIC && bytes[..4] != MAGIC_LINK) {
+        return Err("not a GCNII* weights file (magic GCN* or GCNL)".to_string());
     }
+    let has_link = bytes[..4] == MAGIC_LINK;
     let u32_at = |off: usize| -> Result<usize, String> {
         bytes
             .get(off..off + 4)
@@ -96,7 +109,8 @@ pub fn decode(bytes: &[u8]) -> Result<GcniiStar, String> {
     }
     // a model only for the shapes; the values are overwritten
     let shaped = GcniiStar::new(cfg, vocab, &mut Rng::new(1));
-    let want: usize = shaped.params.iter().map(|p| p.len() * 4).sum();
+    let link_len = if has_link { cfg.hidden + 1 } else { 0 };
+    let want: usize = shaped.params.iter().map(|p| p.len() * 4).sum::<usize>() + link_len * 4;
     if bytes.len() - off != want {
         return Err(format!(
             "{} bytes of weights, the header {cfg:?} needs {want}",
@@ -116,7 +130,8 @@ pub fn decode(bytes: &[u8]) -> Result<GcniiStar, String> {
             Some(slice)
         })
         .collect();
-    Ok(GcniiStar { params, ..shaped })
+    let link = has_link.then(|| values[values.len() - link_len..].to_vec());
+    Ok(GcniiStar { params, link, ..shaped })
 }
 
 #[cfg(test)]
@@ -131,6 +146,20 @@ mod tests {
         assert_eq!(back.cfg, m.cfg);
         assert_eq!(back.vocab, m.vocab);
         assert_eq!(back.logits(&g, &x), m.logits(&g, &x));
+    }
+
+    #[test]
+    fn a_link_head_roundtrips_and_a_plain_file_has_none() {
+        let (m, g, x) = setup();
+        assert!(decode(&encode(&m)).unwrap().link.is_none());
+        assert_eq!(&encode(&m)[..4], b"GCN*");
+        let with = m.with_new_link_head(&mut Rng::new(5));
+        let bytes = encode(&with);
+        assert_eq!(&bytes[..4], b"GCNL");
+        let back = decode(&bytes).unwrap();
+        assert_eq!(back.link, with.link);
+        assert_eq!(back.logits(&g, &x), with.logits(&g, &x));
+        assert!(decode(&bytes[..bytes.len() - 4]).is_err());
     }
 
     #[test]

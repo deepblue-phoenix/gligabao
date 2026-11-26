@@ -24,6 +24,12 @@ type TrainParams struct {
 	Hidden int     `json:"hidden,omitempty"`
 	Depth  int     `json:"depth,omitempty"`
 	Seed   *uint64 `json:"seed,omitempty"`
+	// Task is "link" for a link-prediction training ("" is classification), with its Holdout, Encoder, ClassWeight and Init.
+	Task        string  `json:"task,omitempty"`
+	Holdout     float64 `json:"holdout,omitempty"`
+	Encoder     string  `json:"encoder,omitempty"`
+	ClassWeight float64 `json:"class_weight,omitempty"`
+	Init        *bool   `json:"init,omitempty"`
 }
 
 // Run is the record of one training on a dataset.

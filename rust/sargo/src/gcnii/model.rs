@@ -23,6 +23,9 @@ use super::math::{argmax, matmul, matmul_nt, matmul_tn, softmax_ce, Rng};
 pub const ALPHA: f32 = 0.1;
 pub const LAMBDA: f32 = 0.5;
 
+/// The initial weight of the link head (see `with_new_link_head`).
+pub const LINK_INIT_SCALE: f32 = 6.0;
+
 pub const DEFAULT_HIDDEN: usize = 16;
 pub const DEFAULT_DEPTH: usize = 16;
 
@@ -70,6 +73,9 @@ pub struct GcniiStar {
     /// The node types of X; fixes the number of input features. Saved in the weights file.
     pub vocab: TypeVocab,
     pub params: Vec<Vec<f32>>,
+    /// The optional link-prediction head (`link_train.rs`): `hidden` weights and a bias. It scores a pair of nodes from their
+    /// embeddings, normalized to unit length (`unit_columns`): logit = w · (ĥ_u ⊙ ĥ_v) + b. `None` for a model trained only for classification.
+    pub link: Option<Vec<f32>>,
 }
 
 /// Gradient of one example: one buffer per parameter tensor, same shapes as `params`.
@@ -115,7 +121,47 @@ impl GcniiStar {
             .chain(std::iter::once(wo))
             .chain(std::iter::once(vec![0.0; classes]))
             .collect();
-        GcniiStar { cfg, vocab, params }
+        GcniiStar {
+            cfg,
+            vocab,
+            params,
+            link: None,
+        }
+    }
+
+    /// The same model with a new, untrained link head. It starts as a scaled cosine scorer (every weight `LINK_INIT_SCALE` plus a little noise,
+    /// bias `-LINK_INIT_SCALE / 2`), so training starts from the cosine method and improves on it.
+    pub fn with_new_link_head(self, rng: &mut Rng) -> GcniiStar {
+        let head = (0..self.cfg.hidden)
+            .map(|_| LINK_INIT_SCALE + rng.normal() * 0.1)
+            .chain(std::iter::once(-LINK_INIT_SCALE / 2.0))
+            .collect();
+        GcniiStar {
+            link: Some(head),
+            ..self
+        }
+    }
+
+    /// The link head, or an error for a model that has none.
+    pub fn link_head(&self) -> Result<&[f32], String> {
+        self.link
+            .as_deref()
+            .ok_or_else(|| "this model has no link head (train one with `sargo gcnii train-link`)".to_string())
+    }
+
+    /// Every node embedding (column of a [hidden][n] matrix) scaled to unit length; a zero column stays zero.
+    pub fn unit_columns(h: &[f32], hidden: usize, n: usize) -> Vec<f32> {
+        let norms: Vec<f32> = (0..n).map(|j| (0..hidden).map(|f| h[f * n + j].powi(2)).sum::<f32>().sqrt()).collect();
+        (0..hidden * n)
+            .map(|i| if norms[i % n] > 0.0 { h[i] / norms[i % n] } else { 0.0 })
+            .collect()
+    }
+
+    /// The link logit of the nodes u and v: `head` (hidden weights, then the bias) on the product of their unit embeddings `u_h` ([hidden][n],
+    /// see `unit_columns`): w · (û_u ⊙ û_v) + b.
+    pub fn pair_logit(head: &[f32], unit_h: &[f32], n: usize, u: usize, v: usize) -> f32 {
+        let hidden = head.len() - 1;
+        head[hidden] + (0..hidden).map(|f| head[f] * unit_h[f * n + u] * unit_h[f * n + v]).sum::<f32>()
     }
 
     fn wo(&self) -> usize {
@@ -287,15 +333,10 @@ impl GcniiStar {
         dlogits: &[f32],
         with_probes: bool,
     ) -> (Grads, Vec<Vec<f32>>) {
-        let ModelConfig {
-            classes,
-            hidden,
-            depth,
-        } = self.cfg;
+        let ModelConfig { classes, hidden, .. } = self.cfg;
         let n = g.n;
         let (wo, bo) = (self.wo(), self.bo());
         let mut grads: Grads = self.params.iter().map(|p| vec![0.0; p.len()]).collect();
-        let mut probes: Vec<Vec<f32>> = vec![Vec::new(); if with_probes { depth + 1 } else { 0 }];
 
         // HEAD: dbo = dlogits, dWo = dlogits ⊗ pooled, dpooled = Woᵀ dlogits
         grads[bo] = dlogits.to_vec();
@@ -304,6 +345,23 @@ impl GcniiStar {
 
         // POOLING: every node gets dpooled / n
         let dh: Vec<f32> = (0..hidden * n).map(|i| dpooled[i / n] / n as f32).collect();
+        self.backward_encoder(g, x, c, dh, grads, with_probes)
+    }
+
+    /// The gradients of the input projection and the layers, given dH of the last layer ([hidden][n]); `grads` already holds
+    /// the gradients of the head (zeros when only the encoder is trained, see `link_train.rs`).
+    pub fn backward_encoder(
+        &self,
+        g: &Graph,
+        x: &[f32],
+        c: &Cache,
+        dh: Vec<f32>,
+        mut grads: Grads,
+        with_probes: bool,
+    ) -> (Grads, Vec<Vec<f32>>) {
+        let ModelConfig { hidden, depth, .. } = self.cfg;
+        let n = g.n;
+        let mut probes: Vec<Vec<f32>> = vec![Vec::new(); if with_probes { depth + 1 } else { 0 }];
 
         // LAYERS, last to first. The state is (dH of the chain path, dH0 collected from the residual paths).
         let bres: Vec<f32> = c.h[0].iter().map(|v| ALPHA * v).collect();

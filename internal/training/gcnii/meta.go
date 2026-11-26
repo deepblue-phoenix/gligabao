@@ -32,6 +32,11 @@ type Meta struct {
 	Accuracy    *float64  `json:"accuracy,omitempty"`
 	ValAccuracy *float64  `json:"val_accuracy,omitempty"`
 	EpochLosses []float64 `json:"epoch_losses,omitempty"`
+	// Task is "link" for a link-prediction training. LinkEval and ValLinkEval are its link prediction metrics of both methods (cosine and head,
+	// see sargo.GCNIIJob) on the training and the validation graphs.
+	Task        string          `json:"task,omitempty"`
+	LinkEval    json.RawMessage `json:"link_eval,omitempty"`
+	ValLinkEval json.RawMessage `json:"val_link_eval,omitempty"`
 }
 
 // classCounts is how many of the graphs have each class.
@@ -136,6 +141,7 @@ func withResults(m trainingdb.TrainingJobRunMeta,
 		return m
 	}
 	meta.Accuracy, meta.ValAccuracy, meta.EpochLosses = job.Accuracy, job.ValAccuracy, job.EpochLosses
+	meta.LinkEval, meta.ValLinkEval = job.LinkEval, job.ValLinkEval
 	m.FinalValLoss = job.ValLoss
 	m.Meta, _ = json.Marshal(meta)
 	return m

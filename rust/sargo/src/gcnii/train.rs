@@ -57,7 +57,7 @@ impl TrainControl {
         seen.extend(rx.try_iter());
         seen.clone()
     }
-    fn report(&self, epoch: usize, loss: f32) {
+    pub fn report(&self, epoch: usize, loss: f32) {
         let _ = self.queue.send(loss); // never blocks; the receiver lives as long as this struct
         self.loss_bits.store(loss.to_bits(), Ordering::Relaxed);
         self.epoch.store(epoch, Ordering::Relaxed);

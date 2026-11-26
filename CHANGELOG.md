@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.250.0] - 2026-11-26
+
+### Added
+
+- **`POST /v1/gb/training/gcnii/link`**: link prediction with the user's trained GCNII* model. Given a graph (a cluster) and a new node (`type`, optional `name` and known `neighbors`), it scores the new node against every node of the graph (the cosine of their node embeddings, 0 to 1, best first, `top_k` to cut). No extra training. Also `POST /v1/gcnii/link` in sargo and `sargo gcnii link` on the command line. See `docs/gcnii-link.md` and, for the head and the tests in detail, `docs/gcnii-link-head.md`.
+- **A link-prediction head**, the second way to predict links, trained next to the classification: `POST /v1/gb/training/jobs` with `"model_type": "gcnii"` takes `"task": "link"` (with `holdout`, `encoder` `frozen`/`train`, `class_weight`, `init`). `frozen` trains only the head on top of the user's classification model (which keeps classifying as before), `train` trains the encoder too (with `class_weight` > 0 both heads train at once). Graphs sent in the body need no class for it. A model with a head is saved as a `GCNL` weights file (the `GCN*` layout plus the head); `sargo gcnii train-link` does the same on the command line.
+- **`method`** (`cosine` or `head`) on `POST /v1/gb/training/gcnii/link` (default: the head if the model has one); the answer says which method scored.
+- **`POST /v1/gb/training/gcnii/link/eval`** (and `POST /v1/gcnii/link/eval`, `sargo gcnii eval-link`): tests both methods on the same nodes held out of the given graphs (AUC, MRR, hits@10). A link job reports `link_eval` and `val_link_eval` too (in the run meta and the model row `params`).
+
 ## [0.249.0] - 2026-11-26
 
 ### Added

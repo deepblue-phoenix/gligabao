@@ -72,6 +72,12 @@ type Params struct {
 	Hidden             int      `json:"hidden"`
 	Depth              int      `json:"depth"`
 	Seed               *uint64  `json:"seed"`
+	// Task is "classify" (the default) or "link"; Holdout, Encoder, ClassWeight and Init are those of sargo.GCNIITrainRequest (link only).
+	Task        string  `json:"task"`
+	Holdout     float64 `json:"holdout"`
+	Encoder     string  `json:"encoder"`
+	ClassWeight float64 `json:"class_weight"`
+	Init        *bool   `json:"init"`
 }
 
 // Info is what the request knew and sargo does not report: the Info of the run row.
@@ -232,6 +238,12 @@ func (b *Backend) build(ctx context.Context,
 		Hidden: p.Hidden,
 		Depth:  p.Depth,
 		Seed:   p.Seed,
+
+		Task:        p.Task,
+		Holdout:     p.Holdout,
+		Encoder:     p.Encoder,
+		ClassWeight: p.ClassWeight,
+		Init:        p.Init,
 	}
 	req := &sargo.GCNIITrainRequest{
 		UserID: userID,
@@ -241,6 +253,12 @@ func (b *Backend) build(ctx context.Context,
 		Hidden: p.Hidden,
 		Depth:  p.Depth,
 		Seed:   p.Seed,
+
+		Task:        p.Task,
+		Holdout:     p.Holdout,
+		Encoder:     p.Encoder,
+		ClassWeight: p.ClassWeight,
+		Init:        p.Init,
 	}
 	info := Info{Params: params}
 	if len(p.Graphs) != 0 {

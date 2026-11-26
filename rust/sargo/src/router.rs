@@ -7,9 +7,13 @@
 //!   POST /v1/gcnii/infer   body: {"graph": {...}, "user_id"?, "classes"?} -> GCNII* class + probabilities
 //!   POST /v1/gcnii/embed   body: {"graph": {...}, "user_id"?, "normalize"?} -> the graph embedding
 //!       (both use the model of `user_id` (see below) when it is given, else the global `[gcnii] weights`)
-//!   POST /v1/gcnii/link    body: {"graph": {...}, "node": {"name"?, "type"?, "neighbors"?: [idx..]}, "user_id"?, "top_k"?} -> link prediction:
-//!       the score (cosine of the node embeddings, 0..1) of a new node against every node of the graph, best first
-//!   POST /v1/gcnii/train   body: {"user_id", "graphs": [{n, edges, nodes?, class}, ...], validation?: [same], epochs?, lr?, batch?, hidden?, depth?, seed?}
+//!   POST /v1/gcnii/link    body: {"graph": {...}, "node": {"name"?, "type"?, "neighbors"?: [idx..]}, "user_id"?, "top_k"?, "method"?} -> link prediction:
+//!       the score (0..1) of a new node against every node of the graph, best first; `method` is `cosine` (of the node embeddings) or
+//!       `head` (the trained link head), by default the head if the model has one
+//!   POST /v1/gcnii/link/eval  body: {"graphs": [{n, edges, nodes?}, ...], "user_id"?, "nodes"?, "reveal"?, "seed"?} -> both methods tested on nodes
+//!       held out of these graphs: {"cases", "cosine": {auc, mrr, hits_at_10}, "head": {...} | null} (see `gcnii/link_eval.rs`)
+//!   POST /v1/gcnii/train   body: {"user_id", "graphs": [{n, edges, nodes?, class}, ...], validation?: [same], epochs?, lr?, batch?, hidden?, depth?, seed?,
+//!       task?: "classify" | "link" (link: also holdout?, encoder?: "frozen" | "train", class_weight?, init?; `class` is optional, see `gcnii/link_train.rs`)}
 //!       -> 202 {"user_id", "job"}: starts training that user's model in the background (needs `[gcnii] models_dir`);
 //!       409 if that user is already training
 //!   POST /v1/gcnii/train/status   body: {"user_id"} -> {"user_id", "trained", "job"} (job: running | done | failed | cancelled)
@@ -27,10 +31,11 @@
 use crate::error::RouterError;
 use crate::gcnii::embed::embed as gcnii_embed;
 use crate::gcnii::graph::Graph;
-use crate::gcnii::link::{predict as gcnii_link, NewNode};
+use crate::gcnii::link::{predict as gcnii_link, Method, NewNode};
+use crate::gcnii::link_eval::{compare as gcnii_link_compare, EvalOptions};
 use crate::gcnii::model::GcniiStar;
 use crate::gcnii::train::infer as gcnii_infer;
-use crate::gcnii::users::{options_from_value, UserModels};
+use crate::gcnii::users::{link_options_from_value, options_from_value, UserModels};
 use crate::http_server::{HttpRequest, HttpResponse, RequestHandler};
 use crate::providers::{AnthropicProvider, OpenAiProvider, Provider};
 use crate::types::{InferenceRequest, InferenceResponse};
@@ -129,7 +134,38 @@ impl Router {
                     .ok_or_else(|| RouterError::new(400, "top_k must be a whole number >= 1"))? as usize,
             ),
         };
-        gcnii_link(model.model(), &graph, &node, top_k).map_err(|err| RouterError::new(400, &err))
+        let method = match doc.get("method") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(Method::parse(v.as_str().unwrap_or("")).map_err(|err| RouterError::new(400, &err))?),
+        };
+        gcnii_link(model.model(), &graph, &node, top_k, method).map_err(|err| RouterError::new(400, &err))
+    }
+
+    /// `POST /v1/gcnii/link/eval`: body `{"graphs": [...], "user_id"?, "nodes"?, "reveal"?, "seed"?}` -> both ways to predict links tested on the
+    /// same held-out nodes of the graphs (see `gcnii/link_eval.rs`); `head` is null when the model has no link head.
+    fn gcnii_link_eval(&self, body: &[u8]) -> Result<Value, RouterError> {
+        let doc = parse_body(body)?;
+        let model = self.gcnii_model(&doc)?;
+        let graphs = doc
+            .get("graphs")
+            .and_then(|g| g.as_array())
+            .ok_or_else(|| RouterError::new(400, "graphs must be an array of graph documents"))?;
+        let defaults = EvalOptions::default();
+        let opts = EvalOptions {
+            nodes: doc.get("nodes").map_or(Some(defaults.nodes as u64), |v| v.as_u64().filter(|&n| n >= 1)).ok_or_else(|| RouterError::new(400, "nodes must be a whole number >= 1"))? as usize,
+            reveal: doc.get("reveal").map_or(Some(defaults.reveal as f64), |v| v.as_f64().filter(|&r| r > 0.0 && r < 1.0)).ok_or_else(|| RouterError::new(400, "reveal must be a number between 0 and 1"))? as f32,
+            seed: doc.get("seed").map_or(Some(defaults.seed), |v| v.as_u64()).ok_or_else(|| RouterError::new(400, "seed must be a whole number"))?,
+        };
+        let samples = graphs
+            .iter()
+            .enumerate()
+            .map(|(i, g)| {
+                Graph::from_value(g)
+                    .map(|graph| crate::gcnii::dataset::Sample { path: format!("graphs[{i}]"), graph, label: 0 })
+                    .map_err(|err| RouterError::new(400, &format!("graphs[{i}]: {err}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        gcnii_link_compare(model.model(), &samples, &opts).map_err(|err| RouterError::new(400, &err))
     }
 
     /// `POST /v1/gcnii/infer`: body `{"graph": {n, edges, nodes?}, "user_id"?, "classes": [..]?}` (a bare graph document
@@ -164,8 +200,17 @@ impl Router {
                 .as_array()
                 .ok_or_else(|| RouterError::new(400, "validation must be an array of graph documents"))?,
         };
-        let opts = options_from_value(&doc).map_err(user_error)?;
-        users.start(user_id, graphs, validation, opts).map_err(user_error)
+        match doc.get("task").and_then(|t| t.as_str()).unwrap_or("classify") {
+            "classify" => {
+                let opts = options_from_value(&doc).map_err(user_error)?;
+                users.start(user_id, graphs, validation, opts).map_err(user_error)
+            }
+            "link" => {
+                let (opts, from_current) = link_options_from_value(&doc).map_err(user_error)?;
+                users.start_link(user_id, graphs, validation, opts, from_current).map_err(user_error)
+            }
+            other => Err(RouterError::new(400, &format!("unknown task {other:?} (classify or link)"))),
+        }
     }
 
     /// `POST /v1/gcnii/train/status`: body `{"user_id"}`.
@@ -236,6 +281,10 @@ impl RequestHandler for Router {
                 Err(err) => error_response(&err),
             },
             ("POST", "/v1/gcnii/link") => match self.gcnii_link(&request.body) {
+                Ok(answer) => HttpResponse::json(200, answer.to_string()),
+                Err(err) => error_response(&err),
+            },
+            ("POST", "/v1/gcnii/link/eval") => match self.gcnii_link_eval(&request.body) {
                 Ok(answer) => HttpResponse::json(200, answer.to_string()),
                 Err(err) => error_response(&err),
             },
@@ -335,6 +384,39 @@ mod tests {
         assert!(out["probabilities"]["path"].is_number(), "{out}");
         assert_eq!(post(&router, "/v1/gcnii/infer", json!({"user_id": "u2", "graph": graph})).0, 404);
         assert_eq!(post(&router, "/v1/gcnii/embed", json!({"user_id": "u1", "graph": graph})).0, 200);
+
+        // link prediction, both ways: the cosine of the classifier, then the head trained on top of it
+        let cluster = json!({"n": 5, "edges": [[0, 1], [1, 2], [2, 3], [3, 4], [0, 2], [1, 3]]});
+        let link = |extra: Value| {
+            let mut body = json!({"user_id": "u1", "graph": cluster, "node": {"neighbors": [1]}});
+            body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            post(&router, "/v1/gcnii/link", body)
+        };
+        assert_eq!(link(json!({})).1["method"], "cosine", "no head yet");
+        assert_eq!(link(json!({"method": "head"})).0, 400);
+        assert_eq!(link(json!({"method": "nope"})).0, 400);
+        let eval = |user: &str| post(&router, "/v1/gcnii/link/eval", json!({"user_id": user, "graphs": [cluster, cluster]}));
+        let (status, out) = eval("u1");
+        assert_eq!(status, 200, "{out}");
+        assert!(out["cosine"]["auc"].is_number() && out["head"].is_null(), "{out}");
+        assert_eq!(eval("u2").0, 404);
+        assert_eq!(post(&router, "/v1/gcnii/train", json!({"user_id": "u1", "task": "x", "graphs": cluster})).0, 400);
+        let linked: Vec<Value> = (0..4).map(|_| cluster.clone()).collect();
+        let body = json!({"user_id": "u1", "task": "link", "graphs": linked, "epochs": 3, "seed": 1});
+        assert_eq!(post(&router, "/v1/gcnii/train", body).0, 202);
+        let done = (0..600)
+            .find_map(|_| {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                let (_, status) = post(&router, "/v1/gcnii/train/status", json!({"user_id": "u1"}));
+                (status["job"]["status"] != "running").then_some(status)
+            })
+            .expect("link training finished");
+        assert_eq!(done["job"]["status"], "done", "{done}");
+        assert_eq!(link(json!({})).1["method"], "head");
+        assert_eq!(link(json!({"method": "cosine"})).1["method"], "cosine");
+        assert!(eval("u1").1["head"]["auc"].is_number());
+        let (status, out) = post(&router, "/v1/gcnii/infer", json!({"user_id": "u1", "graph": graph}));
+        assert_eq!(status, 200, "the classifier still works: {out}");
         let _ = std::fs::remove_dir_all(dir);
     }
 

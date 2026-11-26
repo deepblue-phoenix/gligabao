@@ -8,7 +8,9 @@
 //!   train.rs     `train`, `evaluate`, `infer`
 //!   metrics.rs   gradient probes, `--grad-stats`, `--grad-map`
 //!   embed.rs     graph embeddings
-//!   link.rs      link prediction: scores a new node against the nodes of a graph
+//!   link.rs      link prediction: scores a new node against the nodes of a graph (cosine, or the link head)
+//!   link_train.rs  training the link head, next to the classification training
+//!   link_eval.rs   testing both ways to predict links on held-out nodes
 //!   weights.rs   the weights file
 //!   math.rs      RNG, matrix products, softmax
 //!   users.rs     one model per user id: training on request (background thread), the models on disk and in memory
@@ -24,6 +26,8 @@ pub mod embed;
 pub mod features;
 pub mod graph;
 pub mod link;
+pub mod link_eval;
+pub mod link_train;
 pub mod math;
 pub mod metrics;
 pub mod model;
