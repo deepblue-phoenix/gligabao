@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_code"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
@@ -20,6 +21,9 @@ import (
 // into) and does everything between the request and the pipeline: it validates the request, assembles the options of the call, runs
 // it on the remember manager and records the monitoring events. The HTTP handler is a decoding of the body and a mapping of the
 // errors of Remember to status codes; the evals call Remember directly, with no HTTP in between.
+
+// DefaultCodeDataset is the dataset a remember of code goes to when the request names none.
+const DefaultCodeDataset = "code"
 
 // InvalidError is the error of a request that is not valid (the handler answers 400): Err says what is wrong.
 type InvalidError struct {
@@ -51,6 +55,8 @@ func invalid(err error) error { return &InvalidError{Err: err} }
 type prepared struct {
 	req       memory_remember.Request
 	sessionID string
+	// codeName is the file name of a remember of code (the one given, or the default of the detected language); "" for any other content.
+	codeName string
 }
 
 // Remember stores the text of req as userID: it validates req, sends it to the remember manager mgr, which runs the pipeline, and
@@ -146,6 +152,14 @@ func Remember(ctx context.Context,
 			"series_observations": len(res.SeriesObservations),
 			"duration_ms":         time.Since(start).Milliseconds(),
 		})
+	if p.codeName != "" {
+		info, err := memory_code.Describe(p.codeName,
+			p.req.Text)
+		if err != nil {
+			return nil, fmt.Errorf("memory: code info: %w", err)
+		}
+		res.Code = &info
+	}
 	return res, nil
 }
 
@@ -173,6 +187,14 @@ func prepare(ctx context.Context,
 	if _, err := memory_core.ResolveUserID(userID); err != nil {
 		return prepared{}, invalid(err)
 	}
+	contentType, err := memory_core.ResolveContentType(req.ContentType)
+	if err != nil {
+		return prepared{}, invalid(err)
+	}
+	// code goes into the dataset "code" unless the request names one, so it stays apart from the other knowledge
+	if contentType == memory_core.ContentCode && strings.TrimSpace(req.Dataset) == "" {
+		req.Dataset = DefaultCodeDataset
+	}
 	if _, err := memory_core.ResolveDatasetName(req.Dataset); err != nil {
 		return prepared{}, invalid(err)
 	}
@@ -187,14 +209,20 @@ func prepare(ctx context.Context,
 	if err != nil {
 		return prepared{}, invalid(err)
 	}
-	contentType, err := memory_core.ResolveContentType(req.ContentType)
-	if err != nil {
-		return prepared{}, invalid(err)
-	}
 	filename, err := resolveFilename(req.Filename,
 		contentType)
 	if err != nil {
 		return prepared{}, invalid(err)
+	}
+	codeName := ""
+	if contentType == memory_core.ContentCode {
+		// the language comes only from the code, never from the file name of the request; the name is the default of the language
+		_, name, _, err := memory_code.Resolve(filename,
+			text)
+		if err != nil {
+			return prepared{}, invalid(err)
+		}
+		filename, codeName = name, name
 	}
 	models, err := memory_core.ResolveModels(req.Models)
 	if err != nil {
@@ -250,5 +278,6 @@ func prepare(ctx context.Context,
 				memory_core.WithSeriesObservations(observe)),
 		},
 		sessionID: sessionID,
+		codeName:  codeName,
 	}, nil
 }

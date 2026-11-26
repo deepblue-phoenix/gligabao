@@ -14,7 +14,6 @@ import (
 	"unicode"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_code"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
@@ -59,9 +58,8 @@ type Request struct {
 	// gets it with the text, so it can handle code itself; it does nothing without the hook (the LLM extracts, whatever the type). 400 for any
 	// other value. With an image it is "image" (or omitted): the hook is then called with the image, see docs/hooks.md#graph-extractor. See memory_core.WithContentType.
 	ContentType string `json:"content_type"`
-	// Filename (optional) is the name of the file Text comes from. With content_type "code" its extension picks the parser (".py" Python;
-	// ".ts", ".tsx", ".mts", ".cts" TypeScript; ".js", ".jsx", ".mjs", ".cjs" JavaScript); a code with a name of any other extension is a 400.
-	// Without it the language is guessed (Python). Not valid with an image. At most 1024 bytes, no control characters.
+	// Filename (optional) is the name of the file Text comes from. It is not used to pick the language of code (that is detected from the code, see
+	// memory_code.Resolve) and code is stored under the default name of the detected language. At most 1024 bytes, no control characters.
 	Filename string `json:"filename"`
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
@@ -507,8 +505,8 @@ func rememberImage(w http.ResponseWriter,
 // maxFilenameLen is the longest file name of a request, in bytes.
 const maxFilenameLen = 1024
 
-// resolveFilename validates the file name of a remember of a text (trimmed; "" is none). For code (contentType memory_core.ContentCode) the
-// language of its extension must be supported by memory_code.
+// resolveFilename validates the file name of a remember of a text (trimmed; "" is none). For code the name is not used for the language
+// (see memory_code.Resolve).
 func resolveFilename(name,
 	contentType string) (string, error) {
 	name = strings.TrimSpace(name)
@@ -517,12 +515,6 @@ func resolveFilename(name,
 		return "", fmt.Errorf("filename is longer than %d bytes", maxFilenameLen)
 	case strings.ContainsFunc(name, unicode.IsControl):
 		return "", errors.New("filename has control characters")
-	case name == "" || contentType != memory_core.ContentCode:
-		return name, nil
-	}
-	if _, err := memory_code.Detect(name,
-		""); err != nil {
-		return "", err
 	}
 	return name, nil
 }

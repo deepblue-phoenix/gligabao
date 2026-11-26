@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.256.0] - 2026-12-03
+
+### Added
+
+- **`remember` of code detects the language from the code.** With `content_type` `code` the language is always detected from the code (`memory_code.DetectContent`: Go, Python, TypeScript, JavaScript or CSS; Python if nothing else fits) instead of always being Python. The `filename` of the request is no longer used for the language, and code with an unsupported extension is no longer a 400. The code is stored under the default file name of the detected language (`snippet.py`, `snippet.ts`, ...).
+- The response of a `remember` of code has `code`: the detected `language`, the `filename`, `detected` (always `content`), `lines`, `bytes` and the statistics of the syntax tree (`entities`, `edges`, `entities_by_type`, `edges_by_relation`, `type_decls`, `annotations`, `style_rules`).
+- Code with no `dataset` is stored in the dataset `code` (not `main`), apart from other knowledge.
+
 ## [0.255.0] - 2026-12-02
 
 ### Added

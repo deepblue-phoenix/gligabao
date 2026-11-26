@@ -18,6 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_code"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology/ontospec"
@@ -110,6 +111,11 @@ type Result struct {
 	// when the call has a geo resolver, WithGeoResolver): one per entity, in the order of extraction. The coordinates are
 	// stored in gb_entity_geo. See remember_geo.go.
 	Geo []GeoResult `json:"geo,omitempty"`
+
+	// Code describes the code that was remembered (content type "code"): the language that was detected (from the file name, or from the
+	// code), the file name (the default of the language if the request had none) and the statistics of the syntax tree. Omitted for any other
+	// content. Set by api/remember.Remember.
+	Code *memory_code.Info `json:"code,omitempty"`
 
 	// summary is the summary stored with a chunk (see ChunkResult.Summary); nil for anything else.
 	summary *SummaryResult

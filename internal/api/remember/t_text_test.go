@@ -65,3 +65,29 @@ func TestPrepareClassifyDefault(t *testing.T) {
 		t.Error("an explicit classify_graph does not win")
 	}
 }
+
+// code with no dataset goes to the dataset "code"; with no file name the language is detected and the name is the default of it.
+func TestPrepareCodeDefaults(t *testing.T) {
+	p, err := prepare(t.Context(), nil, "u1", Request{Text: "import os\n\ndef run(x):\n    return x\n", ContentType: "code"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.req.Dataset != DefaultCodeDataset || p.codeName != "snippet.py" {
+		t.Errorf("dataset %q, code name %q", p.req.Dataset, p.codeName)
+	}
+	if memory_core.NewCallOptions(p.req.Opts).Filename != "snippet.py" {
+		t.Error("the default file name is not passed to the call")
+	}
+	p, err = prepare(t.Context(), nil, "u1", Request{Text: "x = 1", ContentType: "code", Dataset: "mine"}, nil)
+	if err != nil || p.req.Dataset != "mine" {
+		t.Errorf("a named dataset is kept: %v %q", err, p.req.Dataset)
+	}
+}
+
+// the file name of the request does not decide the language of code, nor is it kept.
+func TestPrepareCodeIgnoresFilename(t *testing.T) {
+	p, err := prepare(t.Context(), nil, "u1", Request{Text: "package main\n\nfunc main() {}\n", ContentType: "code", Filename: "x.py"}, nil)
+	if err != nil || p.codeName != "snippet.go" {
+		t.Errorf("%v %q", err, p.codeName)
+	}
+}
