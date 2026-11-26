@@ -193,6 +193,12 @@ impl GcniiStar {
         self.encode(g, &self.vocab.initial_matrix(g)).pooled
     }
 
+    /// The embedding of every node (H_depth, before the pooling), [hidden][n] row-major.
+    pub fn node_embeddings(&self, g: &Graph) -> Vec<f32> {
+        let mut cache = self.encode(g, &self.vocab.initial_matrix(g));
+        cache.h.pop().unwrap_or_default()
+    }
+
     pub fn forward(&self, g: &Graph, x: &[f32]) -> Cache {
         let ModelConfig {
             classes, hidden, ..

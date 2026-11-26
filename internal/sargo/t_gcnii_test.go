@@ -110,6 +110,28 @@ func TestGCNIITrainStatusInferEmbed(t *testing.T) {
 	if err != nil || path != "/v1/gcnii/embed" || emb.Dim != 2 {
 		t.Fatalf("embed: %v %s %+v", err, path, emb)
 	}
+	c = gcniiServer(t,
+		http.StatusOK,
+		`{"node":2,"nodes":2,"scores":[{"node":1,"score":0.9,"connected":true}]}`,
+		&path,
+		&body)
+	link, err := c.GCNIILink(context.Background(),
+		&GCNIILinkRequest{
+			UserID: "alice",
+			Graph:  graph,
+			Node:   GCNIILinkNode{Type: "a", Neighbors: []int{1}},
+		})
+	if err != nil || path != "/v1/gcnii/link" || link.Scores[0].Node != 1 || !link.Scores[0].Connected {
+		t.Fatalf("link: %v %s %+v", err, path, link)
+	}
+	if _, err := c.GCNIILink(context.Background(),
+		&GCNIILinkRequest{
+			UserID: "alice",
+			Graph:  graph,
+			Node:   GCNIILinkNode{Neighbors: []int{99}},
+		}); !errors.Is(err, ErrInvalidGCNII) {
+		t.Fatalf("bad neighbor: %v", err)
+	}
 }
 
 func TestGCNIIErrors(t *testing.T) {

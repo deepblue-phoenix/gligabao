@@ -44,6 +44,12 @@ func (f *fakeService) GCNIIEmbed(_ context.Context,
 	return &sargo.GCNIIEmbedResponse{Dim: 1}, f.err
 }
 
+func (f *fakeService) GCNIILink(_ context.Context,
+	req *sargo.GCNIILinkRequest) (*sargo.GCNIILinkResponse, error) {
+	f.users = append(f.users, req.UserID)
+	return &sargo.GCNIILinkResponse{Nodes: 1}, f.err
+}
+
 func call(h http.HandlerFunc,
 	method,
 	user,
@@ -133,7 +139,7 @@ func TestRegisterNeedsSargo(t *testing.T) {
 	}
 	mux = http.NewServeMux()
 	Register(mux, "/v1/gb/training", &fakeService{}, nil)
-	for _, route := range []string{"POST /v1/gb/training/gcnii/infer", "POST /v1/gb/training/gcnii/embed"} {
+	for _, route := range []string{"POST /v1/gb/training/gcnii/infer", "POST /v1/gb/training/gcnii/embed", "POST /v1/gb/training/gcnii/link"} {
 		method, path, _ := strings.Cut(route, " ")
 		if _, pattern := mux.Handler(httptest.NewRequest(method, path, nil)); pattern != route {
 			t.Errorf("%s: pattern %q", route, pattern)

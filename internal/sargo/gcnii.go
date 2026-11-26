@@ -118,6 +118,38 @@ type GCNIIEmbedResponse struct {
 	Dim       int       `json:"dim"`
 }
 
+// GCNIILinkNode is the new node of a link prediction: its Name and Type (both optional) and the nodes of the graph it is already known
+// to be connected to (Neighbors, indices; without them the node is scored from its type alone).
+type GCNIILinkNode struct {
+	Name      string `json:"name,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Neighbors []int  `json:"neighbors,omitempty"`
+}
+
+// GCNIILinkRequest scores a new node against every node of Graph with the model of UserID. TopK > 0 keeps only the best TopK.
+type GCNIILinkRequest struct {
+	UserID string        `json:"user_id"`
+	Graph  GCNIIGraph    `json:"graph"`
+	Node   GCNIILinkNode `json:"node"`
+	TopK   int           `json:"top_k,omitempty"`
+}
+
+// GCNIILinkScore is the score (0..1, the cosine of the node embeddings) of the link of the new node with node Node of the graph;
+// Connected is true for the links the request already gave.
+type GCNIILinkScore struct {
+	Node      int     `json:"node"`
+	Name      string  `json:"name,omitempty"`
+	Score     float64 `json:"score"`
+	Connected bool    `json:"connected"`
+}
+
+// GCNIILinkResponse is the link prediction: Node is the index the new node got (= Nodes), Scores the nodes of the graph, best first.
+type GCNIILinkResponse struct {
+	Node   int              `json:"node"`
+	Nodes  int              `json:"nodes"`
+	Scores []GCNIILinkScore `json:"scores"`
+}
+
 //---------------------------------------------------------------------------------------------
 
 // ErrInvalidGCNII wraps every error of the checks the client makes before sending a GCNII* request (nothing was sent).
@@ -280,6 +312,36 @@ func (c *Client) GCNIIEmbed(ctx context.Context,
 	var resp GCNIIEmbedResponse
 	if err := c.postJSON(ctx,
 		"/v1/gcnii/embed",
+		req,
+		&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GCNIILink predicts the links of a new node to the nodes of a graph with the model of req.UserID (POST /v1/gcnii/link). A user without a
+// trained model gets an *APIError with status 404.
+func (c *Client) GCNIILink(ctx context.Context,
+	req *GCNIILinkRequest) (*GCNIILinkResponse, error) {
+	if err := validateGCNIIUser(req.UserID); err != nil {
+		return nil, err
+	}
+	if err := req.Graph.Validate(); err != nil {
+		return nil, err
+	}
+	if req.TopK < 0 {
+		return nil, invalidGCNII("top_k must be >= 0")
+	}
+	for _, i := range req.Node.Neighbors {
+		if i < 0 || i >= req.Graph.N {
+			return nil, invalidGCNII("node: neighbor %d outside nodes 0..%d",
+				i,
+				req.Graph.N)
+		}
+	}
+	var resp GCNIILinkResponse
+	if err := c.postJSON(ctx,
+		"/v1/gcnii/link",
 		req,
 		&resp); err != nil {
 		return nil, err

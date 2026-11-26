@@ -53,6 +53,15 @@ impl Graph {
         })
     }
 
+    /// The undirected edges (a < b), rebuilt from the adjacency rows (no self loops).
+    pub fn edges(&self) -> Vec<(usize, usize)> {
+        self.rows
+            .iter()
+            .enumerate()
+            .flat_map(|(i, row)| row.iter().filter(move |&&(j, _)| j > i).map(move |&(j, _)| (i, j)))
+            .collect()
+    }
+
     /// out = Â · h for h, out of shape [f][n] (row-major). Â is symmetric, so this is also Âᵀ · h.
     pub fn spmm(&self, h: &[f32], f: usize) -> Vec<f32> {
         let n = self.n;

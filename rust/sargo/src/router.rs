@@ -7,6 +7,8 @@
 //!   POST /v1/gcnii/infer   body: {"graph": {...}, "user_id"?, "classes"?} -> GCNII* class + probabilities
 //!   POST /v1/gcnii/embed   body: {"graph": {...}, "user_id"?, "normalize"?} -> the graph embedding
 //!       (both use the model of `user_id` (see below) when it is given, else the global `[gcnii] weights`)
+//!   POST /v1/gcnii/link    body: {"graph": {...}, "node": {"name"?, "type"?, "neighbors"?: [idx..]}, "user_id"?, "top_k"?} -> link prediction:
+//!       the score (cosine of the node embeddings, 0..1) of a new node against every node of the graph, best first
 //!   POST /v1/gcnii/train   body: {"user_id", "graphs": [{n, edges, nodes?, class}, ...], validation?: [same], epochs?, lr?, batch?, hidden?, depth?, seed?}
 //!       -> 202 {"user_id", "job"}: starts training that user's model in the background (needs `[gcnii] models_dir`);
 //!       409 if that user is already training
@@ -25,6 +27,7 @@
 use crate::error::RouterError;
 use crate::gcnii::embed::embed as gcnii_embed;
 use crate::gcnii::graph::Graph;
+use crate::gcnii::link::{predict as gcnii_link, NewNode};
 use crate::gcnii::model::GcniiStar;
 use crate::gcnii::train::infer as gcnii_infer;
 use crate::gcnii::users::{options_from_value, UserModels};
@@ -105,6 +108,28 @@ impl Router {
         let normalize = doc.get("normalize").and_then(|v| v.as_bool()).unwrap_or(false);
         let embedding = gcnii_embed(model.model(), &graph, normalize);
         Ok(json!({"embedding": embedding, "dim": embedding.len()}))
+    }
+
+    /// `POST /v1/gcnii/link`: body `{"graph": {...}, "node": {...}, "user_id"?, "top_k"?}` -> the scores of the new node
+    /// against every node of the graph (see `gcnii/link.rs`).
+    fn gcnii_link(&self, body: &[u8]) -> Result<Value, RouterError> {
+        let doc = parse_body(body)?;
+        let model = self.gcnii_model(&doc)?;
+        let graph = Graph::from_value(doc.get("graph").ok_or_else(|| RouterError::new(400, "missing graph"))?)
+            .map_err(|err| RouterError::new(400, &format!("invalid graph: {}", err)))?;
+        let node = match doc.get("node") {
+            Some(v) => NewNode::from_value(v).map_err(|err| RouterError::new(400, &format!("invalid node: {}", err)))?,
+            None => NewNode::default(),
+        };
+        let top_k = match doc.get("top_k") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(
+                v.as_u64()
+                    .filter(|&k| k >= 1)
+                    .ok_or_else(|| RouterError::new(400, "top_k must be a whole number >= 1"))? as usize,
+            ),
+        };
+        gcnii_link(model.model(), &graph, &node, top_k).map_err(|err| RouterError::new(400, &err))
     }
 
     /// `POST /v1/gcnii/infer`: body `{"graph": {n, edges, nodes?}, "user_id"?, "classes": [..]?}` (a bare graph document
@@ -207,6 +232,10 @@ impl RequestHandler for Router {
                 Err(err) => error_response(&err),
             },
             ("POST", "/v1/gcnii/embed") => match self.gcnii_embed(&request.body) {
+                Ok(answer) => HttpResponse::json(200, answer.to_string()),
+                Err(err) => error_response(&err),
+            },
+            ("POST", "/v1/gcnii/link") => match self.gcnii_link(&request.body) {
                 Ok(answer) => HttpResponse::json(200, answer.to_string()),
                 Err(err) => error_response(&err),
             },

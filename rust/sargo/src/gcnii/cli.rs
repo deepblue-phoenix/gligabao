@@ -5,6 +5,9 @@
 //!   sargo gcnii eval  DIR --load FILE
 //!   sargo gcnii infer GRAPH.json|- --load FILE [--classes a,b,c]
 //!   sargo gcnii embed DIR|GRAPH.json|- --load FILE --out FILE [--normalize]
+//!   sargo gcnii link  GRAPH.json|- --load FILE [--type T] [--name N] [--neighbors 0,3] [--top-k K]
+//!
+//! `link` is link prediction: it prints the scores of a new node against every node of the graph (`link.rs`).
 //!
 //! `train` also takes `--grad-stats K` (@grad lines, a gradient histogram per K steps), `--grad-map K` (@gradmap
 //! lines, the per-element mean |gradient|; see `metrics.rs`) and `--export-embeddings FILE [--normalize]`
@@ -20,6 +23,7 @@
 use super::dataset::load_dataset;
 use super::embed::{embed, export_dataset, write_jsonl, Entry};
 use super::graph::Graph;
+use super::link::{predict, NewNode};
 use super::model::{DEFAULT_DEPTH, DEFAULT_HIDDEN};
 use super::train::{evaluate, infer, train, TrainOptions};
 use super::weights;
@@ -31,6 +35,7 @@ pub const USAGE: &str = "usage: sargo gcnii train DIR --save FILE [--epochs N=30
        sargo gcnii eval DIR --load FILE
        sargo gcnii infer GRAPH.json|- --load FILE [--classes a,b,c]
        sargo gcnii embed DIR|GRAPH.json|- --load FILE --out FILE [--normalize]
+       sargo gcnii link GRAPH.json|- --load FILE [--type T] [--name N] [--neighbors 0,3] [--top-k K]
        (train also: [--grad-stats K] [--grad-map K] [--export-embeddings FILE] [--normalize])";
 
 /// `args`: everything after `gcnii`. Returns the process exit code.
@@ -99,6 +104,7 @@ fn dispatch(args: &[String]) -> Result<(), String> {
         "eval" => cmd_eval(input, Path::new(need("load")?)),
         "infer" => cmd_infer(input, Path::new(need("load")?), flags.get("classes")),
         "embed" => cmd_embed(input, Path::new(need("load")?), Path::new(need("out")?), flag_switch(&flags, "normalize")),
+        "link" => cmd_link(input, Path::new(need("load")?), &flags),
         _ => Err(format!("unknown command {cmd:?}\n{USAGE}")),
     }
 }
@@ -205,5 +211,27 @@ fn cmd_infer(graph: &str, load: &Path, classes: Option<&String>) -> Result<(), S
         .map(|c| c.split(',').filter(|s| !s.is_empty()).map(String::from).collect())
         .unwrap_or_default();
     println!("{}", infer(&model, &g, &names));
+    Ok(())
+}
+
+fn cmd_link(graph: &str, load: &Path, flags: &HashMap<String, String>) -> Result<(), String> {
+    let model = weights::load(load)?;
+    let g = read_graph(graph)?;
+    let neighbors = flags
+        .get("neighbors")
+        .map(|v| {
+            v.split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim().parse::<usize>().map_err(|_| format!("--neighbors: bad node index {s:?}")))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let node = NewNode {
+        name: flags.get("name").cloned().unwrap_or_default(),
+        node_type: flags.get("type").cloned().unwrap_or_default(),
+        neighbors,
+    };
+    println!("{}", predict(&model, &g, &node, flag_opt(flags, "top-k")?)?);
     Ok(())
 }
