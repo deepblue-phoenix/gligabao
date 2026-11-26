@@ -9,6 +9,7 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 | [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `query` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
 | [`Auth`](#auth) | `ServeOptions.Auth` | at the start of every request to a user route (`remember`, `query`, datasets, timeseries, ontologies, research), with the API key of the request | authenticate the caller: map an API key to the user it belongs to |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
+| [`GraphExtractor`](#graph-extractor) | `ServeOptions.GraphExtractor` | in the `extract_graph` stage of every `remember` of a text (for each chunk of a document), before the LLM, with the text and its content type (`text`, `code` or `image`) | extract the graph yourself for content the LLM should not read (e.g. source code: AST parsing, cleanup), or pass and let the LLM extract |
 | [`GraphEmbedder`](#graph-embedder) | `ServeOptions.GraphEmbedder` | when a `remember` has fully constructed its graph, and when a `query` has fetched its graph context | get one embedding of a whole graph, e.g. from a custom model trained for graphs (**the result is not stored yet**) |
 | [`ClassifyingTrainingHook`](#classifying-training-hook) | `ServeOptions.ClassifyingTrainingHook` | when a request asks for the training dataset of a dataset (`POST /v1/gb/datasets/{name}/training`) | turn a whole knowledge dataset (artifacts and their graphs) into the training dataset of a graph classifier: all of it or a filtered subset, with a class for each graph |
 | [`TrainedModelInferenceHook.Infer`](#trained-model-inference-hooks) | `ServeOptions.TrainedModelInferenceHooks` | when a trained model whose name the hook targets is prompted (admin UI prompt dialog, `POST /v1/gb/training/models/{id}/infer`) | run the prompts of a trained model on your own infrastructure or a provider, instead of the ML sidecar (Modal) |
@@ -232,6 +233,50 @@ gligabao.ServeOptions{
 | `gligabao.TimeseriesData` | `Key`, `Field`, `Name`, `Unit`, `Frequency`, `Points` (`[]TimeseriesPoint{TS, Value}`) |
 
 Contract, in short: `Fetch` is called concurrently, with a 60 s timeout per call, must honour `ctx`, may return no series and no error when it has nothing, and a panic in it is caught and reported as an error. The providers are validated when `Serve` starts and it returns the error for a malformed one. Full description, validation rules and the request side: [timeseries.md](timeseries.md#providers).
+
+## Graph extractor
+
+```go
+err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
+    DBPath: "data/gligabao.db",
+    GraphExtractor: func(ctx context.Context, rt *gligabao.Runtime, req gligabao.GraphExtractRequest) (gligabao.GraphExtractResult, error) {
+        if req.ContentType != gligabao.ContentCode {
+            return gligabao.GraphExtractResult{Pass: true}, nil // the LLM extracts, as without the hook
+        }
+        entities, edges := myParser.Parse(req.Text) // AST parsing, cleanup, ...
+        return gligabao.GraphExtractResult{Entities: entities, Edges: edges}, nil
+    },
+})
+```
+
+Without the hook the LLM always extracts the graph of a text. The hook is called by the `extract_graph` stage of `remember` **in front of the LLM**: if it handles the request, the LLM extraction does not run; if it **passes**, it runs as usual. What the hook returns goes through the same stages as an LLM extraction (reconciliation with the stored facts, store, vectors, geo, ...).
+
+### The content type
+
+A `remember` request says what kind of content its `text` is with the optional field **`content_type`** (see [remember/remember.md](remember/remember.md)): `text` (the default) or `code`. The hook gets it as `req.ContentType` (`gligabao.ContentText`, `gligabao.ContentCode`), so it can treat each kind its own way. gligabao only carries it; it does not change anything without the hook. `400` for any other value.
+
+A `remember` of an **image** is always `image` (`gligabao.ContentImage`): `content_type` may be omitted or `"image"` with an `image`, and `text` or `code` with one is a `400`. The image pipeline first has the LLM read the image (theme, title, text blocks, a description; the hook cannot replace that step), then extracts the **graph** of the description, and that step is what calls the hook: `req.Text` is the description (a header with the theme and title, then the description), and `req.Image` has the image: `Data`, `MediaType` and `SHA256`. An image the LLM gave no description for has no graph step, so the hook is not called for it.
+
+### Types
+
+```go
+type GraphExtractor func(ctx context.Context, rt *Runtime, req GraphExtractRequest) (GraphExtractResult, error)
+```
+
+| Type | Fields |
+|---|---|
+| `gligabao.GraphExtractRequest` | `Text` (the text of the call, or one chunk of it for a document that was split; for an image, what the LLM read from it), `ContentType`, `Image` (`*gligabao.GraphExtractImage`: `Data`, `MediaType`, `SHA256`; only for `image`, else nil), `UserID`, `Dataset`, `Chunk` (0-based) and `Chunks` (1 when the text was not split) |
+| `gligabao.GraphExtractResult` | `Pass` (true: the hook does not handle it, the LLM extracts and `Entities`/`Edges` are ignored), `Entities` and `Edges` (the graph, when not `Pass`; empty is a valid graph) |
+
+An edge names its `Source` and `Target` by entity name. An edge without a source, target or relation is dropped; a missing `Description` is made from them; a zero `ValidAt` is the reference time of the call. The entities and edges of a hook carry no model ID (no model made them) and no inference.
+
+### Behaviour
+
+- **Authoritative.** Unlike the advisory hooks, a hook that does not pass is in charge: an **error or a panic fails the call** (it is not retried with the LLM).
+- **Per text.** For a chunked document it is called once per chunk, in order, with the same `ContentType`.
+- **Synchronous and concurrent.** It runs on the goroutine of the remember manager's worker; keep it fast. `ctx` is the context of the call.
+- **Only `remember`.** The graph step of a text and of an image's description call it (an image's graph is extracted once, from its description; a long description is split into chunks, each with the same `Image`). The web search and series observation texts and `query` do not call it.
+- **Off by default.** With no `GraphExtractor` the LLM always extracts.
 
 ## Graph embedder
 

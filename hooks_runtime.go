@@ -34,6 +34,12 @@ type GraphEmbedder func(ctx context.Context,
 	rt *Runtime,
 	req GraphEmbedRequest) ([]float32, error)
 
+// GraphExtractor is the graph extraction hook (see ServeOptions.GraphExtractor and docs/hooks.md): it is called by the extract_graph stage of
+// remember with the text and its content type, and either returns the graph (Pass false) or passes (Pass true) to let the LLM extract it.
+type GraphExtractor func(ctx context.Context,
+	rt *Runtime,
+	req GraphExtractRequest) (GraphExtractResult, error)
+
 // ClassifyingTrainingHook is the classifying training hook (see ServeOptions.ClassifyingTrainingHook and docs/hooks.md): it gets a whole
 // knowledge dataset (every artifact and its graph) and returns the training dataset of a graph classifier, which may be a filtered subset.
 type ClassifyingTrainingHook func(ctx context.Context,
@@ -120,6 +126,17 @@ func bindGraphEmbedder(ref *gbruntime.Ref,
 	}
 	return func(ctx context.Context,
 		req GraphEmbedRequest) ([]float32, error) {
+		return f(ctx, ref.Get(), req)
+	}
+}
+
+func bindGraphExtractor(ref *gbruntime.Ref,
+	f GraphExtractor) memory_core.GraphExtractor {
+	if f == nil {
+		return nil
+	}
+	return func(ctx context.Context,
+		req GraphExtractRequest) (GraphExtractResult, error) {
 		return f(ctx, ref.Get(), req)
 	}
 }

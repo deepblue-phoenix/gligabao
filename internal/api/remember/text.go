@@ -187,6 +187,10 @@ func prepare(ctx context.Context,
 	if err != nil {
 		return prepared{}, invalid(err)
 	}
+	contentType, err := memory_core.ResolveContentType(req.ContentType)
+	if err != nil {
+		return prepared{}, invalid(err)
+	}
 	models, err := memory_core.ResolveModels(req.Models)
 	if err != nil {
 		return prepared{}, invalid(err)
@@ -229,6 +233,7 @@ func prepare(ctx context.Context,
 			Opts: append(append(opts[:len(opts):len(opts)], groundOpts...),
 				memory_core.WithSessionID(sessionID),
 				memory_core.WithGraphIndex(graphIndex),
+				memory_core.WithContentType(contentType),
 				memory_core.WithModels(models),
 				memory_core.WithReasoning(reasoning),
 				memory_core.WithWebSearch(req.WebSearch),

@@ -97,6 +97,13 @@ type CallOptions struct {
 	// of the text is fully constructed and Query once it has fetched the graph context of the question.
 	// IMPORTANT: the embeddings it returns are not stored yet, they must go to the vector store (see graph_embedder.go).
 	GraphEmbedder GraphEmbedder
+	// GraphExtractor is the graph extractor hook, set by WithGraphExtractor; nil (the default) leaves it off. The extract_graph stage of Remember
+	// calls it before the LLM; unless it passes, the LLM does not extract (see graph_extractor.go).
+	GraphExtractor GraphExtractor
+	// ContentType is the kind of content of the call (ContentText, ContentCode), set by WithContentType; "" is ContentText. The hook gets it.
+	ContentType string
+	// GraphExtractImage is the image of a ContentImage call, set by WithGraphExtractImage; nil otherwise.
+	GraphExtractImage *GraphExtractImage
 	// GraphIndex is the name of the graph embedding index the call is for, set by WithGraphIndex; "" names none. The hook gets it.
 	GraphIndex string
 

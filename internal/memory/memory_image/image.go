@@ -351,6 +351,7 @@ func RememberImage(ctx context.Context,
 				d,
 				baseLM,
 				res,
+				data,
 				ext.ID,
 				ref,
 				opts...); err != nil {
@@ -467,6 +468,7 @@ func RememberImage(ctx context.Context,
 			d,
 			baseLM,
 			res,
+			data,
 			extID,
 			ref,
 			opts...); err != nil {
@@ -495,12 +497,13 @@ func graphText(x ImageExtraction) string {
 
 // rememberGraph remembers the description of the extraction extID as a text artifact with the text pipeline (the
 // graph of the image: entities and edges, vectors, sessions as for any text), links it to the extraction
-// (gb_image_graphs) and sets ArtifactID, Entities and Edges of res. lm is the unwrapped LLM: Remember records and
+// (gb_image_graphs) and sets ArtifactID, Entities and Edges of res. The graph extractor hook (if any) gets it as ContentImage, with data. lm is the unwrapped LLM: Remember records and
 // stages its own calls.
 func rememberGraph(ctx context.Context,
 	d *sql.DB,
 	lm memory_core.LLM,
 	res *ImageResult,
+	data []byte,
 	extID int64,
 	ref time.Time,
 	opts ...memory_core.Option) error {
@@ -512,7 +515,13 @@ func rememberGraph(ctx context.Context,
 		graph.ArtifactKnowledge,
 		graphText(res.ImageExtraction),
 		ref,
-		opts...)
+		append(opts[:len(opts):len(opts)],
+			memory_core.WithContentType(memory_core.ContentImage),
+			memory_core.WithGraphExtractImage(&memory_core.GraphExtractImage{
+				Data:      data,
+				MediaType: res.MediaType,
+				SHA256:    res.SHA256,
+			}))...)
 	if err != nil {
 		return fmt.Errorf("remember the graph of the image: %w", err)
 	}
@@ -532,6 +541,7 @@ func rememberGraphOfCached(ctx context.Context,
 	d *sql.DB,
 	lm memory_core.LLM,
 	res *ImageResult,
+	data []byte,
 	extID int64,
 	ref time.Time,
 	opts ...memory_core.Option) error {
@@ -553,6 +563,7 @@ func rememberGraphOfCached(ctx context.Context,
 		d,
 		lm,
 		res,
+		data,
 		extID,
 		ref,
 		opts...)

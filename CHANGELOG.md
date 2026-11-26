@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.251.0] - 2026-11-27
+
+### Added
+
+- **Graph extractor hook** (`ServeOptions.GraphExtractor`): the `extract_graph` stage of `remember` calls it, before the LLM, with the text and its content type. It either returns the graph itself (e.g. from AST parsing of code), in which case the LLM extraction does not run, or passes (`GraphExtractResult.Pass`) and the LLM extracts as before. Without the hook nothing changes. See `docs/hooks.md#graph-extractor`.
+- **`content_type`** on `POST /v1/gb/remember`: `text` (default) or `code`, handed to the graph extractor hook (`400` for anything else or with an image). Also in the Go client's `RememberRequest`.
+
 ## [0.250.0] - 2026-11-26
 
 ### Added

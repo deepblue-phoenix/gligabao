@@ -126,7 +126,7 @@ func rememberOptions(d *db.DB,
 	ws memory_core.WebSearcher,
 	providers []memory_core.SeriesProvider,
 	o options) []memory_core.Option {
-	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_core.WithGraphEmbedder(o.graphEmbedder), memory_image.WithImageStore(d.ImageStore)}
+	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_core.WithGraphEmbedder(o.graphEmbedder), memory_core.WithGraphExtractor(o.graphExtractor), memory_image.WithImageStore(d.ImageStore)}
 }
 
 // QueryHandler is the handler of POST /v1/gb/query, without the API key check that Register puts in front of it: the admin UI's query
@@ -244,14 +244,15 @@ func RegisterMCP(mux *http.ServeMux,
 }
 
 type options struct {
-	ontologyDirs  []string
-	auth          httputil.Authenticator
-	geo           memory_geo.Resolver
-	geoRadiusKm   float64
-	graphEmbedder memory_core.GraphEmbedder
-	trainingHook  memory_core.ClassifyingTrainingHook
-	research      *agent_research.Manager
-	evals         *evalsapi.Service
+	ontologyDirs   []string
+	auth           httputil.Authenticator
+	geo            memory_geo.Resolver
+	geoRadiusKm    float64
+	graphEmbedder  memory_core.GraphEmbedder
+	graphExtractor memory_core.GraphExtractor
+	trainingHook   memory_core.ClassifyingTrainingHook
+	research       *agent_research.Manager
+	evals          *evalsapi.Service
 }
 
 // Option configures Register.
@@ -278,6 +279,12 @@ func WithGeoRadius(km float64) Option { return func(o *options) { o.geoRadiusKm 
 // IMPORTANT: the embeddings the hook returns are NOT stored in the vector store yet; they must be (see memory_core.GraphEmbedder).
 func WithGraphEmbedder(f memory_core.GraphEmbedder) Option {
 	return func(o *options) { o.graphEmbedder = f }
+}
+
+// WithGraphExtractor sets the graph extractor hook of remember (called by the extract_graph stage with the text and its content type, in front of the
+// LLM), in Register, RegisterMCP and RememberOptions. Without it (or with nil) the LLM always extracts.
+func WithGraphExtractor(f memory_core.GraphExtractor) Option {
+	return func(o *options) { o.graphExtractor = f }
 }
 
 // WithClassifyingTrainingHook sets the classifying training hook, which Register serves as POST /v1/gb/datasets/{name}/training (under

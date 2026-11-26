@@ -53,6 +53,10 @@ type Request struct {
 	// the graph of the text, to know which index the embedding belongs to. 400 if it is malformed, or if the server has no graph embedder
 	// hook, or with an image (the image pipeline does not call the hook). See memory_core.WithGraphIndex.
 	GraphIndex string `json:"graph_index"`
+	// ContentType (optional) is the kind of content of Text: "text" (default) or "code". The graph extractor hook (ServeOptions.GraphExtractor)
+	// gets it with the text, so it can handle code itself; it does nothing without the hook (the LLM extracts, whatever the type). 400 for any
+	// other value. With an image it is "image" (or omitted): the hook is then called with the image, see docs/hooks.md#graph-extractor. See memory_core.WithContentType.
+	ContentType string `json:"content_type"`
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
 	ReferenceTime string `json:"reference_time"`
@@ -330,6 +334,12 @@ func rememberImage(w http.ResponseWriter,
 		httputil.Error(w,
 			http.StatusBadRequest,
 			"graph_index does not apply to an image")
+		return
+	}
+	if _, err := memory_core.ResolveImageContentType(req.ContentType); err != nil {
+		httputil.Error(w,
+			http.StatusBadRequest,
+			err.Error())
 		return
 	}
 	if (req.ClassifyGraph != nil && *req.ClassifyGraph) || len(req.GraphClasses) > 0 {

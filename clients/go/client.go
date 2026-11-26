@@ -113,6 +113,7 @@ type RememberRequest struct {
 	ClassifyGraph *bool             `json:"classify_graph,omitempty"` // default true for a text; point to false to turn it off
 	GraphClasses  []string          `json:"graph_classes,omitempty"`
 	GraphIndex    string            `json:"graph_index,omitempty"`
+	ContentType   string            `json:"content_type,omitempty"` // "text" (default) or "code"; the server's graph extractor hook gets it
 	// OntologyGrounding grounds the graph against the user's ontologies; Ontologies are the names to use (default: all) and
 	// OntologyGroundingMode is "annotate" (default) or "strict". See gligabao docs/ontologies/ontologies.md.
 	OntologyGrounding     bool     `json:"ontology_grounding,omitempty"`

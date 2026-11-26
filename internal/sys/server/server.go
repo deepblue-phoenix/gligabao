@@ -28,7 +28,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	evalsroutes "github.com/deepblue-phoenix/gligabao/internal/api/evals"
 	modelapi "github.com/deepblue-phoenix/gligabao/internal/api/model"
-	gcniitrain "github.com/deepblue-phoenix/gligabao/internal/training/gcnii"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
@@ -53,10 +52,11 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/ml_sidecar"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/web"
 	coretraining "github.com/deepblue-phoenix/gligabao/internal/training"
-	"github.com/deepblue-phoenix/gligabao/monitoring"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	gcniitrain "github.com/deepblue-phoenix/gligabao/internal/training/gcnii"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 	auditsapi "github.com/deepblue-phoenix/gligabao/internal/training_audits/api"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -184,6 +184,9 @@ type Options struct {
 	// constructed and with the graph context of every query once it is fetched. Nil: off. IMPORTANT: its embeddings are not stored in the
 	// vector store yet; they must be.
 	GraphEmbedder memory_core.GraphEmbedder
+	// GraphExtractor is the graph extractor hook (see memory_core.GraphExtractor): remember's extract_graph stage calls it with the text and its
+	// content type, and the LLM extracts only if it passes. Nil: off.
+	GraphExtractor memory_core.GraphExtractor
 	// ClassifyingTrainingHook is the classifying training hook (see memory_core.ClassifyingTrainingHook), served as
 	// POST /v1/gb/datasets/{name}/training. Nil: the route is not mounted.
 	ClassifyingTrainingHook memory_core.ClassifyingTrainingHook
@@ -356,6 +359,7 @@ func NewHandler(ctx context.Context,
 		0,
 		nil,
 		nil,
+		nil,
 		false,
 		newResearch(ctx,
 			d,
@@ -418,6 +422,7 @@ func newMux(ctx context.Context,
 	geoResolver memory_geo.Resolver,
 	geoRadiusKm float64,
 	graphEmbedder memory_core.GraphEmbedder,
+	graphExtractor memory_core.GraphExtractor,
 	trainingHook memory_core.ClassifyingTrainingHook,
 	mcpEnable bool,
 	research *agent_research.Manager,
@@ -482,6 +487,7 @@ func newMux(ctx context.Context,
 		api.WithGeoResolver(geoResolver),
 		api.WithGeoRadius(geoRadiusKm),
 		api.WithGraphEmbedder(graphEmbedder),
+		api.WithGraphExtractor(graphExtractor),
 		api.WithClassifyingTrainingHook(trainingHook),
 		api.WithResearch(research),
 		api.WithEvals(evalSvc))
@@ -498,6 +504,7 @@ func newMux(ctx context.Context,
 			api.WithGeoResolver(geoResolver),
 			api.WithGeoRadius(geoRadiusKm),
 			api.WithGraphEmbedder(graphEmbedder),
+			api.WithGraphExtractor(graphExtractor),
 			api.WithResearch(research))
 	}
 	dbs := append([]admin.Named{{
@@ -1350,6 +1357,7 @@ func prepare(ctx context.Context,
 		geoResolver,
 		opts.GeoRadiusKm,
 		opts.GraphEmbedder,
+		opts.GraphExtractor,
 		opts.ClassifyingTrainingHook,
 		opts.MCPEnable,
 		research,

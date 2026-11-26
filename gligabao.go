@@ -116,6 +116,23 @@ type TimeseriesPoint = memory_core.SeriesPoint
 // artifact), the name of the graph embedding index the request asked for (graph_index; empty: none, the hook picks), and its entities and edges.
 type GraphEmbedRequest = memory_core.GraphEmbedRequest
 
+// GraphExtractRequest is what a GraphExtractor is asked to extract the graph of: the text (or the chunk of it), its content type (ContentText or
+// ContentCode), where the call runs and which chunk it is.
+type GraphExtractRequest = memory_core.GraphExtractRequest
+
+// GraphExtractImage is the image of a GraphExtractRequest of ContentImage: its bytes, media type and SHA-256.
+type GraphExtractImage = memory_core.GraphExtractImage
+
+// GraphExtractResult is what a GraphExtractor answers: Pass (let the LLM extract), or the Entities and Edges it extracted.
+type GraphExtractResult = memory_core.GraphExtractResult
+
+// The content types of a remember call (the content_type of the request), passed to the GraphExtractor in GraphExtractRequest.ContentType.
+const (
+	ContentText  = memory_core.ContentText
+	ContentCode  = memory_core.ContentCode
+	ContentImage = memory_core.ContentImage
+)
+
 // GraphEntity is an entity of a GraphEmbedRequest.
 type GraphEntity = graph.EvidenceEntity
 
@@ -234,6 +251,10 @@ type ServeOptions struct {
 	// custom model). For now gligabao only makes the call and DISCARDS the result. IMPORTANT: those embeddings MUST be stored in the
 	// vector store; that is not done yet. See docs/hooks.md.
 	GraphEmbedder GraphEmbedder
+	// GraphExtractor is the graph extraction hook: if set, the extract_graph stage of every remember calls it with the text and its content type
+	// (the content_type of the request: "text" by default, or "code") before the LLM. It returns the graph itself, or passes
+	// (GraphExtractResult.Pass), and then the LLM extracts as usual; if it does not pass the LLM extraction does not run. See docs/hooks.md.
+	GraphExtractor GraphExtractor
 	// ClassifyingTrainingHook is the classifying training hook: if set, POST /v1/gb/datasets/{name}/training hands it the whole
 	// dataset (every artifact and the graph of each) and it returns the training dataset of a graph classifier: all of the dataset or a
 	// filtered subset, with the class of each graph. See docs/hooks.md.
@@ -547,6 +568,7 @@ func serverOptions(cfg *Config,
 		Auth:                    bindAuth(runtimeRef, opts.Auth),
 		GeoResolver:             bindGeoResolver(runtimeRef, opts.GeoResolver),
 		GraphEmbedder:           bindGraphEmbedder(runtimeRef, opts.GraphEmbedder),
+		GraphExtractor:          bindGraphExtractor(runtimeRef, opts.GraphExtractor),
 		ClassifyingTrainingHook: bindClassifyingTrainingHook(runtimeRef, opts.ClassifyingTrainingHook),
 		Geo:                     cfg.Geo,
 		GeoRadiusKm:             cfg.GeoRadiusKm,

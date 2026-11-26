@@ -15,6 +15,8 @@ package memory_remember
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -273,11 +275,10 @@ func (j *job) extract(ctx context.Context) error {
 		j.exs = make([]*Extraction, j.itemCount())
 	}
 	if !j.chunked {
-		ex, err := extractWith(ctx,
-			j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),
+		ex, err := j.extractText(ctx,
 			j.text,
-			j.ref,
-			j.ground)
+			0,
+			1)
 		j.outputExtraction("", ex)
 		if err != nil {
 			return err
@@ -294,11 +295,10 @@ func (j *job) extract(ctx context.Context) error {
 		Chunk: c,
 		Count: len(j.chunks),
 	}
-	ex, err := extractWith(ctx,
-		j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),
+	ex, err := j.extractText(ctx,
 		c.Text,
-		j.ref,
-		j.ground)
+		j.i,
+		len(j.chunks))
 	j.outputExtraction(j.stepLabel(part), ex)
 	if err != nil {
 		return fmt.Errorf("memory: extract chunk %d of %d: %w",
@@ -312,6 +312,68 @@ func (j *job) extract(ctx context.Context) error {
 		map[string]any{"chunk_index": j.i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 	return nil
+}
+
+// extractText extracts the graph of one text (the text of the call, or its chunk number chunk of chunks): the graph extractor hook gets it
+// first, if the call has one, and the LLM extracts only if the hook passes.
+func (j *job) extractText(ctx context.Context,
+	text string,
+	chunk,
+	chunks int) (*Extraction, error) {
+	if j.co.GraphExtractor != nil {
+		contentType := j.co.ContentType
+		if contentType == "" {
+			contentType = memory_core.ContentText
+		}
+		res, err := memory_core.CallGraphExtractor(ctx,
+			j.co.GraphExtractor,
+			memory_core.GraphExtractRequest{
+				Text:        text,
+				ContentType: contentType,
+				Image:       j.co.GraphExtractImage,
+				UserID:      j.userID,
+				Dataset:     j.dataset,
+				Chunk:       chunk,
+				Chunks:      chunks,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("memory: graph extractor hook: %w", err)
+		}
+		if !res.Pass {
+			return extractionOfHook(res,
+				j.ref), nil
+		}
+	}
+	return extractWith(ctx,
+		j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),
+		text,
+		j.ref,
+		j.ground)
+}
+
+// extractionOfHook is the Extraction a graph extractor hook made: its edges are normalized like those of the LLM. It has no model and no
+// inference, so its entities and edges carry no model ID.
+func extractionOfHook(res memory_core.GraphExtractResult,
+	ref time.Time) *Extraction {
+	ex := &Extraction{
+		Entities: res.Entities,
+	}
+	for _, e := range res.Edges {
+		e.Source, e.Target = strings.TrimSpace(e.Source), strings.TrimSpace(e.Target)
+		e.Relation = normRelation(e.Relation)
+		e.Description = strings.TrimSpace(e.Description)
+		if e.Source == "" || e.Target == "" || e.Relation == "" {
+			continue
+		}
+		if e.Description == "" {
+			e.Description = memory_core.SynthStatement(e.Source,
+				e.Relation,
+				e.Target)
+		}
+		memory_temporal.ApplyReference(&e, ref)
+		ex.Edges = append(ex.Edges, e)
+	}
+	return ex
 }
 
 // summarize is the summarize_chunk stage, for the current chunk: the LLM summarizes it.

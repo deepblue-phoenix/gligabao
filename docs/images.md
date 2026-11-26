@@ -1,8 +1,8 @@
 # Images (the image pipeline)
 
-`POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own, separate from the text pipeline ([remember/remember.md](remember/remember.md)): a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system or in an S3 bucket, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
+`POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own ([remember/remember.md](remember/remember.md) is the text one), but the second half of it **is** the text pipeline: a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system or in an S3 bucket, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
 
-The model also describes what the image shows and how its parts relate (the links of a graph or diagram, what a plot or chart says). That **description** is then remembered as a text artifact (kind `knowledge`) by the text pipeline, so the graph of the image (entities, edges, vectors, sessions) is extracted and stored like that of any text, and `query` sees it. See [The graph of an image](#the-graph-of-an-image).
+The model also describes what the image shows and how its parts relate (the links of a graph or diagram, what a plot or chart says). That **description** is then remembered as a text artifact (kind `knowledge`) by the text pipeline, so the graph of the image (entities, edges, vectors, sessions) is extracted and stored like that of any text, and `query` sees it. See [The description stage runs the text pipeline](#the-description-stage-runs-the-text-pipeline).
 
 Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`, `ResolveImage`, `LoadImage`, `MaxImageBytes`), `internal/memory/memory_image/image_prompts.go` (the prompt), `internal/api/remember/remember.go` (the handler `rememberImage`), `internal/db/imagestore/` (the files: `fs.go`, `s3.go`), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL), `internal/llm/ai.go` (the `Image` type sent to the model), `internal/api/admin/admin.go` (the admin statistics) and `admin_ui/src/{image,imagestats}.ts` (the admin UI).
 
@@ -80,7 +80,7 @@ With `"stream": true` the response is `200` with `content-type: text/event-strea
 - one `result` event, with the response documented above, when the call succeeds.
 - one `error` event, `{"error": "..."}`, if the pipeline failed after the stream started (the HTTP status is already `200` then). The stream closes after `result` or `error`.
 
-The comment line `: connected` is sent first. The steps are, in order: `received_image` (`info`: media type and size), then either `find_existing_image` (the image is [repeated](#repeated-images)) or `extract_image` (`started`; `succeeded` with `theme`, `title`, `text_blocks`, `model` and the tokens), `image_store`, and `image_graph` (only if the image has a [description](#the-graph-of-an-image)). The stages of the text pipeline that builds the graph (`extract_graph`, `resolve_edges`, `store`, ... see [remember.md](remember/remember.md#how-the-pipeline-is-declared)) are reported too, between `started` and `succeeded` of `image_graph`, as `started`, `succeeded`, `failed` or `skipped` events named after the stage; they come from the [run log](remember/remember.md#run-log).
+The comment line `: connected` is sent first. The steps are, in order: `received_image` (`info`: media type and size), then either `find_existing_image` (the image is [repeated](#repeated-images)) or `extract_image` (`started`; `succeeded` with `theme`, `title`, `text_blocks`, `model` and the tokens), `image_store`, and `image_graph` (only if the image has a [description](#the-description-stage-runs-the-text-pipeline)). The stages of the text pipeline that builds the graph (`extract_graph`, `resolve_edges`, `store`, ... see [remember.md](remember/remember.md#how-the-pipeline-is-declared)) are reported too, between `started` and `succeeded` of `image_graph`, as `started`, `succeeded`, `failed` or `skipped` events named after the stage; they come from the [run log](remember/remember.md#run-log).
 
 Progress is not replayed: a client that reconnects starts a new call (the same image is then answered from its stored extraction), so close the connection when the stream ends (a browser `EventSource` otherwise reconnects by itself). From Go: `memory_core.WithProgress(func(memory_core.ProgressEvent))` is an option of `memory_image.RememberImage`; it may be called from several goroutines.
 
@@ -110,11 +110,35 @@ Code fences or prose around the JSON are tolerated. Then it is normalized:
 
 The call is recorded in `gb_inferences` with type `remember_image` (stage `extract_image`, with the reasoning level it ran with: low unless the request sets `reasoning.extract_image`) (the text pipeline's calls are `remember`), even if a later step fails.
 
-## The graph of an image
+## The description stage runs the text pipeline
 
-When the extraction has a `description`, `RememberImage` calls the text pipeline (`memory_remember.Remember`, kind `knowledge`) with the text `Image (<theme>): <title>` followed by the description, with the same options as the call (session, models, reasoning, vectors, ...; the `extract_graph` model of `models` picks the model of the graph step). The text pipeline extracts the entities and edges, reconciles them with the dataset's graph, stores them and embeds them, exactly as for a text, and the artifact it creates (a row of `gb_artifacts`) owns them: `gb_entity_artifacts` and `gb_edge_artifacts` link them to it, so `GET /v1/gb/datasets/{name}/artifacts/{id}/graph` returns the graph of the image by its `artifact_id`. `gb_image_graphs` links the extraction to that artifact.
+The image pipeline has two stages, and only the first one is specific to images:
 
-The response of a new image carries `artifact_id`, `description` and the `entities` and `edges` just extracted (the same shape as for a text). Their LLM calls are recorded as the text pipeline's (`remember`, stages `extract_graph`, ...). A repeated image ([Repeated images](#repeated-images)) returns `artifact_id` and `description` but no `entities` or `edges` (read the artifact graph). If the graph step fails after the image was stored (`502`), the image and its extraction stay stored and a repeat of the request retries only the graph step. An image without a description has no graph step and no `artifact_id`. The graph is not classified (`classify_graph` does not apply to an image), and `web_search`, `timeseries` and `graph_index` still do not apply.
+1. **Read the image** (`extract_image`): one vision-LLM call turns the pixels into an *image extraction*: theme, title, text blocks and a prose `description` (see [What the model returns](#what-the-model-returns)). The image file and this extraction are stored in the image tables (see [Schema](#schema)). Nothing in this stage touches the graph.
+2. **Remember the description** (`image_graph`): the description is handed to the **standard text remember pipeline**, the same `memory_remember.Remember` that serves `POST /v1/gb/remember` with a `text` ([remember/remember.md](remember/remember.md)). From here on the image is just a text.
+
+```
+image ──► extract_image (vision LLM) ──► image file + image extraction (gb_image_*)
+                         │
+                         └─ description ──► Remember(text) ──► chunk_text, extract_graph, resolve_edges, store, ...
+                                                   │
+                                                   └─► text artifact (gb_artifacts) that owns the graph
+                                                       ◄── gb_image_graphs.artifact_id links the extraction to it
+```
+
+`RememberImage` calls `Remember` with kind `knowledge` and the text `Image (<theme>): <title>`, a blank line, then the description. It passes the options of the call along, so the text pipeline behaves as it would for a text request with them:
+
+- **Graph extraction.** `extract_graph` extracts the entities and edges from the description, reconciles them with the facts the dataset already has (`resolve_edges`, see [temporal/temporal.md](temporal/temporal.md)), and stores them. A long description is chunked like any long text ([chunking.md](chunking.md)).
+- **Embeddings, sessions, geo.** The vectors of the entities, edges and chunks are written (when the server has an embedder), the `session_id` is recorded on the entities and edges, and places among the entities are found by the geo resolver ([geo.md](geo.md)).
+- **Models and reasoning.** The `models` and `reasoning` of the request apply per stage: `extract_image` is the vision call; `extract_graph`, `resolve_edges`, ... are the text pipeline's.
+- **The graph extractor hook.** If the server has one ([hooks.md](hooks.md#graph-extractor)), `extract_graph` calls it before the LLM, as for a text, but with the content type `image`: `req.Text` is the text above and `req.Image` is the image (bytes, media type, SHA-256). The hook may build the graph itself or pass.
+- **Run log and costs.** The call is a normal remember run: its stages are in the [run log](remember/remember.md#run-log) and its LLM calls are recorded as `remember` (stages `extract_graph`, ...), while the vision call is `remember_image`. It runs directly in the request, not through the remember queue.
+
+What it produces is a normal text artifact (kind `knowledge`, a row of `gb_artifacts`) that owns the graph: `gb_entity_artifacts` and `gb_edge_artifacts` link the entities and edges to it, so `GET /v1/gb/datasets/{name}/artifacts/{id}/graph` returns the graph of the image by its `artifact_id`, `query` retrieves it like any other knowledge, and the [graph export](graph.md) shows it. `gb_image_graphs` links the image extraction to that artifact.
+
+The response of a new image carries `artifact_id`, `description` and the `entities` and `edges` just extracted (the same shape as for a text). A repeated image ([Repeated images](#repeated-images)) returns `artifact_id` and `description` but no `entities` or `edges` (read the artifact graph). If the text stage fails after the image was stored (`502`), the image and its extraction stay stored and a repeat of the request retries only this stage. An image without a description has no text stage, no `artifact_id` and no hook call.
+
+**What does not carry over.** Only the options that make sense for an image are accepted, so the text pipeline runs for an image without them: `classify_graph`, `ontology_grounding`, `web_search`, `timeseries` and `graph_index` are `400` with an `image`, and `kind` and `text` too. A `content_type` of `text` or `code` is a `400` as well: an image is always `image`.
 
 ## Where the files are
 
