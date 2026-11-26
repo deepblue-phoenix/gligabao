@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.249.0] - 2026-11-26
+
+### Added
+
+- **`GET /v1/gb/training/jobs/{id}/meta`**: the configuration and results of a training run (the row of `gb_training_job_runs_meta`: hyperparameters, the split of the data, the final validation loss, and the model-specific `meta` told by `meta_schema`). `404` for an unknown run, a run of another user, and a run made before the meta existed. Go: `training.GetJobRunMeta`, `api/training.GetJobMetaOf`.
+
 ## [0.248.0] - 2026-11-26
 
 A table for the configuration and results of each training run.

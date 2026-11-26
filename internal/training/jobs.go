@@ -130,6 +130,30 @@ func GetJobRun(ctx context.Context,
 	return run, nil
 }
 
+// GetJobRunMeta reads the meta of training job run id, which must be a job of userID (see GetJobRun): a KindNotFound error also for a run
+// that has no meta, KindInternal if it cannot be read.
+func GetJobRunMeta(ctx context.Context,
+	db *sql.DB,
+	userID string,
+	id int64) (*trainingdb.TrainingJobRunMeta, error) {
+	if _, err := GetJobRun(ctx,
+		db,
+		userID,
+		id); err != nil {
+		return nil, err
+	}
+	meta, err := trainingdb.GetTrainingJobRunMeta(ctx,
+		db,
+		id)
+	if errors.Is(err, relational.ErrNotFound) {
+		return nil, notFoundErr("the training job run has no meta")
+	} else if err != nil {
+		log.WithError(err).Error("training: read training job run meta failed")
+		return nil, internalErr("failed to read the training job run meta", err)
+	}
+	return meta, nil
+}
+
 // StopJob asks the backend of the job run id to stop it. The job ends at its next step (or at the next stage of its setup) with a
 // "cancelled" event, which the monitor records like any other: the job's row changes when the event arrives. It returns the
 // run. Errors are *Error: KindNotFound for an unknown run, KindConflict for one that is over already (or runs on another instance),

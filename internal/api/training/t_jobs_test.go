@@ -3,6 +3,7 @@ package training_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -296,4 +297,63 @@ func (f *fakeMLSidecar) StreamTrainingJobEvents(context.Context,
 	int,
 	func(ml_sidecar.TrainingEvent) error) error {
 	return nil
+}
+
+// TestGetTrainingJobMeta checks the endpoint of the configuration and results of a run.
+func TestGetTrainingJobMeta(t *testing.T) { dbtest.Run(t, testGetTrainingJobMeta) }
+
+func testGetTrainingJobMeta(t *testing.T,
+	d *sql.DB) {
+	ctx := context.Background()
+	for _, jobID := range []string{"m1", "m2"} {
+		if _, err := trainingdb.RecordTrainingJobRun(ctx,
+			d,
+			trainingdb.TrainingJobRun{
+				UserID:        testUser,
+				JobID:         jobID,
+				Status:        "training",
+				ModelSize:     "4b",
+				NumTrainSteps: 10,
+				StartedAt:     time.Now(),
+			}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	epochs := 10
+	if err := trainingdb.UpsertTrainingJobRunMeta(ctx,
+		d,
+		trainingdb.TrainingJobRunMeta{
+			RunID:      1,
+			UserID:     testUser,
+			ModelType:  trainingdb.ModelTypeGCNII,
+			Epochs:     &epochs,
+			MetaSchema: "gcnii.v1",
+			Meta:       json.RawMessage(`{"classes":["a","b"]}`),
+		}); err != nil {
+		t.Fatal(err)
+	}
+	get := func(id string) *httptest.ResponseRecorder {
+		req := userReq("GET",
+			"/x",
+			nil)
+		req.SetPathValue("id", id)
+		rec := httptest.NewRecorder()
+		training.GetJobMetaOf(d)(rec, req)
+		return rec
+	}
+	if rec := get("1"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"meta_schema":"gcnii.v1"`) ||
+		!strings.Contains(rec.Body.String(), `"classes":["a","b"]`) || !strings.Contains(rec.Body.String(), `"epochs":10`) {
+		t.Fatalf("meta: %d %s",
+			rec.Code,
+			rec.Body)
+	}
+	// a run without meta, an unknown run and a bad id
+	for id, want := range map[string]int{"2": http.StatusNotFound, "99": http.StatusNotFound, "x": http.StatusBadRequest} {
+		if rec := get(id); rec.Code != want {
+			t.Fatalf("id %s: %d, want %d",
+				id,
+				rec.Code,
+				want)
+		}
+	}
 }

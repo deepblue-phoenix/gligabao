@@ -672,6 +672,7 @@ func registerTraining(ctx context.Context,
 		backends,
 		mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, backends, mon))
+	mux.HandleFunc("GET /v1/gb/training/jobs/{id}/meta", training.GetJobMetaOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB, backends))
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))

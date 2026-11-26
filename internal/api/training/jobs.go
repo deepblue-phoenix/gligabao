@@ -109,6 +109,34 @@ func StopJobOf(db *sql.DB,
 	}
 }
 
+// GetJobMetaOf serves GET /v1/gb/training/jobs/{id}/meta: the configuration and results of the job run {id} (gb_training_job_runs_meta,
+// trainingdb.TrainingJobRunMeta): the hyperparameters, the split of the data, the final validation loss, and the model-specific "meta"
+// told by "meta_schema". 404 is for an unknown run (or one of another user) and for a run that has no meta (made before it existed).
+func GetJobMetaOf(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter,
+		r *http.Request) {
+		userID, ok := userOf(w, r)
+		if !ok {
+			return
+		}
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		meta, err := core.GetJobRunMeta(r.Context(),
+			db,
+			userID,
+			id)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		httputil.WriteJSON(w,
+			http.StatusOK,
+			meta)
+	}
+}
+
 const (
 	trainingJobsDefaultLimit = 50
 	trainingJobsMaxLimit     = 500
