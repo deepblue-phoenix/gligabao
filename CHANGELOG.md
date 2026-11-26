@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.252.1] - 2026-11-29
+
+### Added
+
+- Tests: 13 realistic Python programs (10 of about 100 lines, 3 of 230 to 250 lines; classes, inheritance, metaclasses, decorators, closures, nested functions, generators, async) in `internal/memory/memory_code/testdata/python/`. The tests check that the lexer and parser report no syntax error and that the extracted graph has the expected entities and edges.
+
 ## [0.252.0] - 2026-11-28
 
 ### Added
