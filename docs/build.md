@@ -4,7 +4,8 @@ All build logic lives in one Python program, `ops/build.py` (standard library on
 
 1. the **admin UI** (`admin_ui/`, npm; embedded into the server binary),
 2. **sargo**, the Rust model router (`rust/sargo/`, cargo), optionally embedded into the server binary,
-3. the **Go binaries** in `build/`: `gligabao` (the server and CLI), `gligabao_agent`, `gligabao_worker`, and always `gligabao_agent_linux_amd64` (baked into the Modal app by the ML sidecar, see [ml_sidecar.md](training/ml_sidecar.md#the-research-agent-in-modal)).
+3. the **parsers of esbuild and typescript-go** (`generate_esbuild`: `go run` of `gen_esbuild` and `gen_tsgo` in `internal/memory/memory_code`), which are not in git and which every Go build below needs (they are the TypeScript/JavaScript/CSS code extraction of `remember`, behind the Go build tag `tsjs_css`),
+4. the **Go binaries** in `build/`: `gligabao` (the server and CLI), `gligabao_agent`, `gligabao_worker`, and always `gligabao_agent_linux_amd64` (baked into the Modal app by the ML sidecar, see [ml_sidecar.md](training/ml_sidecar.md#the-research-agent-in-modal)).
 
 **It must run natively on every platform where building is done.** A Windows user builds the Windows package on Windows, a Mac user the macOS one, and so on, without bash. The shell scripts of the repo root (`run_build.sh`, `run_build_rust.sh`, part of `run_pypi.sh`) are only wrappers for Linux/macOS that call it. See "Build pipeline" in `AGENTS.md`.
 
@@ -17,6 +18,7 @@ python3 ops/build.py all --os linux --arch arm64 --no-admin-ui   # Go cross-comp
 python3 ops/build.py admin-ui                # only admin_ui/dist
 python3 ops/build.py sargo [--static] [--embed]   # only sargo
 python3 ops/build.py go --os windows         # only the Go binaries
+python3 ops/build.py esbuild                 # only generate the esbuild and typescript-go parsers (for builds not made here, e.g. gligabao_int)
 python3 ops/build.py server --out FILE       # one stripped release server binary (used by `ops/pypi.py`)
 ```
 
@@ -36,6 +38,7 @@ Shell wrappers: `./run_build.sh [--no-admin-ui] [--sargo]` is `ops/build.py all`
 - **One sargo builder per platform**: `build_sargo_linux`, `build_sargo_macos`, `build_sargo_windows` (table `SARGO_BUILDERS`).
 - **What cross-compiles:** Go always does (`CGO_ENABLED=0`, so no C toolchain), from any host to any of the 3 OSes. Rust does not without a cross linker, so sargo is built only on its own OS. Asking for `--sargo` for another OS fails at the start, before any slow step, saying which OS to run the build on.
 - **Embedding:** `rust/sargo/embed.go` embeds `rust/sargo/bin/sargo` (the file has this name on every OS) and `rust/sargo/config.toml`. `bin/` holds only `.gitkeep` on a fresh checkout, so the Go build always works; the gligabao binary then reports sargo as not embedded.
+- **Code parsers and the `tsjs_css` tag:** `internal/memory/memory_code/{esparser,tsparser}` are copies of third party parsers that are not committed (about 6 MB); `generate_esbuild` makes them and every Go build of `ops/build.py` (and `ops/pypi.py`) passes `-tags tsjs_css`. Without the tag a plain `go build` still works, and TypeScript/JavaScript/CSS are reported as unsupported (Python and Go need no tag). The Dockerfile and `run_tests.sh` do the same; a build of `gligabao_int` must call `python3 ops/build.py esbuild` and use `-tags tsjs_css`.
 - **Output:** `build/gligabao[.exe]`, `build/gligabao_agent[.exe]`, `build/gligabao_worker[.exe]`, `build/gligabao_agent_linux_amd64`. The server is built plain (its version comes from the embedded `VERSION`); the agent and worker are `-trimpath -s -w` with `-X main.version=<VERSION>`.
 
 ## Linux
