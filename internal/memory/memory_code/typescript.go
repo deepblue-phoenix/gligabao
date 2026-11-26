@@ -484,11 +484,23 @@ func (f tsFile) callable(name string,
 	return concat(definedBy(sc,
 		q,
 		typ,
-		""), mapGraphs(args, func(a js_ast.Arg) Graph {
+		""), argumentsOf(q,
+		f.argNames(args)), mapGraphs(args, func(a js_ast.Arg) Graph {
 		return f.expr(a.DefaultOrNil,
 			inner)
 	}), f.stmts(body.Block.Stmts,
 		inner))
+}
+
+// argNames are the names of the parameters that are plain identifiers (a destructured parameter has no single name).
+func (f tsFile) argNames(args []js_ast.Arg) []string {
+	names := []string{}
+	for _, a := range args {
+		if id, ok := a.Binding.Data.(*js_ast.BIdentifier); ok {
+			names = append(names, f.name(id.Ref))
+		}
+	}
+	return names
 }
 
 // class is a class that a scope defines: its base class, and its members (methods and fields that hold functions are methods).

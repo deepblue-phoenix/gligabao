@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.258.0] - 2026-12-04
+
+### Added
+
+- **The parameters of functions and methods are entities of the code graph.** Every extractor (Python, TypeScript, JavaScript, Go) adds an entity of type `argument` for each named parameter, named after its function (`Class.method.name`), and a `has_argument` edge from the function to it. They are clearly tagged by type so they are easy to leave out: `memory_code.IsArgument(type)` and `memory_code.WithoutArguments(graph)` drop them (and their edges) for computations that only need the symbols. `self`/`cls` of a Python method, `this` of TypeScript, `_` and destructured parameters are not arguments. The `entities_by_type` and `edges_by_relation` stats of the `code` info count them too.
+
 ## [0.257.0] - 2026-12-03
 
 ### Changed

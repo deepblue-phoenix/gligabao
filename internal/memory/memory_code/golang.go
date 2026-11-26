@@ -131,6 +131,8 @@ func goFunc(f *ast.FuncDecl,
 		name,
 		typ,
 		goDoc(f.Doc))
+	g = merge(g, argumentsOf(name,
+		goParamNames(f.Type.Params)))
 	if f.Body == nil {
 		return g
 	}
@@ -139,6 +141,20 @@ func goFunc(f *ast.FuncDecl,
 		kind: TypeFunction,
 	}
 	return merge(g, goCalls(f.Body, inner, goRecvPrefix(recvName, recvType)))
+}
+
+// goParamNames are the names of the parameters of a function (the unnamed are skipped).
+func goParamNames(l *ast.FieldList) []string {
+	if l == nil {
+		return nil
+	}
+	names := []string{}
+	for _, f := range l.List {
+		for _, n := range f.Names {
+			names = append(names, n.Name)
+		}
+	}
+	return names
 }
 
 // goReceiver is the type name and the variable name of the receiver of a method (both "" for a function).

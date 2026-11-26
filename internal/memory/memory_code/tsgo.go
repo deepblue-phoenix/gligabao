@@ -493,7 +493,10 @@ func (s tsSyntax) callable(n *ast.Node,
 			typ,
 			s.signature(n,
 				name)),
-	}.plus(foldOut(params, func(p *ast.Node) tsOut {
+	}.plus(tsOut{
+		Graph: argumentsOf(q,
+			tsParamNames(params)),
+	}).plus(foldOut(params, func(p *ast.Node) tsOut {
 		return s.param(p,
 			q,
 			sc,
@@ -512,6 +515,17 @@ func (s tsSyntax) callable(n *ast.Node,
 	return out.plus(defaults).plus(s.walkOpt(n.Body(),
 		inner,
 		own))
+}
+
+// tsParamNames are the names of the parameters that are plain identifiers ("this" is not an argument).
+func tsParamNames(params []*ast.Node) []string {
+	names := []string{}
+	for _, p := range params {
+		if p.Name() != nil && p.Name().Kind == ast.KindIdentifier && p.Name().Text() != "this" {
+			names = append(names, p.Name().Text())
+		}
+	}
+	return names
 }
 
 func paramList(l *ast.ParameterList) []*ast.Node {

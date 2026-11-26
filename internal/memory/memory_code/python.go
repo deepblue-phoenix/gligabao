@@ -155,7 +155,26 @@ func pyFunction(c *pyparser.FuncdefContext,
 		kind: TypeFunction,
 	}
 	g := definedBy(sc, name, typ, pyDocstring(c.Block()))
-	return merge(g, walkChildren(c.Block(), inner))
+	return merge(merge(g, argumentsOf(name, pyParamNames(c, typ))), walkChildren(c.Block(), inner))
+}
+
+// pyParamNames are the parameters of a function, including *args and **kwargs; "self" and "cls" of a method are not arguments.
+func pyParamNames(c *pyparser.FuncdefContext,
+	typ string) []string {
+	params := c.Parameters()
+	if params == nil || params.Typedargslist() == nil {
+		return nil
+	}
+	names := []string{}
+	for _, t := range params.Typedargslist().AllTfpdef() {
+		if n := t.Name(); n != nil {
+			names = append(names, n.GetText())
+		}
+	}
+	if typ == TypeMethod && len(names) > 0 && (names[0] == "self" || names[0] == "cls") {
+		return names[1:]
+	}
+	return names
 }
 
 func imported(sc scope,

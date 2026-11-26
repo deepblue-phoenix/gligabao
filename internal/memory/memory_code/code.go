@@ -2,8 +2,8 @@
 // parsed and its graph is read from the syntax tree, deterministically and without a model. Python (ANTLR4), TypeScript/JavaScript (esbuild for the code, typescript-go for the types) CSS (esbuild) and Go (the standard library go/parser) are supported
 // (see Detect and ErrUnsupportedLanguage).
 //
-// The graph: entities are the code symbols (types "class", "function", "method", "module", "symbol" for an imported name), edges are the
-// relations between them ("defines", "inherits", "calls", "imports"). Names are qualified by their scope ("Class.method"); the code
+// The graph: entities are the code symbols (types "class", "function", "method", "module", "symbol" for an imported name, and "argument" for a parameter of a function), edges are the
+// relations between them ("defines", "inherits", "calls", "imports", "has_argument"). Names are qualified by their scope ("Class.method"); the code
 // itself is the entity "module".
 package memory_code
 
@@ -43,6 +43,11 @@ const (
 	TypeAlias     = "type_alias"
 	TypeSelector  = "selector"
 	TypeVariable  = "variable"
+
+	// TypeArgument is a parameter of a function or method. It is not a symbol of the code like the other types: it exists only as the
+	// sub node of its function (the edge RelHasArgument), so code that computes over the symbols can drop it with IsArgument or
+	// WithoutArguments.
+	TypeArgument  = "argument"
 	TypeKeyframes = "keyframes"
 
 	RelDefines  = "defines"
@@ -53,6 +58,9 @@ const (
 	RelImplements = "implements"
 	RelUsesType   = "uses_type"
 	RelUses       = "uses"
+
+	// RelHasArgument is the edge from a function or method to each of its arguments (entities of TypeArgument).
+	RelHasArgument = "has_argument"
 )
 
 // RootName is the name of the entity that stands for the code as a whole (the file that was remembered).
@@ -203,6 +211,49 @@ func ExtractAuto(filename,
 	r, err := ParseAuto(filename,
 		text)
 	return r.Graph, err
+}
+
+// IsArgument tells if the entity type is an argument of a function (TypeArgument).
+func IsArgument(entityType string) bool {
+	return entityType == TypeArgument
+}
+
+// WithoutArguments is the graph without the argument entities and the edges that touch them: the graph of the symbols only.
+func WithoutArguments(g Graph) Graph {
+	args := map[string]bool{}
+	for _, e := range g.Entities {
+		if IsArgument(e.Type) {
+			args[e.Name] = true
+		}
+	}
+	out := Graph{}
+	for _, e := range g.Entities {
+		if !args[e.Name] {
+			out.Entities = append(out.Entities, e)
+		}
+	}
+	for _, e := range g.Edges {
+		if !args[e.Source] && !args[e.Target] {
+			out.Edges = append(out.Edges, e)
+		}
+	}
+	return out
+}
+
+// argumentsOf is the entities of the arguments of a function (qualified by it: "Class.method.name") and the "has_argument" edges from the
+// function to them. Empty names and "_" are skipped.
+func argumentsOf(function string,
+	names []string) Graph {
+	return mapGraphs(names, func(n string) Graph {
+		if n == "" || n == "_" {
+			return Graph{}
+		}
+		q := function + "." + n
+		return Graph{
+			Entities: []graph.Entity{{Name: q, Type: TypeArgument}},
+			Edges:    []graph.Edge{{Source: function, Target: q, Relation: RelHasArgument}},
+		}
+	})
 }
 
 // concat is the union of any number of graphs (none is changed).
