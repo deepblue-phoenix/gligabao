@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_code"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
@@ -315,7 +316,8 @@ func (j *job) extract(ctx context.Context) error {
 }
 
 // extractText extracts the graph of one text (the text of the call, or its chunk number chunk of chunks): the graph extractor hook gets it
-// first, if the call has one, and the LLM extracts only if the hook passes.
+// first, if the call has one. If the hook passes (or there is none), code (content type ContentCode) is extracted from its syntax tree by
+// memory_code, with no LLM; any other content is extracted by the LLM.
 func (j *job) extractText(ctx context.Context,
 	text string,
 	chunk,
@@ -343,6 +345,16 @@ func (j *job) extractText(ctx context.Context,
 			return extractionOfHook(res,
 				j.ref), nil
 		}
+	}
+	if j.co.ContentType == memory_core.ContentCode {
+		g, err := memory_code.ExtractAuto(text)
+		if err != nil {
+			return nil, fmt.Errorf("memory: code extraction: %w", err)
+		}
+		return extractionOfHook(memory_core.GraphExtractResult{
+			Entities: g.Entities,
+			Edges:    g.Edges,
+		}, j.ref), nil
 	}
 	return extractWith(ctx,
 		j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),

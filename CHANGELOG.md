@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.252.0] - 2026-11-28
+
+### Added
+
+- **Code extraction** (`internal/memory/memory_code`): `remember` of content with `content_type: "code"` no longer goes through the LLM for the graph. After the graph extractor hook (if the hook handles the call, nothing else runs), code is parsed and its graph is read from the parse tree: classes, functions, methods and imported modules/names as entities; `defines`, `inherits`, `calls` and `imports` as edges. Other content types still use the LLM. The parser is pure Go (no cgo): generated with ANTLR4 from the `antlr/grammars-v4` Python 3 grammar (pinned commit) by `go run ./internal/memory/memory_code/gen`, which downloads the grammar and the ANTLR tool once into the user cache dir (needs Java, only to regenerate; the generated `pyparser/` is committed). Python is supported; Go is next (code that looks like Go fails with an "unsupported language" error for now).
+
 ## [0.251.0] - 2026-11-27
 
 ### Added
