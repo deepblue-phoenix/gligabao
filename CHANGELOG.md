@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.255.0] - 2026-12-02
+
+### Added
+
+- **Go code extraction** (`.go`), the third supported language family next to Python and TypeScript/JavaScript/CSS. It uses the Go standard library (`go/parser`, `go/ast`), so it is always built in (no `tsjs_css` tag). Structs are `class` entities, interfaces `interface`, other named types `type_alias`, package level `var`/`const` `variable`, functions `function` and methods `method` named `Recv.Method`; the module `defines` them and `imports` the import paths; embedded types are `inherits` edges; calls are `calls` edges (a call through the receiver, `s.run()`, is a call of `Recv.run`). Doc comments are the descriptions. Code without a file name is still taken as Python unless it has a `package` clause (then Go).
+
+### Changed
+
+- A `.go` file name is no longer rejected by `remember` with content type `code`.
+
 ## [0.254.0] - 2026-12-01
 
 ### Added

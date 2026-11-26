@@ -76,14 +76,14 @@ func TestExtractJavaScriptAndTSX(t *testing.T) {
 }
 
 func TestDetectByFilename(t *testing.T) {
-	for file, want := range map[string]string{"a.PY": LangPython, "x/y.tsx": LangTypeScript, "m.mjs": LangJavaScript} {
+	for file, want := range map[string]string{"a.PY": LangPython, "x/y.tsx": LangTypeScript, "m.mjs": LangJavaScript, "main.go": LangGo} {
 		got, err := Detect(file, "")
 		if err != nil || got != want {
 			t.Errorf("%s: %q %v", file, got, err)
 		}
 	}
-	if _, err := Detect("main.go", ""); !errors.Is(err, ErrUnsupportedLanguage) {
-		t.Errorf("go file: %v", err)
+	if _, err := Detect("main.rs", ""); !errors.Is(err, ErrUnsupportedLanguage) {
+		t.Errorf("rs file: %v", err)
 	}
 }
 

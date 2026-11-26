@@ -56,7 +56,7 @@ func TestExtractPython(t *testing.T) {
 }
 
 func TestUnsupportedLanguage(t *testing.T) {
-	if _, err := ExtractAuto("", "package main\n"); err == nil {
-		t.Fatal("expected error for go")
+	if _, err := ExtractAuto("a.rs", "fn main() {}\n"); err == nil {
+		t.Fatal("expected error for rust")
 	}
 }

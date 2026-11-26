@@ -1,5 +1,5 @@
 // Package memory_code extracts the knowledge graph of source code, for the remember pipeline: where a text goes through the LLM, code is
-// parsed and its graph is read from the syntax tree, deterministically and without a model. Python (ANTLR4), TypeScript/JavaScript (esbuild for the code, typescript-go for the types) and CSS (esbuild) are supported; Go is next
+// parsed and its graph is read from the syntax tree, deterministically and without a model. Python (ANTLR4), TypeScript/JavaScript (esbuild for the code, typescript-go for the types) CSS (esbuild) and Go (the standard library go/parser) are supported
 // (see Detect and ErrUnsupportedLanguage).
 //
 // The graph: entities are the code symbols (types "class", "function", "method", "module", "symbol" for an imported name), edges are the
@@ -102,6 +102,12 @@ var languages = []Language{
 		Extensions: []string{".css"},
 		parse:      parseCSS,
 		built:      parsersBuilt,
+	},
+	{
+		Name:       LangGo,
+		Extensions: []string{".go"},
+		parse:      parseGo,
+		built:      true,
 	},
 }
 
