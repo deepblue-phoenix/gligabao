@@ -1,11 +1,14 @@
 package memory_code
 
 import (
+	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
-// Content based detection of the language of code that came without a (trusted) file name: every language has a few regular expressions
+// Content based detection of the language of code, the fallback of the remember of code when Jev is not configured (with Jev the language is
+// classified by the model, see jev.ClassifyLanguage): every language has a few regular expressions
 // of syntax that is typical of it; the language with the highest score wins. See DetectContent.
 
 var (
@@ -99,7 +102,7 @@ func DefaultFilename(lang string) string {
 type Info struct {
 	Language string `json:"language"`
 	Filename string `json:"filename"`
-	// Detected is how the language was found: always "content" (guessed from the code, never from a file name).
+	// Detected is how the language was found: DetectedJev or DetectedContent (never from a file name).
 	Detected string `json:"detected"`
 
 	Lines int `json:"lines"`
@@ -116,23 +119,33 @@ type Info struct {
 	StyleRules  int `json:"style_rules"`
 }
 
-// Resolve is the language of the code and the file name to use for it. The language comes only from the code (DetectContent): a file
-// name the caller gave is not looked at, so a wrong or missing extension changes nothing. The name is always the default of the detected
-// language. ErrUnsupportedLanguage (wrapped) if the extractor of the language is not built in.
-func Resolve(filename,
-	text string) (lang,
-	name,
-	detected string,
+// How the language of code was found (Info.Detected).
+const (
+	// DetectedJev: the system 1 model classified a snippet of the code.
+	DetectedJev = "jev"
+	// DetectedContent: DetectContent guessed it (when Jev is not configured).
+	DetectedContent = "content"
+)
+
+// Resolve is the default file name of a language that was detected (how: DetectedJev or DetectedContent). ErrUnsupportedLanguage
+// (wrapped) if the language has no extractor (e.g. the "unsupported" class of Jev) or it is not built in.
+func Resolve(lang string) (name string,
 	err error) {
-	lang = DetectContent(text)
-	return lang, DefaultFilename(lang), "content", builtOrError(lang)
+	if !slices.ContainsFunc(languages, func(l Language) bool {
+		return l.Name == lang
+	}) {
+		return "", fmt.Errorf("%w: %q",
+			ErrUnsupportedLanguage,
+			lang)
+	}
+	return DefaultFilename(lang), builtOrError(lang)
 }
 
-// Describe parses the code (language and name as in Resolve) and returns its Info.
-func Describe(filename,
+// Describe parses the code in the given (already detected) language and returns its Info.
+func Describe(lang,
+	detected,
 	text string) (Info, error) {
-	lang, name, detected, err := Resolve(filename,
-		text)
+	name, err := Resolve(lang)
 	if err != nil {
 		return Info{}, err
 	}

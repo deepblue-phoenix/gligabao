@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.257.0] - 2026-12-03
+
+### Changed
+
+- **The language of the code of `remember` is classified by Jev.** With `content_type` `code` and Jev configured (`jev_api_key`), the first 30 lines of the code (at most 2 KiB) go to Jev (one `choice` question: `python`, `typescript`, `javascript`, `css`, `go` or `unsupported`). The call is recorded as an inference (stage `classify_language`). Code Jev calls `unsupported` is a `400`; a failed Jev call is a `503` (the language is not guessed behind its back). Without Jev the heuristic `memory_code.DetectContent` is still used. `code.detected` in the response is `jev` or `content`.
+- Go: `jev.Client.ClassifyLanguage`, `memory_core.Classifier.ClassifyLanguage`; `memory_code.Resolve(lang)` and `memory_code.Describe(lang, detected, text)` take the language that was detected instead of detecting it.
+
 ## [0.256.0] - 2026-12-03
 
 ### Added

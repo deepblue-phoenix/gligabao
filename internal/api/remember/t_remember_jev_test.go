@@ -19,6 +19,7 @@ import (
 
 type fakeJev struct {
 	err   error
+	lang  string
 	calls int
 }
 
@@ -39,6 +40,24 @@ func (f *fakeJev) Classify(context.Context,
 		InputTokens:  30,
 		OutputTokens: 5,
 		Call:         call,
+	}, call, nil
+}
+
+func (f *fakeJev) ClassifyLanguage(context.Context,
+	string) (*jev.LanguageClassification, jev.Call, error) {
+	f.calls++
+	call := jev.Call{
+		Started: time.Now(),
+		Latency: 3 * time.Millisecond,
+	}
+	if f.err != nil {
+		return nil, call, f.err
+	}
+	return &jev.LanguageClassification{
+		Language:   f.lang,
+		Confidence: 0.9,
+		Model:      "jev-1",
+		Call:       call,
 	}, call, nil
 }
 
@@ -113,5 +132,33 @@ func testRememberJev(t *testing.T,
 	}))
 	if s == nil || !strings.Contains(s["observation"].(map[string]any)["results"].([]any)[0].(map[string]any)["content"].(string), "down") {
 		t.Errorf("failed step = %v", s)
+	}
+}
+
+func TestDetectCodeLanguage(t *testing.T) { dbtest.Run(t, testDetectCodeLanguage) }
+
+// testDetectCodeLanguage: with Jev the language is its class and the call is recorded; the "unsupported" class is rejected as an invalid
+// request; a Jev failure is an UnavailableError; without Jev the content guess is used.
+func testDetectCodeLanguage(t *testing.T,
+	d *sql.DB) {
+	ctx := context.Background()
+	goCode := "func main() {}\n"
+
+	fj := &fakeJev{lang: jev.LangGo}
+	lang, how, err := detectCodeLanguage(ctx, d, "u1", goCode, fj)
+	if err != nil || lang != "go" || how != "jev" || fj.calls != 1 {
+		t.Fatalf("jev: %q %q %v calls=%d", lang, how, err, fj.calls)
+	}
+	lang, how, err = detectCodeLanguage(ctx, d, "u1", goCode, nil)
+	if err != nil || lang != "go" || how != "content" {
+		t.Fatalf("no jev: %q %q %v", lang, how, err)
+	}
+	var unavailable *UnavailableError
+	if _, _, err = detectCodeLanguage(ctx, d, "u1", goCode, &fakeJev{err: errors.New("down")}); !errors.As(err, &unavailable) {
+		t.Fatalf("want UnavailableError, got %v", err)
+	}
+	// "unsupported" comes back as a language, and prepare turns it into an invalid request via memory_code.Resolve
+	if lang, _, err = detectCodeLanguage(ctx, d, "u1", "fn main() {}", &fakeJev{lang: jev.Unsupported}); err != nil || lang != jev.Unsupported {
+		t.Fatalf("unsupported: %q %v", lang, err)
 	}
 }

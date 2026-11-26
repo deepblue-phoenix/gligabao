@@ -1,6 +1,9 @@
 package memory_code
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestDetectContent(t *testing.T) {
 	for _, c := range []struct{ name, text, want string }{
@@ -18,7 +21,7 @@ func TestDetectContent(t *testing.T) {
 }
 
 func TestDescribePython(t *testing.T) {
-	info, err := Describe("", sample)
+	info, err := Describe(LangPython, DetectedContent, sample)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,5 +30,14 @@ func TestDescribePython(t *testing.T) {
 	}
 	if info.Entities == 0 || info.EntitiesByType[TypeClass] != 2 {
 		t.Fatalf("%+v", info)
+	}
+}
+
+func TestResolve(t *testing.T) {
+	if name, err := Resolve(LangGo); err != nil || name != "snippet.go" {
+		t.Fatalf("%q, %v", name, err)
+	}
+	if _, err := Resolve("unsupported"); !errors.Is(err, ErrUnsupportedLanguage) {
+		t.Fatalf("want ErrUnsupportedLanguage, got %v", err)
 	}
 }

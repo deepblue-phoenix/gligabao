@@ -193,6 +193,10 @@ type Classifier interface {
 	// Classify judges how many entities a text will yield. The jev.Call is valid even when the error is not nil.
 	Classify(ctx context.Context,
 		text string) (*jev.Classification, jev.Call, error)
+	// ClassifyLanguage tells the programming language of a snippet of code (or jev.Unsupported). The jev.Call is valid even when the
+	// error is not nil.
+	ClassifyLanguage(ctx context.Context,
+		code string) (*jev.LanguageClassification, jev.Call, error)
 }
 
 // Option customizes a single Remember, Query or RememberImage call. Without WithEval no trajectory is generated.

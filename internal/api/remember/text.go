@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_code"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
@@ -24,6 +26,9 @@ import (
 
 // DefaultCodeDataset is the dataset a remember of code goes to when the request names none.
 const DefaultCodeDataset = "code"
+
+// StageClassifyLanguage is the stage recorded for the Jev call that tells the language of the code of a remember.
+const StageClassifyLanguage = "classify_language"
 
 // InvalidError is the error of a request that is not valid (the handler answers 400): Err says what is wrong.
 type InvalidError struct {
@@ -57,6 +62,8 @@ type prepared struct {
 	sessionID string
 	// codeName is the file name of a remember of code (the one given, or the default of the detected language); "" for any other content.
 	codeName string
+	// codeLang and codeDetected are the language of a remember of code and how it was found (memory_code.Detected*).
+	codeLang, codeDetected string
 }
 
 // Remember stores the text of req as userID: it validates req, sends it to the remember manager mgr, which runs the pipeline, and
@@ -153,7 +160,8 @@ func Remember(ctx context.Context,
 			"duration_ms":         time.Since(start).Milliseconds(),
 		})
 	if p.codeName != "" {
-		info, err := memory_code.Describe(p.codeName,
+		info, err := memory_code.Describe(p.codeLang,
+			p.codeDetected,
 			p.req.Text)
 		if err != nil {
 			return nil, fmt.Errorf("memory: code info: %w", err)
@@ -214,11 +222,19 @@ func prepare(ctx context.Context,
 	if err != nil {
 		return prepared{}, invalid(err)
 	}
-	codeName := ""
+	codeName, codeLang, codeDetected := "", "", ""
 	if contentType == memory_core.ContentCode {
-		// the language comes only from the code, never from the file name of the request; the name is the default of the language
-		_, name, _, err := memory_code.Resolve(filename,
-			text)
+		// the language comes only from the code (Jev, or a guess without it), never from the file name of the request; the name is the
+		// default of the language
+		codeLang, codeDetected, err = detectCodeLanguage(ctx,
+			d,
+			userID,
+			text,
+			memory_core.NewCallOptions(opts).Jev)
+		if err != nil {
+			return prepared{}, err
+		}
+		name, err := memory_code.Resolve(codeLang)
 		if err != nil {
 			return prepared{}, invalid(err)
 		}
@@ -277,7 +293,47 @@ func prepare(ctx context.Context,
 				memory_core.WithSeriesFetch(fetch),
 				memory_core.WithSeriesObservations(observe)),
 		},
-		sessionID: sessionID,
-		codeName:  codeName,
+		sessionID:    sessionID,
+		codeName:     codeName,
+		codeLang:     codeLang,
+		codeDetected: codeDetected,
 	}, nil
+}
+
+// detectCodeLanguage is the language of the code of a remember and how it was found. With Jev a small snippet of the code is classified
+// (the call is recorded as an inference, stage classify_language); a Jev failure is an UnavailableError (the language is not guessed
+// behind its back). Without Jev the guess of memory_code.DetectContent is used.
+func detectCodeLanguage(ctx context.Context,
+	d *sql.DB,
+	userID,
+	text string,
+	jv memory_core.Classifier) (lang,
+	detected string,
+	err error) {
+	if jv == nil {
+		return memory_code.DetectContent(text), memory_code.DetectedContent, nil
+	}
+	cl, call, err := jv.ClassifyLanguage(ctx, text)
+	fields := log.Fields{"stage": StageClassifyLanguage, "user_id": userID, "latency_ms": call.Latency.Milliseconds()}
+	run := relational.Inference{
+		Type:      memory_remember.CallRemember,
+		Stage:     StageClassifyLanguage,
+		Provider:  jev.Provider,
+		Reasoning: llm.ReasoningNone,
+	}
+	if err == nil {
+		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens
+	}
+	if _, recordErr := memory_core.RecordRun(context.WithoutCancel(ctx),
+		d,
+		run); recordErr != nil {
+		log.WithError(recordErr).WithFields(fields).Error("record jev inference")
+	}
+	if err != nil {
+		log.WithError(err).WithFields(fields).Warn("jev: classify language failed")
+		return "", "", &UnavailableError{Err: fmt.Errorf("language detection of the code failed: %w", err)}
+	}
+	fields["language"], fields["confidence"], fields["model"] = cl.Language, cl.Confidence, cl.Model
+	log.WithFields(fields).Info("jev: remember code language")
+	return cl.Language, memory_code.DetectedJev, nil
 }
