@@ -21,6 +21,7 @@ import (
 type (
 	TrainingJobRun               = model.TrainingJobRun
 	TrainingJobRunUpdate         = model.TrainingJobRunUpdate
+	TrainingJobRunMeta           = model.TrainingJobRunMeta
 	TrainingJobEvent             = model.TrainingJobEvent
 	TrainingDataset              = model.TrainingDataset
 	TrainedModel                 = model.TrainedModel

@@ -169,6 +169,16 @@ func (b *Backend) Ended(ctx context.Context,
 	if len(ev.Data) == 0 {
 		raw = []byte("{}")
 	}
+	if ev.Status == trainingdb.TrainingJobCompleted {
+		// the results of the job go to the meta of the run (a run made before the meta existed has none)
+		if m, err := trainingdb.GetTrainingJobRunMeta(ctx,
+			b.cfg.DB,
+			run.ID); err == nil {
+			b.recordMeta(ctx,
+				withResults(*m,
+					ev.Data))
+		}
+	}
 	var mid *int64
 	if modelID != 0 {
 		mid = &modelID

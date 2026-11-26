@@ -26,6 +26,28 @@ ALTER TABLE gb_training_job_runs ADD COLUMN IF NOT EXISTS info TEXT NOT NULL DEF
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_user ON gb_training_job_runs(user_id, id);
 
+-- The configuration and results of a training job run, one row per run (see sqlite/sql/schema.sql).
+CREATE TABLE IF NOT EXISTS gb_training_job_runs_meta (
+	run_id                  BIGINT PRIMARY KEY REFERENCES gb_training_job_runs(id) ON DELETE CASCADE,
+	user_id                 TEXT NOT NULL DEFAULT '',
+	model_type              TEXT NOT NULL DEFAULT 'lora',
+	epochs                  BIGINT,
+	lr                      DOUBLE PRECISION,
+	batch_size              BIGINT,
+	seed                    BIGINT,
+	dataset_sha256          TEXT NOT NULL DEFAULT '',
+	num_train_examples      BIGINT,
+	num_validation_examples BIGINT,
+	validation_fraction     DOUBLE PRECISION,
+	split_seed              BIGINT,
+	final_val_loss          DOUBLE PRECISION,
+	meta_schema             TEXT NOT NULL DEFAULT '',
+	meta                    TEXT NOT NULL DEFAULT '{}',
+	created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+	updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_meta_user ON gb_training_job_runs_meta(model_type, user_id, run_id);
+
 -- The events the ML sidecar reported for a training job (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	run_id     BIGINT NOT NULL REFERENCES gb_training_job_runs(id) ON DELETE CASCADE,

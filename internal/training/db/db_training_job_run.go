@@ -174,3 +174,37 @@ func NextTrainingJobEventSeq(ctx context.Context,
 	}
 	return 0, unsupported()
 }
+
+// UpsertTrainingJobRunMeta stores the meta of a run (see TrainingJobRunMeta), replacing the one the run has. The run must exist.
+func UpsertTrainingJobRunMeta(ctx context.Context,
+	d *sql.DB,
+	m TrainingJobRunMeta) error {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.UpsertTrainingJobRunMeta(ctx,
+			d,
+			m)
+	case config.DBBackendPostgres:
+		return postgres.UpsertTrainingJobRunMeta(ctx,
+			d,
+			m)
+	}
+	return unsupported()
+}
+
+// GetTrainingJobRunMeta returns the meta of a run, or ErrNotFound (a run made before the meta existed has none).
+func GetTrainingJobRunMeta(ctx context.Context,
+	d *sql.DB,
+	runID int64) (*TrainingJobRunMeta, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GetTrainingJobRunMeta(ctx,
+			d,
+			runID)
+	case config.DBBackendPostgres:
+		return postgres.GetTrainingJobRunMeta(ctx,
+			d,
+			runID)
+	}
+	return nil, unsupported()
+}

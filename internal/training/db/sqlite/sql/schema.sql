@@ -33,6 +33,38 @@ CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_user ON gb_training_job_runs(user_id, id);
 
+-- The configuration and results of a training job run: ONE ROW PER RUN, made when the run starts and completed when it ends. gb_training_job_runs
+-- is the job (identity, status, progress, the backend's bookkeeping in info); this is the training itself, which is meant to grow. What every
+-- kind of model has is a typed column; what only one kind has is the JSON meta, told apart by meta_schema.
+--   run_id           the run (gb_training_job_runs); the row is deleted with it
+--   user_id, model_type  copied from the run, to filter without a join
+--   epochs, lr, batch_size, seed   hyperparameters (NULL: the model has none, or the default was used and is not known); seed is a 64 bit seed as int64
+--   dataset_sha256   the digest of the file the job read ('' if none)
+--   num_train_examples, num_validation_examples   the size of each set (graphs for GCNII*); validation_fraction and split_seed how it was split
+--   final_val_loss   the loss on the validation set, when the run ended (the training loss is final_loss of the run)
+--   meta_schema      the shape of meta, '<model type>.v<version>' (e.g. 'gcnii.v1'); meta a JSON object: the settings and results of one kind of model
+--                    (GCNII*: hidden, depth, the class selection, the classes and the counts per class, the scores; see internal/training/gcnii/meta.go)
+CREATE TABLE IF NOT EXISTS gb_training_job_runs_meta (
+	run_id                  INTEGER PRIMARY KEY REFERENCES gb_training_job_runs(id) ON DELETE CASCADE,
+	user_id                 TEXT NOT NULL DEFAULT '',
+	model_type              TEXT NOT NULL DEFAULT 'lora',
+	epochs                  INTEGER,
+	lr                      REAL,
+	batch_size              INTEGER,
+	seed                    INTEGER,
+	dataset_sha256          TEXT NOT NULL DEFAULT '',
+	num_train_examples      INTEGER,
+	num_validation_examples INTEGER,
+	validation_fraction     REAL,
+	split_seed              INTEGER,
+	final_val_loss          REAL,
+	meta_schema             TEXT NOT NULL DEFAULT '',
+	meta                    TEXT NOT NULL DEFAULT '{}',
+	created_at              DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+	updated_at              DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_meta_user ON gb_training_job_runs_meta(model_type, user_id, run_id);
+
 -- The events the ML sidecar reported for a training job (status changes and progress with the loss), in the order of the
 -- ml_sidecar's progress file: seq is the event's index there, so a reconnect can resume after the last seq stored.
 --   data: the event as JSON (internal/sys/ml_sidecar: TrainingEvent)

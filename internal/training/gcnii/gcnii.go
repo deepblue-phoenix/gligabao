@@ -199,6 +199,18 @@ func (b *Backend) Start(ctx context.Context,
 		log.WithError(err).WithField("job_id", jobID).Error("gcnii: record training job run failed")
 		return nil, &training.Error{Kind: training.KindInternal, Msg: "failed to record the training job run", Err: err}
 	}
+	var metaOpts *modeltrain.Options
+	if len(p.Graphs) == 0 {
+		metaOpts = &opts
+	}
+	b.recordMeta(ctx,
+		newMeta(*run,
+			p,
+			metaOpts,
+			info.Run,
+			epochs,
+			req.Graphs,
+			req.Validation))
 	if _, err := b.cfg.Svc.GCNIITrain(ctx, req); err != nil {
 		b.endClaim(ctx, jobID, err)
 		in.Abort(ctx, *run, err)
@@ -309,6 +321,16 @@ func failSargo(what,
 	}
 	log.WithError(err).WithField("user_id", userID).Error("gcnii: " + what + " failed")
 	return &training.Error{Kind: training.KindUpstream, Msg: "sargo failed to " + what, Err: err}
+}
+
+// recordMeta stores the meta of a run; one that cannot be stored is logged (the run does not depend on it).
+func (b *Backend) recordMeta(ctx context.Context,
+	m trainingdb.TrainingJobRunMeta) {
+	if err := trainingdb.UpsertTrainingJobRunMeta(context.WithoutCancel(ctx),
+		b.cfg.DB,
+		m); err != nil {
+		log.WithError(err).WithField("run_id", m.RunID).Warn("gcnii: recording the run meta failed")
+	}
 }
 
 // newHistory is the record of the training in the history (nil if there is no history directory, or the training is not on a dataset).

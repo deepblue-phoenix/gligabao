@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.248.0] - 2026-11-26
+
+A table for the configuration and results of each training run.
+
+### Added
+
+- **`gb_training_job_runs_meta`**: one row per training run (deleted with it), made when the run starts and completed when it ends. It holds what the run was configured with and what it measured, apart from the job itself (`gb_training_job_runs`): typed columns for what every model has (epochs, learning rate, batch size, seed, the dataset digest, the sizes of the training and validation sets, the validation fraction and split seed, the final validation loss), and a JSON `meta` for what only one kind of model has, told apart by `meta_schema` (`gcnii.v1`: hidden size, depth, the dataset options, the classes and the graphs per class in each set, accuracy, validation accuracy and the loss of every epoch; `lora.v1`: model size and dataset file). Both the SQLite and Postgres backends have it; databases get the table when they are opened. Runs made before have no row. Go: `trainingdb.UpsertTrainingJobRunMeta` and `GetTrainingJobRunMeta`; the GCNII* and LoRA backends fill it. There is no API for it yet.
+
 ## [0.247.0] - 2026-11-26
 
 GCNII* trainings go through the one training pipeline of the LoRA jobs: the same endpoints, run records, monitor, events and feed. **Breaking** for clients of the old GCNII* training routes and for programs that embed gligabao and use `training.StartJob`, `StopJob`, `NewMonitor` or `api/model`.

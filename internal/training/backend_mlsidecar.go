@@ -147,6 +147,13 @@ func (b *MLSidecarBackend) Start(ctx context.Context,
 		log.WithError(err).WithField("job_id", job.JobID).Error("training: record training job run failed")
 		return nil, internalErr("training job "+job.JobID+" started but could not be recorded", err)
 	}
+	// the meta of the run: a failure to store it is logged, the job runs anyway
+	if err := trainingdb.UpsertTrainingJobRunMeta(ctx,
+		b.db,
+		loraMeta(*run,
+			*dataset)); err != nil {
+		log.WithError(err).WithField("run_id", run.ID).Warn("training: recording the run meta failed")
+	}
 	return run, nil
 }
 
@@ -227,4 +234,33 @@ func (b *MLSidecarBackend) Ended(context.Context,
 func (b *MLSidecarBackend) Reap(context.Context,
 	string) error {
 	return nil
+}
+
+// LoRAMetaSchema names the shape of the Meta of a LoRA run (gb_training_job_runs_meta.meta_schema).
+const LoRAMetaSchema = "lora.v1"
+
+// LoRAMeta is what only a LoRA run has of the training configuration: the JSON meta of its gb_training_job_runs_meta row. The LoRA settings
+// the ML sidecar chooses itself (rank, alpha, learning rate, ...) are not known here when the job starts.
+type LoRAMeta struct {
+	ModelSize   string `json:"model_size"`
+	DatasetFile string `json:"dataset_file"`
+}
+
+// loraMeta is the meta row of a LoRA run that starts on dataset.
+func loraMeta(run trainingdb.TrainingJobRun,
+	dataset trainingdb.TrainingDataset) trainingdb.TrainingJobRunMeta {
+	meta, _ := json.Marshal(LoRAMeta{
+		ModelSize:   run.ModelSize,
+		DatasetFile: dataset.Filename,
+	})
+	records := dataset.NumRecords
+	return trainingdb.TrainingJobRunMeta{
+		RunID:            run.ID,
+		UserID:           run.UserID,
+		ModelType:        trainingdb.ModelTypeLoRA,
+		DatasetSHA256:    dataset.SHA256,
+		NumTrainExamples: &records,
+		MetaSchema:       LoRAMetaSchema,
+		Meta:             meta,
+	}
 }
