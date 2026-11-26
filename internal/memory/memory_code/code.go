@@ -1,5 +1,5 @@
 // Package memory_code extracts the knowledge graph of source code, for the remember pipeline: where a text goes through the LLM, code is
-// parsed and its graph is read from the syntax tree, deterministically and without a model. Python (ANTLR4) and TypeScript/JavaScript (esbuild) are supported; Go is next
+// parsed and its graph is read from the syntax tree, deterministically and without a model. Python (ANTLR4), TypeScript/JavaScript (esbuild for the code, typescript-go for the types) and CSS (esbuild) are supported; Go is next
 // (see Detect and ErrUnsupportedLanguage).
 //
 // The graph: entities are the code symbols (types "class", "function", "method", "module", "symbol" for an imported name), edges are the
@@ -23,6 +23,7 @@ const (
 	LangPython     = "python"
 	LangTypeScript = "typescript"
 	LangJavaScript = "javascript"
+	LangCSS        = "css"
 	LangGo         = "go"
 )
 
@@ -37,10 +38,21 @@ const (
 	TypeNamespace = "namespace"
 	TypeEnum      = "enum"
 
+	// TypeScript types (from the parser of typescript-go) and CSS (from the parser of esbuild)
+	TypeInterface = "interface"
+	TypeAlias     = "type_alias"
+	TypeSelector  = "selector"
+	TypeVariable  = "variable"
+	TypeKeyframes = "keyframes"
+
 	RelDefines  = "defines"
 	RelInherits = "inherits"
 	RelCalls    = "calls"
 	RelImports  = "imports"
+
+	RelImplements = "implements"
+	RelUsesType   = "uses_type"
+	RelUses       = "uses"
 )
 
 // RootName is the name of the entity that stands for the code as a whole (the file that was remembered).
@@ -60,8 +72,8 @@ type Graph struct {
 type Language struct {
 	Name       string
 	Extensions []string
-	extract    func(text string) (Graph, error)
-	// built is false when the extractor is not compiled in (TypeScript/JavaScript without the build tag "esbuild").
+	parse      func(text string) (Result, error)
+	// built is false when the extractor is not compiled in (TypeScript/JavaScript without the build tag "tsjs_css").
 	built bool
 }
 
@@ -70,20 +82,26 @@ var languages = []Language{
 	{
 		Name:       LangPython,
 		Extensions: []string{".py", ".pyi", ".pyw"},
-		extract:    extractPython,
+		parse:      parsePython,
 		built:      true,
 	},
 	{
 		Name:       LangTypeScript,
 		Extensions: []string{".ts", ".tsx", ".mts", ".cts"},
-		extract:    extractTypeScript,
-		built:      esbuildBuilt,
+		parse:      parseTypeScript,
+		built:      parsersBuilt,
 	},
 	{
 		Name:       LangJavaScript,
 		Extensions: []string{".js", ".jsx", ".mjs", ".cjs"},
-		extract:    extractJavaScript,
-		built:      esbuildBuilt,
+		parse:      parseJavaScript,
+		built:      parsersBuilt,
+	},
+	{
+		Name:       LangCSS,
+		Extensions: []string{".css"},
+		parse:      parseCSS,
+		built:      parsersBuilt,
 	},
 }
 
@@ -131,37 +149,54 @@ func builtOrError(lang string) error {
 		return l.Name == lang
 	})
 	if i >= 0 && !languages[i].built {
-		return fmt.Errorf("%w: %s is not built in: build with -tags esbuild after `go run ./internal/memory/memory_code/gen_esbuild`",
+		return fmt.Errorf("%w: %s is not built in: build with -tags tsjs_css after `go run` of gen_esbuild and gen_tsgo (internal/memory/memory_code)",
 			ErrUnsupportedLanguage,
 			lang)
 	}
 	return nil
 }
 
-// Extract extracts the graph of the code in the given language. ErrUnsupportedLanguage (wrapped) for a language without extractor.
-func Extract(lang,
-	text string) (Graph, error) {
+// Parse parses the code in the given language into the one Result (graph, types, annotations, styles). ErrUnsupportedLanguage
+// (wrapped) for a language without a parser.
+func Parse(lang,
+	text string) (Result, error) {
 	i := slices.IndexFunc(languages, func(l Language) bool {
 		return l.Name == lang
 	})
 	if i < 0 {
-		return Graph{}, fmt.Errorf("%w: %q",
+		return Result{}, fmt.Errorf("%w: %q",
 			ErrUnsupportedLanguage,
 			lang)
 	}
-	return languages[i].extract(text)
+	return languages[i].parse(text)
+}
+
+// ParseAuto is Parse of the language that Detect finds, from the file name (may be empty) or the code.
+func ParseAuto(filename,
+	text string) (Result, error) {
+	lang, err := Detect(filename,
+		text)
+	if err != nil {
+		return Result{}, err
+	}
+	return Parse(lang,
+		text)
+}
+
+// Extract is the graph of Parse.
+func Extract(lang,
+	text string) (Graph, error) {
+	r, err := Parse(lang,
+		text)
+	return r.Graph, err
 }
 
 // ExtractAuto is Extract of the language that Detect finds, from the file name (may be empty) or the code.
 func ExtractAuto(filename,
 	text string) (Graph, error) {
-	lang, err := Detect(filename,
+	r, err := ParseAuto(filename,
 		text)
-	if err != nil {
-		return Graph{}, err
-	}
-	return Extract(lang,
-		text)
+	return r.Graph, err
 }
 
 // concat is the union of any number of graphs (none is changed).

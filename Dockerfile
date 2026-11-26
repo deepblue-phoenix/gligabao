@@ -15,12 +15,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=admin_ui /src/admin_ui/dist ./admin_ui/dist
-# The TypeScript/JavaScript parser (esbuild) is not in git: it is generated here, and the builds pass -tags esbuild (see
+# The TypeScript/JavaScript/CSS parsers (esbuild, typescript-go) are not in git: it is generated here, and the builds pass -tags tsjs_css (see
 # internal/memory/memory_code/typescript.go).
 RUN go run ./internal/memory/memory_code/gen_esbuild
-RUN CGO_ENABLED=0 go build -tags esbuild -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
+RUN go run ./internal/memory/memory_code/gen_tsgo
+RUN CGO_ENABLED=0 go build -tags tsjs_css -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
 # The research agent binary (Linux x86-64: what a Modal container runs), baked into the Modal app by the ML sidecar's "deploy" action.
-RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags esbuild -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" \
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags tsjs_css -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" \
     -o /out/gligabao_agent_linux_amd64 ./cmd/gligabao_agent
 
 FROM debian:bookworm-slim

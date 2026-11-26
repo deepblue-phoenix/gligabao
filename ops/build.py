@@ -12,7 +12,7 @@ There is one pipeline per platform (build_linux, build_macos, build_windows). Ea
 
   1. the admin UI (npm, embedded into the server binary),
   2. sargo, the Rust model router (cargo), optionally embedded into the server binary,
-  3. the parser of esbuild (generate_esbuild: `go run ./internal/memory/memory_code/gen_esbuild`, needed by every Go build below),
+  3. the parsers of esbuild and typescript-go (generate_esbuild: `go run` of the two gen_* tools in internal/memory/memory_code, needed by every Go build below),
   4. the Go binaries: build/gligabao (server), build/gligabao_agent, build/gligabao_worker, and always
      build/gligabao_agent_linux_amd64 (baked into the Modal app by the ML sidecar).
 
@@ -54,14 +54,17 @@ OSES = ("linux", "darwin", "windows")
 ARCHES = ("amd64", "arm64")
 
 # The Go build tag that compiles the TypeScript/JavaScript code extraction (internal/memory/memory_code/typescript.go). It imports
-# internal/memory/memory_code/esparser, a copy of the parser of esbuild that is NOT in git (about 2 MB of third party code that would sit
-# in the history for good): it is made by gen_esbuild, so generate_esbuild() must run before any Go build that passes the tag. Without the
+# internal/memory/memory_code/esparser and tsparser, copies of the parsers of esbuild and typescript-go that are NOT in git (about 6 MB of third party code that would sit
+# in the history for good): they are made by gen_esbuild and gen_tsgo, so generate_esbuild() must run before any Go build that passes the tag. Without the
 # tag the code compiles with no generate step (a stub reports TypeScript as unsupported), which is what plain `go build` / `go get` give.
 # Every Go build made by this file passes the tag, so the binaries it makes (and ops/pypi.py's) always support TypeScript. A build of
 # gligabao_int (the sibling repo that embeds gligabao) must do the same: its run_build.sh calls `python3 ops/build.py esbuild` of this repo and
-# builds with `-tags esbuild`.
-ESBUILD_TAG = "esbuild"
-ESBUILD_GEN_PACKAGE = "./internal/memory/memory_code/gen_esbuild"
+# builds with `-tags tsjs_css`.
+ESBUILD_TAG = "tsjs_css"
+ESBUILD_GEN_PACKAGES = (
+    "./internal/memory/memory_code/gen_esbuild",  # esparser/: the parser of esbuild (TypeScript/JavaScript code, CSS)
+    "./internal/memory/memory_code/gen_tsgo",  # tsparser/: the parser of typescript-go, the official TypeScript one (TypeScript types)
+)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -150,12 +153,13 @@ def go_env(target: Target,
 
 
 def generate_esbuild() -> None:
-    """Makes internal/memory/memory_code/esparser (the copy of esbuild's parser; see ESBUILD_TAG). Quick when it is already up to date.
+    """Makes internal/memory/memory_code/esparser and tsparser (the copies of the parsers of esbuild and typescript-go; see ESBUILD_TAG). Quick when they are up to date.
 
     It runs `go` from ROOT: the copy always lands in this repo, also when the build that needs it is the one of gligabao_int.
     """
     require_tool("go", "Install Go (https://go.dev/dl).")
-    run(["go", "run", ESBUILD_GEN_PACKAGE], cwd=ROOT)
+    for package in ESBUILD_GEN_PACKAGES:
+        run(["go", "run", package], cwd=ROOT)
 
 
 def go_release_args(version: str,
@@ -460,7 +464,7 @@ def make_parser() -> argparse.ArgumentParser:
     sargo_cmd.add_argument("--static", action="store_true", help="statically linked build for --os/--arch (Linux: musl)")
     sargo_cmd.add_argument("--embed", action="store_true", help="implies --static, then copy to rust/sargo/bin/sargo for the Go build")
 
-    commands.add_parser("esbuild", help="generate the parser of esbuild that the build tag 'esbuild' needs (no build)")
+    commands.add_parser("esbuild", help="generate the parsers of esbuild and typescript-go that the build tag 'tsjs_css' needs (no build)")
 
     go_cmd = commands.add_parser("go", help="build the Go binaries into build/")
     add_target_args(go_cmd)

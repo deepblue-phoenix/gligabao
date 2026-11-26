@@ -11,5 +11,8 @@ __pycache__/
 
 # build/pypi (run_pypi.sh staging directories) is ignored by build/* above
 
-# Copy of the parser of esbuild, made by `go run ./internal/memory/memory_code/gen_esbuild` (build tag "esbuild"); never committed.
+# Copy of the parser of esbuild, made by `go run ./internal/memory/memory_code/gen_esbuild` (build tag "tsjs_css"); never committed.
 internal/memory/memory_code/esparser/
+
+# Copy of the parser of typescript-go (the official TypeScript compiler), made by `go run ./internal/memory/memory_code/gen_tsgo` (build tag "tsjs_css"); never committed.
+internal/memory/memory_code/tsparser/

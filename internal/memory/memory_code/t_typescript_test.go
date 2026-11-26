@@ -1,4 +1,4 @@
-//go:build esbuild
+//go:build tsjs_css
 
 // Needs the build tag (and so the generated esparser/): see typescript.go.
 

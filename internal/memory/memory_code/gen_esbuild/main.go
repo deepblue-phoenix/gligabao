@@ -7,9 +7,9 @@
 // esparser/<package>, rewrites their import paths to the copy, and adds esbuild's MIT license.
 //
 // The copy is NOT committed (esparser/ is in .gitignore): about 2 MB of third party code does not belong in the history of this repo.
-// Instead it is made at build time, and only the builds with the Go build tag "esbuild" use it (see typescript.go in ../ for the full
+// Instead it is made at build time, and only the builds with the Go build tag "tsjs_css" use it (see typescript.go in ../ for the full
 // explanation). ops/build.py, the Dockerfile, run_tests.sh and gligabao_int/run_build.sh run this command before they build with the tag.
-// It is quick to run again: it does nothing if esparser/ was already made for esbuildVersion (the marker file esparser/.esbuild_version).
+// It is quick to run again: it does nothing if esparser/ was already made for esbuildVersion (the marker file esparser/.esbuild_version, which also holds the list of packages wanted).
 // To upgrade esbuild, change esbuildVersion and run it again; the stale copy is replaced.
 package main
 
@@ -31,7 +31,12 @@ const (
 )
 
 // roots are the packages wanted; their dependencies inside esbuild come with them.
-var roots = []string{"js_parser", "js_ast", "logger", "config", "js_lexer", "fs", "helpers"}
+var roots = []string{"css_parser", "js_parser", "js_ast", "logger", "config", "js_lexer", "fs", "helpers"}
+
+// stamp is what the marker file holds: the version and the packages wanted, so that a change of either makes the copy again.
+func stamp() string {
+	return esbuildVersion + " " + strings.Join(roots, ",")
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -41,7 +46,7 @@ func main() {
 }
 
 func run() error {
-	if marker, err := os.ReadFile(filepath.Join(outRel, markerFile)); err == nil && strings.TrimSpace(string(marker)) == esbuildVersion {
+	if marker, err := os.ReadFile(filepath.Join(outRel, markerFile)); err == nil && strings.TrimSpace(string(marker)) == stamp() {
 		fmt.Println("gen_esbuild: esparser is up to date (esbuild " + esbuildVersion + ")")
 		return nil
 	}
@@ -74,7 +79,7 @@ func run() error {
 		return err
 	}
 	// the marker is written last: a copy that was interrupted is made again
-	return os.WriteFile(filepath.Join(out, markerFile), []byte(esbuildVersion+"\n"), 0o644)
+	return os.WriteFile(filepath.Join(out, markerFile), []byte(stamp()+"\n"), 0o644)
 }
 
 // moduleDir downloads the pinned esbuild module (go's module cache) and gives its directory.

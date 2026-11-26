@@ -1,0 +1,12 @@
+@import "./base.css";
+@keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
+:root { --accent: #09f; --gap: 4px }
+.card, .card:hover > a {
+  color: var(--accent);
+  margin: var(--gap) 0 !important;
+  animation: spin 1s linear;
+  &.active { border: 1px solid var(--accent) }
+}
+@media (min-width: 600px) {
+  .card { padding: 1rem }
+}

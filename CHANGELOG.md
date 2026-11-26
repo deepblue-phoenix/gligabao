@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.254.0] - 2026-12-01
+
+### Added
+
+- **TypeScript is parsed with typescript-go, the official TypeScript parser, and no longer with esbuild.** esbuild drops all the type syntax while it parses (a type declaration is an empty `STypeScript` statement in its tree), so it cannot give types. One walk of the typescript-go tree now gives the whole graph of a TypeScript file: the same `defines`, `inherits`, `calls`, `imports` (static, `import()`, `require`, `import x = require`, `export ... from`) as before, plus interfaces and type aliases as entities (`interface`, `type_alias`), `implements` edges (class to interface), `inherits` edges between interfaces, `uses_type` edges (from a function, method, class, interface or alias to the types its annotations name; imports resolved), and the signature of a function or method as the description of its entity. Code is parsed as TypeScript, and as TSX if that has syntax errors; a syntax error in both fails the call. JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`) stays on esbuild.
+- **CSS code extraction** (`.css`, esbuild's parser): selectors, custom properties and `@keyframes` as entities; `defines`, `uses` (`var(--x)`, `animation`) and `imports` (`@import`) as edges.
+- `memory_code.Parse` / `ParseAuto` return one `Result` for TypeScript, JavaScript, CSS and Python: the `Graph`, the `Types` (interfaces, aliases, enums with members), the `Annotations` (parameter, return, variable and property types) and the CSS `Styles` (rules with selectors, context and declarations). `Extract` / `ExtractAuto` still give only the graph.
+- The parser of typescript-go is a copy of its `internal/` packages (which cannot be imported), made into `internal/memory/memory_code/tsparser` (not committed, git-ignored) by `go run ./internal/memory/memory_code/gen_tsgo`. It is behind the new build tag `tsjs_css` (TypeScript, JavaScript, CSS; it replaces `esbuild`); `ops/build.py`, the Dockerfile and `run_tests.sh` run it next to `gen_esbuild` (and `python3 ops/build.py esbuild` runs both). `go.mod` gets the third party modules that typescript-go needs (`go-json-experiment/json`, `zeebo/xxh3`, `klauspost/cpuid`). Without the tag `go build` still works, and TypeScript/JavaScript/CSS are reported as unsupported.
+
+### Changed
+
+- `gen_esbuild` also copies the CSS parser of esbuild, and remakes its copy when the list of packages changes.
+
 ## [0.253.0] - 2026-11-30
 
 ### Added

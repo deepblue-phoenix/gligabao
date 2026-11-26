@@ -44,10 +44,11 @@ PYTHON="${PYTHON:-python3}"
 
 if [ "$run_go" = 1 ]; then
 	echo "==> Go tests"
-	# The TypeScript/JavaScript parser (esbuild) is not in git: generate it, and test with the tag that compiles it in (see
+	# The TypeScript/JavaScript/CSS parsers (esbuild, typescript-go) are not in git: generate it, and test with the tag that compiles it in (see
 	# internal/memory/memory_code/typescript.go). A plain `go test ./...` also works, but skips those tests.
 	go run ./internal/memory/memory_code/gen_esbuild
-	go test -count=1 -tags esbuild ./...
+	go run ./internal/memory/memory_code/gen_tsgo
+	go test -count=1 -tags tsjs_css ./...
 fi
 
 if [ "$run_py" = 1 ]; then

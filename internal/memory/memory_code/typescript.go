@@ -1,7 +1,8 @@
-//go:build esbuild
+//go:build tsjs_css
 
-// This file is compiled ONLY with the build tag "esbuild" (go build -tags esbuild ./...). Without the tag, typescript_stub.go is
-// compiled instead, and TypeScript/JavaScript code is reported as unsupported.
+// This file is compiled ONLY with the build tag "tsjs_css" (go build -tags tsjs_css ./...). Without the tag, typescript_stub.go is
+// compiled instead, and TypeScript/JavaScript/CSS code is reported as unsupported. The tag covers all the vendored parsers: esparser/
+// (esbuild, made by gen_esbuild) for code and CSS, and tsparser/ (typescript-go, made by gen_tsgo) for TypeScript.
 //
 // WHY A BUILD TAG. This file imports ./esparser, a copy of the parser of esbuild (github.com/evanw/esbuild). That copy is NOT in git:
 // it is about 2 MB of third party code, and committing it would put it in the history of this repo for good (and in every upgrade of
@@ -13,13 +14,13 @@
 // at all: esbuild keeps its parser in internal/ packages, which Go does not let another module import).
 //
 // Without the tag, nothing here refers to esparser/, so a plain `go build ./...` or `go test ./...` of a fresh checkout, and a program
-// that imports gligabao as a library (go get), compile with no generate step; they only lack TypeScript/JavaScript. With the tag the
+// that imports gligabao as a library (go get), compile with no generate step; they only lack TypeScript/JavaScript/CSS. With the tag the
 // generate step MUST have run first, or the import of esparser/... fails to compile ("package ... is not in std" / "no required module").
 //
 // The shipped builds always pass the tag after generating: ops/build.py (all commands, so also ops/pypi.py), the Dockerfile,
 // run_tests.sh and, for the gligabao_int binary, its run_build.sh. By hand:
 //
-//	go run ./internal/memory/memory_code/gen_esbuild && go build -tags esbuild ./cmd/gligabao
+//	go run ./internal/memory/memory_code/gen_esbuild && go run ./internal/memory/memory_code/gen_tsgo && go build -tags tsjs_css ./cmd/gligabao
 
 package memory_code
 
@@ -36,10 +37,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_code/esparser/logger"
 )
 
-// esbuildBuilt tells whether TypeScript and JavaScript are compiled in (see the stub for the build without the tag).
-const esbuildBuilt = true
+// parsersBuilt tells whether TypeScript and JavaScript are compiled in (see the stub for the build without the tag).
+const parsersBuilt = true
 
-// tsFile is what the walk of a parsed file needs: the symbol names (identifiers are symbol references), the import records (the module
+// tsFile is what the walk of a parsed JavaScript file needs: the symbol names (identifiers are symbol references), the import records (the module
 // paths) and, for each imported local name, the qualified name of what it stands for ("a.b.c" for "import {c} from 'a.b'").
 type tsFile struct {
 	symbols []ast.Symbol
@@ -47,36 +48,19 @@ type tsFile struct {
 	aliases map[string]string
 }
 
-// extractTypeScript and extractJavaScript parse the code with the parser of esbuild (vendored in esparser, see gen_esbuild) and read the
-// graph from its syntax tree. A syntax error fails it. Notes on esbuild's tree: it is the tree of a compiler front end, so the
-// constructs that only exist for types (interfaces, type aliases, "implements", annotations) are not in it and give no entities; imports
-// are kept even when only types use them.
-func extractTypeScript(text string) (Graph, error) {
-	return extractES(text,
-		true)
-}
-
-func extractJavaScript(text string) (Graph, error) {
-	return extractES(text,
-		false)
-}
-
-func extractES(text string,
-	typed bool) (g Graph, err error) {
+// extractJavaScript parses the code with the parser of esbuild (vendored in esparser, see gen_esbuild) and reads the graph from its syntax
+// tree. A syntax error fails it. (TypeScript is not parsed here: esbuild's tree has no type syntax, so TypeScript goes through typescript-go
+// alone, see tsgo.go.) Imports are kept even when only types use them.
+func extractJavaScript(text string) (g Graph, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			g, err = Graph{}, fmt.Errorf("memory_code: parse typescript: %v", rec)
+			g, err = Graph{}, fmt.Errorf("memory_code: parse javascript: %v", rec)
 		}
 	}()
 	defines := config.ProcessDefines(nil)
 	opts := &config.Options{
 		Defines: &defines,
 		JSX:     config.JSXOptions{Parse: true},
-		TS: config.TSOptions{
-			Parse: typed,
-			// keep the imports that only types use: they are dependencies all the same
-			Config: config.TSConfig{VerbatimModuleSyntax: config.True},
-		},
 	}
 	log := logger.NewDeferLog(logger.DeferLogNoVerboseOrDebug, nil)
 	tree, ok := js_parser.Parse(log,
@@ -86,7 +70,7 @@ func extractES(text string,
 		},
 		js_parser.OptionsFromConfig(opts))
 	if !ok || log.HasErrors() {
-		return Graph{}, fmt.Errorf("memory_code: parse typescript: %s", firstError(log.Done()))
+		return Graph{}, fmt.Errorf("memory_code: parse javascript: %s", firstError(log.Done()))
 	}
 	f := tsFile{
 		symbols: tree.Symbols,
@@ -752,4 +736,27 @@ func unalias(g Graph) Graph {
 		Entities: entities,
 		Edges:    edges,
 	}
+}
+
+// parseTypeScript is the Result of TypeScript, from the tree of typescript-go alone (see tsgo.go): the graph of the code and the types.
+func parseTypeScript(text string) (Result, error) {
+	out, err := tsParse(text)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{
+		Language:    LangTypeScript,
+		Graph:       resolveCalls(dedupe(out.Graph)),
+		Types:       out.Types,
+		Annotations: out.Annotations,
+	}, nil
+}
+
+// parseJavaScript is the Result of JavaScript: the graph of esbuild's tree (JavaScript has no type syntax).
+func parseJavaScript(text string) (Result, error) {
+	g, err := extractJavaScript(text)
+	return Result{
+		Language: LangJavaScript,
+		Graph:    g,
+	}, err
 }
