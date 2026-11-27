@@ -58,7 +58,7 @@ type Problem string
 type UserEval = Eval[core.KnowledgeCase]
 
 // ReservedNames are the words that cannot be the name of an eval: they are path segments of the API (/v1/gb/evals/runs/{id}, ...).
-var ReservedNames = []string{"runs", "case_runs", "trajectories"}
+var ReservedNames = []string{"runs", "case_runs", "trajectories", "synth"}
 
 var (
 	nameRe     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)

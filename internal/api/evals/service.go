@@ -18,6 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/atif/atifstore"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/synth"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/usereval"
 	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -68,6 +69,8 @@ type Service struct {
 	// with (nil: atifstore.Default).
 	TrajectoryDir string
 	Trajectories  atifstore.Store
+	// Synth creates and regenerates the synthetic evals (nil: the routes of the synthetic evals answer 503).
+	Synth *synth.Manager
 }
 
 // Kind is the kind of object a request names, for an Owner function that has to look its owner up.
@@ -133,6 +136,14 @@ func fail(w http.ResponseWriter,
 		httputil.Error(w,
 			http.StatusServiceUnavailable,
 			"eval storage unavailable")
+	case errors.Is(err, synth.ErrExists):
+		httputil.Error(w,
+			http.StatusConflict,
+			"an eval with this name already exists")
+	case errors.Is(err, core.ErrSynthConflict):
+		httputil.Error(w,
+			http.StatusConflict,
+			err.Error())
 	case errors.Is(err, core.ErrTooManyRuns), errors.Is(err, core.ErrDailyCap):
 		httputil.Error(w,
 			http.StatusTooManyRequests,

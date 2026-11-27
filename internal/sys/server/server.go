@@ -36,6 +36,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/synth"
 	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/userfiles"
@@ -1339,8 +1340,32 @@ func prepare(ctx context.Context,
 				LLM:           lm,
 				TrajectoryDir: memory_core.TrajectoryDir,
 				Trajectories:  traceStore,
+				Synth: synth.New(synth.Config{
+					DB:    database.Relational,
+					Store: evalStore,
+					LLM:   lm,
+					Env:   mgr.Env,
+					Models: func() []string {
+						names := []string{}
+						for _, mi := range mgr.Models() {
+							names = append(names, mi.Name)
+						}
+						return names
+					},
+					Ctx: mgrCtx,
+				}),
 			}
+			if swept, sweepErr := evalSvc.Synth.Sweep(mgrCtx); sweepErr != nil {
+				log.WithError(sweepErr).Warn("synthetic evals: could not end the lost generations")
+			} else if swept > 0 {
+				log.Infof("synthetic evals: ended %d lost generations", swept)
+			}
+			synthWait := evalSvc.Synth.Wait
 			evalWait, _ = mgr.(interface{ Wait() })
+			if evalWait != nil {
+				runsWait := evalWait
+				evalWait = waitAll{runsWait.Wait, synthWait}
+			}
 			log.Info("evals are available: /v1/gb/evals")
 		}
 	}
@@ -1423,4 +1448,14 @@ func jevModel(opts Options) string {
 		return opts.JevModel
 	}
 	return jev.DefaultModel
+}
+
+// waitAll is a Wait that waits for each of its functions, in order.
+type waitAll []func()
+
+// Wait implements the Wait of the background work of the server.
+func (w waitAll) Wait() {
+	for _, f := range w {
+		f()
+	}
 }

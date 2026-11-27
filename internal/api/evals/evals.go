@@ -30,8 +30,22 @@ func (s *Service) EvalViews(ctx context.Context,
 	totals := Totals{
 		Evals: len(defs),
 	}
+	synths := map[string]map[core.EvalDefID]core.SynthDef{} // by owner, read once each
 	for i := range defs {
 		d := &defs[i]
+		if _, ok := synths[d.UserID]; !ok {
+			list, err := s.Store.ListSynthDefs(ctx,
+				s.DB,
+				d.UserID)
+			if err != nil {
+				return nil, totals, err
+			}
+			byID := map[core.EvalDefID]core.SynthDef{}
+			for _, sd := range list {
+				byID[sd.EvalDefID] = sd
+			}
+			synths[d.UserID] = byID
+		}
 		cases, err := s.Store.ListCaseDefs(ctx,
 			s.DB,
 			d.UserID,
@@ -54,6 +68,15 @@ func (s *Service) EvalViews(ctx context.Context,
 			Runs:         len(runs),
 			RunsByStatus: map[core.Status]int{},
 			UpdatedAt:    d.UpdatedAt,
+			Origin:       core.OriginHuman,
+		}
+		if sd, ok := synths[d.UserID][d.ID]; ok {
+			v.Origin = core.OriginSynthetic
+			info, err := s.synthInfo(ctx, sd)
+			if err != nil {
+				return nil, totals, err
+			}
+			v.Synth = info
 		}
 		for j := range runs {
 			rv := ViewOfRun(&runs[j],
@@ -243,12 +266,15 @@ func (s *Service) Delete(own Owner) http.HandlerFunc {
 		}
 		ctx, name := r.Context(), r.PathValue("name")
 		env := s.Mgr.Env()
-		if _, err := usereval.Get(ctx,
+		// A synthetic eval whose first generation has not written its file yet (or failed) has a def and no file: it can be deleted.
+		_, getErr := usereval.Get(ctx,
 			env,
 			owner,
-			name); err != nil {
+			name)
+		noFile := errors.Is(getErr, usereval.ErrNotFound)
+		if getErr != nil && !noFile {
 			fail(w,
-				err,
+				getErr,
 				"eval")
 			return
 		}
@@ -267,6 +293,23 @@ func (s *Service) Delete(own Owner) http.HandlerFunc {
 				fail(w,
 					err,
 					"eval")
+				return
+			}
+			gens, err := s.Store.ListSynthGenerations(ctx,
+				s.DB,
+				owner,
+				def.ID,
+				1)
+			if err != nil {
+				fail(w,
+					err,
+					"eval")
+				return
+			}
+			if len(gens) > 0 && !gens[0].Status.Finished() {
+				httputil.Error(w,
+					http.StatusConflict,
+					"a generation of the eval is in progress")
 				return
 			}
 			for i := range runs {
@@ -300,6 +343,15 @@ func (s *Service) Delete(own Owner) http.HandlerFunc {
 			fail(w,
 				err,
 				"eval")
+			return
+		case noFile: // neither a def nor a file
+			fail(w,
+				usereval.ErrNotFound,
+				"eval")
+			return
+		}
+		if noFile {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if err := usereval.Delete(ctx,

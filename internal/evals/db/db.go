@@ -273,6 +273,61 @@ type Store struct {
 		q Execer,
 		userID string,
 		id int64) error
+
+	// Synthetic evals (see core.SynthDef): the definition with its versions, the generations and where the cases come from.
+	ListSynthDefs func(ctx context.Context,
+		q Execer,
+		userID string) ([]core.SynthDef, error)
+	GetSynthDef func(ctx context.Context,
+		q Execer,
+		userID string,
+		evalDefID core.EvalDefID) (*core.SynthDef, error)
+	CreateSynthDef func(ctx context.Context,
+		q Execer,
+		userID string,
+		d *core.SynthDef) error
+	// UpdateSynthDef changes the settings; a change that differs from the current ones adds 1 to the version.
+	UpdateSynthDef func(ctx context.Context,
+		q Execer,
+		userID string,
+		evalDefID core.EvalDefID,
+		s core.SynthSettings) (*core.SynthDef, error)
+	ListSynthVersions func(ctx context.Context,
+		q Execer,
+		userID string,
+		evalDefID core.EvalDefID) ([]core.SynthVersion, error)
+	// CreateSynthGeneration returns core.ErrSynthConflict if a generation of the eval is active.
+	CreateSynthGeneration func(ctx context.Context,
+		q Execer,
+		userID string,
+		g *core.SynthGeneration) error
+	UpdateSynthGeneration func(ctx context.Context,
+		q Execer,
+		userID string,
+		g *core.SynthGeneration) error
+	ListSynthGenerations func(ctx context.Context,
+		q Execer,
+		userID string,
+		evalDefID core.EvalDefID,
+		limit int) ([]core.SynthGeneration, error)
+	GetSynthGeneration func(ctx context.Context,
+		q Execer,
+		userID string,
+		id core.SynthGenerationID) (*core.SynthGeneration, error)
+	FailStaleSynthGenerations func(ctx context.Context,
+		q Execer,
+		cutoff time.Time,
+		reason string,
+		at time.Time) (int64, error)
+	ListSynthCases func(ctx context.Context,
+		q Execer,
+		userID string,
+		evalDefID core.EvalDefID) ([]core.SynthCase, error)
+	SetSynthCases func(ctx context.Context,
+		q Execer,
+		userID string,
+		evalDefID core.EvalDefID,
+		cases []core.SynthCase) error
 }
 
 // JSON marshals v as the text of a JSON column. A nil value (nil slice, nil map, nil pointer) is empty, which is the text the

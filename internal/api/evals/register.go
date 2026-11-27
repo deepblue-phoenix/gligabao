@@ -19,6 +19,14 @@ func Register(mux *http.ServeMux,
 	mux.Handle("GET "+base, a(s.List(UserOwner)))
 	mux.Handle("PUT "+base+"/{name}", a(s.Put(UserOwner)))
 	mux.Handle("GET "+base+"/{name}", a(s.Get(UserOwner)))
+	// The synthetic evals. The routes put the verb before the name ("generate/{name}", "cases/{name}/{case}"), because Go's mux rejects
+	// /evals/synth/{name}/generate next to /evals/{name}/files/{path...}.
+	mux.Handle("GET "+base+"/synth", a(s.SynthList(UserOwner)))
+	mux.Handle("POST "+base+"/synth", a(s.SynthCreate(UserOwner)))
+	mux.Handle("GET "+base+"/synth/{name}", a(s.SynthGet(UserOwner)))
+	mux.Handle("PUT "+base+"/synth/{name}", a(s.SynthUpdate(UserOwner)))
+	mux.Handle("POST "+base+"/synth/generate/{name}", a(s.SynthGenerate(UserOwner)))
+	mux.Handle("PUT "+base+"/synth/cases/{name}/{case}", a(s.SynthEditCase(UserOwner)))
 	mux.Handle("DELETE "+base+"/{name}", a(s.Delete(UserOwner)))
 	mux.Handle("PUT "+base+"/{name}/files/{path...}", a(s.PutFile(UserOwner)))
 	mux.Handle("DELETE "+base+"/{name}/files/{path...}", a(s.DeleteFile(UserOwner)))

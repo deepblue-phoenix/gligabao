@@ -69,6 +69,18 @@ var Store = db.Store{
 	CreateEvalBookmark:             reads.CreateEvalBookmark,
 	ListEvalBookmarks:              reads.ListEvalBookmarks,
 	DeleteEvalBookmark:             reads.DeleteEvalBookmark,
+	ListSynthDefs:                  reads.ListSynthDefs,
+	GetSynthDef:                    reads.GetSynthDef,
+	CreateSynthDef:                 reads.CreateSynthDef,
+	UpdateSynthDef:                 reads.UpdateSynthDef,
+	ListSynthVersions:              reads.ListSynthVersions,
+	CreateSynthGeneration:          reads.CreateSynthGeneration,
+	UpdateSynthGeneration:          reads.UpdateSynthGeneration,
+	ListSynthGenerations:           reads.ListSynthGenerations,
+	GetSynthGeneration:             reads.GetSynthGeneration,
+	FailStaleSynthGenerations:      reads.FailStaleSynthGenerations,
+	ListSynthCases:                 reads.ListSynthCases,
+	SetSynthCases:                  reads.SetSynthCases,
 }
 
 // The update functions rewrite one record, found by its ID, with the fields that can change after it is created (what they are

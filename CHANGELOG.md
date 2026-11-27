@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.259.0] - 2026-12-04
+
+### Added
+
+- **Synthetic evals.** An LLM writes the cases of an eval from a definition the user gives: a prompt that describes the dataset, an optional prompt for the data corpus the cases run on, the model, the number of cases, and the mode (one case per call, or several per call in bulk). The definition is versioned (every change of its settings is a new version), the cases can be generated again from it (keeping the cases the user edited or added, or replacing all), and each case can be edited by the user. Generation runs in the background and is followed through its record (status, counts, tokens, cost). The shape of the expected case is part of the system prompt, and every generated case is validated like a user eval's.
+- Routes under `/v1/gb/evals/synth`: `GET` and `POST /synth`, `GET` and `PUT /synth/{name}`, `POST /synth/generate/{name}`, `PUT /synth/cases/{name}/{case}`. `synth` is now a reserved eval name. See `docs/evals/synthetic-evals.md`.
+- `GET /v1/gb/evals` tells the `origin` of each eval (`human` or `synthetic`) and, for a synthetic one, its `synth` summary.
+- Schema: the tables `gb_synth_defs`, `gb_synth_def_versions`, `gb_synth_generations` and `gb_synth_cases` (new, created on start; no existing table changes). Go: package `internal/evals/synth`, `core.SynthDef` and friends, the `db.Store` functions `*Synth*`.
+
+### Changed
+
+- `DELETE /v1/gb/evals/{name}` also deletes an eval that has a def but no file (a synthetic eval whose first generation has not finished), and answers `409` while a generation of the eval is active.
+
 ## [0.258.0] - 2026-12-04
 
 ### Added

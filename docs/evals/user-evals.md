@@ -2,6 +2,8 @@
 
 Every user of a gligabao server can have **evals**: a set of cases (texts to remember, a question, and what the answer and the stored facts must be), run against the real LLM. The evals are always on (there is no setting for them). A user's evals are JSON files, and their runs are executed in the server, one **eval run** per execution, recorded in the server's main database under the user.
 
+An eval can also be **synthetic**: an LLM writes its cases from a definition the user gives and changes (see [synthetic-evals.md](synthetic-evals.md)). The list of the evals tells each one's `origin` (`human` or `synthetic`).
+
 The unit of the user API is the **eval** (an eval def, named by the user) and its **runs** (eval runs). Experiments (groups of evals, see [experiments.md](experiments.md)) stay in the schema, the developer runner and the admin UI, but have no user endpoint. The cases, the checks and the trajectories are as in [knowledge.md](knowledge.md); the evals of trained models are in [training.md](training.md) (admin only, owner `system`).
 
 ## The files
@@ -17,7 +19,7 @@ An eval is a JSON file, kept in the **meta bucket** (S3) under `evals/<user>/<na
 
 The format is the one of the files of `build/evals_knowledge/` (`name`, `description`, `cases`, each with `remember` items (`text` or `text_file`, `reference_time`, `web_search`, `timeseries`), `query`, the `expect_*` checks, `chunk_size`, `models`, `reasoning`); `name` must equal the name in the path. The file is validated as a whole and every problem is returned:
 
-- eval and case names match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, without `..`; case names are unique in the eval; `runs`, `case_runs` and `trajectories` are reserved (they are route words), and the user `system` is refused (`400`);
+- eval and case names match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, without `..`; case names are unique in the eval; `runs`, `case_runs`, `trajectories` and `synth` are reserved (they are route words), and the user `system` is refused (`400`);
 - a `text_file` is a relative path (`^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$`, no `..`, no `//`), and must exist (checked on save and again when a run starts); a remember item has `text` or `text_file`, not both;
 - limits: file <= `evals_max_file_bytes` (1 MiB), cases <= `evals_max_cases` (100), remember items per case <= 20, one text or corpus file <= `evals_max_text_bytes` (256 KiB), query <= 4 KiB, 50 corpus files per user; `models` and `reasoning` only from the price table and the reasoning levels; `chunk_size` valid for the chunker.
 
@@ -31,10 +33,10 @@ The routes are under `/v1/gb/evals` and use the same `gb-user-id` rule as the ot
 
 | Route | Body / query | Success | Errors |
 |---|---|---|---|
-| `GET /v1/gb/evals` | | `200 {"evals":[{name, description, cases, runs, runs_by_status, cost_usd, last_run, updated_at}], "totals":{evals, runs, cases, counts, cost_usd}}` | |
+| `GET /v1/gb/evals` | | `200 {"evals":[{name, description, origin, synth?, cases, runs, runs_by_status, cost_usd, last_run, updated_at}], "totals":{evals, runs, cases, counts, cost_usd}}` | |
 | `PUT /v1/gb/evals/{name}` | the eval JSON | `201` (new) or `200` `{name, cases, updated_at}` | `400`, `413`, `500`, `503` |
 | `GET /v1/gb/evals/{name}` | | `200` the stored JSON, plus `files` and `updated_at` | `404` |
-| `DELETE /v1/gb/evals/{name}` | `?files=true` also deletes the corpus files | `204`: its runs, their eval datasets, the def and the JSON | `404`, `409` a run is active |
+| `DELETE /v1/gb/evals/{name}` | `?files=true` also deletes the corpus files | `204`: its runs, their eval datasets, the def (and, for a synthetic eval, its definition and generations) and the JSON | `404`, `409` a run or a generation is active |
 | `PUT /v1/gb/evals/{name}/files/{path...}` | file bytes (`text/plain` or `application/json`, <= 256 KiB) | `204` | `400`, `404`, `413` |
 | `DELETE /v1/gb/evals/{name}/files/{path...}` | | `204` | `404` |
 | `POST /v1/gb/evals/{name}/runs` | `{"cases":[names]?, "models":{}?, "reasoning":{}?, "geo":bool?}` | `202 {"run_id","status":"pending"}` | `400`, `404`, `429` |

@@ -31,6 +31,10 @@ const postgresSchemaLock = 0x67620008
 
 // oldTables lists every gb_* table of the evals schema, children first (the order to drop them in).
 var oldTables = []string{
+	"gb_synth_cases",
+	"gb_synth_generations",
+	"gb_synth_def_versions",
+	"gb_synth_defs",
 	"gb_eval_bookmarks",
 	"gb_case_run_commentaries",
 	"gb_case_runs_meta_knowledge_trajectories",

@@ -163,6 +163,10 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `dbfull.O
 - `gb_case_runs_meta_knowledge_trajectories`
 - `gb_case_run_commentaries`
 - `gb_case_runs_meta_training`
+- `gb_synth_defs`
+- `gb_synth_def_versions`
+- `gb_synth_generations`
+- `gb_synth_cases`
 
 ### What each table is about
 
@@ -183,6 +187,10 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `dbfull.O
 | `gb_case_runs_meta_knowledge_trajectories` | the ATIF trajectories of a knowledge case run (remember calls, then the query), by reference.                                    |
 | `gb_case_run_commentaries`                | the LLM commentaries on a failed case run, written on request from the admin UI (several if asked again).                        |
 | `gb_case_runs_meta_training`              | the question, the expected answer, the model's answer and the judge's score and reason of a training case run.                    |
+| `gb_synth_defs`                           | the current definition of a synthetic eval (one row per synthetic eval def; an eval def with no row is a human eval): the prompt, the corpus prompt, the model, the number of cases, the mode (one case per call or bulk) and the version. |
+| `gb_synth_def_versions`                   | every version of the definition of a synthetic eval, append-only.                                                                 |
+| `gb_synth_generations`                    | one run of the generator for a synthetic eval, with the version it used, its status, counts, tokens and cost.                      |
+| `gb_synth_cases`                          | where a generated case comes from (generation, version, hash of the content as generated), by case name; tells the cases the user edited. |
 
 ### Where each table is defined
 
